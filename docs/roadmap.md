@@ -69,7 +69,6 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P0] `VisibilityScope` + `lens` param (me / member / shared / all) on every read endpoint
 - [P0] Cross-member leakage test suite (private and balance-only accounts, transfers, aggregates)
 - [P1] Global lens switcher in the web shell, hidden for single-member households
-- [P1] Transfers between visible and private accounts show the counterpart as "a private account"
 - [P1] Member-scoped rules
 - [P0] Shared purchases show the payer, never the account; transfers show the counterpart member (ADR 0006 F1)
 - [P1] Attribution activity feed with "flag change", plus a disputed state in settle-up (F6)
