@@ -1,0 +1,6 @@
+dist/
+coverage/
+.turbo/
+pnpm-lock.yaml
+LICENSE
+**/*.md

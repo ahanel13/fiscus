@@ -1,7 +1,7 @@
 name: Feature
 description: A user-visible capability that can land in one PR
-title: "feat: "
-labels: ["type:feature", "status:triage"]
+title: 'feat: '
+labels: ['type:feature', 'status:triage']
 body:
   - type: textarea
     id: story
@@ -13,7 +13,7 @@ body:
     id: acceptance
     attributes:
       label: Acceptance criteria
-      placeholder: "- [ ] Given ... when ... then ..."
+      placeholder: '- [ ] Given ... when ... then ...'
     validations: { required: true }
   - type: textarea
     id: notes
@@ -24,4 +24,4 @@ body:
     id: epic
     attributes:
       label: Parent epic
-      placeholder: "#"
+      placeholder: '#'

@@ -1,7 +1,7 @@
 name: Bug report
 description: Something is broken
-title: "bug: "
-labels: ["type:bug", "status:triage"]
+title: 'bug: '
+labels: ['type:bug', 'status:triage']
 body:
   - type: textarea
     id: what
@@ -21,4 +21,5 @@ body:
       options: [docker compose, proxmox / split services, local dev, other]
   - type: textarea
     id: logs
-    attributes: { label: Logs, render: shell, description: Redact account numbers, tokens, and amounts. }
+    attributes:
+      { label: Logs, render: shell, description: Redact account numbers, tokens, and amounts. }
