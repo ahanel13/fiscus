@@ -53,7 +53,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P1] Transfers: detection and linking between accounts (excluded from spending)
 - [P1] Rules engine: conditions → actions, applied on ingest, with a "create rule from this transaction" option
 - [P1] Merchant name cleanup/normalization
-- [P2] Multi-currency display (base currency plus FX rates)
+- [P1] Multi-currency: per-account currencies, daily FX rates (`FxRateProvider`), read-time conversion to the household base currency, original foreign amounts on converted purchases
 - [P0] Review workflow: "needs review" state on new transactions, mark reviewed (individually or in bulk), review queue
 - [P1] Assign a reviewer (e.g., a partner reviews shared-card transactions), plus review reminder notifications
 - [P1] Transaction edit history (per-transaction activity log, built on the audit log)
@@ -199,6 +199,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P0] Short-term cash-flow forecast: daily per-account balances for 90 days from recurring series, paychecks, bills, and budgeted flexible spending. Feeds low-balance alerts
 - [P0] Plan model: scope (household/member), base snapshot, assumptions (inflation, returns, salary growth, trailing-12-month spending baseline)
 - [P0] Members in a plan: birth year, retirement age, life expectancy, income, Social Security PIA + claim age
+- [P2] Household members without logins (e.g. children/dependents) for planning and attribution. The schema already allows this (data model §3.1)
 - [P0] Account tax treatment (taxable/traditional/Roth/HSA/pension/cash/property/debt), mixed pretax+Roth balances, contributions, employer match, IRS limit tables
 - [P0] Deterministic long-term projection engine (monthly steps), with nominal vs real toggle and cash-flow table drill-in
 - [P0] Life events: one-time, repeating interval, windfall, home purchase (mortgage + PMI + taxes + appreciation), child, career break, job change, pre-Medicare healthcare

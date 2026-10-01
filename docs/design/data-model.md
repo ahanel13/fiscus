@@ -60,6 +60,8 @@ erDiagram
     merchants |o--o{ transactions : "at"
     categories |o--o{ transactions : categorized
     category_groups ||--o{ categories : groups
+    transactions ||--o{ transaction_notes : "shared + private notes"
+    household_members |o--o{ transaction_notes : "private author"
     transactions ||--o{ transaction_tags : tagged
     tags ||--o{ transaction_tags : on
     import_batches |o--o{ transactions : imported
@@ -107,12 +109,12 @@ erDiagram
 |---|---|---|
 | id | uuid PK | |
 | household_id | uuid FK | |
-| user_id | uuid FK | |
-| role | enum `owner`/`member`/`viewer` | |
+| user_id | uuid FK **null** | Null = a member without a login (e.g. a child tracked for planning). **The schema allows it now, but the API rejects it until that feature ships**, so no migration is needed later. Such members can own accounts and be attributed spending, but can't hold sessions or PATs |
+| role | enum `owner`/`member`/`viewer` | Must be `member` when `user_id` is null |
 | display_name, color, avatar_url | | Viewer-relative labels use these (ADR 0006 naming) |
 | joined_at, left_at | timestamptz | `left_at` set by the separation flow. Rows are kept for history |
 
-UNIQUE `(household_id, user_id) WHERE left_at IS NULL`.
+UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
 
 **`invites`**: `household_id`, `email`, `role`, `token_hash`, `invited_by_member_id`, `expires_at`, `accepted_at`.
 
@@ -190,6 +192,7 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 | account_number_enc | bytea null | Full number if ever provided. Never returned by the AI tools |
 | visibility | enum `full`/`balance_only`/`private` | ADR 0006 §4. `private` on a joint account in a two-member household is rejected by the API (F2) |
 | include_in_net_worth | bool | |
+| is_business | bool default false | Default business flag for the account's transactions |
 | sort_order | int | |
 | notes_enc | bytea null | |
 | closed_at | timestamptz null | |
@@ -208,7 +211,20 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 
 **`balance_snapshots`**: `(account_id, as_of)` PK, `household_id`, `balance_minor`, `available_minor` null, `credit_limit_minor` null, `source` enum `provider`/`computed`/`manual`. One row per account per day (end of day). Net-worth history and range charts read only this table (ADR 0011).
 
-### 3.4 Transactions
+### 3.4 Currency
+
+**`currencies`**: global reference data: `code char(3)` PK, `exponent smallint`, `symbol`, `name`.
+
+**`fx_rates`**: global, no RLS: `(rate_date, base, quote)` PK, `rate numeric(28,12)`, `source`. Filled daily by a worker job from a pluggable `FxRateProvider` (ADR 0004 pattern; e.g. ECB reference rates, which are free).
+
+**Strategy: store original, convert when reading.**
+- Every amount is stored only in its own currency (account currency, plus the optional `foreign_*` original).
+- Reports, budgets, and net worth convert to the household `base_currency` at query time by joining `fx_rates` on the row's date (balances use the snapshot date, transactions the effective date). Missing dates fall back to the most recent prior rate.
+- Changing `households.base_currency` is instant, with no rewrite.
+- There is **no** stored base-currency column. If profiling ever shows conversion as a bottleneck, a per-household materialized rollup can be added without changing the source of truth.
+- The API returns both the native amount and the converted amount (with the rate date used), so the UI can show "€42.00 (≈ $45.80)".
+
+### 3.5 Transactions
 
 **`transactions`**
 
@@ -228,12 +244,14 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 | display_name | text | After merchant cleanup and rename rules |
 | merchant_id | uuid FK null | |
 | category_id | uuid FK null | Null = uncategorized |
-| notes_enc | bytea null | + `key_version` |
 | review_status | enum `needs_review`/`reviewed` | |
 | reviewer_member_id | uuid FK null | Assigned reviewer |
 | excluded | bool | Hidden from reports and budgets |
 | transfer_group_id | uuid null | Links both legs of a transfer |
 | is_settlement | bool | Marks settle-up transfers (M3 forward reference) |
+| is_business | bool null | Null = inherit from the account. Explicit true/false overrides it. Business reports filter on the effective value |
+| foreign_amount_minor | bigint null | Original amount when the provider converted a foreign purchase (e.g. €42.00 on a USD card) |
+| foreign_currency | char(3) null | |
 | source | enum `provider`/`import`/`manual` | |
 | provider_transaction_id | text null | |
 | provider_pending_id | text null | Plaid's link from posted → pending, used to carry edits over |
@@ -243,6 +261,22 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 | version | int | |
 
 The effective date for ranges is `posted_date` or `authorized_date`, per `households.date_basis`. This is materialized as a generated column `effective_date` so it can be indexed.
+
+**`transaction_notes`**: two kinds of note (decided in #2 review).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| household_id | uuid FK | |
+| transaction_id | uuid FK | |
+| author_member_id | uuid FK null | **Null = the shared note.** Otherwise a private note owned by that member |
+| body_enc | bytea | + `key_version` |
+| updated_by_member_id | uuid FK | Shown on shared notes ("edited by Alex") |
+
+- **Shared note:** one per transaction (partial UNIQUE `(transaction_id) WHERE author_member_id IS NULL`). Visible to **everyone who can see the transaction**, including via attribution (F1).
+- **Private note:** one per member per transaction (partial UNIQUE `(transaction_id, author_member_id) WHERE author_member_id IS NOT NULL`). Visible only to its author.
+- The AI assistant, acting as a member, sees the shared note and that member's private notes.
+- Account notes (`accounts.notes_enc`) stay single and shared, following the account's visibility.
 
 **`transaction_attributions`**: `(transaction_id, member_id)` PK, `share_bps`. **No rows = inherit** from `account_owners`. Split children carry their own rows. Σ = 10 000 is enforced like `account_owners`.
 
@@ -313,8 +347,9 @@ settings are missing, policies evaluate to false and the query returns **nothing
    A transaction visible only through attribution has an `account_id` that the caller can't
    resolve, because the `accounts` row is filtered. The API **must not serialize `account_id` in that case**
    and shows the paying member instead (F1). The permissions matrix (#3) specifies this.
-4. **Rules**: household-wide rules are visible to all members. Member-scoped rules are visible only to their member.
-5. **Writes** use the same predicates in `WITH CHECK`. Write *authorization*, such as who may edit
+4. **Notes** (`transaction_notes`): shared note → visible if the transaction is visible (policy 3). Private note → `author_member_id = :me` only.
+5. **Rules**: household-wide rules are visible to all members. Member-scoped rules are visible only to their member.
+6. **Writes** use the same predicates in `WITH CHECK`. Write *authorization*, such as who may edit
    attribution (F6), is enforced in the domain layer and specified in #3. RLS guarantees only that
    you can't touch what you can't see.
 
@@ -359,13 +394,15 @@ and is only rewritten when ownership, visibility, or membership changes.
 | transaction_attributions | `(member_id, transaction_id)` | RLS F1 branch, "Mine"/"Ours" spending lens |
 | member_account_access | PK `(member_id, account_id)` | Every RLS check |
 | balance_snapshots | PK `(account_id, as_of)` | Net worth and balance charts |
+| transaction_notes | `(transaction_id)` | Load notes with a transaction |
+| fx_rates | PK `(rate_date, base, quote)` | Conversion join |
 | audit_events | `(household_id, occurred_at DESC)`, `(target_type, target_id)` | Activity feed, transaction history |
 
 ## 8. Encrypted columns summary
 
 `users.totp_secret_enc` (instance KEK) · `aggregation_credentials.secret_enc` ·
 `connections.access_token_enc` · `accounts.account_number_enc` · `accounts.notes_enc` ·
-`transactions.notes_enc`. Receipt files and conversation history are encrypted the same way when
+`transaction_notes.body_enc`. Receipt files and conversation history are encrypted the same way when
 they arrive in M9/M10.
 
 **Consequence:** notes are **not searchable in SQL**. Search covers names and descriptions. Note
@@ -377,9 +414,9 @@ search, if wanted, decrypts within an already-filtered result set.
 - **M6:** `securities`, `holdings`, `lots`, `investment_transactions`, `prices`. They reference `accounts` and use `numeric(28,10)`.
 - **M10:** `change_sets` will reference `audit_events`, and undo replays the inverse operations.
 
-## 10. Open questions for review
-1. **Members without logins** (e.g. children tracked for planning): allow `household_members.user_id` to be null now, or add a separate `dependents` table in M8?
-2. **Notes on attribution-shared transactions:** should a partner who can see a transaction only via attribution (F1) see its notes? Proposed: **no**. Notes stay with the paying account's visibility.
-3. **Business flag** (P3): add `is_business` columns now (cheap) or later with a migration?
-4. **Multi-currency:** FX rate storage (`fx_rates(date, base, quote, rate)`) is deferred to the P2 ticket. Confirm there is no base-currency amount column on transactions for now.
-5. **Manual transaction purge window:** is 30 days right?
+## 10. Decisions from review (#2)
+1. **Members without logins:** a later feature. `household_members.user_id` is nullable now so it needs no migration, and the API rejects it until the feature ships.
+2. **Notes:** two kinds. A shared note is visible to anyone who can see the transaction, including via attribution. A private note is visible only to its author (`transaction_notes`).
+3. **Business flag:** included now (`accounts.is_business`, `transactions.is_business` override).
+4. **Multi-currency:** required. Store the original amount and convert at read time via `fx_rates`. No stored base-currency amounts. The multi-currency ticket moves to P1.
+5. **Manual transaction purge window:** 30 days.
