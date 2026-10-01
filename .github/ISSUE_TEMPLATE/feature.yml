@@ -1,0 +1,27 @@
+name: Feature
+description: A user-visible capability that can land in one PR
+title: "feat: "
+labels: ["type:feature", "status:triage"]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: User story
+      placeholder: As a <user>, I want <capability> so that <benefit>.
+    validations: { required: true }
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: "- [ ] Given ... when ... then ..."
+    validations: { required: true }
+  - type: textarea
+    id: notes
+    attributes:
+      label: Technical notes
+      description: API endpoints, schema changes, UI sketches, edge cases
+  - type: input
+    id: epic
+    attributes:
+      label: Parent epic
+      placeholder: "#"

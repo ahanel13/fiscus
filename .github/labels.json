@@ -1,0 +1,147 @@
+[
+  {
+    "name": "type:epic",
+    "color": "3E4B9E",
+    "description": "Feature area grouping multiple issues"
+  },
+  {
+    "name": "type:feature",
+    "color": "1D76DB",
+    "description": "User-visible capability"
+  },
+  {
+    "name": "type:chore",
+    "color": "C5DEF5",
+    "description": "Tooling, infra, refactor, deps"
+  },
+  {
+    "name": "type:bug",
+    "color": "D73A4A",
+    "description": "Something is broken"
+  },
+  {
+    "name": "type:spike",
+    "color": "FBCA04",
+    "description": "Time-boxed research"
+  },
+  {
+    "name": "type:design",
+    "color": "5319E7",
+    "description": "Design doc / ERD / spec delivered as a PR"
+  },
+  {
+    "name": "priority:P0",
+    "color": "B60205",
+    "description": "Blocks milestone"
+  },
+  {
+    "name": "priority:P1",
+    "color": "D93F0B",
+    "description": "Required for milestone"
+  },
+  {
+    "name": "priority:P2",
+    "color": "FBCA04",
+    "description": "Nice to have"
+  },
+  {
+    "name": "priority:P3",
+    "color": "C2E0C6",
+    "description": "Someday"
+  },
+  {
+    "name": "status:triage",
+    "color": "EDEDED",
+    "description": "Needs review"
+  },
+  {
+    "name": "status:blocked",
+    "color": "000000",
+    "description": "Blocked by another issue or decision"
+  },
+  {
+    "name": "good first issue",
+    "color": "7057FF",
+    "description": "Good for newcomers"
+  },
+  {
+    "name": "area:infra",
+    "color": "0E8A16",
+    "description": "CI, docker, deploy, repo tooling"
+  },
+  {
+    "name": "area:auth",
+    "color": "0E8A16",
+    "description": "Users, households, sessions, tokens"
+  },
+  {
+    "name": "area:ledger",
+    "color": "0E8A16",
+    "description": "Accounts, transactions, categories, rules"
+  },
+  {
+    "name": "area:aggregation",
+    "color": "0E8A16",
+    "description": "Plaid, SimpleFIN, file import"
+  },
+  {
+    "name": "area:shared",
+    "color": "0E8A16",
+    "description": "Yours/mine/ours, visibility, settle-up"
+  },
+  {
+    "name": "area:budget",
+    "color": "0E8A16",
+    "description": "Budgeting strategies"
+  },
+  {
+    "name": "area:bills",
+    "color": "0E8A16",
+    "description": "Recurring and bill tracking"
+  },
+  {
+    "name": "area:goals",
+    "color": "0E8A16",
+    "description": "Savings and debt goals"
+  },
+  {
+    "name": "area:investments",
+    "color": "0E8A16",
+    "description": "Holdings, prices, performance"
+  },
+  {
+    "name": "area:planning",
+    "color": "0E8A16",
+    "description": "Forecasting, retirement, FIRE"
+  },
+  {
+    "name": "area:reports",
+    "color": "0E8A16",
+    "description": "Reporting, dashboards, charts"
+  },
+  {
+    "name": "area:receipts",
+    "color": "0E8A16",
+    "description": "Receipt upload and OCR"
+  },
+  {
+    "name": "area:notifications",
+    "color": "0E8A16",
+    "description": "Email, ntfy, webhooks, alerts"
+  },
+  {
+    "name": "area:ai",
+    "color": "0E8A16",
+    "description": "MCP server and LLM features"
+  },
+  {
+    "name": "area:web",
+    "color": "0E8A16",
+    "description": "Frontend shell and UX"
+  },
+  {
+    "name": "area:docs",
+    "color": "0E8A16",
+    "description": "Documentation"
+  }
+]

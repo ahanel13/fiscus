@@ -1,0 +1,24 @@
+name: Bug report
+description: Something is broken
+title: "bug: "
+labels: ["type:bug", "status:triage"]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: What happened?, description: Include expected vs actual. }
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes: { label: Steps to reproduce }
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: Version / commit }
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: Deployment
+      options: [docker compose, proxmox / split services, local dev, other]
+  - type: textarea
+    id: logs
+    attributes: { label: Logs, render: shell, description: Redact account numbers, tokens, and amounts. }
