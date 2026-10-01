@@ -39,7 +39,8 @@ session or on the client, was considered and rejected for v1:
   instance settings, provider config, backups, and health. It is **not** a member of any
   household by virtue of being admin.
 - Admin API endpoints return household *metadata only*: name, member emails, account count,
-  connection health, storage used. They never return transactions, balances, notes, or receipts.
+  connection health including **institution names** (for troubleshooting sync), storage used.
+  There is no impersonation ("log in as") feature. They never return transactions, balances, notes, or receipts.
 - An admin who is also a person with their own finances uses a normal household membership,
   like anyone else.
 

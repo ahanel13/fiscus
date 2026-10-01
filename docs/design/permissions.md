@@ -183,8 +183,8 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 | ID | Resource | Admin may see / do | Admin may **never** see |
 |---|---|---|---|
 | ADM-01 | Users | Email, created, last login, MFA enabled (y/n), OIDC linked (y/n), disabled flag, household memberships (household name + role) | Password hashes, TOTP secrets, sessions' tokens |
-| ADM-02 | Users: actions | Disable/enable, force logout, reset MFA, send password reset. Each is audit-logged and visible to affected households | Impersonation ("log in as") **does not exist** |
-| ADM-03 | Households | Name, created, status, member count, member emails + roles, account **count**, connection count by status (`ok`/`login_required`/`error`), opaque Plaid item IDs with error codes, storage bytes, last activity date | Account names, institutions, balances, transactions, categories, notes, rules, receipts, goals, budgets, plans, AI conversations |
+| ADM-02 | Users: actions | Disable/enable, force logout, reset MFA, send password reset. Each is audit-logged and visible to affected households | Impersonation ("log in as") **does not exist, with or without consent** (decided in #3 review) |
+| ADM-03 | Households | Name, created, status, member count, member emails + roles, account **count**, connections with **institution name**, status (`ok`/`login_required`/`error`), Plaid item ID and error code, storage bytes, last activity date | Account names, balances, transactions, categories, notes, rules, receipts, goals, budgets, plans, AI conversations |
 | ADM-04 | Households: actions | Create (with first owner invite), disable, schedule deletion (same 7-day grace and notification as HH-07), disable Plaid or AI for a household | Editing any household data |
 | ADM-05 | Instance settings | Signup mode, providers (Plaid instance keys, LLM providers, FX/price providers, SMTP), webhook URL + health, polling intervals, usage caps | Household Plaid secrets |
 | ADM-06 | Audit | Instance-level events and admin actions | Household-internal events (those belong to HH-11) |

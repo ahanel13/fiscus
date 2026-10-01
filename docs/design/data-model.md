@@ -101,6 +101,7 @@ erDiagram
 | week_start | smallint | 0 = Sunday, 1 = Monday |
 | fiscal_year_start_month | smallint | 1–12 |
 | date_basis | enum `posted`/`authorized` | |
+| finance_style | enum `combined`/`hybrid`/`separate` | ADR 0006 §8. Drives defaults and which shared-cost screens show. Never rewrites data |
 | status | enum `active`/`disabled`/`deleting` | `deleting` = crypto-shred in progress |
 
 **`household_members`**: the actor for all financial permissions (not `users`).
@@ -375,7 +376,7 @@ and is only rewritten when ownership, visibility, or membership changes.
 | Manual transaction | Soft delete, then purged after 30 days | Undo window |
 | Imported batch | Revert = soft delete of all its rows | |
 | Account | `closed_at` (keeps history). Hard delete only via explicit "delete account and history", which cascades | |
-| Member leaves | `left_at` set. Ownership and attribution rows retained for history; separation flow reassigns (ADR 0006 §8) | |
+| Member leaves | `left_at` set. Ownership and attribution rows retained for history; separation flow reassigns (ADR 0006 §9) | |
 | Household | `status = deleting` → **crypto-shred** (delete `household_keys`) → async hard delete of all rows | Old backups become unreadable for encrypted fields (ADR 0005) |
 | Audit events | Retained. Metadata contains no financial plaintext. Events for a deleted household are purged after 90 days | |
 

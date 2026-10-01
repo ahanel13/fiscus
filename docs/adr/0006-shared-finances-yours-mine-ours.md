@@ -131,7 +131,24 @@ Per account, set by its owners:
    allowance is paid into a **personal** account, which can be modeled as a funding target, and
    spent from there. The UI says this when an allowance is set up.
 
-### 8. Member lifecycle
+### 8. Finance style presets (added in #3 review)
+Not every couple splits costs. Many fully combine their finances. The model already handles
+that: if every account is **joint**, every purchase is "ours", both members are owners with full
+edit rights, and settle-up is always $0. The household **finance style** turns that into a
+first-class experience. It is chosen at onboarding and can be changed any time.
+
+| Style | New-account defaults | Screens |
+|---|---|---|
+| **Combined** ("it's all ours") | Joint for all members, `full` | Settle-up, split policies, and the lens switcher hidden. One shared budget. Allowances still available |
+| **Hybrid** (yours / mine / ours) | Owned by the linking member, `full` | Everything shown |
+| **Separate** (split shared costs) | Owned by the linking member, `view_only` | Settle-up and split policies prominent |
+
+- Presets set **defaults and visibility of features only**. They never rewrite existing data.
+  Switching to Combined offers a one-click "make all accounts joint", and switching away changes nothing until the members edit ownership.
+- Each hidden feature can be re-enabled individually (a per-household feature toggle overrides the preset).
+- Single-member households have no style and see none of these screens.
+
+### 9. Member lifecycle
 - Invite/join is covered in ADR 0005. **Leaving / separating** (P2) is a guided flow:
   - solely owned accounts leave with the member;
   - joint accounts are assigned or duplicated;
