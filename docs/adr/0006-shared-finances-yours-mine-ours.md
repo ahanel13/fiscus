@@ -1,6 +1,6 @@
 # ADR 0006: Shared finances: ownership, attribution, visibility, and lenses ("yours / mine / ours")
 
-- Status: Accepted (revised 2026-10-01: logic fixes F1–F6)
+- Status: Accepted (revised 2026-10-01: logic fixes F1–F6; added `view_only` level in #3 review)
 - Date: 2026-09-30
 
 ## Context
@@ -54,7 +54,8 @@ Per account, set by its owners:
 
 | Level | Other members see |
 |-------|-------------------|
-| `full` | Account, balances, transactions |
+| `full` | Account, balances, transactions, and they can **categorize/review** them (category, rename, tags, review status, shared note) |
+| `view_only` | Account, balances, and transactions, **read-only**. Private notes and attribution flags only |
 | `balance_only` | Account name/type, balance history, and its contribution to net worth. No transactions |
 | `private` | Nothing. Excluded from their views and from household totals they see |
 
@@ -69,7 +70,7 @@ Per account, set by its owners:
   `app.member_id` alongside `app.household_id` (ADR 0005). It extends to derived data:
   receipts, notes, rules scoped to that account, and search.
 - The household `owner` role manages membership and settings but **cannot override** another
-  member's `private` or `balance_only` accounts.
+  member's `private`, `balance_only`, or `view_only` accounts.
 - Background jobs run as the system, but anything they surface (notifications, digests, MCP
   answers) is filtered for the *recipient* member.
 - As with the operator (ADR 0005), privacy between members is enforced by permissions, not cryptography.

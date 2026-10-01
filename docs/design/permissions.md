@@ -52,17 +52,18 @@ Unless noted, PAT-R = the member's read rights only, PAT-W = the member's rights
 
 `member_account_access.level` for (member, account):
 
-| Data | `owner` | `full` | `balance_only` | none (private, not owner) |
-|---|---|---|---|---|
-| Account exists / name / type / institution | ✅ | ✅ | ✅ | ❌ (404) |
-| Balance and balance history | ✅ | ✅ | ✅ | ❌ |
-| Counted in "net worth (visible to you)" | ✅ | ✅ | ✅ | ❌ |
-| Transactions on the account | ✅ | ✅ | ❌ | ❌ |
-| …except transactions **attributed to me** (F1) | ✅ | ✅ | ✅ (shown without account) | ✅ (shown without account) |
-| Shared notes on visible transactions | ✅ | ✅ | only attributed ones | only attributed ones |
-| Account notes | ✅ | ✅ | ❌ | ❌ |
-| Account number (`account_number_enc`) | ✅ | ❌ | ❌ | ❌ |
-| Receipts (M9) | follow their transaction | | | |
+| Data | `owner` | `full` | `view_only` | `balance_only` | none (private, not owner) |
+|---|---|---|---|---|---|
+| Account exists / name / type / institution | ✅ | ✅ | ✅ | ✅ | ❌ (404) |
+| Balance and balance history | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Counted in "net worth (visible to you)" | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Transactions on the account | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Categorize / review those transactions (TXN-04) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| …except transactions **attributed to me** (F1) | ✅ | ✅ | ✅ | ✅ (shown without account) | ✅ (shown without account) |
+| Read shared notes on visible transactions | ✅ | ✅ | ✅ | only attributed ones | only attributed ones |
+| Account notes | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Account number (`account_number_enc`) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Receipts (M9) | follow their transaction | | | | |
 
 **F1 serialization rule:** when a transaction is visible only because it is attributed to the
 caller, the API omits `account_id`, account name, mask, and institution, and returns
@@ -131,7 +132,7 @@ caller can't see ("Transfer to Anthony").
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
 | NOTE-01 | Read shared note | vis | vis | vis | Visible iff the transaction is visible (incl. via attribution) |
-| NOTE-02 | Write shared note | vis | vis | ❌ | Any non-viewer who can see the transaction. `updated_by_member_id` is recorded |
+| NOTE-02 | Write shared note | acct-full or attributed | acct-full or attributed | ❌ | Owner or `full` on the paying account, or the transaction is attributed to the writer. `view_only` and `balance_only` can't write shared notes. `updated_by_member_id` is recorded |
 | NOTE-03 | Read / write private note | own | own | own | Viewers may keep private notes |
 | NOTE-04 | Read another member's private note | ❌ | ❌ | ❌ | Including OWN, SYS output, and AI acting as a different member |
 

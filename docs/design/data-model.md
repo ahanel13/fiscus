@@ -190,7 +190,7 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 | currency | char(3) | |
 | mask_last4 | char(4) null | Plaintext; shown in UI |
 | account_number_enc | bytea null | Full number if ever provided. Never returned by the AI tools |
-| visibility | enum `full`/`balance_only`/`private` | ADR 0006 §4. `private` on a joint account in a two-member household is rejected by the API (F2) |
+| visibility | enum `full`/`view_only`/`balance_only`/`private` | ADR 0006 §4. `private` on a joint account in a two-member household is rejected by the API (F2) |
 | include_in_net_worth | bool | |
 | is_business | bool default false | Default business flag for the account's transactions |
 | sort_order | int | |
@@ -207,7 +207,7 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 | member_id | uuid | PK part |
 | account_id | uuid | PK part |
 | household_id | uuid | |
-| level | enum `owner`/`full`/`balance_only` | No row = cannot see the account |
+| level | enum `owner`/`full`/`view_only`/`balance_only` | No row = cannot see the account |
 
 **`balance_snapshots`**: `(account_id, as_of)` PK, `household_id`, `balance_minor`, `available_minor` null, `credit_limit_minor` null, `source` enum `provider`/`computed`/`manual`. One row per account per day (end of day). Net-worth history and range charts read only this table (ADR 0011).
 
@@ -340,7 +340,7 @@ settings are missing, policies evaluate to false and the query returns **nothing
    app.system = 'on'
    OR EXISTS (SELECT 1 FROM member_account_access a
               WHERE a.member_id = :me AND a.account_id = t.account_id
-                AND a.level IN ('owner','full'))
+                AND a.level IN ('owner','full','view_only'))
    OR EXISTS (SELECT 1 FROM transaction_attributions ta          -- F1: attribution shares it
               WHERE ta.transaction_id = t.id AND ta.member_id = :me)
    ```

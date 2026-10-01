@@ -85,7 +85,7 @@ docs/
 - **Ownership, attribution & visibility** ([ADR 0006](adr/0006-shared-finances-yours-mine-ours.md)):
   - accounts are owned by one member (personal) or several (joint, with shares);
   - transactions are attributed to members separately from who paid;
-  - accounts are `full`, `balance_only`, or `private` to other members;
+  - accounts are `full`, `view_only`, `balance_only`, or `private` to other members;
   - every view is filtered through a **lens**: me / member / shared / all.
 - **Split policy / settlement entry / funding target / allowance**: shared-cost fairness and settle-up between members.
 - **Institution / Connection**: a link to a provider (Plaid item, SimpleFIN token, manual).

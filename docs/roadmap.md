@@ -64,7 +64,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 **Epic: Shared finances core: yours / mine / ours** (`area:shared`), see [ADR 0006](adr/0006-shared-finances-yours-mine-ours.md)
 - [P0] Household members model: display name, color, avatar. N members, UI tuned for 2
 - [P0] Account ownership (`account_owners` with shares). Personal vs joint, with reassignment
-- [P0] Account visibility (full / balance-only / private), enforced by RLS and extended to receipts, notes, rules, and search
+- [P0] Account visibility (full / view-only / balance-only / private), enforced by RLS and extended to receipts, notes, rules, and search
 - [P0] Transaction attribution (who it's for vs who paid), with inheritance from the account, per-split attribution, and "attributing shares it" semantics
 - [P0] `VisibilityScope` + `lens` param (me / member / shared / all) on every read endpoint
 - [P0] Cross-member leakage test suite (private and balance-only accounts, transfers, aggregates)
