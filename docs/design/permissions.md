@@ -194,7 +194,7 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 
 | ID | Situation | Required behaviour |
 |---|---|---|
-| EDGE-01 | Member leaves | Sessions and PATs for that household are revoked immediately. `member_account_access` rows are removed. Their private notes on household transactions are deleted. Attribution rows stay for history. Settlement balances are finalized (M3) |
+| EDGE-01 | Member leaves | Sessions and PATs for that household are revoked immediately. `member_account_access` rows are removed. Their private notes on household transactions are **included in their personal export, then deleted**. Attribution rows stay for history. Settlement balances are finalized (M3) |
 | EDGE-02 | Joint account where one owner left | The remaining owner(s) have full control. The leaver's ownership row stays (for historical net-worth shares) until the separation flow reassigns it. The leaver has no access |
 | EDGE-03 | Solely owned account of a leaver | Hidden from everyone (no owner with access) until the separation flow either transfers it or detaches it with the leaver's export |
 | EDGE-04 | PAT of a removed member | 401 on next use (PAT-03) |
@@ -205,7 +205,7 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 | EDGE-09 | Attribution to a member removed later | Attribution history is kept. Settle-up treats the leaver per the separation flow |
 | EDGE-10 | Rule created by someone who later lost access to an account | RULE-05 is evaluated at run time, so the rule stops affecting that account |
 | EDGE-11 | Two-member household tries to make a joint account private | 422 `private_joint_disallowed` (F2) |
-| EDGE-12 | Member without login (future, #223) | Can be an owner or be attributed. Can't authenticate, so no sessions or PATs. Their accounts are managed by household OWN (the one sanctioned exception to "owner can't override", since there is no person to consent) |
+| EDGE-12 | Member without login (future, #223) | Can be an owner or be attributed. Can't authenticate, so no sessions or PATs. Their accounts are managed by **designated guardians** (`member_guardians`): one or more login members chosen explicitly. Guardians act with owner rights on the dependent's accounts. Other members, including household OWN, get no override. Guardian changes are audit-logged and visible to the household |
 
 ## 7. Test plan mapping
 
