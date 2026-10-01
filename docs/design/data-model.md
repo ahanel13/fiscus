@@ -22,7 +22,7 @@ forward reference shapes a decision.
 | Quantities/prices | `numeric(28,10)`. Investment tables are M6, so this is listed here for consistency only |
 | Enums | Postgres enums for closed sets (account type, role, visibility). `text` + check constraint where values may grow by provider |
 | Encrypted columns | Suffix `_enc`, type `bytea`, AES-256-GCM with the household data key (ADR 0005). Each row stores the `key_version` it was encrypted with |
-| Optimistic concurrency | `version int` on user-edited rows (transactions, accounts, rules), checked via `If-Match`/ETag (see API conventions, #4) |
+| Optimistic concurrency | `version int` + `field_versions jsonb` (`{field: version last changed}`) on user-edited rows (transactions, accounts, rules, budgets). Enables field-level conflict detection: first save wins, and only same-field overlaps conflict ([API conventions §8](api-conventions.md)) |
 | Naming | `snake_case`, plural table names, `<table>_id` foreign keys |
 
 ## 2. Entity-relationship diagram
