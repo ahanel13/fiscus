@@ -101,6 +101,7 @@ erDiagram
 | week_start | smallint | 0 = Sunday, 1 = Monday |
 | fiscal_year_start_month | smallint | 1–12 |
 | date_basis | enum `posted`/`authorized` | |
+| finance_style | enum `combined`/`hybrid`/`separate` | ADR 0006 §8. Drives defaults and which shared-cost screens show. Never rewrites data |
 | status | enum `active`/`disabled`/`deleting` | `deleting` = crypto-shred in progress |
 
 **`household_members`**: the actor for all financial permissions (not `users`).
@@ -115,6 +116,8 @@ erDiagram
 | joined_at, left_at | timestamptz | `left_at` set by the separation flow. Rows are kept for history |
 
 UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
+
+**`member_guardians`** (ships with #223): `(member_id, guardian_member_id)` PK, `household_id`, `created_at`. Required for every member without a login (≥1 guardian). Guardians get `owner`-level access to the dependent's accounts in `member_account_access`. Guardians must be login members.
 
 **`invites`**: `household_id`, `email`, `role`, `token_hash`, `invited_by_member_id`, `expires_at`, `accepted_at`.
 
@@ -190,7 +193,7 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 | currency | char(3) | |
 | mask_last4 | char(4) null | Plaintext; shown in UI |
 | account_number_enc | bytea null | Full number if ever provided. Never returned by the AI tools |
-| visibility | enum `full`/`balance_only`/`private` | ADR 0006 §4. `private` on a joint account in a two-member household is rejected by the API (F2) |
+| visibility | enum `full`/`view_only`/`balance_only`/`private` | ADR 0006 §4. `private` on a joint account in a two-member household is rejected by the API (F2) |
 | include_in_net_worth | bool | |
 | is_business | bool default false | Default business flag for the account's transactions |
 | sort_order | int | |
@@ -207,7 +210,7 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 | member_id | uuid | PK part |
 | account_id | uuid | PK part |
 | household_id | uuid | |
-| level | enum `owner`/`full`/`balance_only` | No row = cannot see the account |
+| level | enum `owner`/`full`/`view_only`/`balance_only` | No row = cannot see the account |
 
 **`balance_snapshots`**: `(account_id, as_of)` PK, `household_id`, `balance_minor`, `available_minor` null, `credit_limit_minor` null, `source` enum `provider`/`computed`/`manual`. One row per account per day (end of day). Net-worth history and range charts read only this table (ADR 0011).
 
@@ -340,7 +343,7 @@ settings are missing, policies evaluate to false and the query returns **nothing
    app.system = 'on'
    OR EXISTS (SELECT 1 FROM member_account_access a
               WHERE a.member_id = :me AND a.account_id = t.account_id
-                AND a.level IN ('owner','full'))
+                AND a.level IN ('owner','full','view_only'))
    OR EXISTS (SELECT 1 FROM transaction_attributions ta          -- F1: attribution shares it
               WHERE ta.transaction_id = t.id AND ta.member_id = :me)
    ```
@@ -375,7 +378,7 @@ and is only rewritten when ownership, visibility, or membership changes.
 | Manual transaction | Soft delete, then purged after 30 days | Undo window |
 | Imported batch | Revert = soft delete of all its rows | |
 | Account | `closed_at` (keeps history). Hard delete only via explicit "delete account and history", which cascades | |
-| Member leaves | `left_at` set. Ownership and attribution rows retained for history; separation flow reassigns (ADR 0006 §8) | |
+| Member leaves | `left_at` set. Ownership and attribution rows retained for history; separation flow reassigns (ADR 0006 §9) | |
 | Household | `status = deleting` → **crypto-shred** (delete `household_keys`) → async hard delete of all rows | Old backups become unreadable for encrypted fields (ADR 0005) |
 | Audit events | Retained. Metadata contains no financial plaintext. Events for a deleted household are purged after 90 days | |
 

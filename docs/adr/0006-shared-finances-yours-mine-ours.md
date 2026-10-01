@@ -1,6 +1,6 @@
 # ADR 0006: Shared finances: ownership, attribution, visibility, and lenses ("yours / mine / ours")
 
-- Status: Accepted (revised 2026-10-01: logic fixes F1–F6)
+- Status: Accepted (revised 2026-10-01: logic fixes F1–F6; added `view_only` level in #3 review)
 - Date: 2026-09-30
 
 ## Context
@@ -54,7 +54,8 @@ Per account, set by its owners:
 
 | Level | Other members see |
 |-------|-------------------|
-| `full` | Account, balances, transactions |
+| `full` | Account, balances, transactions, and they can **categorize/review** them (category, rename, tags, review status, shared note) |
+| `view_only` | Account, balances, and transactions, **read-only**. Private notes and attribution flags only |
 | `balance_only` | Account name/type, balance history, and its contribution to net worth. No transactions |
 | `private` | Nothing. Excluded from their views and from household totals they see |
 
@@ -69,7 +70,7 @@ Per account, set by its owners:
   `app.member_id` alongside `app.household_id` (ADR 0005). It extends to derived data:
   receipts, notes, rules scoped to that account, and search.
 - The household `owner` role manages membership and settings but **cannot override** another
-  member's `private` or `balance_only` accounts.
+  member's `private`, `balance_only`, or `view_only` accounts.
 - Background jobs run as the system, but anything they surface (notifications, digests, MCP
   answers) is filtered for the *recipient* member.
 - As with the operator (ADR 0005), privacy between members is enforced by permissions, not cryptography.
@@ -130,7 +131,24 @@ Per account, set by its owners:
    allowance is paid into a **personal** account, which can be modeled as a funding target, and
    spent from there. The UI says this when an allowance is set up.
 
-### 8. Member lifecycle
+### 8. Finance style presets (added in #3 review)
+Not every couple splits costs. Many fully combine their finances. The model already handles
+that: if every account is **joint**, every purchase is "ours", both members are owners with full
+edit rights, and settle-up is always $0. The household **finance style** turns that into a
+first-class experience. It is chosen at onboarding and can be changed any time.
+
+| Style | New-account defaults | Screens |
+|---|---|---|
+| **Combined** ("it's all ours") | Joint for all members, `full` | Settle-up, split policies, and the lens switcher hidden. One shared budget. Allowances still available |
+| **Hybrid** (yours / mine / ours) | Owned by the linking member, `full` | Everything shown |
+| **Separate** (split shared costs) | Owned by the linking member, `view_only` | Settle-up and split policies prominent |
+
+- Presets set **defaults and visibility of features only**. They never rewrite existing data.
+  Switching to Combined offers a one-click "make all accounts joint", and switching away changes nothing until the members edit ownership.
+- Each hidden feature can be re-enabled individually (a per-household feature toggle overrides the preset).
+- Single-member households have no style and see none of these screens.
+
+### 9. Member lifecycle
 - Invite/join is covered in ADR 0005. **Leaving / separating** (P2) is a guided flow:
   - solely owned accounts leave with the member;
   - joint accounts are assigned or duplicated;
