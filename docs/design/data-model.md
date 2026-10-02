@@ -118,6 +118,7 @@ erDiagram
 | role | enum `owner`/`member`/`viewer` | Must be `member` when `user_id` is null |
 | display_name, color, avatar_url | | Viewer-relative labels use these (ADR 0006 naming) |
 | joined_at, left_at | timestamptz | `left_at` set by the separation flow. Rows are kept for history |
+| history_from | date | Earliest date of household-shared records this member can see (default: join date). Owners can move it earlier, never later ([ADR 0012](../adr/0012-member-lifecycle.md)) |
 
 UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
 
@@ -156,7 +157,7 @@ Deleting all rows for a household is the **crypto-shred**.
 | metadata | jsonb | **No financial plaintext.** IDs, field names, old/new *category ids*, never notes or amounts of hidden rows |
 | ip | inet null | |
 
-The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per-transaction edit history (M1) is a filtered view over `audit_events`.
+Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plus `changes_enc` (encrypted before/after values) per [ADR 0013](../adr/0013-tamper-evident-activity-history.md). The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per-transaction edit history (M1) is a filtered view over `audit_events`.
 
 ### 3.2 Aggregation
 

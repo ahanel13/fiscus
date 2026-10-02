@@ -2,7 +2,7 @@
 
 - Status: Proposed
 - Issue: #3
-- Builds on: [data model](data-model.md), [ADR 0005](../adr/0005-tenancy-and-trust-model.md), [ADR 0006](../adr/0006-shared-finances-yours-mine-ours.md), [ADR 0009](../adr/0009-ai-assistant-and-mcp.md)
+- Builds on: [data model](data-model.md), [ADR 0012](../adr/0012-member-lifecycle.md), [ADR 0005](../adr/0005-tenancy-and-trust-model.md), [ADR 0006](../adr/0006-shared-finances-yours-mine-ours.md), [ADR 0009](../adr/0009-ai-assistant-and-mcp.md)
 
 This is the security specification for M0–M1. It defines who can see and do what. Every row has
 an ID, and **each (row, actor) cell is a test case**, named `<row-id>/<actor>`, e.g.
@@ -78,7 +78,7 @@ caller can't see ("Transfer to Anthony").
 | HH-01 | Read household settings (name, currency, timezone, …) | ✅ | ✅ | ✅ | |
 | HH-02 | Update household settings | ✅ | ❌ | ❌ | |
 | HH-03 | List members (name, color, role) | ✅ | ✅ | ✅ | Emails visible to OWN only |
-| HH-04 | Invite member / change role / remove member | ✅ | ❌ | ❌ | Can't remove or demote the **last owner** |
+| HH-04 | Invite member / change role / remove member | ✅ | ❌ | ❌ | Can't remove or demote the **last owner**. Removing a member who owns or co-owns accounts, or is part of shared records, triggers their **departure package** (ADR 0012) instead of simply cutting access |
 | HH-05 | Leave household | ✅ | ✅ | ✅ | Last owner must transfer ownership or delete the household first |
 | HH-06 | Demote a member who owns accounts to viewer | ❌ | ❌ | ❌ | Their accounts must be transferred first (viewers can't own accounts) |
 | HH-07 | Delete household | ✅ | ❌ | ❌ | Re-authentication required. Other members are notified. **7-day grace** before crypto-shred, cancellable by any owner |
@@ -88,6 +88,10 @@ caller can't see ("Transfer to Anthony").
 | HH-11 | Read household audit log (household-visible events) | ✅ | ❌ | ❌ | Includes instance-admin actions affecting the household (ADR 0005) |
 | HH-12 | Read activity feed (attribution and other shared changes, F6) | vis | vis | vis | Only events whose target the caller can see |
 | HH-13 | Export data | vis | vis | vis | An export contains only what the caller can see. The owner gets no special export |
+| HH-14 | See household-shared records dated before you joined | extend | own | own | Only records from your `history_from` date (default `joined_at`) unless you're part of them. Owners can **extend** a member's window, never narrow it (ADR 0012) |
+| HH-15 | Turn on departure protection | ✅ | ✅ | ❌ | Any adult member. Freezes shared history before the chosen date. Ends when the departing members leave or all affected adults agree |
+| HH-16 | Take a departure package (own accounts, read-only snapshot, final settle-up, export) | ✅ | ✅ | ✅ | Needs no approval. Live joint-account transfers still need co-owner approval |
+| HH-17 | Claim ownership when owners are unresponsive | ✅ (n/a) | ✅ | ❌ | All owners notified; any owner can reject within 30 days; then the claimant becomes an additional owner (ADR 0012) |
 
 ### 4.2 Connections and accounts
 | ID | Action | OWN | MEM | VIEW | Notes |
@@ -99,8 +103,8 @@ caller can't see ("Transfer to Anthony").
 | ACC-05 | Read account (§3) | vis | vis | vis | |
 | ACC-06 | Rename / edit account settings, account notes | acct-own | acct-own | ❌ | |
 | ACC-07 | Change visibility | acct-own | acct-own | ❌ | Any owner of a joint account may change it, and the change is posted to the activity feed. `private` on a joint account in a 2-member household is rejected (F2) |
-| ACC-08 | Add / remove owners, change shares | acct-own | acct-own | ❌ | New owners must be OWN/MEM. At least one owner must remain. Shares must sum to 10 000 |
-| ACC-09 | Close / delete account | acct-own | acct-own | ❌ | Delete requires re-authentication. Co-owners are notified |
+| ACC-08 | Add owners, change shares | acct-own | acct-own | ❌ | New owners must be OWN/MEM. Shares must sum to 10 000. **Removing an owner: only yourself**, never another co-owner (ADR 0012), and at least one owner must remain |
+| ACC-09 | Close / archive / delete account | acct-own | acct-own | ❌ | **Close or archive** (history kept) needs one owner and notifies the others. **Permanent delete** of a joint account needs every co-owner's approval; requests expire after 14 days, leaving archive as the fallback (ADR 0012). Delete requires re-authentication. Blocked under departure protection |
 | ACC-10 | Read account number | acct-own | acct-own | ❌ | |
 | ACC-11 | Mark account as business | acct-own | acct-own | ❌ | |
 
@@ -185,7 +189,7 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 | ADM-01 | Users | Email, created, last login, MFA enabled (y/n), OIDC linked (y/n), disabled flag, household memberships (household name + role) | Password hashes, TOTP secrets, sessions' tokens |
 | ADM-02 | Users: actions | Disable/enable, force logout, reset MFA, send password reset. Each is audit-logged and visible to affected households | Impersonation ("log in as") **does not exist, with or without consent** (decided in #3 review) |
 | ADM-03 | Households | Name, created, status, member count, member emails + roles, account **count**, connections with **institution name**, status (`ok`/`login_required`/`error`), Plaid item ID and error code, storage bytes, last activity date | Account names, balances, transactions, categories, notes, rules, receipts, goals, budgets, plans, AI conversations |
-| ADM-04 | Households: actions | Create (with first owner invite), disable, schedule deletion (same 7-day grace and notification as HH-07), disable Plaid or AI for a household | Editing any household data |
+| ADM-04 | Households: actions | Create (with first owner invite), disable, schedule deletion (same 7-day grace and notification as HH-07), disable Plaid or AI for a household, **grant ownership** (only if the instance setting *admin ownership recovery* is on, default off; reason required, all members notified) | Editing any household data |
 | ADM-05 | Instance settings | Signup mode, providers (Plaid instance keys, LLM providers, FX/price providers, SMTP), webhook URL + health, polling intervals, usage caps | Household Plaid secrets |
 | ADM-06 | Audit | Instance-level events and admin actions | Household-internal events (those belong to HH-11) |
 | ADM-07 | Usage | AI token usage and Plaid item counts per household | Prompt or response content |
@@ -195,16 +199,17 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 | ID | Situation | Required behaviour |
 |---|---|---|
 | EDGE-01 | Member leaves | Sessions and PATs for that household are revoked immediately. `member_account_access` rows are removed. Their private notes on household transactions are **included in their personal export, then deleted**. Attribution rows stay for history. Settlement balances are finalized (M3) |
-| EDGE-02 | Joint account where one owner left | The remaining owner(s) have full control. The leaver's ownership row stays (for historical net-worth shares) until the separation flow reassigns it. The leaver has no access |
-| EDGE-03 | Solely owned account of a leaver | Hidden from everyone (no owner with access) until the separation flow either transfers it or detaches it with the leaver's export |
+| EDGE-02 | Joint account where one owner left | The leaver's ownership share passes to the remaining co-owners **at departure** (ADR 0012), and the leaver keeps a read-only snapshot in their own household. If the leaver had linked the bank connection, it goes with them, and the remaining owners re-link to keep syncing. No consent from the leaver is needed after they've left |
+| EDGE-03 | Solely owned account of a leaver | Moves **at departure** to the leaver's personal household (created if needed), with its bank connection. Nothing is orphaned in the old household |
 | EDGE-04 | PAT of a removed member | 401 on next use (PAT-03) |
 | EDGE-05 | Viewer and private accounts | Same as any non-owner: invisible. Viewers can never be owners |
 | EDGE-06 | Last owner leaves or is demoted | Rejected with 409 `last_owner` |
 | EDGE-07 | Instance admin is also a member | Household actions are checked as the member. Admin endpoints are checked as admin. Neither grants the other |
 | EDGE-08 | Visibility tightened while a partner has it open | The next request returns 404. Caches keyed per member are invalidated by the access-table trigger |
-| EDGE-09 | Attribution to a member removed later | Attribution history is kept. Settle-up treats the leaver per the separation flow |
+| EDGE-09 | Attribution to a member who has left | Attribution history is kept in the old household. The final settle-up is recorded in both households at departure |
 | EDGE-10 | Rule created by someone who later lost access to an account | RULE-05 is evaluated at run time, so the rule stops affecting that account |
 | EDGE-11 | Two-member household tries to make a joint account private | 422 `private_joint_disallowed` (F2) |
+| EDGE-13 | A member is absent or unresponsive | Owners can remove them (HH-04); their departure package is delivered automatically. Consent requests to them expire after 14 days, and departure protection mode lasts at most 90 days |
 | EDGE-12 | Member without login (future, #223) | Can be an owner or be attributed. Can't authenticate, so no sessions or PATs. Their accounts are managed by **designated guardians** (`member_guardians`): one or more login members chosen explicitly. Guardians act with owner rights on the dependent's accounts. Other members, including household OWN, get no override. Guardian changes are audit-logged and visible to the household |
 
 ## 7. Test plan mapping

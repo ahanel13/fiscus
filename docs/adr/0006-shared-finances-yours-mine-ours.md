@@ -143,6 +143,7 @@ first-class experience. It is chosen at onboarding and can be changed any time.
 | **Combined** ("it's all ours") | Joint for all members, `full` | Settle-up, split policies, and the lens switcher hidden. One shared budget. Allowances still available |
 | **Hybrid** (yours / mine / ours) | Owned by the linking member, `full` | Everything shown |
 | **Separate** (split shared costs) | Owned by the linking member, `view_only` | Settle-up and split policies prominent |
+| **Roommates** (shared costs only) | Owned by the linking member, `private` | Shared bills, settle-up, and debt simplification front and center. No combined net worth or household budget by default. New members see shared history from their join date (ADR 0012) |
 
 - Presets set **defaults and visibility of features only**. They never rewrite existing data.
   Switching to Combined offers a one-click "make all accounts joint", and switching away changes nothing until the members edit ownership.
@@ -155,6 +156,8 @@ first-class experience. It is chosen at onboarding and can be changed any time.
   - joint accounts are assigned or duplicated;
   - settlement balances are finalized;
   - the leaving member can export their data first.
+- **Growing up and moving out** (claiming a dependent profile, and spinning off into a new
+  household with history) is detailed in [ADR 0012](0012-member-lifecycle.md).
 
 ## Consequences
 - Every financial query goes through a `VisibilityScope` built from (member, lens). Tests

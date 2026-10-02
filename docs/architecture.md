@@ -126,6 +126,7 @@ A strategy decides three things: how allocations are defined, how "available" is
   separate from household roles and never gets financial data from the API. Admin actions
   are audit-logged and visible to household owners. The operator is trusted, and this is
   documented plainly.
+- **Member lifecycle** ([ADR 0012](adr/0012-member-lifecycle.md)): dependents can claim their own login, and members can move out to their own household with their history (re-encrypted under the new household's key).
 - **Secrets at rest**: envelope encryption. A master key from `APP_ENCRYPTION_KEY(_FILE)`
   wraps a per-household data key, which encrypts provider credentials, account numbers,
   notes, and receipts with AES-256-GCM. Deleting a household destroys its key (crypto-shredding).
