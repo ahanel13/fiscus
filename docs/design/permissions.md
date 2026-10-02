@@ -2,7 +2,7 @@
 
 - Status: Proposed
 - Issue: #3
-- Builds on: [data model](data-model.md), [ADR 0005](../adr/0005-tenancy-and-trust-model.md), [ADR 0006](../adr/0006-shared-finances-yours-mine-ours.md), [ADR 0009](../adr/0009-ai-assistant-and-mcp.md)
+- Builds on: [data model](data-model.md), [ADR 0012](../adr/0012-member-lifecycle.md), [ADR 0005](../adr/0005-tenancy-and-trust-model.md), [ADR 0006](../adr/0006-shared-finances-yours-mine-ours.md), [ADR 0009](../adr/0009-ai-assistant-and-mcp.md)
 
 This is the security specification for M0–M1. It defines who can see and do what. Every row has
 an ID, and **each (row, actor) cell is a test case**, named `<row-id>/<actor>`, e.g.
@@ -78,7 +78,7 @@ caller can't see ("Transfer to Anthony").
 | HH-01 | Read household settings (name, currency, timezone, …) | ✅ | ✅ | ✅ | |
 | HH-02 | Update household settings | ✅ | ❌ | ❌ | |
 | HH-03 | List members (name, color, role) | ✅ | ✅ | ✅ | Emails visible to OWN only |
-| HH-04 | Invite member / change role / remove member | ✅ | ❌ | ❌ | Can't remove or demote the **last owner** |
+| HH-04 | Invite member / change role / remove member | ✅ | ❌ | ❌ | Can't remove or demote the **last owner**. Removing a member who owns or co-owns accounts, or is part of shared records, triggers their **departure package** (ADR 0012) instead of simply cutting access |
 | HH-05 | Leave household | ✅ | ✅ | ✅ | Last owner must transfer ownership or delete the household first |
 | HH-06 | Demote a member who owns accounts to viewer | ❌ | ❌ | ❌ | Their accounts must be transferred first (viewers can't own accounts) |
 | HH-07 | Delete household | ✅ | ❌ | ❌ | Re-authentication required. Other members are notified. **7-day grace** before crypto-shred, cancellable by any owner |
@@ -88,6 +88,9 @@ caller can't see ("Transfer to Anthony").
 | HH-11 | Read household audit log (household-visible events) | ✅ | ❌ | ❌ | Includes instance-admin actions affecting the household (ADR 0005) |
 | HH-12 | Read activity feed (attribution and other shared changes, F6) | vis | vis | vis | Only events whose target the caller can see |
 | HH-13 | Export data | vis | vis | vis | An export contains only what the caller can see. The owner gets no special export |
+| HH-14 | See household-shared records dated before you joined | extend | own | own | Only records from your `history_from` date (default `joined_at`) unless you're part of them. Owners can **extend** a member's window, never narrow it (ADR 0012) |
+| HH-15 | Turn on departure protection | ✅ | ✅ | ❌ | Any adult member. Freezes shared history before the chosen date. Ends when the departing members leave or all affected adults agree |
+| HH-16 | Take a departure package (own accounts, read-only snapshot, final settle-up, export) | ✅ | ✅ | ✅ | Needs no approval. Live joint-account transfers still need co-owner approval |
 
 ### 4.2 Connections and accounts
 | ID | Action | OWN | MEM | VIEW | Notes |
@@ -99,8 +102,8 @@ caller can't see ("Transfer to Anthony").
 | ACC-05 | Read account (§3) | vis | vis | vis | |
 | ACC-06 | Rename / edit account settings, account notes | acct-own | acct-own | ❌ | |
 | ACC-07 | Change visibility | acct-own | acct-own | ❌ | Any owner of a joint account may change it, and the change is posted to the activity feed. `private` on a joint account in a 2-member household is rejected (F2) |
-| ACC-08 | Add / remove owners, change shares | acct-own | acct-own | ❌ | New owners must be OWN/MEM. At least one owner must remain. Shares must sum to 10 000 |
-| ACC-09 | Close / delete account | acct-own | acct-own | ❌ | Delete requires re-authentication. Co-owners are notified |
+| ACC-08 | Add owners, change shares | acct-own | acct-own | ❌ | New owners must be OWN/MEM. Shares must sum to 10 000. **Removing an owner: only yourself**, never another co-owner (ADR 0012), and at least one owner must remain |
+| ACC-09 | Close / delete account | acct-own | acct-own | ❌ | Delete requires re-authentication. **Deleting a joint account requires every co-owner's approval**; closing (keeps history) needs one owner and notifies the others. Blocked entirely under departure protection |
 | ACC-10 | Read account number | acct-own | acct-own | ❌ | |
 | ACC-11 | Mark account as business | acct-own | acct-own | ❌ | |
 

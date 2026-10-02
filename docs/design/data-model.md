@@ -118,6 +118,7 @@ erDiagram
 | role | enum `owner`/`member`/`viewer` | Must be `member` when `user_id` is null |
 | display_name, color, avatar_url | | Viewer-relative labels use these (ADR 0006 naming) |
 | joined_at, left_at | timestamptz | `left_at` set by the separation flow. Rows are kept for history |
+| history_from | date | Earliest date of household-shared records this member can see (default: join date). Owners can move it earlier, never later ([ADR 0012](../adr/0012-member-lifecycle.md)) |
 
 UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
 
