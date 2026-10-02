@@ -55,24 +55,40 @@ generated notes. Pre-1.0, minor bumps may contain breaking changes (called out i
 
 ## Local development
 
-Requires Node 24 (`.nvmrc`), pnpm (via `corepack enable`), and Docker.
+Requires Node 26 (`.nvmrc`), pnpm (via corepack), and Docker.
 
 ```bash
-corepack enable
+npm install -g corepack   # Node 25+ no longer bundles corepack
+corepack enable           # provides the pnpm version pinned in package.json
 pnpm install
 pnpm build        # build all packages and apps
 pnpm dev          # api :3000, web :5173, worker, mcp (watch mode)
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
-The dev dependency stack (`docker-compose.dev.yml`) and `pnpm db:migrate` arrive with #9 and #11.
+Dependencies (Postgres, Valkey, Mailpit, S3) run in Docker:
 
-No Node 24 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
+```bash
+docker compose -f deploy/compose/docker-compose.dev.yml up -d
+cat > .env <<'ENV'
+DATABASE_URL=postgres://fiscus_app:fiscus-dev-app@localhost:5432/fiscus
+MIGRATION_DATABASE_URL=postgres://fiscus_owner:fiscus-dev-owner@localhost:5432/fiscus
+APP_DATABASE_PASSWORD=fiscus-dev-app
+NODE_ENV=development
+LOG_LEVEL=debug
+ENV
+pnpm db:migrate
+pnpm dev
+```
+
+Mailpit UI: http://localhost:8025 · S3 API: http://localhost:8333 (`fiscus-dev` / `fiscus-dev-secret`).
+
+No Node 26 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
 
 ### Database
 
 - Schema lives in `packages/db/src/schema` (Drizzle). After changing it, run `pnpm db:generate` and commit the SQL in `packages/db/migrations`. For hand-written SQL (roles, RLS policies, triggers): `pnpm --filter @fiscus/db exec drizzle-kit generate --custom --name=<what>`.
-- `pnpm db:migrate` applies migrations using `DATABASE_URL` (the schema owner; the first run must be a superuser so it can create the `BYPASSRLS` role). Services never migrate on boot.
+- `pnpm db:migrate` applies migrations using `MIGRATION_DATABASE_URL` (the schema owner; the first run must be a superuser so it can create the `BYPASSRLS` role). Services never migrate on boot.
 - Services connect as `fiscus_app` (row-level security enforced). `migrate` enables its login when `APP_DATABASE_PASSWORD` is set.
 - Integration tests use `startTestDatabase()` from `@fiscus/db/testing`, which needs Docker.
 - Use the column helpers (`id`, `householdId`, `money`, `timestamps`, `versioning`) so tables follow the data-model conventions.
@@ -83,7 +99,7 @@ Each app has a Dockerfile, built from the repository root: `docker build -f apps
 - Images run as non-root, and app files are read-only to the app user.
 - `/healthz` (liveness) and `/readyz` (database reachable) on api `:3000` and worker `:3001`; web serves `/healthz` on `:8080`.
 - The web image writes `/env.js` from `API_URL` at startup, so one image works behind any proxy.
-- Run migrations from the api image: `docker run --rm -e DATABASE_URL=… fiscus-api node_modules/.bin/fiscus-migrate`.
+- Run migrations from the api image: `docker run --rm -e MIGRATION_DATABASE_URL=… fiscus-api node_modules/.bin/fiscus-migrate`.
 
 ### Dependencies
 

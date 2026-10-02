@@ -1,10 +1,12 @@
 # syntax=docker/dockerfile:1.7
 # Build from the repository root: docker build -f apps/worker/Dockerfile .
-ARG NODE_IMAGE=node:24-alpine
+ARG NODE_IMAGE=node:26-alpine
 
 FROM ${NODE_IMAGE} AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH TURBO_TELEMETRY_DISABLED=1 COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-RUN corepack enable pnpm
+# Node 25+ no longer bundles corepack; install it, then let it provide the pnpm version pinned
+# in package.json (packageManager).
+RUN npm install -g corepack@0.36.0 && corepack enable pnpm
 
 # Reduce the monorepo to this app and its workspace dependencies.
 FROM base AS prune
