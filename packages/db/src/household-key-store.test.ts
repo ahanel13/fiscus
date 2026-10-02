@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { DecryptionError, FieldCrypto, MasterKey } from '@fiscus/crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle } from './client.js';
 import { HouseholdKeyNotFoundError, HouseholdKeyStore } from './household-key-store.js';
+import { systemContext, withContext } from './context.js';
+import { householdKeys } from './schema/household-keys.js';
 import { households } from './schema/households.js';
 import { startTestDatabase, type TestDatabase } from './testing.js';
 
@@ -19,12 +20,13 @@ describe('HouseholdKeyStore', () => {
   });
 
   // household_keys references households, so each test needs a real household row.
+  // Row-level security requires the household's own context to create it.
   const newHousehold = async () => {
-    const [row] = await handle.db
-      .insert(households)
-      .values({ name: 'Test', baseCurrency: 'USD', timezone: 'UTC' })
-      .returning({ id: households.id });
-    return row!.id;
+    const id = randomUUID();
+    await withContext(handle.db, systemContext(id), (tx) =>
+      tx.insert(households).values({ id, name: 'Test', baseCurrency: 'USD', timezone: 'UTC' }),
+    );
+    return id;
   };
 
   beforeAll(async () => {
@@ -47,13 +49,12 @@ describe('HouseholdKeyStore', () => {
     const ct = await crypto.encrypt(c, 'note');
     expect(await crypto.decrypt(c, ct)).toBe('note');
 
-    const { rows } = await handle.pool.query(
-      'SELECT wrapped_key, master_key_version FROM household_keys WHERE household_id = $1',
-      [householdId],
+    const rows = await withContext(handle.db, systemContext(householdId), (tx) =>
+      tx.select().from(householdKeys),
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].master_key_version).toBe(1);
-    expect((rows[0].wrapped_key as Buffer).length).toBe(1 + 4 + 12 + 32 + 16);
+    expect(rows[0]!.masterKeyVersion).toBe(1);
+    expect(rows[0]!.wrappedKey.length).toBe(1 + 4 + 12 + 32 + 16);
   });
 
   it('cannot unwrap with a different master key', async () => {

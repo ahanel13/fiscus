@@ -361,6 +361,15 @@ settings are missing, policies evaluate to false and the query returns **nothing
    attribution (F6), is enforced in the domain layer and specified in #3. RLS guarantees only that
    you can't touch what you can't see.
 
+### 4.3a As built (#19)
+- Context accessors `fiscus_household()`, `fiscus_member()`, `fiscus_user()` read the settings (empty → NULL, so a missing context matches nothing).
+- **`fiscus_context_valid()`** (SECURITY DEFINER, owned by `fiscus_maintenance`) checks that the context's member is an **active member of the context's household belonging to the context's user**, or that it's a system job. Every household policy requires it, evaluated once per statement as `(SELECT fiscus_context_valid())`. An application bug that sets the wrong household therefore still sees nothing.
+- `households` and `household_members` also allow a **user branch** (`user_id = fiscus_user()`), so a user can list their own memberships across households without a household context.
+- **`fiscus_find_invite(token_hash)`** (SECURITY DEFINER) is the single sanctioned cross-household read: at most one live invite for a token.
+- `audit_events`: instance-level rows (no household) plus the context household's rows.
+- `runMaintenanceJob()` is the only way to use `fiscus_maintenance`. It accepts only allow-listed jobs and records each run in the audit log first.
+- A test lists every table with a `household_id` column and fails if any lacks ENABLE + FORCE RLS and a policy.
+
 ### 4.4 Why a derived access table
 Evaluating ownership and visibility joins per row would make every transaction query slow.
 `member_account_access` reduces the check to one indexed lookup. It is small (members × accounts)

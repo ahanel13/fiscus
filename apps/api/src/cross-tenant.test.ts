@@ -1,6 +1,7 @@
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { HouseholdAccess } from './households/household-access.js';
 import { createTestApp, TestClient } from './testing/test-app.js';
 
 /**
@@ -8,6 +9,8 @@ import { createTestApp, TestClient } from './testing/test-app.js';
  * household A's session with household B's ids and must answer 404. New routes are covered
  * automatically; a new kind of path parameter fails the suite until it gets a filler below.
  */
+const SECRET_NAME = 'Bob household (secret)';
+
 describe('cross-tenant isolation (generated from routes)', () => {
   let tdb: TestDatabase;
   let app: NestFastifyApplication;
@@ -35,7 +38,7 @@ describe('cross-tenant isolation (generated from routes)', () => {
     const carol = await signup('carol');
 
     const a = await household(alice, 'A');
-    const b = await household(bob, 'B');
+    const b = await household(bob, SECRET_NAME);
     ids.a = { householdId: a.id, memberId: a.you.memberId };
     ids.b = { householdId: b.id, memberId: b.you.memberId };
 
@@ -123,6 +126,44 @@ describe('cross-tenant isolation (generated from routes)', () => {
     const members = (await bob.get(`/api/v1/households/${ids.b.householdId}/members`)).body.data;
     expect(members).toHaveLength(2);
     const household = (await bob.get(`/api/v1/households/${ids.b.householdId}`)).body.data;
-    expect(household).toMatchObject({ name: 'B', version: 1 });
+    expect(household).toMatchObject({ name: SECRET_NAME, version: 1 });
+  });
+
+  describe('with the application membership check disabled (row-level security alone)', () => {
+    it('leaks nothing from household B and changes nothing in it', async () => {
+      const access = app.get(HouseholdAccess);
+      const realRequire = access.require.bind(access);
+      // Simulated app bug: anyone is treated as an owner of whatever household is in the path,
+      // using their membership from their own household.
+      access.require = async (_userId, householdId) => ({
+        memberId: ids.a.memberId!,
+        householdId,
+        role: 'owner',
+      });
+      const leaks: string[] = [];
+      const bSecrets = [SECRET_NAME, ids.b.memberId!, ids.b.otherMemberId!, ids.b.inviteId!];
+      try {
+        for (const route of householdRoutes()) {
+          const res = await call(route.method, fill(route.url, ids.b));
+          const body = JSON.stringify(res.body ?? '');
+          if (res.status < 300 && route.method !== 'GET') {
+            leaks.push(`${route.method} ${route.url} succeeded (${res.status})`);
+          }
+          for (const secret of bSecrets) {
+            if (body.includes(secret))
+              leaks.push(`${route.method} ${route.url} returned ${secret}`);
+          }
+        }
+      } finally {
+        access.require = realRequire;
+      }
+      expect(leaks).toEqual([]);
+      const members = (await bob.get(`/api/v1/households/${ids.b.householdId}/members`)).body.data;
+      expect(members).toHaveLength(2);
+      expect((await bob.get(`/api/v1/households/${ids.b.householdId}`)).body.data).toMatchObject({
+        name: SECRET_NAME,
+        version: 1,
+      });
+    });
   });
 });

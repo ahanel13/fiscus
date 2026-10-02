@@ -6,6 +6,7 @@ import {
 } from '@fiscus/crypto';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import type { Database, Executor } from './client.js';
+import { systemContext, withContext } from './context.js';
 import { householdKeys } from './schema/household-keys.js';
 
 export class HouseholdKeyNotFoundError extends Error {
@@ -32,7 +33,8 @@ export interface HouseholdKeyStoreOptions {
 
 /**
  * Household data keys backed by the household_keys table, unwrapped with the master key and
- * cached briefly in memory. Keys are never logged (SecretKey redacts itself).
+ * cached briefly in memory. Keys are never logged (SecretKey redacts itself). Reads run in the
+ * household's system context, which row-level security requires.
  */
 export class HouseholdKeyStore implements DataKeySource {
   readonly #cache = new Map<string, CachedKey>();
@@ -51,27 +53,33 @@ export class HouseholdKeyStore implements DataKeySource {
   }
 
   /** Generates and stores version 1 of a new household's data key. */
-  async createForHousehold(householdId: string, tx: Executor = this.db): Promise<void> {
+  /** Pass the caller's transaction (already in the household's context) when there is one. */
+  async createForHousehold(householdId: string, tx?: Executor): Promise<void> {
     const dek = generateDataKey();
-    try {
-      await tx.insert(householdKeys).values({
+    const insert = (exec: Executor) =>
+      exec.insert(householdKeys).values({
         householdId,
         version: 1,
         wrappedKey: this.master.wrapHouseholdKey(dek, householdId, 1),
         masterKeyVersion: this.master.version,
       });
+    try {
+      if (tx) await insert(tx);
+      else await withContext(this.db, systemContext(householdId), insert);
     } finally {
       dek.destroy();
     }
   }
 
   async activeKey(householdId: string): Promise<{ version: number; key: SecretKey }> {
-    const [row] = await this.db
-      .select({ version: householdKeys.version })
-      .from(householdKeys)
-      .where(and(eq(householdKeys.householdId, householdId), isNull(householdKeys.retiredAt)))
-      .orderBy(desc(householdKeys.version))
-      .limit(1);
+    const [row] = await withContext(this.db, systemContext(householdId), (tx) =>
+      tx
+        .select({ version: householdKeys.version })
+        .from(householdKeys)
+        .where(and(eq(householdKeys.householdId, householdId), isNull(householdKeys.retiredAt)))
+        .orderBy(desc(householdKeys.version))
+        .limit(1),
+    );
     if (!row) throw new HouseholdKeyNotFoundError(householdId);
     return { version: row.version, key: await this.keyVersion(householdId, row.version) };
   }
@@ -82,11 +90,13 @@ export class HouseholdKeyStore implements DataKeySource {
     if (cached && cached.expiresAt > this.#now()) return cached.key;
     if (cached) this.#evict(cacheKey);
 
-    const [row] = await this.db
-      .select({ wrappedKey: householdKeys.wrappedKey })
-      .from(householdKeys)
-      .where(and(eq(householdKeys.householdId, householdId), eq(householdKeys.version, version)))
-      .limit(1);
+    const [row] = await withContext(this.db, systemContext(householdId), (tx) =>
+      tx
+        .select({ wrappedKey: householdKeys.wrappedKey })
+        .from(householdKeys)
+        .where(and(eq(householdKeys.householdId, householdId), eq(householdKeys.version, version)))
+        .limit(1),
+    );
     if (!row) throw new HouseholdKeyNotFoundError(householdId, version);
 
     const key = this.master.unwrapHouseholdKey(row.wrappedKey, householdId, version);
@@ -103,7 +113,9 @@ export class HouseholdKeyStore implements DataKeySource {
    * backups, becomes permanently unreadable (ADR 0005).
    */
   async cryptoShred(householdId: string): Promise<void> {
-    await this.db.delete(householdKeys).where(eq(householdKeys.householdId, householdId));
+    await withContext(this.db, systemContext(householdId), (tx) =>
+      tx.delete(householdKeys).where(eq(householdKeys.householdId, householdId)),
+    );
     for (const cacheKey of [...this.#cache.keys()]) {
       if (cacheKey.startsWith(`${householdId}:`)) this.#evict(cacheKey);
     }
