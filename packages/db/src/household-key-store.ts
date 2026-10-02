@@ -5,7 +5,7 @@ import {
   type SecretKey,
 } from '@fiscus/crypto';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import type { Database } from './client.js';
+import type { Database, Executor } from './client.js';
 import { householdKeys } from './schema/household-keys.js';
 
 export class HouseholdKeyNotFoundError extends Error {
@@ -51,7 +51,7 @@ export class HouseholdKeyStore implements DataKeySource {
   }
 
   /** Generates and stores version 1 of a new household's data key. */
-  async createForHousehold(householdId: string, tx: Database = this.db): Promise<void> {
+  async createForHousehold(householdId: string, tx: Executor = this.db): Promise<void> {
     const dek = generateDataKey();
     try {
       await tx.insert(householdKeys).values({

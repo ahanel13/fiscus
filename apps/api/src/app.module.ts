@@ -6,6 +6,8 @@ import { APP_CONFIG, type AppConfig } from './config.js';
 import { CryptoModule } from './crypto/crypto.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthController } from './health/health.controller.js';
+import { HouseholdsModule } from './households/households.module.js';
+import { MeController } from './me/me.controller.js';
 
 @Global()
 @Module({})
@@ -29,8 +31,9 @@ export class AppModule {
         DatabaseModule.forRoot(config.databaseUrl),
         CryptoModule.forRoot(config),
         AuthModule,
+        HouseholdsModule,
       ],
-      controllers: [HealthController],
+      controllers: [HealthController, MeController],
       providers: [{ provide: APP_FILTER, useClass: ProblemFilter }],
     };
   }

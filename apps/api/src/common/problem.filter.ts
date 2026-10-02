@@ -34,9 +34,10 @@ export class ProblemFilter implements ExceptionFilter {
     let detail: string | undefined;
     let errors: Problem['errors'];
     let headers: Record<string, string> = {};
+    let extensions: Record<string, unknown> = {};
 
     if (exception instanceof Problem) {
-      ({ code, title, detail, errors, headers } = exception);
+      ({ code, title, detail, errors, headers, extensions } = exception);
       status = exception.getStatus();
     } else if (exception instanceof HttpException || hasStatusCode(exception)) {
       status = exception instanceof HttpException ? exception.getStatus() : exception.statusCode;
@@ -56,6 +57,7 @@ export class ProblemFilter implements ExceptionFilter {
         ...(detail ? { detail } : {}),
         instance: req.id,
         ...(errors ? { errors } : {}),
+        ...extensions,
       });
   }
 }

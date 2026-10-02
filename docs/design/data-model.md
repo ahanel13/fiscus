@@ -123,7 +123,7 @@ UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
 
 **`member_guardians`** (ships with #223): `(member_id, guardian_member_id)` PK, `household_id`, `created_at`. Required for every member without a login (≥1 guardian). Guardians get `owner`-level access to the dependent's accounts in `member_account_access`. Guardians must be login members.
 
-**`invites`**: `household_id`, `email`, `role`, `token_hash`, `invited_by_member_id`, `expires_at`, `accepted_at`.
+**`invites`**: `household_id`, `email` (only an account with this email can accept), `role`, `token_hash`, `invited_by_member_id`, `expires_at` (7 days), `accepted_at`, `accepted_by_user_id`, `revoked_at`. The token is only sent in URL fragments and request bodies, never in paths, so it stays out of logs.
 
 **`household_keys`**: ADR 0005 envelope encryption.
 

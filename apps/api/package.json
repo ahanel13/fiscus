@@ -15,6 +15,7 @@
     "@fastify/cookie": "catalog:",
     "@fiscus/crypto": "workspace:*",
     "@fiscus/db": "workspace:*",
+    "@fiscus/domain": "workspace:*",
     "@fiscus/env": "workspace:*",
     "@fiscus/shared": "workspace:*",
     "@nestjs/common": "catalog:",

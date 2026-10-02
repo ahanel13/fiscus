@@ -4,6 +4,7 @@ import { DecryptionError, FieldCrypto, MasterKey } from '@fiscus/crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle } from './client.js';
 import { HouseholdKeyNotFoundError, HouseholdKeyStore } from './household-key-store.js';
+import { households } from './schema/households.js';
 import { startTestDatabase, type TestDatabase } from './testing.js';
 
 describe('HouseholdKeyStore', () => {
@@ -17,6 +18,15 @@ describe('HouseholdKeyStore', () => {
     rowId: randomUUID(),
   });
 
+  // household_keys references households, so each test needs a real household row.
+  const newHousehold = async () => {
+    const [row] = await handle.db
+      .insert(households)
+      .values({ name: 'Test', baseCurrency: 'USD', timezone: 'UTC' })
+      .returning({ id: households.id });
+    return row!.id;
+  };
+
   beforeAll(async () => {
     tdb = await startTestDatabase();
     handle = createDb(tdb.appUrl);
@@ -29,7 +39,7 @@ describe('HouseholdKeyStore', () => {
 
   it('creates a wrapped key that the app role can use end to end', async () => {
     const store = new HouseholdKeyStore(handle.db, master);
-    const householdId = randomUUID();
+    const householdId = await newHousehold();
     await store.createForHousehold(householdId);
 
     const crypto = new FieldCrypto(store, master);
@@ -47,7 +57,7 @@ describe('HouseholdKeyStore', () => {
   });
 
   it('cannot unwrap with a different master key', async () => {
-    const householdId = randomUUID();
+    const householdId = await newHousehold();
     await new HouseholdKeyStore(handle.db, master).createForHousehold(householdId);
     const otherMaster = MasterKey.fromBase64(randomBytes(32).toString('base64'), 1);
     await expect(
@@ -57,7 +67,7 @@ describe('HouseholdKeyStore', () => {
 
   it('crypto-shred makes existing ciphertext permanently unreadable', async () => {
     const store = new HouseholdKeyStore(handle.db, master);
-    const householdId = randomUUID();
+    const householdId = await newHousehold();
     await store.createForHousehold(householdId);
     const crypto = new FieldCrypto(store, master);
     const c = ctx(householdId);
@@ -75,7 +85,7 @@ describe('HouseholdKeyStore', () => {
   it('serves cached keys until the TTL expires', async () => {
     let now = 0;
     const store = new HouseholdKeyStore(handle.db, master, { ttlMs: 1000, now: () => now });
-    const householdId = randomUUID();
+    const householdId = await newHousehold();
     await store.createForHousehold(householdId);
     const first = await store.keyVersion(householdId, 1);
     expect(await store.keyVersion(householdId, 1)).toBe(first);

@@ -17,6 +17,8 @@ export class Problem extends HttpException {
     readonly detail?: string,
     readonly errors?: ProblemFieldError[],
     readonly headers: Record<string, string> = {},
+    /** Extra members for the problem body (RFC 9457 extensions), e.g. edit conflicts. */
+    readonly extensions: Record<string, unknown> = {},
   ) {
     super({ code, title, detail }, status);
   }
