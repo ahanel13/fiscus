@@ -1,9 +1,15 @@
 import 'reflect-metadata';
+import { loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import workerEnv from './env.js';
 import { WorkerModule } from './worker.module.js';
 
-const app = await NestFactory.createApplicationContext(WorkerModule);
+const env = loadEnvOrExit(workerEnv);
+
+const app = await NestFactory.createApplicationContext(WorkerModule, {
+  logger: toNestLogLevels(env.LOG_LEVEL),
+});
 app.enableShutdownHooks();
 new Logger('Worker').log('Worker ready');
 

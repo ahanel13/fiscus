@@ -13,7 +13,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "env:example": "node scripts/env-example.mjs",
+    "env:check": "node scripts/env-example.mjs --check"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

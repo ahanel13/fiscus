@@ -34,3 +34,4 @@ catalog:
   unplugin-swc: 2.0.0
   vite: 8.3.1
   vitest: 5.0.1
+  zod: 4.6.5
