@@ -21,7 +21,7 @@ forward reference shapes a decision.
 | Shares | `share_bps int` (basis points, 1–10 000). Sets of shares sum to exactly 10 000, enforced by deferred constraint triggers |
 | Quantities/prices | `numeric(28,10)`. Investment tables are M6, so this is listed here for consistency only |
 | Enums | Postgres enums for closed sets (account type, role, visibility). `text` + check constraint where values may grow by provider |
-| Encrypted columns | Suffix `_enc`, type `bytea`, AES-256-GCM with the household data key (ADR 0005). Each row stores the `key_version` it was encrypted with |
+| Encrypted columns | Suffix `_enc`, type `bytea`, AES-256-GCM with the household data key (ADR 0005). The key version is embedded in the ciphertext header ([encryption](../security/encryption.md)), so no separate `key_version` column is needed |
 | Optimistic concurrency | `version int` + `field_versions jsonb` (`{field: version last changed}`) on user-edited rows (transactions, accounts, rules, budgets). Enables field-level conflict detection: first save wins, and only same-field overlaps conflict ([API conventions §8](api-conventions.md)) |
 | Naming | `snake_case`, plural table names, `<table>_id` foreign keys |
 
@@ -127,8 +127,8 @@ UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
 |---|---|---|
 | household_id | uuid | PK part |
 | version | int | PK part. The newest active version encrypts, any version decrypts |
-| wrapped_dek | bytea | DEK encrypted by the KEK |
-| kek_version | int | Which master key wrapped it (KEK rotation = re-wrap) |
+| wrapped_key | bytea | Data key encrypted by a subkey of the master key |
+| master_key_version | int | Which master key wrapped it (master key rotation = re-wrap) |
 | retired_at | timestamptz null | |
 
 Deleting all rows for a household is the **crypto-shred**.
@@ -158,7 +158,7 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 
 **`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id`, `name`, `logo_url`, `url`.
 
-**`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008): `household_id`, `provider`, `client_id`, `secret_enc`, `key_version`, `env`, `created_by_member_id`, `revoked_at`.
+**`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008): `household_id`, `provider`, `client_id`, `secret_enc`, `env`, `created_by_member_id`, `revoked_at`.
 
 **`connections`**: one per Plaid Item / SimpleFIN token / manual group.
 
@@ -171,7 +171,7 @@ The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per
 | institution_id | uuid FK null | |
 | credential_set_id | uuid FK null | **Null = instance default keys.** Immutable after creation; switching means re-linking (ADR 0008) |
 | provider_item_id | text | UNIQUE per provider |
-| access_token_enc | bytea | + `key_version` |
+| access_token_enc | bytea | |
 | sync_cursor | text null | Plaid `/transactions/sync` cursor |
 | status | enum `ok`/`login_required`/`error`/`disconnected` | |
 | last_synced_at, last_error_code | | |
@@ -273,7 +273,7 @@ The effective date for ranges is `posted_date` or `authorized_date`, per `househ
 | household_id | uuid FK | |
 | transaction_id | uuid FK | |
 | author_member_id | uuid FK null | **Null = the shared note.** Otherwise a private note owned by that member |
-| body_enc | bytea | + `key_version` |
+| body_enc | bytea | |
 | updated_by_member_id | uuid FK | Shown on shared notes ("edited by Alex") |
 
 - **Shared note:** one per transaction (partial UNIQUE `(transaction_id) WHERE author_member_id IS NULL`). Visible to **everyone who can see the transaction**, including via attribution (F1).

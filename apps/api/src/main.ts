@@ -8,7 +8,11 @@ import apiEnv from './env.js';
 const env = loadEnvOrExit(apiEnv);
 
 const app = await NestFactory.create<NestFastifyApplication>(
-  AppModule.register({ databaseUrl: env.DATABASE_URL }),
+  AppModule.register({
+    databaseUrl: env.DATABASE_URL,
+    encryptionKey: env.APP_ENCRYPTION_KEY,
+    encryptionKeyVersion: env.APP_ENCRYPTION_KEY_VERSION,
+  }),
   new FastifyAdapter(),
   { logger: toNestLogLevels(env.LOG_LEVEL) },
 );

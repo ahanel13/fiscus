@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, integer, jsonb, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, customType, integer, jsonb, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';
 
 // Column helpers that encode the conventions in docs/design/data-model.md §1.
@@ -30,4 +30,9 @@ export const versioning = () => ({
     .$type<Record<string, number>>()
     .notNull()
     .default(sql`'{}'::jsonb`),
+});
+
+/** Raw bytes (`bytea`), used for encrypted columns (suffix `_enc`). */
+export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
 });

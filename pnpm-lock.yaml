@@ -295,6 +295,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fiscus/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@fiscus/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -400,6 +403,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@fiscus/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@fiscus/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -437,8 +443,30 @@ importers:
 
   packages/config: {}
 
+  packages/crypto:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+    devDependencies:
+      '@fiscus/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/db:
     dependencies:
+      '@fiscus/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       '@fiscus/env':
         specifier: workspace:*
         version: link:../env

@@ -45,6 +45,7 @@
     "fiscus-migrate": "./dist/migrate-cli.js"
   },
   "dependencies": {
+    "@fiscus/crypto": "workspace:*",
     "@fiscus/env": "workspace:*",
     "drizzle-orm": "catalog:",
     "pg": "catalog:",
