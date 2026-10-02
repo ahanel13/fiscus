@@ -12,6 +12,7 @@ Closes #
 ## Database
 - [ ] No schema changes
 - [ ] Includes migration: <!-- describe; note if destructive -->
+- [ ] New household-scoped tables carry `household_id` and follow ADR 0012 (move-out)
 
 ## Test plan
 <!-- How was this verified? Commands run, screenshots for UI. -->

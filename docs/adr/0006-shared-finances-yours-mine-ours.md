@@ -155,6 +155,8 @@ first-class experience. It is chosen at onboarding and can be changed any time.
   - joint accounts are assigned or duplicated;
   - settlement balances are finalized;
   - the leaving member can export their data first.
+- **Growing up and moving out** (claiming a dependent profile, and spinning off into a new
+  household with history) is detailed in [ADR 0012](0012-member-lifecycle.md).
 
 ## Consequences
 - Every financial query goes through a `VisibilityScope` built from (member, lens). Tests

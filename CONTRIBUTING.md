@@ -45,6 +45,7 @@ Every issue has: an `area:*` label, a `priority:*` label, a milestone, and **acc
 - [ ] Unit tests for domain logic; integration test for new API endpoints
 - [ ] Types/schemas in `packages/shared` updated; OpenAPI regenerates
 - [ ] Migrations included and reversible where practical
+- [ ] New household-scoped tables follow [ADR 0012](docs/adr/0012-member-lifecycle.md): `household_id` on every row, no cross-household references, and covered by the move-out job
 - [ ] Docs updated (README, `.env.example`, ADR if an architectural decision was made)
 - [ ] No secrets, tokens, or real financial data committed
 

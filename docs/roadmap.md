@@ -271,6 +271,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - **License:** AGPL-3.0-or-later, with DCO and no CLA. See [ADR 0007](adr/0007-license-agpl.md).
 - **Plaid:** instance-default keys, households may supply their own, polling always on, webhooks optional and admin-enabled. See [ADR 0008](adr/0008-plaid-credentials-and-webhooks.md).
 - **Planning:** forecasting, retirement, and FIRE engine, US rules first. See [ADR 0010](adr/0010-forecasting-retirement-fire.md).
+- **Member lifecycle:** privacy within the household, claiming a dependent profile, and moving out to a new household with history. See [ADR 0012](adr/0012-member-lifecycle.md).
 - **Time ranges:** one shared date-range model with presets, chips, granularity, period stepper, and comparison, used by every view. See [ADR 0011](adr/0011-time-ranges-and-periods.md).
 - **AI:** optional in-app assistant plus MCP on one tool layer, cloud or local models, writes via reviewable change sets. See [ADR 0009](adr/0009-ai-assistant-and-mcp.md).
 
