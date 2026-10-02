@@ -340,6 +340,9 @@ importers:
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
+      uuid:
+        specifier: 'catalog:'
+        version: 14.0.2
       zod:
         specifier: 'catalog:'
         version: 4.6.5

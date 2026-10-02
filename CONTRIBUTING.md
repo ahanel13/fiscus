@@ -96,6 +96,13 @@ No Node 26 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
 - Integration tests use `startTestDatabase()` from `@fiscus/db/testing`, which needs Docker.
 - Use the column helpers (`id`, `householdId`, `money`, `timestamps`, `versioning`) so tables follow the data-model conventions.
 
+### Household data access
+
+- Household routes live under `/api/v1/households/:householdId/…` and use `@UseGuards(HouseholdGuard)`. The guard resolves membership **before validation** (non-members get 404, missing role 403 via `@HouseholdRoles(...)`), and handlers receive `@Household() ctx`.
+- Services reach the database only through `HouseholdScope.run(ctx, tx => …)`, which sets the transaction-local context that row-level security enforces (#19). Worker jobs use `asSystem(householdId, …)`.
+- `apps/api/src/architecture.test.ts` fails if any other file uses the raw DB handle. The allow-list there names each exception and its reason.
+- `apps/api/src/cross-tenant.test.ts` is **generated from the route table**: every household route is called with another household's ids and must be indistinguishable from "not found". New routes are covered automatically, and a new kind of path parameter needs a test value.
+
 ### Docker images
 
 Each app has a Dockerfile, built from the repository root: `docker build -f apps/api/Dockerfile -t fiscus-api .`

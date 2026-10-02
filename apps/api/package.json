@@ -25,6 +25,7 @@
     "fastify": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
+    "uuid": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
