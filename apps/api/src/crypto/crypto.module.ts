@@ -1,12 +1,10 @@
 import { FieldCrypto, MasterKey } from '@fiscus/crypto';
 import { type DbHandle, HouseholdKeyStore } from '@fiscus/db';
 import { type DynamicModule, Global, Module } from '@nestjs/common';
+import type { AppConfig } from '../config.js';
 import { DB } from '../database/database.module.js';
 
-export interface CryptoConfig {
-  encryptionKey: string;
-  encryptionKeyVersion: number;
-}
+export type CryptoConfig = Pick<AppConfig, 'encryptionKey' | 'encryptionKeyVersion'>;
 
 /** Field encryption with per-household data keys (ADR 0005). */
 @Global()

@@ -79,7 +79,7 @@ erDiagram
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| email | citext UNIQUE | |
+| email | text UNIQUE | Stored normalized (trimmed, lowercase), so no `citext` extension is needed |
 | email_verified_at | timestamptz null | |
 | password_hash | text null | argon2id. Null for OIDC-only users |
 | totp_secret_enc | bytea null | Encrypted with the **instance** KEK (users aren't household-scoped) |
@@ -88,7 +88,11 @@ erDiagram
 
 **`user_identities`**: OIDC links. `(provider, subject)` UNIQUE, `user_id` FK.
 
-**`sessions`**: `token_hash` (SHA-256; the raw token is only in the cookie), `user_id`, `active_household_id` null, `expires_at`, `last_seen_at`, `ip inet`, `user_agent`.
+**`sessions`**: `token_hash` (SHA-256; the raw token is only in the cookie), `user_id`, `active_household_id` null, `expires_at` (absolute, 30 days), `last_seen_at` (idle timeout 7 days), `reauthenticated_at` (10-minute window for destructive actions), `ip inet`, `user_agent`.
+
+**`password_reset_tokens`**: `user_id`, `token_hash` (unique), `created_by_user_id` (the instance admin), `expires_at` (24 h), `used_at` (single use). Using a token revokes all of the user's sessions.
+
+**`instance_setup`**: a single row holding the hash of the one-time first-run setup token. Deleted when the first account is created.
 
 **`households`**
 

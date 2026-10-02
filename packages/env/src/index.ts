@@ -9,5 +9,13 @@ export {
   type EnvVarSpec,
   type LoadEnvOptions,
 } from './env.js';
-export { host, logLevel, nodeEnv, port, toNestLogLevels, type LogLevel } from './common.js';
+export {
+  booleanFlag,
+  host,
+  logLevel,
+  nodeEnv,
+  port,
+  toNestLogLevels,
+  type LogLevel,
+} from './common.js';
 export { databaseUrl } from './database.js';

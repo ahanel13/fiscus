@@ -8,3 +8,4 @@ export {
 } from './household-key-store.js';
 export { MIGRATIONS_FOLDER, runMigrations, type MigrateOptions } from './migrate.js';
 export * as schema from './schema/index.js';
+export * from './schema/index.js';

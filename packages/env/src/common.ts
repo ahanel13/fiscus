@@ -36,3 +36,14 @@ export function toNestLogLevels(level: LogLevel): NestLogLevel[] {
   const order: NestLogLevel[] = ['fatal', 'error', 'warn', 'log', 'debug', 'verbose'];
   return order.slice(0, LOG_LEVELS.indexOf(level) + 1);
 }
+
+/** A boolean flag written as `true` / `false`. */
+export const booleanFlag = (defaultValue: boolean, description: string) =>
+  ({
+    schema: z
+      .enum(['true', 'false'])
+      .default(defaultValue ? 'true' : 'false')
+      .transform((v) => v === 'true'),
+    description,
+    example: String(defaultValue),
+  }) satisfies EnvVarSpec;

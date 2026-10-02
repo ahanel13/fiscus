@@ -35,6 +35,7 @@ export const encryptionKeyVersionEnv = {
 export class MasterKey {
   readonly #wrapKey: SecretKey;
   readonly #instanceKey: SecretKey;
+  readonly #csrfKey: SecretKey;
 
   private constructor(
     readonly version: number,
@@ -44,6 +45,7 @@ export class MasterKey {
       new SecretKey(Buffer.from(hkdfSync('sha256', root, Buffer.alloc(0), info, 32)));
     this.#wrapKey = derive('fiscus/household-key-wrap/v1');
     this.#instanceKey = derive('fiscus/instance-secrets/v1');
+    this.#csrfKey = derive('fiscus/csrf/v1');
     root.fill(0);
   }
 
@@ -65,6 +67,11 @@ export class MasterKey {
   /** Key for secrets that belong to a user rather than a household (e.g. TOTP seeds). */
   get instanceKey(): SecretKey {
     return this.#instanceKey;
+  }
+
+  /** HMAC key for signed CSRF tokens. */
+  get csrfKey(): SecretKey {
+    return this.#csrfKey;
   }
 
   toString(): string {
