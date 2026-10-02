@@ -1,13 +1,14 @@
-import { type DbHandle, householdMembers, households, HouseholdKeyStore } from '@fiscus/db';
+import { householdMembers, households, HouseholdKeyStore } from '@fiscus/db';
 import { planVersionedPatch } from '@fiscus/domain';
-import type { CurrentUser, Household, Membership, updateHouseholdSchema } from '@fiscus/shared';
-import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import type { CurrentUser, Household, updateHouseholdSchema } from '@fiscus/shared';
+import { Injectable } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { AuditService } from '../audit/audit.service.js';
 import { Problem, problems } from '../common/problem.js';
-import { DB } from '../database/database.module.js';
-import type { Membership as Access } from './household-access.js';
+import type { HouseholdContext } from './household-context.js';
+import { HouseholdScope } from './household-scope.js';
 
 type HouseholdRow = typeof households.$inferSelect;
 type HouseholdPatch = z.infer<typeof updateHouseholdSchema>;
@@ -36,7 +37,7 @@ const SETTINGS = [
 
 export function toHousehold(
   row: HouseholdRow,
-  access: Pick<Access, 'memberId' | 'role'>,
+  you: Pick<HouseholdContext, 'memberId' | 'role'>,
 ): Household {
   return {
     id: row.id,
@@ -49,78 +50,86 @@ export function toHousehold(
     financeStyle: row.financeStyle,
     status: row.status,
     version: row.version,
-    you: { memberId: access.memberId, role: access.role },
+    you: { memberId: you.memberId, role: you.role },
   };
 }
+
+type HouseholdInput = Pick<
+  HouseholdRow,
+  | 'name'
+  | 'baseCurrency'
+  | 'timezone'
+  | 'weekStart'
+  | 'fiscalYearStartMonth'
+  | 'dateBasis'
+  | 'financeStyle'
+> & { displayName?: string | undefined };
 
 @Injectable()
 export class HouseholdsService {
   constructor(
-    @Inject(DB) private readonly db: DbHandle,
+    private readonly scope: HouseholdScope,
     private readonly keys: HouseholdKeyStore,
     private readonly audit: AuditService,
   ) {}
 
-  /** Creates a household with the caller as its owner and generates its data key atomically. */
-  async create(
-    user: CurrentUser,
-    input: Omit<
-      HouseholdRow,
-      'id' | 'status' | 'version' | 'fieldVersions' | 'createdAt' | 'updatedAt'
-    > & {
-      displayName?: string | undefined;
-    },
-  ): Promise<Household> {
+  /**
+   * Creates a household with the caller as owner and generates its data key, atomically. The id
+   * is generated up front so the whole transaction already runs in the new household's context.
+   */
+  async create(user: CurrentUser, input: HouseholdInput): Promise<Household> {
     const { displayName, ...settings } = input;
-    const { household, member } = await this.db.db.transaction(async (tx) => {
-      const [household] = await tx.insert(households).values(settings).returning();
+    const id = uuidv7();
+    const { household, member } = await this.scope.asSystem(id, async (tx) => {
+      const [household] = await tx
+        .insert(households)
+        .values({ id, ...settings })
+        .returning();
       const [member] = await tx
         .insert(householdMembers)
         .values({
-          householdId: household!.id,
+          householdId: id,
           userId: user.id,
           role: 'owner',
           displayName: displayName ?? user.displayName,
           color: MEMBER_COLORS[0]!,
         })
         .returning();
-      await this.keys.createForHousehold(household!.id, tx);
+      await this.keys.createForHousehold(id, tx);
       return { household: household!, member: member! };
     });
     await this.audit.record({
       actorKind: 'user',
       actorUserId: user.id,
       actorMemberId: member.id,
-      householdId: household.id,
+      householdId: id,
       action: 'household.created',
       targetType: 'household',
-      targetId: household.id,
+      targetId: id,
       visibleToHousehold: true,
     });
     return toHousehold(household, { memberId: member.id, role: 'owner' });
   }
 
-  async get(access: Access): Promise<Household> {
-    const [row] = await this.db.db
-      .select()
-      .from(households)
-      .where(eq(households.id, access.householdId));
+  async get(ctx: HouseholdContext): Promise<Household> {
+    const [row] = await this.scope.run(ctx, (tx) =>
+      tx.select().from(households).where(eq(households.id, ctx.householdId)),
+    );
     if (!row) throw problems.notFound();
-    return toHousehold(row, access);
+    return toHousehold(row, ctx);
   }
 
   /** Field-level first-save-wins update (API conventions §8). */
   async update(
-    access: Access,
-    userId: string,
+    ctx: HouseholdContext,
     baseVersion: number,
     patch: HouseholdPatch,
   ): Promise<Household> {
-    const result = await this.db.db.transaction(async (tx) => {
+    const result = await this.scope.run(ctx, async (tx) => {
       const [row] = await tx
         .select()
         .from(households)
-        .where(eq(households.id, access.householdId))
+        .where(eq(households.id, ctx.householdId))
         .for('update');
       if (!row) throw problems.notFound();
       const current = Object.fromEntries(SETTINGS.map((k) => [k, row[k]]));
@@ -138,7 +147,7 @@ export class HouseholdsService {
           'Reload to see their changes, then apply yours again if still needed.',
           undefined,
           {},
-          { conflicts: plan.conflicts, current: toHousehold(row, access) },
+          { conflicts: plan.conflicts, current: toHousehold(row, ctx) },
         );
       }
       if (Object.keys(plan.changes).length === 0) return { row, changed: [] as string[] };
@@ -156,37 +165,16 @@ export class HouseholdsService {
     if (result.changed.length > 0) {
       await this.audit.record({
         actorKind: 'user',
-        actorUserId: userId,
-        actorMemberId: access.memberId,
-        householdId: access.householdId,
+        actorUserId: ctx.userId,
+        actorMemberId: ctx.memberId,
+        householdId: ctx.householdId,
         action: 'household.updated',
         targetType: 'household',
-        targetId: access.householdId,
+        targetId: ctx.householdId,
         visibleToHousehold: true,
         metadata: { fields: result.changed },
       });
     }
-    return toHousehold(result.row, access);
-  }
-
-  async memberships(userId: string): Promise<Membership[]> {
-    const rows = await this.db.db
-      .select({
-        householdId: households.id,
-        householdName: households.name,
-        memberId: householdMembers.id,
-        role: householdMembers.role,
-      })
-      .from(householdMembers)
-      .innerJoin(households, eq(households.id, householdMembers.householdId))
-      .where(
-        and(
-          eq(householdMembers.userId, userId),
-          isNull(householdMembers.leftAt),
-          eq(households.status, 'active'),
-        ),
-      )
-      .orderBy(sql`${householdMembers.joinedAt}`);
-    return rows;
+    return toHousehold(result.row, ctx);
   }
 }

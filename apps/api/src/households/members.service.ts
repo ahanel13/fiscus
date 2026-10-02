@@ -1,11 +1,11 @@
-import { type DbHandle, type Executor, householdMembers, households, users } from '@fiscus/db';
+import { type Executor, householdMembers, households, users } from '@fiscus/db';
 import type { HouseholdMember, MemberRole } from '@fiscus/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { and, asc, count, eq, isNull } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import { Problem, problems } from '../common/problem.js';
-import { DB } from '../database/database.module.js';
-import type { Membership } from './household-access.js';
+import type { HouseholdContext } from './household-context.js';
+import { HouseholdScope } from './household-scope.js';
 
 const lastOwner = () =>
   new Problem(
@@ -18,19 +18,24 @@ const lastOwner = () =>
 @Injectable()
 export class MembersService {
   constructor(
-    @Inject(DB) private readonly db: DbHandle,
+    private readonly scope: HouseholdScope,
     private readonly audit: AuditService,
   ) {}
 
-  async list(access: Membership): Promise<HouseholdMember[]> {
-    const rows = await this.db.db
-      .select({ member: householdMembers, email: users.email })
-      .from(householdMembers)
-      .leftJoin(users, eq(users.id, householdMembers.userId))
-      .where(
-        and(eq(householdMembers.householdId, access.householdId), isNull(householdMembers.leftAt)),
-      )
-      .orderBy(asc(householdMembers.joinedAt));
+  async list(access: HouseholdContext): Promise<HouseholdMember[]> {
+    const rows = await this.scope.run(access, (tx) =>
+      tx
+        .select({ member: householdMembers, email: users.email })
+        .from(householdMembers)
+        .leftJoin(users, eq(users.id, householdMembers.userId))
+        .where(
+          and(
+            eq(householdMembers.householdId, access.householdId),
+            isNull(householdMembers.leftAt),
+          ),
+        )
+        .orderBy(asc(householdMembers.joinedAt)),
+    );
     return rows.map(({ member, email }) => ({
       id: member.id,
       displayName: member.displayName,
@@ -43,8 +48,9 @@ export class MembersService {
     }));
   }
 
-  async changeRole(access: Membership, userId: string, memberId: string, role: MemberRole) {
-    const from = await this.db.db.transaction(async (tx) => {
+  async changeRole(access: HouseholdContext, memberId: string, role: MemberRole) {
+    const userId = access.userId;
+    const from = await this.scope.run(access, async (tx) => {
       const target = await this.#lockTarget(tx, access.householdId, memberId);
       if (target.role === role) return target.role;
       if (target.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
@@ -68,11 +74,12 @@ export class MembersService {
     });
   }
 
-  async remove(access: Membership, userId: string, memberId: string): Promise<void> {
+  async remove(access: HouseholdContext, memberId: string): Promise<void> {
+    const userId = access.userId;
     if (memberId === access.memberId) {
       throw new Problem(409, 'use_leave', 'To remove yourself, leave the household instead');
     }
-    await this.db.db.transaction(async (tx) => {
+    await this.scope.run(access, async (tx) => {
       const target = await this.#lockTarget(tx, access.householdId, memberId);
       if (target.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
         throw lastOwner();
@@ -94,8 +101,9 @@ export class MembersService {
     });
   }
 
-  async leave(access: Membership, userId: string): Promise<void> {
-    await this.db.db.transaction(async (tx) => {
+  async leave(access: HouseholdContext): Promise<void> {
+    const userId = access.userId;
+    await this.scope.run(access, async (tx) => {
       await this.#lockTarget(tx, access.householdId, access.memberId);
       if (access.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
         throw lastOwner();

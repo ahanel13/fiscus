@@ -6,7 +6,7 @@ import type { AuthContext } from '../auth/auth-context.js';
 import { Auth, Public } from '../auth/decorators.js';
 import { type SignedIn, SignInService } from '../auth/sign-in.service.js';
 import { ZodPipe } from '../common/zod-pipe.js';
-import { InvitesService } from './invites.service.js';
+import { InviteTokensService } from './invite-tokens.service.js';
 
 const tokenSchema = z.object({ token: z.string().min(1) });
 
@@ -14,7 +14,7 @@ const tokenSchema = z.object({ token: z.string().min(1) });
 @Controller('api/v1/invites')
 export class InvitesController {
   constructor(
-    private readonly invites: InvitesService,
+    private readonly invites: InviteTokensService,
     private readonly signIns: SignInService,
   ) {}
 

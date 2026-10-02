@@ -4,7 +4,7 @@ import type { AuthContext } from '../auth/auth-context.js';
 import { Auth } from '../auth/decorators.js';
 import { SessionService } from '../auth/session.service.js';
 import { problems } from '../common/problem.js';
-import { HouseholdsService } from '../households/households.service.js';
+import { HouseholdAccess } from '../households/household-access.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -12,7 +12,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export class MeController {
   constructor(
     private readonly sessions: SessionService,
-    private readonly households: HouseholdsService,
+    private readonly households: HouseholdAccess,
   ) {}
 
   @Get()
