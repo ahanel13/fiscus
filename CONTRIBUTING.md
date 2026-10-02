@@ -30,7 +30,12 @@ Every issue has: an `area:*` label, a `priority:*` label, a milestone, and **acc
 ## Pull requests
 
 - One PR closes one issue (`Closes #N`). Keep PRs small; split if > ~600 changed lines (excluding generated code / lockfile).
-- Fill in the PR template; CI must be green (lint, typecheck, test, build, docker build).
+- Fill in the PR template. CI must be green before merging. Required checks:
+  - **CI / Lint, typecheck, test, build**: format check, lint, typecheck, unit tests, build
+  - **PR title / Conventional Commit title**
+  - Docker image builds join CI with #8.
+
+  GitHub only *enforces* required checks on Pro or public repos (#13). Until then, treat them as required by convention.
 - Squash-merge; PR title becomes the commit, so it must be a Conventional Commit.
 - DB schema changes include a migration **and** are called out in the PR.
 
