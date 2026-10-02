@@ -15,7 +15,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "env:example": "node scripts/env-example.mjs",
-    "env:check": "node scripts/env-example.mjs --check"
+    "env:check": "node scripts/env-example.mjs --check",
+    "db:generate": "pnpm --filter @fiscus/db generate",
+    "db:migrate": "pnpm --filter @fiscus/db build && pnpm --filter @fiscus/db migrate",
+    "db:seed": "pnpm --filter @fiscus/db build && pnpm --filter @fiscus/db seed"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

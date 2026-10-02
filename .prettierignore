@@ -4,3 +4,4 @@ coverage/
 pnpm-lock.yaml
 LICENSE
 **/*.md
+packages/db/migrations/
