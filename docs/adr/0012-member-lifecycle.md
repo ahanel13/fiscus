@@ -110,7 +110,7 @@ default**, so no member can strand another or rewrite shared history.
 
    Only **live** joint accounts and their bank connections need the co-owners' agreement to
    transfer (step 3); usually they're closed or re-titled in real life anyway.
-3. **Departure protection mode.** Any adult member (not viewers) can turn it on when a departure
+3. **Departure protection mode.** Activity is recorded and tamper-evident all the time ([ADR 0013](0013-tamper-evident-activity-history.md)). This mode additionally *stops edits* to the past during a dispute. Any adult member (not viewers) can turn it on when a departure
    is contested. It **freezes shared history before the chosen date**:
    - no deleting joint accounts or past shared transactions;
    - no editing past attributions, splits, or settle-up entries;

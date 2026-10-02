@@ -157,7 +157,7 @@ Deleting all rows for a household is the **crypto-shred**.
 | metadata | jsonb | **No financial plaintext.** IDs, field names, old/new *category ids*, never notes or amounts of hidden rows |
 | ip | inet null | |
 
-The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per-transaction edit history (M1) is a filtered view over `audit_events`.
+Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plus `changes_enc` (encrypted before/after values) per [ADR 0013](../adr/0013-tamper-evident-activity-history.md). The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per-transaction edit history (M1) is a filtered view over `audit_events`.
 
 ### 3.2 Aggregation
 
