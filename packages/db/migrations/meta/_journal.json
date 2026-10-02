@@ -8,6 +8,13 @@
       "when": 1790952311304,
       "tag": "0000_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790959170762,
+      "tag": "0001_household_keys",
+      "breakpoints": true
     }
   ]
 }

@@ -63,6 +63,8 @@ services:
     restart: unless-stopped
     environment: &service-env
       DATABASE_URL: postgres://fiscus_app:${APP_DATABASE_PASSWORD}@db:5432/fiscus
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY in .env}
+      APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on: &after-migrate
       migrate:

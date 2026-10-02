@@ -70,10 +70,11 @@ Dependencies (Postgres, Valkey, Mailpit, S3) run in Docker:
 
 ```bash
 docker compose -f deploy/compose/docker-compose.dev.yml up -d
-cat > .env <<'ENV'
+cat > .env <<ENV
 DATABASE_URL=postgres://fiscus_app:fiscus-dev-app@localhost:5432/fiscus
 MIGRATION_DATABASE_URL=postgres://fiscus_owner:fiscus-dev-owner@localhost:5432/fiscus
 APP_DATABASE_PASSWORD=fiscus-dev-app
+APP_ENCRYPTION_KEY=$(openssl rand -base64 32)
 NODE_ENV=development
 LOG_LEVEL=debug
 ENV

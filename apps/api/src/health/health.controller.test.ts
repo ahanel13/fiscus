@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
@@ -6,7 +7,13 @@ import { AppModule } from '../app.module.js';
 
 async function startApp(databaseUrl: string): Promise<NestFastifyApplication> {
   const moduleRef = await Test.createTestingModule({
-    imports: [AppModule.register({ databaseUrl })],
+    imports: [
+      AppModule.register({
+        databaseUrl,
+        encryptionKey: randomBytes(32).toString('base64'),
+        encryptionKeyVersion: 1,
+      }),
+    ],
   }).compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter(), {
     logger: false,

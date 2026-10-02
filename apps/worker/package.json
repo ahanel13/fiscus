@@ -12,6 +12,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@fiscus/crypto": "workspace:*",
     "@fiscus/db": "workspace:*",
     "@fiscus/env": "workspace:*",
     "@fiscus/shared": "workspace:*",
