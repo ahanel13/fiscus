@@ -97,6 +97,20 @@ A member can leave on good terms (moving out), be removed by an owner, or leave 
 (a breakup, divorce, or roommate falling-out). The rules below make departures **fair by
 default**, so no member can strand another or rewrite shared history.
 
+**Principle: protections travel with the person, not the household.** A departing member's
+rights are satisfied **at the moment they leave**: they get their own data and a snapshot of
+shared data. After that, they have **no standing veto** over the household they left. Remaining
+members are never held hostage by someone who is gone or unresponsive.
+
+0. **Every departure is an automatic spin-off.** Whether someone leaves or is removed, the
+   departure package (item 2) is delivered **immediately** into a personal household for them
+   (newly created, or one they already own). Their solely owned accounts and bank connections
+   move there, their snapshot is copied there, and the final settle-up is recorded in both
+   households. The old household is instantly free of them: no orphaned hidden accounts, no
+   waiting period, no approvals. Their ownership shares of joint accounts **pass to the remaining
+   co-owners**. If the leaver linked the bank connection behind a joint account, that connection
+   (their bank login) goes with them, and the remaining owners re-link with their own login while
+   keeping the account's history. The leaver can delete their new household if they don't want it.
 1. **Removal never strands someone.** When an owner removes a member who owns or co-owns
    accounts, or who is part of shared records, the removed member gets the **departure package**
    (below) instead of simply losing access. The same applies to leaving.
@@ -117,8 +131,9 @@ default**, so no member can strand another or rewrite shared history.
    - no removing *other* members as co-owners (people can only remove themselves).
 
    New activity after the date continues normally. It ends when the departing members have left,
-   or when all affected adult members agree. Turning it on and off is audit-logged and visible to
-   the household.
+   when all affected adult members agree, or after **90 days at most** (extendable only by all
+   affected adults), so no one can freeze a household indefinitely. Turning it on and off is
+   audit-logged and visible to the household.
 4. **Departure statement.** A report as of the departure date:
    - balances and net worth split into *mine / [name]'s / ours*;
    - joint balances and each member's contributions;
@@ -126,9 +141,18 @@ default**, so no member can strand another or rewrite shared history.
 
    It's exportable as PDF or CSV for mediators, landlords, or lawyers, and is clearly labeled
    "for information, not legal or financial advice".
-5. **Who keeps the household:** whoever stays. If everyone leaves, the household closes after
+5. **Approvals can't deadlock.** Requests that need another current member's consent (deleting a
+   joint account, transferring a live joint account) **expire after 14 days without a response**.
+   The requester can then use the non-destructive alternative, which needs no consent: **archive**
+   (hidden from views, history kept), or keep the account in the household. Permanent deletion of
+   shared data still needs consensus, or happens with whole-household deletion. Since activity
+   history is always kept (ADR 0013), archiving loses nothing.
+6. **Absent members** can always be removed by an owner (HH-04). Item 0 protects them
+   automatically, so removal is an escape hatch that can't be used to strand anyone. Dependents
+   without a login are managed by their guardians, who can remove them directly (#223).
+7. **Who keeps the household:** whoever stays. If everyone leaves, the household closes after
    each member has taken their departure package, followed by export and crypto-shred (ADR 0005).
-6. **Safety.** For departures involving abuse or coercive control:
+8. **Safety.** For departures involving abuse or coercive control:
    - leaving revokes the other members' access to the leaver's moved data immediately;
    - nothing in the old household reveals the leaver's new household, accounts, or sessions;
    - a safety guide explains these protections and recommends **moving to a different Fiscus
@@ -173,6 +197,9 @@ To keep step 3 a data move rather than a migration project, everything built fro
   privacy at home, claiming a profile, and leaving with a departure package.
 - Departures are fair by default. No member can strand another, delete shared history, or
   rewrite who owed what, even in a dispute.
+- Remaining members are never stuck: a departure is resolved instantly by an automatic spin-off,
+  absent members can be removed, approvals time out to non-destructive alternatives, and
+  protection mode is capped at 90 days.
 - Families get a humane path from "child on the parents' plan" to "independent adult" without
   losing history or doing data entry.
 - Moving out is self-service and can't be vetoed. That protects members, but owners lose

@@ -103,7 +103,7 @@ caller can't see ("Transfer to Anthony").
 | ACC-06 | Rename / edit account settings, account notes | acct-own | acct-own | ❌ | |
 | ACC-07 | Change visibility | acct-own | acct-own | ❌ | Any owner of a joint account may change it, and the change is posted to the activity feed. `private` on a joint account in a 2-member household is rejected (F2) |
 | ACC-08 | Add owners, change shares | acct-own | acct-own | ❌ | New owners must be OWN/MEM. Shares must sum to 10 000. **Removing an owner: only yourself**, never another co-owner (ADR 0012), and at least one owner must remain |
-| ACC-09 | Close / delete account | acct-own | acct-own | ❌ | Delete requires re-authentication. **Deleting a joint account requires every co-owner's approval**; closing (keeps history) needs one owner and notifies the others. Blocked entirely under departure protection |
+| ACC-09 | Close / archive / delete account | acct-own | acct-own | ❌ | **Close or archive** (history kept) needs one owner and notifies the others. **Permanent delete** of a joint account needs every co-owner's approval; requests expire after 14 days, leaving archive as the fallback (ADR 0012). Delete requires re-authentication. Blocked under departure protection |
 | ACC-10 | Read account number | acct-own | acct-own | ❌ | |
 | ACC-11 | Mark account as business | acct-own | acct-own | ❌ | |
 
@@ -198,16 +198,17 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 | ID | Situation | Required behaviour |
 |---|---|---|
 | EDGE-01 | Member leaves | Sessions and PATs for that household are revoked immediately. `member_account_access` rows are removed. Their private notes on household transactions are **included in their personal export, then deleted**. Attribution rows stay for history. Settlement balances are finalized (M3) |
-| EDGE-02 | Joint account where one owner left | The remaining owner(s) have full control. The leaver's ownership row stays (for historical net-worth shares) until the separation flow reassigns it. The leaver has no access |
-| EDGE-03 | Solely owned account of a leaver | Hidden from everyone (no owner with access) until the separation flow either transfers it or detaches it with the leaver's export |
+| EDGE-02 | Joint account where one owner left | The leaver's ownership share passes to the remaining co-owners **at departure** (ADR 0012), and the leaver keeps a read-only snapshot in their own household. If the leaver had linked the bank connection, it goes with them, and the remaining owners re-link to keep syncing. No consent from the leaver is needed after they've left |
+| EDGE-03 | Solely owned account of a leaver | Moves **at departure** to the leaver's personal household (created if needed), with its bank connection. Nothing is orphaned in the old household |
 | EDGE-04 | PAT of a removed member | 401 on next use (PAT-03) |
 | EDGE-05 | Viewer and private accounts | Same as any non-owner: invisible. Viewers can never be owners |
 | EDGE-06 | Last owner leaves or is demoted | Rejected with 409 `last_owner` |
 | EDGE-07 | Instance admin is also a member | Household actions are checked as the member. Admin endpoints are checked as admin. Neither grants the other |
 | EDGE-08 | Visibility tightened while a partner has it open | The next request returns 404. Caches keyed per member are invalidated by the access-table trigger |
-| EDGE-09 | Attribution to a member removed later | Attribution history is kept. Settle-up treats the leaver per the separation flow |
+| EDGE-09 | Attribution to a member who has left | Attribution history is kept in the old household. The final settle-up is recorded in both households at departure |
 | EDGE-10 | Rule created by someone who later lost access to an account | RULE-05 is evaluated at run time, so the rule stops affecting that account |
 | EDGE-11 | Two-member household tries to make a joint account private | 422 `private_joint_disallowed` (F2) |
+| EDGE-13 | A member is absent or unresponsive | Owners can remove them (HH-04); their departure package is delivered automatically. Consent requests to them expire after 14 days, and departure protection mode lasts at most 90 days |
 | EDGE-12 | Member without login (future, #223) | Can be an owner or be attributed. Can't authenticate, so no sessions or PATs. Their accounts are managed by **designated guardians** (`member_guardians`): one or more login members chosen explicitly. Guardians act with owner rights on the dependent's accounts. Other members, including household OWN, get no override. Guardian changes are audit-logged and visible to the household |
 
 ## 7. Test plan mapping
