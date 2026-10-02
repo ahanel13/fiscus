@@ -91,6 +91,7 @@ caller can't see ("Transfer to Anthony").
 | HH-14 | See household-shared records dated before you joined | extend | own | own | Only records from your `history_from` date (default `joined_at`) unless you're part of them. Owners can **extend** a member's window, never narrow it (ADR 0012) |
 | HH-15 | Turn on departure protection | ✅ | ✅ | ❌ | Any adult member. Freezes shared history before the chosen date. Ends when the departing members leave or all affected adults agree |
 | HH-16 | Take a departure package (own accounts, read-only snapshot, final settle-up, export) | ✅ | ✅ | ✅ | Needs no approval. Live joint-account transfers still need co-owner approval |
+| HH-17 | Claim ownership when owners are unresponsive | ✅ (n/a) | ✅ | ❌ | All owners notified; any owner can reject within 30 days; then the claimant becomes an additional owner (ADR 0012) |
 
 ### 4.2 Connections and accounts
 | ID | Action | OWN | MEM | VIEW | Notes |
@@ -188,7 +189,7 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 | ADM-01 | Users | Email, created, last login, MFA enabled (y/n), OIDC linked (y/n), disabled flag, household memberships (household name + role) | Password hashes, TOTP secrets, sessions' tokens |
 | ADM-02 | Users: actions | Disable/enable, force logout, reset MFA, send password reset. Each is audit-logged and visible to affected households | Impersonation ("log in as") **does not exist, with or without consent** (decided in #3 review) |
 | ADM-03 | Households | Name, created, status, member count, member emails + roles, account **count**, connections with **institution name**, status (`ok`/`login_required`/`error`), Plaid item ID and error code, storage bytes, last activity date | Account names, balances, transactions, categories, notes, rules, receipts, goals, budgets, plans, AI conversations |
-| ADM-04 | Households: actions | Create (with first owner invite), disable, schedule deletion (same 7-day grace and notification as HH-07), disable Plaid or AI for a household | Editing any household data |
+| ADM-04 | Households: actions | Create (with first owner invite), disable, schedule deletion (same 7-day grace and notification as HH-07), disable Plaid or AI for a household, **grant ownership** (only if the instance setting *admin ownership recovery* is on, default off; reason required, all members notified) | Editing any household data |
 | ADM-05 | Instance settings | Signup mode, providers (Plaid instance keys, LLM providers, FX/price providers, SMTP), webhook URL + health, polling intervals, usage caps | Household Plaid secrets |
 | ADM-06 | Audit | Instance-level events and admin actions | Household-internal events (those belong to HH-11) |
 | ADM-07 | Usage | AI token usage and Plaid item counts per household | Prompt or response content |

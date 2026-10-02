@@ -147,12 +147,30 @@ members are never held hostage by someone who is gone or unresponsive.
    (hidden from views, history kept), or keep the account in the household. Permanent deletion of
    shared data still needs consensus, or happens with whole-household deletion. Since activity
    history is always kept (ADR 0013), archiving loses nothing.
-6. **Absent members** can always be removed by an owner (HH-04). Item 0 protects them
+6. **Absent members need do nothing.** Someone who simply walks away (stops using Fiscus after a
+   breakup) is handled by the remaining owner:
+   - **Remove member** shows a **preview** before confirming (re-authentication required): what
+     moves to the absent member's own household, which joint accounts become the remaining
+     owners', which bank connections need re-linking, and the final settle-up;
+   - the absent member finds their own household with their data if they ever log in again, and
+     is notified by email once email exists (M4).
+7. **No household is left without a reachable owner:**
+   - **Prevention:** in the couple-oriented finance styles (Combined, Hybrid), inviting someone
+     suggests **co-owner** as the role. Separate and Roommates suggest member;
+   - **Ownership claim:** if every owner is unresponsive, any adult member (not viewers) can claim
+     ownership. All owners are notified; any owner can reject it within **30 days**; if none does,
+     the claimant becomes an **additional** owner and can then remove the absent owner, whose
+     departure package (item 0) protects them. Everything is recorded in the activity history;
+   - **Admin recovery (optional, off by default):** an instance setting lets the instance admin
+     grant ownership after verifying identity outside the app. The action is recorded with a
+     reason and every member is notified. It's off by default because it puts the operator in the
+     middle of household disputes (ADR 0005).
+8. **Absent members** can always be removed by an owner (HH-04). Item 0 protects them
    automatically, so removal is an escape hatch that can't be used to strand anyone. Dependents
    without a login are managed by their guardians, who can remove them directly (#223).
-7. **Who keeps the household:** whoever stays. If everyone leaves, the household closes after
+9. **Who keeps the household:** whoever stays. If everyone leaves, the household closes after
    each member has taken their departure package, followed by export and crypto-shred (ADR 0005).
-8. **Safety.** For departures involving abuse or coercive control:
+10. **Safety.** For departures involving abuse or coercive control:
    - leaving revokes the other members' access to the leaver's moved data immediately;
    - nothing in the old household reveals the leaver's new household, accounts, or sessions;
    - a safety guide explains these protections and recommends **moving to a different Fiscus
@@ -198,8 +216,12 @@ To keep step 3 a data move rather than a migration project, everything built fro
 - Departures are fair by default. No member can strand another, delete shared history, or
   rewrite who owed what, even in a dispute.
 - Remaining members are never stuck: a departure is resolved instantly by an automatic spin-off,
-  absent members can be removed, approvals time out to non-destructive alternatives, and
-  protection mode is capped at 90 days.
+  absent members can be removed without doing anything themselves, an ownership claim covers
+  households whose only owner has vanished, approvals time out to non-destructive alternatives,
+  and protection mode is capped at 90 days.
+- Most households never see these flows. They surface only as guided previews when needed, and
+  are scheduled from M3 on; only the groundwork (`household_id` everywhere, activity history) is
+  required now.
 - Families get a humane path from "child on the parents' plan" to "independent adult" without
   losing history or doing data entry.
 - Moving out is self-service and can't be vetoed. That protects members, but owners lose
