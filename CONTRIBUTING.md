@@ -33,7 +33,7 @@ Every issue has: an `area:*` label, a `priority:*` label, a milestone, and **acc
 - Fill in the PR template. CI must be green before merging. Required checks:
   - **CI / Lint, typecheck, test, build**: format check, lint, typecheck, unit tests, build
   - **PR title / Conventional Commit title**
-  - Docker image builds join CI with #8.
+  - **CI / Docker image (api, worker, mcp, web)**: each image builds
 
   GitHub only *enforces* required checks on Pro or public repos (#13). Until then, treat them as required by convention.
 - Squash-merge; PR title becomes the commit, so it must be a Conventional Commit.
@@ -76,6 +76,14 @@ No Node 24 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
 - Services connect as `fiscus_app` (row-level security enforced). `migrate` enables its login when `APP_DATABASE_PASSWORD` is set.
 - Integration tests use `startTestDatabase()` from `@fiscus/db/testing`, which needs Docker.
 - Use the column helpers (`id`, `householdId`, `money`, `timestamps`, `versioning`) so tables follow the data-model conventions.
+
+### Docker images
+
+Each app has a Dockerfile, built from the repository root: `docker build -f apps/api/Dockerfile -t fiscus-api .`
+- Images run as non-root, and app files are read-only to the app user.
+- `/healthz` (liveness) and `/readyz` (database reachable) on api `:3000` and worker `:3001`; web serves `/healthz` on `:8080`.
+- The web image writes `/env.js` from `API_URL` at startup, so one image works behind any proxy.
+- Run migrations from the api image: `docker run --rm -e DATABASE_URL=… fiscus-api node_modules/.bin/fiscus-migrate`.
 
 ### Dependencies
 

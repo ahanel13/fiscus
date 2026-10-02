@@ -295,6 +295,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fiscus/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@fiscus/env':
         specifier: workspace:*
         version: link:../../packages/env
@@ -397,9 +400,15 @@ importers:
 
   apps/worker:
     dependencies:
+      '@fiscus/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@fiscus/env':
         specifier: workspace:*
         version: link:../../packages/env
+      '@fiscus/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@nestjs/common':
         specifier: 'catalog:'
         version: 12.1.0(reflect-metadata@0.2.2)(rxjs@7.8.2)

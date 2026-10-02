@@ -7,8 +7,10 @@ import apiEnv from './env.js';
 
 const env = loadEnvOrExit(apiEnv);
 
-const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
-  logger: toNestLogLevels(env.LOG_LEVEL),
-});
+const app = await NestFactory.create<NestFastifyApplication>(
+  AppModule.register({ databaseUrl: env.DATABASE_URL }),
+  new FastifyAdapter(),
+  { logger: toNestLogLevels(env.LOG_LEVEL) },
+);
 app.enableShutdownHooks();
 await app.listen({ port: env.PORT, host: env.HOST });

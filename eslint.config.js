@@ -13,7 +13,7 @@ export default defineConfig(
     languageOptions: { globals: globals.node },
   },
   {
-    files: ['apps/web/**/*.{ts,tsx}'],
+    files: ['apps/web/**/*.{ts,tsx,js}'],
     extends: [reactHooks.configs.flat.recommended],
     languageOptions: { globals: globals.browser },
   },
