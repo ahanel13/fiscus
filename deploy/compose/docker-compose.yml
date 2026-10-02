@@ -61,11 +61,17 @@ services:
       <<: *build-args
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
-    environment: &service-env
-      DATABASE_URL: postgres://fiscus_app:${APP_DATABASE_PASSWORD}@db:5432/fiscus
-      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY in .env}
-      APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+    environment:
+      <<: &service-env
+        DATABASE_URL: postgres://fiscus_app:${APP_DATABASE_PASSWORD}@db:5432/fiscus
+        APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY in .env}
+        APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
+        LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_URL: ${FISCUS_PUBLIC_URL:-http://localhost:8080}
+      SIGNUP_MODE: ${FISCUS_SIGNUP_MODE:-invite_only}
+      COOKIE_SECURE: ${FISCUS_COOKIE_SECURE:-true}
+      # The api is only reachable through the web container's proxy, so its X-Forwarded-For is trusted.
+      TRUST_PROXY: 'true'
     depends_on: &after-migrate
       migrate:
         condition: service_completed_successfully

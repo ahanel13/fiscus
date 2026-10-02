@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fastify/cookie": "catalog:",
     "@fiscus/crypto": "workspace:*",
     "@fiscus/db": "workspace:*",
     "@fiscus/env": "workspace:*",
@@ -19,14 +20,19 @@
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-fastify": "catalog:",
+    "drizzle-orm": "catalog:",
+    "fastify": "catalog:",
     "reflect-metadata": "catalog:",
-    "rxjs": "catalog:"
+    "rxjs": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@fiscus/config": "workspace:*",
     "@nestjs/testing": "catalog:",
     "@swc/core": "catalog:",
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "pg": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
     "vitest": "catalog:"
