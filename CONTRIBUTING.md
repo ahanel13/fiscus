@@ -106,3 +106,8 @@ Each app has a Dockerfile, built from the repository root: `docker build -f apps
 - Versions are pinned once in the `catalog:` section of `pnpm-workspace.yaml`. Packages reference them as `"catalog:"`.
 - pnpm refuses versions published in the last **7 days** (`minimumReleaseAge`), to blunt hijacked-release attacks. If you need a newer version urgently, add a time-boxed `minimumReleaseAgeExclude` entry with a comment explaining why.
 - Packages that need install scripts must be allow-listed under `allowBuilds`.
+- **Renovate** (`renovate.json5`) keeps everything current: npm packages and the pnpm catalog, Docker base images, Compose images, pinned GitHub Action SHAs, and versions pinned in Dockerfiles.
+  - Routine updates arrive weekly (Monday), grouped by ecosystem, after the same 7-day release age.
+  - Dev-dependency and Actions minor/patch updates **auto-merge when CI is green**. Everything else gets a normal review.
+  - **Major updates** (Node, Postgres, frameworks) wait for approval on the *Dependency Dashboard* issue, so they happen deliberately.
+  - Security fixes (from Dependabot alerts) skip the wait and the schedule, labelled `priority:P0`.
