@@ -15,6 +15,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@fiscus/env": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:"
   },
   "devDependencies": {
@@ -22,5 +23,11 @@
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "exports": {
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "default": "./dist/env.js"
+    }
   }
 }

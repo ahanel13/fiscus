@@ -1,9 +1,14 @@
 import 'reflect-metadata';
+import { loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module.js';
+import apiEnv from './env.js';
 
-const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+const env = loadEnvOrExit(apiEnv);
+
+const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+  logger: toNestLogLevels(env.LOG_LEVEL),
+});
 app.enableShutdownHooks();
-// Validated env config replaces this in #10.
-await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
+await app.listen({ port: env.PORT, host: env.HOST });
