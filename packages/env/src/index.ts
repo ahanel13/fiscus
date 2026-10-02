@@ -10,3 +10,4 @@ export {
   type LoadEnvOptions,
 } from './env.js';
 export { host, logLevel, nodeEnv, port, toNestLogLevels, type LogLevel } from './common.js';
+export { databaseUrl } from './database.js';

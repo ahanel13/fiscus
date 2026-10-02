@@ -1,8 +1,9 @@
-import { defineEnv, host, logLevel, nodeEnv, port } from '@fiscus/env';
+import { databaseUrl, defineEnv, host, logLevel, nodeEnv, port } from '@fiscus/env';
 
 export default defineEnv('api', {
   NODE_ENV: nodeEnv,
   LOG_LEVEL: logLevel,
   HOST: host,
   PORT: port(3000),
+  DATABASE_URL: databaseUrl,
 });
