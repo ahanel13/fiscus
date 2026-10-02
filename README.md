@@ -4,7 +4,7 @@
 
 Fiscus is a self-hosted, open-source personal finance platform for households and couples.
 It covers bank sync, flexible budgeting (zero-based, 50/30/20, flex, per-category),
-his / hers / ours shared finances with settle-up, bills, goals, investments, forecasting and
+yours / mine / ours shared finances with settle-up, bills, goals, investments, forecasting and
 FIRE planning, AI receipt scanning, reporting, notifications, and an optional AI assistant and
 MCP server that can run on a local model.
 
