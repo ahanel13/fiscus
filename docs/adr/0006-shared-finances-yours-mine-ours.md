@@ -21,8 +21,9 @@ the core model from M0.
 A household has **N members** (`household_members`: display name, color, avatar, role). The UI
 is tuned for two, e.g. "Mine / Alex's / Ours", but nothing assumes exactly two.
 
-**Naming.** This is the "his / hers / ours" (a.k.a. "yours / mine / ours") model. UI labels
-are **viewer-relative** and name-based, never gendered: *Mine* · *[member name]'s* · *Ours*.
+**Naming.** This is the "yours / mine / ours" model. All wording is gender-neutral, in the
+docs, the UI, and generated text such as AI answers and notifications. UI labels are
+**viewer-relative** and name-based: *Mine* · *[member name]'s* · *Ours*.
 The same account reads "Mine" to its owner and "Alex's" to a partner.
 
 ### 2. Ownership (accounts)
