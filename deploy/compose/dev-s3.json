@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "fiscus-dev",
+      "credentials": [{ "accessKey": "fiscus-dev", "secretKey": "fiscus-dev-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

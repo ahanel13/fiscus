@@ -14,9 +14,9 @@ export interface TestDatabase {
 const APP_PASSWORD = 'test-app-password';
 const MAINTENANCE_PASSWORD = 'test-maintenance-password';
 
-/** Starts a throwaway Postgres 17 with all migrations applied. Requires Docker. */
+/** Starts a throwaway Postgres 18 with all migrations applied. Requires Docker. */
 export async function startTestDatabase(): Promise<TestDatabase> {
-  const container: StartedPostgreSqlContainer = await new PostgreSqlContainer('postgres:17-alpine')
+  const container: StartedPostgreSqlContainer = await new PostgreSqlContainer('postgres:18-alpine')
     .withDatabase('fiscus')
     .withUsername('fiscus_owner')
     .withPassword('test-owner-password')

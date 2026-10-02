@@ -1,10 +1,12 @@
 # syntax=docker/dockerfile:1.7
 # Build from the repository root: docker build -f apps/web/Dockerfile .
-ARG NODE_IMAGE=node:24-alpine
+ARG NODE_IMAGE=node:26-alpine
 
 FROM ${NODE_IMAGE} AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH TURBO_TELEMETRY_DISABLED=1 COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-RUN corepack enable pnpm
+# Node 25+ no longer bundles corepack; install it, then let it provide the pnpm version pinned
+# in package.json (packageManager).
+RUN npm install -g corepack@0.36.0 && corepack enable pnpm
 
 FROM base AS prune
 WORKDIR /repo
@@ -18,7 +20,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 COPY --from=prune /repo/out/full/ .
 RUN pnpm turbo run build --filter=@fiscus/web
 
-FROM nginxinc/nginx-unprivileged:1.29-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.30-alpine AS runtime
 COPY apps/web/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --chmod=0755 apps/web/docker/40-fiscus-env.sh /docker-entrypoint.d/40-fiscus-env.sh
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
