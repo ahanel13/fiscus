@@ -1,0 +1,95 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    ':dependencyDashboard',
+    ':semanticCommitTypeAll(chore)',
+    'helpers:pinGitHubActionDigests',
+  ],
+  labels: ['type:chore', 'area:infra'],
+
+  // Supply-chain policy, matching minimumReleaseAge in pnpm-workspace.yaml.
+  minimumReleaseAge: '7 days',
+  internalChecksFilter: 'strict',
+
+  // Batch routine updates weekly; security fixes are raised immediately (see vulnerabilityAlerts).
+  timezone: 'UTC',
+  schedule: ['before 6am on monday'],
+  prConcurrentLimit: 6,
+  prHourlyLimit: 3,
+
+  rangeStrategy: 'pin',
+  postUpdateOptions: ['pnpmDedupe'],
+
+  // Major updates (runtime, database, frameworks) are deliberate: they wait for approval on the
+  // dependency dashboard instead of opening PRs on their own.
+  major: { dependencyDashboardApproval: true },
+
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ['before 6am on the first day of the month'],
+  },
+
+  vulnerabilityAlerts: {
+    labels: ['type:bug', 'priority:P0', 'area:infra'],
+    schedule: ['at any time'],
+    minimumReleaseAge: null,
+  },
+
+  packageRules: [
+    { groupName: 'NestJS', matchPackageNames: ['@nestjs/**'] },
+    {
+      groupName: 'Vite and Vitest',
+      matchPackageNames: ['vite', 'vitest', '@vitest/**', '@vitejs/**'],
+    },
+    {
+      groupName: 'ESLint',
+      matchPackageNames: [
+        'eslint',
+        '@eslint/**',
+        'eslint-plugin-*',
+        'globals',
+        'typescript-eslint',
+      ],
+    },
+    {
+      groupName: 'React',
+      matchPackageNames: ['react', 'react-dom', '@types/react', '@types/react-dom'],
+    },
+    { groupName: 'Drizzle', matchPackageNames: ['drizzle-orm', 'drizzle-kit'] },
+    { groupName: 'Testcontainers', matchPackageNames: ['testcontainers', '@testcontainers/**'] },
+    { groupName: 'SWC', matchPackageNames: ['@swc/core', 'unplugin-swc'] },
+    { groupName: 'Turborepo', matchPackageNames: ['turbo'] },
+    { groupName: 'GitHub Actions', matchManagers: ['github-actions'] },
+
+    // Held back until their tracking issues land (#243 TypeScript 7, #244 Drizzle 1.0).
+    { matchPackageNames: ['typescript'], allowedVersions: '<6.1' },
+    { matchPackageNames: ['drizzle-orm', 'drizzle-kit'], allowedVersions: '<1.0.0' },
+
+    // @types/node follows the Node runtime major in .nvmrc, which is upgraded deliberately.
+    { matchPackageNames: ['@types/node'], matchUpdateTypes: ['major'], enabled: false },
+
+    // Low-risk updates merge themselves once CI is green. Runtime dependencies and anything
+    // affecting images or the database still get human review.
+    {
+      matchDepTypes: ['devDependencies'],
+      matchUpdateTypes: ['minor', 'patch', 'pin', 'digest'],
+      automerge: true,
+    },
+    {
+      matchManagers: ['github-actions'],
+      matchUpdateTypes: ['minor', 'patch', 'pin', 'digest'],
+      automerge: true,
+    },
+  ],
+
+  customManagers: [
+    {
+      // Versions pinned inside Dockerfile RUN lines (pnpm dlx turbo@x, npm install -g corepack@x).
+      customType: 'regex',
+      managerFilePatterns: ['/(^|/)Dockerfile$/'],
+      matchStrings: ['(?<depName>turbo|corepack)@(?<currentValue>\\d+\\.\\d+\\.\\d+)'],
+      datasourceTemplate: 'npm',
+    },
+  ],
+}
