@@ -29,6 +29,13 @@
       "when": 1790960638165,
       "tag": "0003_audit_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790968075827,
+      "tag": "0004_households",
+      "breakpoints": true
     }
   ]
 }

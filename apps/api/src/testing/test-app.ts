@@ -37,9 +37,14 @@ export class TestClient {
   readonly cookies = new Map<string, string>();
   csrfToken: string | undefined;
 
-  constructor(private readonly app: NestFastifyApplication) {}
+  constructor(readonly app: NestFastifyApplication) {}
 
-  async request(method: Method, url: string, body?: unknown, { csrf = true } = {}) {
+  async request(
+    method: Method,
+    url: string,
+    body?: unknown,
+    { csrf = true, headers = {} }: { csrf?: boolean; headers?: Record<string, string> } = {},
+  ) {
     if (method !== 'GET' && csrf && !this.csrfToken) {
       await this.request('GET', '/api/v1/auth/csrf');
     }
@@ -53,6 +58,7 @@ export class TestClient {
           ? { cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ') }
           : {}),
         ...(method !== 'GET' && csrf && this.csrfToken ? { 'x-csrf-token': this.csrfToken } : {}),
+        ...headers,
       },
     });
     for (const c of res.cookies as { name: string; value: string; expires?: Date }[]) {

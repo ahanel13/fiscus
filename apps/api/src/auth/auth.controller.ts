@@ -1,6 +1,5 @@
 import {
   type AuthStatus,
-  type CurrentUser,
   loginRequestSchema,
   passwordResetRequestSchema,
   reauthRequestSchema,
@@ -16,19 +15,10 @@ import { APP_CONFIG, type AppConfig } from '../config.js';
 import type { AuthContext } from './auth-context.js';
 import { AuthService } from './auth.service.js';
 import { AuthCookies } from './cookies.js';
-import { CsrfService } from './csrf.service.js';
 import { Auth, Public } from './decorators.js';
-import { type ClientMeta, SessionService } from './session.service.js';
+import { SessionService } from './session.service.js';
 import { SetupService } from './setup.service.js';
-
-interface SignedIn {
-  data: { user: CurrentUser; csrfToken: string };
-}
-
-const meta = (req: FastifyRequest): ClientMeta => ({
-  ip: req.ip ?? null,
-  userAgent: req.headers['user-agent'] ?? null,
-});
+import { clientMeta, type SignedIn, SignInService } from './sign-in.service.js';
 
 @Controller('api/v1/auth')
 export class AuthController {
@@ -37,7 +27,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly setup: SetupService,
     private readonly sessions: SessionService,
-    private readonly csrf: CsrfService,
+    private readonly signIns: SignInService,
     private readonly cookies: AuthCookies,
     private readonly audit: AuditService,
   ) {}
@@ -60,7 +50,7 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): { data: { csrfToken: string } } {
-    return { data: { csrfToken: this.#newCsrf(reply, req.auth?.session.id ?? null) } };
+    return { data: { csrfToken: this.signIns.newCsrf(reply, req.auth?.session.id ?? null) } };
   }
 
   @Public()
@@ -79,7 +69,7 @@ export class AuthController {
       targetId: user.id,
       ip: req.ip,
     });
-    return this.#signIn(user, req, reply);
+    return this.signIns.signIn(user, req, reply);
   }
 
   @Public()
@@ -89,7 +79,7 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<SignedIn> {
-    return this.#signIn(await this.auth.signup(body), req, reply);
+    return this.signIns.signIn(await this.auth.signup(body), req, reply);
   }
 
   @Public()
@@ -100,7 +90,11 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<SignedIn> {
-    return this.#signIn(await this.auth.login(body.email, body.password, meta(req)), req, reply);
+    return this.signIns.signIn(
+      await this.auth.login(body.email, body.password, clientMeta(req)),
+      req,
+      reply,
+    );
   }
 
   @Post('logout')
@@ -120,7 +114,7 @@ export class AuthController {
       targetId: auth.session.id,
       ip: req.ip,
     });
-    return { data: { csrfToken: this.#newCsrf(reply, null) } };
+    return { data: { csrfToken: this.signIns.newCsrf(reply, null) } };
   }
 
   @Post('reauth')
@@ -142,19 +136,5 @@ export class AuthController {
     @Req() req: FastifyRequest,
   ): Promise<void> {
     await this.auth.resetPassword(body.token, body.password, req.ip);
-  }
-
-  /** Starts a fresh session (rotating out any previous one) and returns a matching CSRF token. */
-  async #signIn(user: CurrentUser, req: FastifyRequest, reply: FastifyReply): Promise<SignedIn> {
-    if (req.auth) await this.sessions.revoke(req.auth.session.id);
-    const { token, id } = await this.sessions.create(user.id, meta(req));
-    this.cookies.setSession(reply, token);
-    return { data: { user, csrfToken: this.#newCsrf(reply, id) } };
-  }
-
-  #newCsrf(reply: FastifyReply, sessionId: string | null): string {
-    const token = this.csrf.issue(sessionId);
-    this.cookies.setCsrf(reply, token);
-    return token;
   }
 }

@@ -5,6 +5,7 @@ import { DB } from '../database/database.module.js';
 export interface AuditEntry {
   actorKind: (typeof auditEvents.$inferInsert)['actorKind'];
   actorUserId?: string | null;
+  actorMemberId?: string | null;
   householdId?: string | null;
   action: string;
   targetType?: string;
@@ -23,6 +24,7 @@ export class AuditService {
     await this.db.db.insert(auditEvents).values({
       actorKind: entry.actorKind,
       actorUserId: entry.actorUserId ?? null,
+      actorMemberId: entry.actorMemberId ?? null,
       householdId: entry.householdId ?? null,
       action: entry.action,
       targetType: entry.targetType ?? null,

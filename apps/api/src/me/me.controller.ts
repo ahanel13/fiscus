@@ -1,19 +1,23 @@
-import type { CurrentUser, SessionSummary } from '@fiscus/shared';
+import type { Me, SessionSummary } from '@fiscus/shared';
 import { Controller, Delete, Get, HttpCode, Param } from '@nestjs/common';
 import type { AuthContext } from '../auth/auth-context.js';
 import { Auth } from '../auth/decorators.js';
 import { SessionService } from '../auth/session.service.js';
 import { problems } from '../common/problem.js';
+import { HouseholdsService } from '../households/households.service.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Controller('api/v1/me')
 export class MeController {
-  constructor(private readonly sessions: SessionService) {}
+  constructor(
+    private readonly sessions: SessionService,
+    private readonly households: HouseholdsService,
+  ) {}
 
   @Get()
-  me(@Auth() auth: AuthContext): { data: CurrentUser } {
-    return { data: auth.user };
+  async me(@Auth() auth: AuthContext): Promise<{ data: Me }> {
+    return { data: { ...auth.user, memberships: await this.households.memberships(auth.user.id) } };
   }
 
   @Get('sessions')
