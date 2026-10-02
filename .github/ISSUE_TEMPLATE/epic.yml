@@ -1,7 +1,7 @@
 name: Epic
 description: A feature area composed of multiple issues
-title: "epic: "
-labels: ["type:epic"]
+title: 'epic: '
+labels: ['type:epic']
 body:
   - type: textarea
     id: goal
@@ -12,4 +12,4 @@ body:
     attributes: { label: In scope / out of scope }
   - type: textarea
     id: issues
-    attributes: { label: Child issues, placeholder: "- [ ] #" }
+    attributes: { label: Child issues, placeholder: '- [ ] #' }

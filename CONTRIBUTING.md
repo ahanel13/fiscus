@@ -50,12 +50,22 @@ generated notes. Pre-1.0, minor bumps may contain breaking changes (called out i
 
 ## Local development
 
-Requires Node 22 (`.nvmrc`), pnpm (via `corepack enable`), and Docker.
+Requires Node 24 (`.nvmrc`), pnpm (via `corepack enable`), and Docker.
 
 ```bash
 corepack enable
 pnpm install
-docker compose -f deploy/compose/docker-compose.dev.yml up -d   # postgres, redis, mailpit, minio
-pnpm db:migrate
-pnpm dev
+pnpm build        # build all packages and apps
+pnpm dev          # api :3000, web :5173, worker, mcp (watch mode)
+pnpm lint && pnpm typecheck && pnpm test
 ```
+
+The dev dependency stack (`docker-compose.dev.yml`) and `pnpm db:migrate` arrive with #9 and #11.
+
+No Node 24 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
+
+### Dependencies
+
+- Versions are pinned once in the `catalog:` section of `pnpm-workspace.yaml`. Packages reference them as `"catalog:"`.
+- pnpm refuses versions published in the last **7 days** (`minimumReleaseAge`), to blunt hijacked-release attacks. If you need a newer version urgently, add a time-boxed `minimumReleaseAgeExclude` entry with a comment explaining why.
+- Packages that need install scripts must be allow-listed under `allowBuilds`.
