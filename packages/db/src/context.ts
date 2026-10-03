@@ -6,7 +6,8 @@ import type { Database, Executor } from './client.js';
  * as transaction-local Postgres settings (data model §4.2) that row-level security reads (#19).
  */
 export interface DbContext {
-  householdId: string;
+  /** Null for user-level work that spans households (listing your own memberships). */
+  householdId: string | null;
   memberId: string | null;
   userId: string | null;
   /** Worker jobs acting for the whole household (still limited to `householdId`). */
@@ -21,7 +22,7 @@ export async function withContext<T>(
   return db.transaction(async (tx) => {
     // set_config(..., true) is transaction-local, so pooled connections never leak context.
     await tx.execute(sql`
-      SELECT set_config('app.household_id', ${ctx.householdId}, true),
+      SELECT set_config('app.household_id', ${ctx.householdId ?? ''}, true),
              set_config('app.member_id', ${ctx.memberId ?? ''}, true),
              set_config('app.user_id', ${ctx.userId ?? ''}, true),
              set_config('app.system', ${ctx.system ? 'on' : 'off'}, true)`);
@@ -35,4 +36,12 @@ export const systemContext = (householdId: string): DbContext => ({
   memberId: null,
   userId: null,
   system: true,
+});
+
+/** Context for user-level reads across households: only the user's own memberships are visible. */
+export const userContext = (userId: string): DbContext => ({
+  householdId: null,
+  memberId: null,
+  userId,
+  system: false,
 });

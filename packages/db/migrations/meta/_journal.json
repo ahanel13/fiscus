@@ -36,6 +36,13 @@
       "when": 1790968075827,
       "tag": "0004_households",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790977487298,
+      "tag": "0005_row_level_security",
+      "breakpoints": true
     }
   ]
 }

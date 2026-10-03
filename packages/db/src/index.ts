@@ -5,7 +5,8 @@ export {
   type DbHandle,
   type Executor,
 } from './client.js';
-export { systemContext, withContext, type DbContext } from './context.js';
+export { systemContext, userContext, withContext, type DbContext } from './context.js';
+export { MAINTENANCE_JOBS, runMaintenanceJob, type MaintenanceJob } from './maintenance.js';
 export { pingDatabase } from './health.js';
 export { bytea, householdId, id, money, timestamps, versioning } from './columns.js';
 export {

@@ -1,14 +1,7 @@
-import {
-  type DbHandle,
-  type Executor,
-  householdMembers,
-  households,
-  invites,
-  users,
-} from '@fiscus/db';
+import { type DbHandle, type Executor, householdMembers, invites, users } from '@fiscus/db';
 import type { CurrentUser, InvitePreview } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import { hashPassword } from '../auth/password.js';
 import { sha256 } from '../auth/tokens.js';
@@ -21,7 +14,14 @@ import { MEMBER_COLORS } from './households.service.js';
 const invalidInvite = () =>
   new Problem(404, 'invalid_invite', 'This invite link is invalid, used, or expired');
 
-type InviteRow = typeof invites.$inferSelect;
+interface FoundInvite {
+  id: string;
+  householdId: string;
+  email: string;
+  role: (typeof invites.$inferSelect)['role'];
+  invitedByMemberId: string | null;
+  householdName: string;
+}
 
 /**
  * Invite-token flows. The caller holds a token but isn't a member yet, so the invite must be found
@@ -127,27 +127,36 @@ export class InviteTokensService {
     return created!;
   }
 
-  async #find(token: string, tx: Executor = this.db.db) {
-    const [row] = await tx
-      .select({ invite: invites, householdName: households.name })
-      .from(invites)
-      .innerJoin(households, eq(households.id, invites.householdId))
-      .where(
-        and(
-          eq(invites.tokenHash, sha256(token)),
-          isNull(invites.acceptedAt),
-          isNull(invites.revokedAt),
-          gt(invites.expiresAt, new Date()),
-          eq(households.status, 'active'),
-        ),
-      );
+  /**
+   * The one cross-household read: a SECURITY DEFINER function that returns at most the single live
+   * invite matching the token hash (migration 0005), since row-level security hides invites from
+   * anyone outside the household.
+   */
+  async #find(token: string): Promise<{ invite: FoundInvite; householdName: string }> {
+    const result = await this.db.db.execute<{
+      id: string;
+      household_id: string;
+      email: string;
+      role: FoundInvite['role'];
+      invited_by_member_id: string | null;
+      household_name: string;
+    }>(sql`SELECT * FROM fiscus_find_invite(${sha256(token)})`);
+    const row = result.rows[0];
     if (!row) throw invalidInvite();
-    return row;
+    const invite: FoundInvite = {
+      id: row.id,
+      householdId: row.household_id,
+      email: row.email,
+      role: row.role,
+      invitedByMemberId: row.invited_by_member_id,
+      householdName: row.household_name,
+    };
+    return { invite, householdName: invite.householdName };
   }
 
   /** Joins in the invite's household context, re-checking the invite under a row lock. */
   async #join(
-    invite: InviteRow,
+    invite: FoundInvite,
     resolveUser: (tx: Executor) => Promise<CurrentUser>,
   ): Promise<{ householdId: string; memberId: string }> {
     let user: CurrentUser | undefined;
