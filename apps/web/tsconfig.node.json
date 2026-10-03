@@ -1,0 +1,9 @@
+{
+  "extends": "@fiscus/config/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // e2e tests run callbacks inside the browser (page.evaluate).
+    "lib": ["ES2024", "DOM"]
+  },
+  "include": ["vite.config.ts", "playwright.config.ts", "e2e"]
+}

@@ -1,0 +1,141 @@
+import type { QueryClient } from '@tanstack/react-query';
+import {
+  createRootRouteWithContext,
+  createRoute,
+  createRouter,
+  Link,
+  Outlet,
+  redirect,
+} from '@tanstack/react-router';
+import { ApiError } from './api/client.js';
+import { householdQuery, meQuery } from './api/queries.js';
+import { AppShell } from './components/AppShell.js';
+import { AuthLayout } from './components/AuthLayout.js';
+import { lastHousehold } from './lib/last-household.js';
+import { SECTIONS } from './lib/nav.js';
+import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
+import { SectionPage } from './routes/section.js';
+import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
+import { WelcomePage } from './routes/welcome.js';
+
+interface Context {
+  queryClient: QueryClient;
+}
+
+function NotFound() {
+  return (
+    <AuthLayout title="Not found">
+      <p className="text-sm text-muted">
+        This page doesn't exist, or you don't have access to it.{' '}
+        <Link to="/" className="font-medium text-accent">
+          Go home
+        </Link>
+      </p>
+    </AuthLayout>
+  );
+}
+
+const rootRoute = createRootRouteWithContext<Context>()({
+  component: Outlet,
+  notFoundComponent: NotFound,
+});
+
+const loginSearch = (s: Record<string, unknown>) => ({
+  redirect: typeof s.redirect === 'string' ? s.redirect : undefined,
+});
+const publicRoutes = [
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/login',
+    validateSearch: loginSearch,
+    component: LoginPage,
+  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/signup', component: SignupPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/setup', component: SetupPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/invite', component: InvitePage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/reset-password',
+    component: ResetPasswordPage,
+  }),
+];
+
+/** Everything below requires a session; a 401 sends you to login and back afterwards. */
+const authedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'authed',
+  beforeLoad: async ({ context, location }) => {
+    try {
+      return { me: await context.queryClient.ensureQueryData(meQuery) };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        throw redirect({ to: '/login', search: { redirect: location.href } });
+      }
+      throw err;
+    }
+  },
+  component: Outlet,
+});
+
+/** Land in the last household you used, else your first, else create one. */
+const homeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/',
+  beforeLoad: ({ context }) => {
+    const ids = context.me.memberships.map((m) => m.householdId);
+    const last = lastHousehold();
+    const target = last && ids.includes(last) ? last : ids[0];
+    throw target ? redirect({ to: `/h/${target}` }) : redirect({ to: '/welcome' });
+  },
+});
+
+const welcomeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/welcome',
+  component: WelcomePage,
+});
+const personalSettingsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/settings',
+  component: PersonalSettingsPage,
+});
+
+const householdRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/h/$householdId',
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(householdQuery(params.householdId)),
+  component: AppShell,
+  errorComponent: NotFound,
+});
+
+const sectionRoutes = SECTIONS.map((section) =>
+  createRoute({
+    getParentRoute: () => householdRoute,
+    path: section.path || '/',
+    component: () => <SectionPage section={section} />,
+  }),
+);
+const householdSettingsRoute = createRoute({
+  getParentRoute: () => householdRoute,
+  path: '/settings',
+  component: HouseholdSettingsPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  ...publicRoutes,
+  authedRoute.addChildren([
+    homeRoute,
+    welcomeRoute,
+    personalSettingsRoute,
+    householdRoute.addChildren([...sectionRoutes, householdSettingsRoute]),
+  ]),
+]);
+
+export const createAppRouter = (queryClient: QueryClient) =>
+  createRouter({
+    routeTree,
+    context: { queryClient },
+    defaultPreload: 'intent',
+    defaultPreloadStaleTime: 0,
+  });

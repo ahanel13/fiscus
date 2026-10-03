@@ -1,0 +1,67 @@
+@import 'tailwindcss';
+
+/* Baseline tokens; the full style guide (#231) and design system (#32) replace these values. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --fg: #0f172a;
+  --muted: #5b6475;
+  --border: #e3e6eb;
+  --accent: #2456d6;
+  --accent-fg: #ffffff;
+  --danger: #c62828;
+  --success: #15803d;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0b0f17;
+  --surface: #121826;
+  --surface-2: #1a2232;
+  --fg: #e6e9ef;
+  --muted: #9aa4b6;
+  --border: #253048;
+  --accent: #7aa2ff;
+  --accent-fg: #0b0f17;
+  --danger: #ff8a80;
+  --success: #6ee7a8;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-fg antialiased;
+  font-family: var(--font-sans);
+}
+
+/* Amounts line up in columns. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

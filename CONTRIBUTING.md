@@ -96,6 +96,13 @@ No Node 26 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
 - Integration tests use `startTestDatabase()` from `@fiscus/db/testing`, which needs Docker.
 - Use the column helpers (`id`, `householdId`, `money`, `timestamps`, `versioning`) so tables follow the data-model conventions.
 
+### Web app
+
+- `pnpm dev` serves the web app on http://localhost:5173 and proxies `/api` to the api on :3000, so session cookies behave exactly as in production. Set `VITE_API_PROXY` to point elsewhere.
+- Structure follows [information architecture](docs/design/information-architecture.md). Sections are defined once in `apps/web/src/lib/nav.ts`; the sidebar, phone tabs, command palette, and `g <key>` shortcuts all read from it.
+- Unit tests: `pnpm --filter @fiscus/web test` (Vitest + happy-dom).
+- End-to-end: start the compose stack, then `E2E_SETUP_TOKEN=<token from api logs> pnpm --filter @fiscus/web e2e` (first run: `pnpm --filter @fiscus/web exec playwright install chromium`). The journey needs a **fresh** instance (it performs first-run setup). CI runs it on every PR.
+
 ### Household data access
 
 - Household routes live under `/api/v1/households/:householdId/…` and use `@UseGuards(HouseholdGuard)`. The guard resolves membership **before validation** (non-members get 404, missing role 403 via `@HouseholdRoles(...)`), and handlers receive `@Household() ctx`.

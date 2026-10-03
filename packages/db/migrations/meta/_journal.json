@@ -43,6 +43,13 @@
       "when": 1790977487298,
       "tag": "0005_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790994103834,
+      "tag": "0006_roommates_finance_style",
+      "breakpoints": true
     }
   ]
 }
