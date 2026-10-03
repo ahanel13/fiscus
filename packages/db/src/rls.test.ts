@@ -157,6 +157,26 @@ describe('row-level security', () => {
     }
   });
 
+  it('runs definer functions as a role that can read, but never write', async () => {
+    const { rows: owners } = await owner.query(`
+      SELECT p.proname, r.rolname FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
+      WHERE p.proname IN ('fiscus_context_valid', 'fiscus_find_invite') ORDER BY 1`);
+    expect(owners).toEqual([
+      { proname: 'fiscus_context_valid', rolname: 'fiscus_definer' },
+      { proname: 'fiscus_find_invite', rolname: 'fiscus_definer' },
+    ]);
+    const { rows } = await owner.query(`
+      SELECT t, p, has_table_privilege('fiscus_definer', t, p) AS granted
+      FROM unnest(ARRAY['households', 'household_members', 'invites', 'household_keys', 'users']) t,
+           unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) p`);
+    const granted = rows.filter((r) => r.granted).map((r) => `${r.p} ${r.t}`);
+    expect(granted.sort()).toEqual([
+      'SELECT household_members',
+      'SELECT households',
+      'SELECT invites',
+    ]);
+  });
+
   describe('maintenance role', () => {
     it('runs only allow-listed jobs, records each run, and bypasses RLS', async () => {
       await expect(

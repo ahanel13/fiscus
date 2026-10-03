@@ -321,6 +321,7 @@ The effective date for ranges is `posted_date` or `authorized_date`, per `househ
 | `fiscus_owner` | Bypass (owns the tables) | Migrations only |
 | `fiscus_app` | **Enforced** | API and worker, for all normal work |
 | `fiscus_maintenance` | `BYPASSRLS` | A short allow-list of jobs: crypto-shred, KEK re-wrap, backups. Every use is audit-logged |
+| `fiscus_definer` | `BYPASSRLS`, NOLOGIN, **read-only** on 3 tables | Owns the SECURITY DEFINER functions (`fiscus_context_valid`, `fiscus_find_invite`), so a bug in one can never write data |
 
 ### 4.2 Session context
 Every transaction opened by `fiscus_app` sets:
@@ -363,7 +364,7 @@ settings are missing, policies evaluate to false and the query returns **nothing
 
 ### 4.3a As built (#19)
 - Context accessors `fiscus_household()`, `fiscus_member()`, `fiscus_user()` read the settings (empty → NULL, so a missing context matches nothing).
-- **`fiscus_context_valid()`** (SECURITY DEFINER, owned by `fiscus_maintenance`) checks that the context's member is an **active member of the context's household belonging to the context's user**, or that it's a system job. Every household policy requires it, evaluated once per statement as `(SELECT fiscus_context_valid())`. An application bug that sets the wrong household therefore still sees nothing.
+- **`fiscus_context_valid()`** (SECURITY DEFINER, owned by **`fiscus_definer`**, a BYPASSRLS role that can only **read** `households`, `household_members`, and `invites`) checks that the context's member is an **active member of the context's household belonging to the context's user**, or that it's a system job. Every household policy requires it, evaluated once per statement as `(SELECT fiscus_context_valid())`. An application bug that sets the wrong household therefore still sees nothing.
 - `households` and `household_members` also allow a **user branch** (`user_id = fiscus_user()`), so a user can list their own memberships across households without a household context.
 - **`fiscus_find_invite(token_hash)`** (SECURITY DEFINER) is the single sanctioned cross-household read: at most one live invite for a token.
 - `audit_events`: instance-level rows (no household) plus the context household's rows.

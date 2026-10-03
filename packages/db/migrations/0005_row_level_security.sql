@@ -3,6 +3,22 @@
 -- that the context's member really belongs to the household, so an application bug that sets the
 -- wrong household still sees nothing. Without context, every policy evaluates to false: fail closed.
 
+-- Owner of the SECURITY DEFINER functions below: it bypasses RLS but can only READ the few
+-- tables those functions need, so a bug in a definer function can never write data (least
+-- privilege; the broad fiscus_maintenance role is reserved for allow-listed jobs).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fiscus_definer') THEN
+    CREATE ROLE fiscus_definer NOLOGIN BYPASSRLS;
+  END IF;
+END
+$$;
+--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO fiscus_definer;
+--> statement-breakpoint
+GRANT SELECT ON households, household_members, invites TO fiscus_definer;
+--> statement-breakpoint
+
 -- Context accessors. Empty or missing settings read as NULL.
 CREATE FUNCTION fiscus_household() RETURNS uuid
   LANGUAGE sql STABLE
@@ -19,8 +35,8 @@ CREATE FUNCTION fiscus_user() RETURNS uuid
 
 -- True when the context names a household AND either it is a system job, or the context's member
 -- is an active member of that household belonging to the context's user. SECURITY DEFINER (owned
--- by the BYPASSRLS maintenance role) so it can read household_members without recursing into its
--- own policies. Policies call it as (SELECT ...) so it runs once per statement, not per row.
+-- by the read-only fiscus_definer role) so it can read household_members without recursing into
+-- its own policies. Policies call it as (SELECT ...) so it runs once per statement, not per row.
 CREATE FUNCTION fiscus_context_valid() RETURNS boolean
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
   AS $$
@@ -36,7 +52,7 @@ CREATE FUNCTION fiscus_context_valid() RETURNS boolean
     )
   $$;
 --> statement-breakpoint
-ALTER FUNCTION fiscus_context_valid() OWNER TO fiscus_maintenance;
+ALTER FUNCTION fiscus_context_valid() OWNER TO fiscus_definer;
 --> statement-breakpoint
 
 -- Invite tokens are looked up before the invitee is a member of anything: the one sanctioned
@@ -59,7 +75,7 @@ CREATE FUNCTION fiscus_find_invite(p_token_hash bytea)
       AND h.status = 'active'
   $$;
 --> statement-breakpoint
-ALTER FUNCTION fiscus_find_invite(bytea) OWNER TO fiscus_maintenance;
+ALTER FUNCTION fiscus_find_invite(bytea) OWNER TO fiscus_definer;
 --> statement-breakpoint
 
 -- households: readable in its own context, or by any active member listing their memberships.
