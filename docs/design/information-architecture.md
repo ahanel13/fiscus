@@ -156,7 +156,7 @@ Placement decisions:
 └──────────────────────────────┘
 ```
 
-- **Five bottom tabs:** Dashboard, Transactions (with review badge), Budget, Accounts, More.
+- **Five bottom tabs:** Dashboard, Transactions (with review badge), Budget, Accounts, More. **Roommates** households get Shared costs in place of Accounts.
 - **More** opens a sheet with the remaining sections and Settings.
 - **Detail views** are full-screen pushes with a back button, instead of drawers.
 - **Floating "+"** on Transactions: add manually, or **snap a receipt** with the camera (#233/M9).
@@ -224,9 +224,8 @@ are in the instance context rather than a household (permissions §2).
   `/` focuses search, `?` lists shortcuts.
 - Amounts never rely on color alone (sign and label too), per the style guide (#231).
 
-## 9. Open questions for review
-1. **"Shared costs"** as the section name (alternatives: *Ours*, *Settle up*, *Together*)?
-2. **Lens placement** in the page header (proposed) versus the top of the sidebar?
-3. **Phone tabs:** Dashboard · Transactions · Budget · Accounts · More. Should Shared costs
-   replace Accounts for Roommates households?
-4. **Command palette and shortcuts** in v1, or later?
+## 9. Decisions from review (#230)
+1. Section name: **Shared costs**. "Ours" remains a lens value.
+2. The lens lives in the **page header**, next to the time range.
+3. Phone tabs for **Roommates** households: Dashboard · Transactions · Budget · **Shared costs** · More (Accounts moves into More). Other styles keep Accounts.
+4. **Command palette and keyboard shortcuts ship in v1**, as part of the web shell (#30).
