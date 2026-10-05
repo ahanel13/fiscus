@@ -22,7 +22,8 @@ export async function createTestApp(
     imports: [AppModule.register(config)],
   }).compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter(), {
-    logger: false,
+    // FISCUS_TEST_LOG=1 shows server errors while debugging tests.
+    logger: process.env.FISCUS_TEST_LOG ? ['error'] : false,
   });
   await configureApp(app);
   await app.init();
