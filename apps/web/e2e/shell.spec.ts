@@ -101,3 +101,12 @@ test('phone layout uses bottom tabs instead of the sidebar', async ({ page }) =>
   );
   expect(overflow).toBe(false); // no horizontal scrolling at phone width
 });
+
+test('the living style guide renders tokens and accessible contrast figures', async ({ page }) => {
+  await page.goto('/styleguide');
+  await expect(page.getByRole('heading', { level: 1, name: 'Style guide' })).toBeVisible();
+  // Every swatch shows a real ratio (catches unparsed or minified color values).
+  await expect(page.getByText(/on surface/).first()).toBeVisible();
+  await expect(page.getByText(/NaN/)).toHaveCount(0);
+  await expect(page.getByLabel('Received $2,410.00')).toHaveText('+$2,410.00');
+});

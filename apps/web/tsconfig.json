@@ -3,5 +3,6 @@
   "compilerOptions": {
     "types": ["vite/client", "@testing-library/jest-dom"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/styles/tokens.test.ts"]
 }

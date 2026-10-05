@@ -6,6 +6,7 @@ import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
 import { Alert, Button, Card, Field, Input, Select } from '../components/ui.js';
+import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
 
 const STYLE_LABELS = {
@@ -150,6 +151,7 @@ export function PersonalSettingsPage() {
   const sessions = useQuery(sessionsQuery);
   const queryClient = useQueryClient();
   const [theme, setTheme] = useState<ThemePreference>(storedTheme);
+  const [density, setDensity] = useState<Density>(storedDensity);
   const revoke = useMutation({
     mutationFn: (id: string) => api('DELETE', `/api/v1/me/sessions/${id}`),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['me', 'sessions'] }),
@@ -186,6 +188,21 @@ export function PersonalSettingsPage() {
               className="capitalize"
             >
               {t}
+            </Button>
+          ))}
+        </div>
+        <h3 className="mb-2 mt-5 text-sm font-medium">Density</h3>
+        <div role="radiogroup" aria-label="Density" className="flex gap-2">
+          {(['comfortable', 'compact'] as const).map((d) => (
+            <Button
+              key={d}
+              role="radio"
+              aria-checked={density === d}
+              variant={density === d ? 'primary' : 'secondary'}
+              onClick={() => (setDensity(d), applyDensity(d))}
+              className="capitalize"
+            >
+              {d}
             </Button>
           ))}
         </div>

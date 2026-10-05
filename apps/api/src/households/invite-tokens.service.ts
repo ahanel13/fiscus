@@ -1,6 +1,7 @@
 import { type DbHandle, type Executor, householdMembers, invites, users } from '@fiscus/db';
 import type { CurrentUser, InvitePreview } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';
+import { MEMBER_COLORS } from '@fiscus/shared';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import { hashPassword } from '../auth/password.js';
@@ -9,7 +10,6 @@ import { Problem } from '../common/problem.js';
 import { APP_CONFIG, type AppConfig } from '../config.js';
 import { DB } from '../database/database.module.js';
 import { HouseholdScope } from './household-scope.js';
-import { MEMBER_COLORS } from './households.service.js';
 
 const invalidInvite = () =>
   new Problem(404, 'invalid_invite', 'This invite link is invalid, used, or expired');

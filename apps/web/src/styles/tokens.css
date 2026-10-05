@@ -1,0 +1,95 @@
+/*
+ * Fiscus design tokens: the single source of truth for color, type, shape, and motion
+ * (docs/design/style-guide.md). Tailwind reads them via @theme in app.css. Contrast pairs are
+ * enforced by src/styles/tokens.test.ts, so a change that breaks WCAG AA fails CI.
+ */
+
+:root {
+  /* Neutrals: cool gray with a faint green cast, so the accent feels at home. */
+  --bg: #f6f7f6;
+  --surface: #ffffff;
+  --surface-2: #eef1ef;
+  --border: #dfe4e1;
+  --border-strong: #c8d0cc;
+  --fg: #121917;
+  --muted: #55605b;
+  --subtle: #6e7974;
+
+  /* Accent: deep teal-green. Distinct from the "money in" green below. */
+  --accent: #0e6b57;
+  --accent-hover: #0a5646;
+  --accent-soft: #e2f0eb;
+  --accent-text: #0b5d4b;
+  --accent-fg: #ffffff;
+
+  /* Semantics. Money out is plain text with a minus sign, not red: red means a problem. */
+  --positive: #17773a;
+  --danger: #b8322a;
+  --danger-soft: #fbe9e7;
+  --warning: #8f5300;
+  --warning-soft: #fdf1df;
+
+  /* Charts: Okabe–Ito based, color-blind safe, ≥3:1 against surfaces. */
+  --chart-1: #0072b2;
+  --chart-2: #d55e00;
+  --chart-3: #007a5a;
+  --chart-4: #b4518a;
+  --chart-5: #a86e00;
+  --chart-6: #3a85bd;
+  --chart-7: #7f6a2e;
+  --chart-8: #5d6b78;
+
+  --shadow-sm: 0 1px 2px rgb(16 24 22 / 0.06);
+  --shadow-md: 0 4px 12px rgb(16 24 22 / 0.08), 0 1px 3px rgb(16 24 22 / 0.06);
+  --shadow-lg: 0 16px 40px rgb(16 24 22 / 0.14), 0 4px 12px rgb(16 24 22 / 0.08);
+
+  /* Density (comfortable default; html[data-density='compact'] tightens lists and tables). */
+  --row-h: 3rem;
+  --cell-px: 1rem;
+
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0c1110;
+  --surface: #131a18;
+  --surface-2: #1a2321;
+  --border: #283330;
+  --border-strong: #36443f;
+  --fg: #e6ecea;
+  --muted: #9eaaa5;
+  --subtle: #808c87;
+
+  --accent: #3dc9a4;
+  --accent-hover: #5ad6b5;
+  --accent-soft: #12302a;
+  --accent-text: #5ad6b5;
+  --accent-fg: #04201a;
+
+  --positive: #58d58a;
+  --danger: #ff8b7e;
+  --danger-soft: #3a1714;
+  --warning: #f2b455;
+  --warning-soft: #33240c;
+
+  --chart-1: #56b4e9;
+  --chart-2: #e69f00;
+  --chart-3: #3cc9a0;
+  --chart-4: #e58cbe;
+  --chart-5: #f0e442;
+  --chart-6: #8fb3ff;
+  --chart-7: #c9a66b;
+  --chart-8: #a3b1be;
+
+  /* Dark mode separates layers with borders more than shadows. */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 16px 40px rgb(0 0 0 / 0.55);
+
+  color-scheme: dark;
+}
+
+html[data-density='compact'] {
+  --row-h: 2.25rem;
+  --cell-px: 0.75rem;
+}

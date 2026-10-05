@@ -16,6 +16,7 @@ import { SECTIONS } from './lib/nav.js';
 import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
 import { SectionPage } from './routes/section.js';
 import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
+import { StyleGuidePage } from './routes/styleguide.js';
 import { WelcomePage } from './routes/welcome.js';
 
 interface Context {
@@ -58,6 +59,7 @@ const publicRoutes = [
     path: '/reset-password',
     component: ResetPasswordPage,
   }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/styleguide', component: StyleGuidePage }),
 ];
 
 /** Everything below requires a session; a 401 sends you to login and back afterwards. */
