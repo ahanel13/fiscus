@@ -90,7 +90,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P0] CSV import with column mapping, saved mapping profiles, and a dedupe preview
 - [P1] OFX/QFX import
 - [P1] **Import from Monarch** (transactions, accounts, categories, tags, balance history), for a smooth migration
-- [P2] Import from Mint / YNAB / Actual exports
+- [P2] Import from YNAB / Actual exports
 
 ## M2 · Bank aggregation
 **Epic: Plaid integration** (`area:aggregation`)
