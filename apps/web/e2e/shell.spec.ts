@@ -57,7 +57,8 @@ test('navigates with the command palette, shortcuts, and the range control', asy
   await page.keyboard.press('g');
   await page.keyboard.press('t');
   await expect(page).toHaveURL(/\/transactions/);
-  await page.getByLabel('Time range').selectOption('ytd');
+  await page.getByRole('button', { name: /Time range/ }).click();
+  await page.getByRole('option', { name: 'Year to date' }).click();
   await expect(page).toHaveURL(/range=ytd/);
 
   await page.keyboard.press('?');
@@ -110,5 +111,5 @@ test('the living style guide renders tokens and accessible contrast figures', as
   // Every swatch shows a real ratio (catches unparsed or minified color values).
   await expect(page.getByText(/on surface/).first()).toBeVisible();
   await expect(page.getByText(/NaN/)).toHaveCount(0);
-  await expect(page.getByLabel('Received $2,410.00')).toHaveText('+$2,410.00');
+  await expect(page.getByLabel('Received $2,410.00').first()).toHaveText('+$2,410.00');
 });

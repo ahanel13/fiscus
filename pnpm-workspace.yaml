@@ -13,15 +13,18 @@ allowBuilds:
   ssh2: false
 
 catalog:
+  '@axe-core/playwright': 4.13.0
   '@eslint/js': 10.0.1
   '@fastify/cookie': 11.1.2
   '@fontsource-variable/inter': 5.3.0
+  '@internationalized/date': 3.12.4
   '@modelcontextprotocol/sdk': 1.30.1
   '@nestjs/common': 12.1.0
   '@nestjs/core': 12.1.0
   '@nestjs/platform-fastify': 12.1.0
   '@nestjs/testing': 12.1.0
   '@playwright/test': 1.63.0
+  '@react-aria/optimize-locales-plugin': 2.0.2
   '@swc/core': 1.16.2
   '@tailwindcss/vite': 4.3.3
   '@tanstack/react-query': 5.103.3
@@ -49,9 +52,11 @@ catalog:
   prettier: 3.9.9
   react-dom: 19.3.0
   react: 19.3.0
+  react-aria-components: 1.21.1
   reflect-metadata: 0.2.2
   rxjs: 7.8.2
   tailwindcss: 4.3.3
+  tailwindcss-react-aria-components: 2.2.0
   testcontainers: 12.1.0
   turbo: 2.11.3
   typescript-eslint: 8.70.1

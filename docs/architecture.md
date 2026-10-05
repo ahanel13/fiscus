@@ -52,7 +52,7 @@ and every client (web SPA, MCP server, future mobile app) talks to it over HTTP.
 |----------|------|--------|-------|
 | `api`    | NestJS 12 on Fastify, Drizzle ORM | horizontally (stateless) | REST under `/api/v1`, OpenAPI at `/api/docs`, receives Plaid webhooks |
 | `worker` | NestJS standalone app + BullMQ | horizontally | All scheduled and async work. Shares domain modules with `api` |
-| `web`    | React 19 + Vite + TS, TanStack Query/Router, Tailwind + shadcn/ui, ECharts | static | Served by nginx. API URL is injected at container start |
+| `web`    | React 19 + Vite + TS, TanStack Query/Router, Tailwind + React Aria Components, ECharts | static | Served by nginx. API URL is injected at container start |
 | `mcp`    | `@modelcontextprotocol/sdk` | optional | Exposes the shared tool registry to external AI clients. Member-bound personal access token ([ADR 0009](adr/0009-ai-assistant-and-mcp.md)) |
 | `postgres` | PostgreSQL 18 | — | The only stateful store that matters. Back it up |
 | `redis`  | Valkey 9 (Redis-compatible) | — | Job queues, rate limits, cache. Holds no durable data |

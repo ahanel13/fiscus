@@ -15,17 +15,21 @@
   "dependencies": {
     "@fiscus/shared": "workspace:*",
     "@fontsource-variable/inter": "catalog:",
+    "@internationalized/date": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "clsx": "catalog:",
     "cmdk": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:",
+    "react-aria-components": "catalog:",
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@axe-core/playwright": "catalog:",
     "@fiscus/config": "workspace:*",
     "@playwright/test": "catalog:",
+    "@react-aria/optimize-locales-plugin": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/react": "catalog:",
@@ -36,6 +40,7 @@
     "@vitejs/plugin-react": "catalog:",
     "happy-dom": "catalog:",
     "tailwindcss": "catalog:",
+    "tailwindcss-react-aria-components": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"

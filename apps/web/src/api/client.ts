@@ -18,6 +18,18 @@ export class ApiError extends Error {
   fieldError(path: string): string | undefined {
     return this.errors.find((e) => e.path === path)?.message;
   }
+
+  /** Validation messages keyed by field name, for `<Form validationErrors>`. */
+  fieldErrors(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const e of this.errors) out[e.path] ??= e.message;
+    return out;
+  }
+
+  /** A problem with no field errors, shown as an alert above the form. */
+  get formError(): string | undefined {
+    return this.errors.length === 0 ? (this.detail ?? this.title) : undefined;
+  }
 }
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
