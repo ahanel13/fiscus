@@ -22,10 +22,10 @@ export const Button = forwardRef<
       disabled={disabled || busy}
       className={clsx(
         'inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60',
-        variant === 'primary' && 'bg-accent text-accent-fg hover:brightness-110',
+        variant === 'primary' && 'bg-accent text-accent-fg hover:bg-accent-hover',
         variant === 'secondary' && 'border border-border bg-surface hover:bg-surface-2',
         variant === 'ghost' && 'hover:bg-surface-2',
-        variant === 'danger' && 'border border-danger/40 text-danger hover:bg-danger/10',
+        variant === 'danger' && 'border border-danger/40 text-danger hover:bg-danger-soft',
         className,
       )}
       {...props}
@@ -106,9 +106,9 @@ export function Alert({
       role={tone === 'error' ? 'alert' : 'status'}
       className={clsx(
         'rounded-lg border px-3 py-2 text-sm',
-        tone === 'error' && 'border-danger/40 bg-danger/10 text-danger',
+        tone === 'error' && 'border-danger/40 bg-danger-soft text-danger',
         tone === 'info' && 'border-border bg-surface-2',
-        tone === 'success' && 'border-success/40 bg-success/10 text-success',
+        tone === 'success' && 'border-positive/40 bg-accent-soft text-positive',
       )}
     >
       {children}

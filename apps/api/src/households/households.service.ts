@@ -2,6 +2,7 @@ import { householdMembers, households, HouseholdKeyStore } from '@fiscus/db';
 import { planVersionedPatch } from '@fiscus/domain';
 import type { CurrentUser, Household, updateHouseholdSchema } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
+import { MEMBER_COLORS } from '@fiscus/shared';
 import { and, eq } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
@@ -12,18 +13,6 @@ import { HouseholdScope } from './household-scope.js';
 
 type HouseholdRow = typeof households.$inferSelect;
 type HouseholdPatch = z.infer<typeof updateHouseholdSchema>;
-
-/** Distinct, readable colors assigned to members in join order (ADR 0006 viewer-relative UI). */
-export const MEMBER_COLORS = [
-  '#2563eb',
-  '#db2777',
-  '#16a34a',
-  '#ea580c',
-  '#7c3aed',
-  '#0891b2',
-  '#ca8a04',
-  '#dc2626',
-];
 
 const SETTINGS = [
   'name',

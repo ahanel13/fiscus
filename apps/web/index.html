@@ -12,6 +12,8 @@
         var dark =
           t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.classList.add('dark');
+        if (localStorage.getItem('fiscus.density') === 'compact')
+          document.documentElement.dataset.density = 'compact';
       } catch (e) {}
     </script>
   </head>

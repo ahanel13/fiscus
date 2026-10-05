@@ -5,5 +5,5 @@
     // e2e tests run callbacks inside the browser (page.evaluate).
     "lib": ["ES2024", "DOM"]
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "e2e"]
+  "include": ["vite.config.ts", "playwright.config.ts", "e2e", "src/styles/tokens.test.ts"]
 }
