@@ -93,6 +93,7 @@ No Node 26 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
 - Schema lives in `packages/db/src/schema` (Drizzle). After changing it, run `pnpm db:generate` and commit the SQL in `packages/db/migrations`. For hand-written SQL (roles, RLS policies, triggers): `pnpm --filter @fiscus/db exec drizzle-kit generate --custom --name=<what>`.
 - `pnpm db:migrate` applies migrations using `MIGRATION_DATABASE_URL` (the schema owner; the first run must be a superuser so it can create the `BYPASSRLS` role). Services never migrate on boot.
 - Services connect as `fiscus_app` (row-level security enforced). `migrate` enables its login when `APP_DATABASE_PASSWORD` is set.
+- Follow [upgrades and migrations](docs/design/upgrades.md): expand/contract, **never edit a merged migration** (CI checks), keep locks short, and run big backfills as jobs.
 - Integration tests use `startTestDatabase()` from `@fiscus/db/testing`, which needs Docker.
 - Use the column helpers (`id`, `householdId`, `money`, `timestamps`, `versioning`) so tables follow the data-model conventions.
 
