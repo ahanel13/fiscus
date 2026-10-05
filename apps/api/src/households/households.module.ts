@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
+import { ActivityController } from './activity.controller.js';
 import { HouseholdAccess } from './household-access.js';
 import { HouseholdGuard } from './household-context.js';
 import { HouseholdScope } from './household-scope.js';
@@ -12,7 +13,7 @@ import { MembersService } from './members.service.js';
 
 @Module({
   imports: [AuthModule],
-  controllers: [HouseholdsController, InvitesController],
+  controllers: [HouseholdsController, InvitesController, ActivityController],
   providers: [
     HouseholdAccess,
     HouseholdGuard,

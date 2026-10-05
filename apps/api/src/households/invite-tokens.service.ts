@@ -44,25 +44,29 @@ export class InviteTokensService {
   /** What the invitee sees before accepting. Reveals nothing without a valid token. */
   async preview(token: string): Promise<InvitePreview> {
     const { invite, householdName } = await this.#find(token);
-    return this.scope.asSystem(invite.householdId, async (tx) => {
-      const [inviter] = invite.invitedByMemberId
-        ? await tx
-            .select({ name: householdMembers.displayName })
-            .from(householdMembers)
-            .where(eq(householdMembers.id, invite.invitedByMemberId))
-        : [];
-      const [account] = await this.db.db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.email, invite.email));
-      return {
-        householdName,
-        invitedBy: inviter?.name ?? null,
-        email: invite.email,
-        role: invite.role,
-        accountExists: Boolean(account),
-      };
-    });
+    return this.scope.asSystem(
+      invite.householdId,
+      { kind: 'anonymous', userId: null, memberId: null },
+      async (tx) => {
+        const [inviter] = invite.invitedByMemberId
+          ? await tx
+              .select({ name: householdMembers.displayName })
+              .from(householdMembers)
+              .where(eq(householdMembers.id, invite.invitedByMemberId))
+          : [];
+        const [account] = await this.db.db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, invite.email));
+        return {
+          householdName,
+          invitedBy: inviter?.name ?? null,
+          email: invite.email,
+          role: invite.role,
+          accountExists: Boolean(account),
+        };
+      },
+    );
   }
 
   /** A signed-in user accepts; their account email must match the invite. */
@@ -160,74 +164,75 @@ export class InviteTokensService {
     resolveUser: (tx: Executor) => Promise<CurrentUser>,
   ): Promise<{ householdId: string; memberId: string }> {
     let user: CurrentUser | undefined;
-    const memberId = await this.scope.asSystem(invite.householdId, async (tx) => {
-      const [fresh] = await tx
-        .select()
-        .from(invites)
-        .where(
-          and(
-            eq(invites.id, invite.id),
-            isNull(invites.acceptedAt),
-            isNull(invites.revokedAt),
-            gt(invites.expiresAt, new Date()),
-          ),
-        )
-        .for('update');
-      if (!fresh) throw invalidInvite();
-      user = await resolveUser(tx);
-      const [already] = await tx
-        .select({ id: householdMembers.id })
-        .from(householdMembers)
-        .where(
-          and(
-            eq(householdMembers.householdId, invite.householdId),
-            eq(householdMembers.userId, user.id),
-            isNull(householdMembers.leftAt),
-          ),
-        );
-      if (already) throw new Problem(409, 'already_member', 'You are already a member');
+    const memberId = await this.scope.asSystem(
+      invite.householdId,
+      { kind: 'user', userId: null, memberId: null },
+      async (tx, activity) => {
+        const [fresh] = await tx
+          .select()
+          .from(invites)
+          .where(
+            and(
+              eq(invites.id, invite.id),
+              isNull(invites.acceptedAt),
+              isNull(invites.revokedAt),
+              gt(invites.expiresAt, new Date()),
+            ),
+          )
+          .for('update');
+        if (!fresh) throw invalidInvite();
+        user = await resolveUser(tx);
+        const [already] = await tx
+          .select({ id: householdMembers.id })
+          .from(householdMembers)
+          .where(
+            and(
+              eq(householdMembers.householdId, invite.householdId),
+              eq(householdMembers.userId, user.id),
+              isNull(householdMembers.leftAt),
+            ),
+          );
+        if (already) throw new Problem(409, 'already_member', 'You are already a member');
 
-      const used = await tx
-        .select({ color: householdMembers.color })
-        .from(householdMembers)
-        .where(
-          and(
-            eq(householdMembers.householdId, invite.householdId),
-            isNull(householdMembers.leftAt),
-          ),
-        );
-      const taken = new Set(used.map((u) => u.color));
-      const color =
-        MEMBER_COLORS.find((c) => !taken.has(c)) ??
-        MEMBER_COLORS[used.length % MEMBER_COLORS.length]!;
+        const used = await tx
+          .select({ color: householdMembers.color })
+          .from(householdMembers)
+          .where(
+            and(
+              eq(householdMembers.householdId, invite.householdId),
+              isNull(householdMembers.leftAt),
+            ),
+          );
+        const taken = new Set(used.map((u) => u.color));
+        const color =
+          MEMBER_COLORS.find((c) => !taken.has(c)) ??
+          MEMBER_COLORS[used.length % MEMBER_COLORS.length]!;
 
-      const [member] = await tx
-        .insert(householdMembers)
-        .values({
-          householdId: invite.householdId,
-          userId: user.id,
-          role: invite.role,
-          displayName: user.displayName,
-          color,
-        })
-        .returning({ id: householdMembers.id });
-      await tx
-        .update(invites)
-        .set({ acceptedAt: new Date(), acceptedByUserId: user.id })
-        .where(eq(invites.id, invite.id));
-      return member!.id;
-    });
-    await this.audit.record({
-      actorKind: 'user',
-      actorUserId: user!.id,
-      actorMemberId: memberId,
-      householdId: invite.householdId,
-      action: 'member.joined',
-      targetType: 'household_member',
-      targetId: memberId,
-      visibleToHousehold: true,
-      metadata: { inviteId: invite.id },
-    });
+        const [member] = await tx
+          .insert(householdMembers)
+          .values({
+            householdId: invite.householdId,
+            userId: user.id,
+            role: invite.role,
+            displayName: user.displayName,
+            color,
+          })
+          .returning({ id: householdMembers.id });
+        await tx
+          .update(invites)
+          .set({ acceptedAt: new Date(), acceptedByUserId: user.id })
+          .where(eq(invites.id, invite.id));
+        await activity.record({
+          action: 'member.joined',
+          targetType: 'household_member',
+          targetId: member!.id,
+          actorMemberId: member!.id,
+          actorUserId: user.id,
+          metadata: { inviteId: invite.id },
+        });
+        return member!.id;
+      },
+    );
     return { householdId: invite.householdId, memberId };
   }
 }

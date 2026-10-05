@@ -50,6 +50,20 @@
       "when": 1790994103834,
       "tag": "0006_roommates_finance_style",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791214103562,
+      "tag": "0007_activity_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791214104289,
+      "tag": "0008_activity_chain_rls",
+      "breakpoints": true
     }
   ]
 }

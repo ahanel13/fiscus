@@ -2,7 +2,6 @@ import { householdMembers, invites, users } from '@fiscus/db';
 import type { InviteSummary, MemberRole } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, gt, isNull } from 'drizzle-orm';
-import { AuditService } from '../audit/audit.service.js';
 import { randomToken, sha256 } from '../auth/tokens.js';
 import { Problem, problems } from '../common/problem.js';
 import { APP_CONFIG, type AppConfig } from '../config.js';
@@ -26,12 +25,11 @@ export class InvitesService {
   constructor(
     private readonly scope: HouseholdScope,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    private readonly audit: AuditService,
   ) {}
 
   async create(ctx: HouseholdContext, email: string, role: MemberRole) {
     const token = randomToken();
-    const invite = await this.scope.run(ctx, async (tx) => {
+    const invite = await this.scope.run(ctx, async (tx, activity) => {
       const [existing] = await tx
         .select({ id: householdMembers.id })
         .from(householdMembers)
@@ -55,18 +53,14 @@ export class InvitesService {
           expiresAt: new Date(Date.now() + INVITE_TTL_MS),
         })
         .returning();
+      await activity.record({
+        action: 'invite.created',
+        targetType: 'invite',
+        targetId: invite!.id,
+        metadata: { role },
+        changes: { after: { email, role } },
+      });
       return invite!;
-    });
-    await this.audit.record({
-      actorKind: 'user',
-      actorUserId: ctx.userId,
-      actorMemberId: ctx.memberId,
-      householdId: ctx.householdId,
-      action: 'invite.created',
-      targetType: 'invite',
-      targetId: invite.id,
-      visibleToHousehold: true,
-      metadata: { role },
     });
     const url = new URL('/invite', this.config.publicUrl);
     url.hash = `token=${token}`;
@@ -92,8 +86,8 @@ export class InvitesService {
   }
 
   async revoke(ctx: HouseholdContext, inviteId: string): Promise<void> {
-    const revoked = await this.scope.run(ctx, (tx) =>
-      tx
+    await this.scope.run(ctx, async (tx, activity) => {
+      const revoked = await tx
         .update(invites)
         .set({ revokedAt: new Date() })
         .where(
@@ -104,18 +98,9 @@ export class InvitesService {
             isNull(invites.revokedAt),
           ),
         )
-        .returning({ id: invites.id }),
-    );
-    if (revoked.length === 0) throw problems.notFound();
-    await this.audit.record({
-      actorKind: 'user',
-      actorUserId: ctx.userId,
-      actorMemberId: ctx.memberId,
-      householdId: ctx.householdId,
-      action: 'invite.revoked',
-      targetType: 'invite',
-      targetId: inviteId,
-      visibleToHousehold: true,
+        .returning({ id: invites.id });
+      if (revoked.length === 0) throw problems.notFound();
+      await activity.record({ action: 'invite.revoked', targetType: 'invite', targetId: inviteId });
     });
   }
 }

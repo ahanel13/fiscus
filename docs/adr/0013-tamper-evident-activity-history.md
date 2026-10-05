@@ -78,6 +78,14 @@ Departure protection mode (ADR 0012) is still useful, with a narrower job: it **
 past shared records during a dispute. Recording and integrity checking (§1–4) happen all the
 time, for everyone.
 
+## As built (#263, #23)
+- `audit_events` gained `scope_id` (household, or the nil UUID for instance events), `seq`, `entry_hash`, and `changes_enc`. `audit_chain_heads` holds each chain's head and is locked on append (`appendActivity` in `@fiscus/db`).
+- Canonical form: JSON with keys sorted at every level, Dates as ISO, Buffers as base64; the IP is normalized through Postgres `inet` before hashing.
+- `changes_enc` is bound to its entry by associated data (`scope:seq`).
+- Enforcement: a row trigger (`fiscus_mark_household_write`) on every household table sets a transaction-local flag. `HouseholdScope` rolls back any transaction that changed household rows without recording activity. Row locks and no-op statements don't trip it. (An earlier attempt used Postgres's per-transaction statistics, which reported stale counts on pooled connections.)
+- Endpoints: `GET /api/v1/households/:id/activity` (household-visible events, decrypted changes, `before` cursor) and `GET …/activity/verify`.
+- Events recorded before this change have no `seq` and are outside the chain.
+
 ## Consequences
 - Disputes become resolvable: "who changed this, and from what?" always has an answer.
 - Sneaky edits are visible to the other members, and edits made outside the app (directly in the

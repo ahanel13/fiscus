@@ -2,7 +2,6 @@ import { type Executor, householdMembers, households, users } from '@fiscus/db';
 import type { HouseholdMember, MemberRole } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import { and, asc, count, eq, isNull } from 'drizzle-orm';
-import { AuditService } from '../audit/audit.service.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from './household-context.js';
 import { HouseholdScope } from './household-scope.js';
@@ -17,10 +16,7 @@ const lastOwner = () =>
 
 @Injectable()
 export class MembersService {
-  constructor(
-    private readonly scope: HouseholdScope,
-    private readonly audit: AuditService,
-  ) {}
+  constructor(private readonly scope: HouseholdScope) {}
 
   async list(access: HouseholdContext): Promise<HouseholdMember[]> {
     const rows = await this.scope.run(access, (tx) =>
@@ -49,37 +45,29 @@ export class MembersService {
   }
 
   async changeRole(access: HouseholdContext, memberId: string, role: MemberRole) {
-    const userId = access.userId;
-    const from = await this.scope.run(access, async (tx) => {
+    await this.scope.run(access, async (tx, activity) => {
       const target = await this.#lockTarget(tx, access.householdId, memberId);
-      if (target.role === role) return target.role;
+      if (target.role === role) return;
       if (target.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
         throw lastOwner();
       }
       // HH-06: once accounts exist (#35, #52), demoting a member who owns accounts to viewer is
       // rejected here until their accounts are transferred.
       await tx.update(householdMembers).set({ role }).where(eq(householdMembers.id, memberId));
-      return target.role;
-    });
-    await this.audit.record({
-      actorKind: 'user',
-      actorUserId: userId,
-      actorMemberId: access.memberId,
-      householdId: access.householdId,
-      action: 'member.role_changed',
-      targetType: 'household_member',
-      targetId: memberId,
-      visibleToHousehold: true,
-      metadata: { from, to: role },
+      await activity.record({
+        action: 'member.role_changed',
+        targetType: 'household_member',
+        targetId: memberId,
+        metadata: { from: target.role, to: role },
+      });
     });
   }
 
   async remove(access: HouseholdContext, memberId: string): Promise<void> {
-    const userId = access.userId;
     if (memberId === access.memberId) {
       throw new Problem(409, 'use_leave', 'To remove yourself, leave the household instead');
     }
-    await this.scope.run(access, async (tx) => {
+    await this.scope.run(access, async (tx, activity) => {
       const target = await this.#lockTarget(tx, access.householdId, memberId);
       if (target.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
         throw lastOwner();
@@ -88,40 +76,31 @@ export class MembersService {
         .update(householdMembers)
         .set({ leftAt: new Date() })
         .where(eq(householdMembers.id, memberId));
-    });
-    await this.audit.record({
-      actorKind: 'user',
-      actorUserId: userId,
-      actorMemberId: access.memberId,
-      householdId: access.householdId,
-      action: 'member.removed',
-      targetType: 'household_member',
-      targetId: memberId,
-      visibleToHousehold: true,
+      await activity.record({
+        action: 'member.removed',
+        targetType: 'household_member',
+        targetId: memberId,
+      });
     });
   }
 
   async leave(access: HouseholdContext): Promise<void> {
-    const userId = access.userId;
-    await this.scope.run(access, async (tx) => {
+    await this.scope.run(access, async (tx, activity) => {
       await this.#lockTarget(tx, access.householdId, access.memberId);
       if (access.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
         throw lastOwner();
       }
+      // Record first: once left_at is set, this member's context no longer passes row-level
+      // security for the rest of the transaction.
+      await activity.record({
+        action: 'member.left',
+        targetType: 'household_member',
+        targetId: access.memberId,
+      });
       await tx
         .update(householdMembers)
         .set({ leftAt: new Date() })
         .where(eq(householdMembers.id, access.memberId));
-    });
-    await this.audit.record({
-      actorKind: 'user',
-      actorUserId: userId,
-      actorMemberId: access.memberId,
-      householdId: access.householdId,
-      action: 'member.left',
-      targetType: 'household_member',
-      targetId: access.memberId,
-      visibleToHousehold: true,
     });
   }
 

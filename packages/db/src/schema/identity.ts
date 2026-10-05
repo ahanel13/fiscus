@@ -104,10 +104,31 @@ export const auditEvents = pgTable(
     visibleToHousehold: boolean().notNull().default(false),
     metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     ip: inet(),
+    /** Chain scope: the household, or the nil UUID for instance-level events (ADR 0013). */
+    scopeId: uuid()
+      .notNull()
+      .generatedAlwaysAs(sql`coalesce(household_id, '00000000-0000-0000-0000-000000000000'::uuid)`),
+    /** Position in the scope's hash chain (null only for events recorded before chaining). */
+    seq: bigint({ mode: 'number' }),
+    /** SHA-256(previous entry hash ‖ canonical entry). */
+    entryHash: bytea('entry_hash'),
+    /** Before/after values, encrypted with the household key (ADR 0013 §1). */
+    changesEnc: bytea('changes_enc'),
   },
   (t) => [
     index().on(t.householdId, t.occurredAt),
     index().on(t.targetType, t.targetId),
     index().on(t.actorUserId, t.occurredAt),
+    uniqueIndex('audit_events_scope_seq')
+      .on(t.scopeId, t.seq)
+      .where(sql`${t.seq} IS NOT NULL`),
   ],
 );
+
+/** Current head of each activity chain; appends lock this row, so a chain never forks. */
+export const auditChainHeads = pgTable('audit_chain_heads', {
+  scopeId: uuid().primaryKey(),
+  seq: bigint({ mode: 'number' }).notNull(),
+  headHash: bytea('head_hash').notNull(),
+  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});

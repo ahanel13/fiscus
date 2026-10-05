@@ -84,6 +84,17 @@ describe('row-level security', () => {
     expect(unprotected, 'Add ENABLE + FORCE ROW LEVEL SECURITY and policies').toEqual([]);
   });
 
+  it('marks writes on every household table, so unrecorded changes are caught (ADR 0013)', async () => {
+    const { rows } = await owner.query(`
+      SELECT c.relname AS table FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname <> 'audit_events'
+        AND (c.relname = 'households' OR EXISTS (SELECT 1 FROM pg_attribute a
+             WHERE a.attrelid = c.oid AND a.attname = 'household_id' AND NOT a.attisdropped))
+        AND NOT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+             WHERE t.tgrelid = c.oid AND p.proname = 'fiscus_mark_household_write')`);
+    expect(rows, 'Add the fiscus_mark_household_write trigger').toEqual([]);
+  });
+
   it('fails closed: no context, no rows', async () => {
     await asApp({}, async () => {
       for (const t of TABLES.filter((t) => t !== 'audit_events')) expect(await ids(t)).toEqual([]);

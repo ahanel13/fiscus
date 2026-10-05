@@ -104,3 +104,25 @@ export interface InvitePreview {
 export interface Me extends CurrentUser {
   memberships: Membership[];
 }
+
+export interface ActivityItem {
+  seq: number;
+  occurredAt: string;
+  action: string;
+  actorKind: 'user' | 'instance_admin' | 'system' | 'assistant' | 'pat' | 'anonymous';
+  actorMemberId: string | null;
+  targetType: string | null;
+  targetId: string | null;
+  metadata: Record<string, unknown>;
+  /** Decrypted before/after values, when the change recorded them. */
+  changes: { before?: Record<string, unknown>; after?: Record<string, unknown> } | null;
+}
+
+export interface ActivityVerification {
+  ok: boolean;
+  /** Last verified position in the household's chain and its SHA-256 (hex). */
+  seq: number;
+  headHash: string;
+  brokenAt?: number;
+  reason?: 'hash_mismatch' | 'gap' | 'head_mismatch';
+}

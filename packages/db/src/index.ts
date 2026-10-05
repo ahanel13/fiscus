@@ -5,6 +5,14 @@ export {
   type DbHandle,
   type Executor,
 } from './client.js';
+export {
+  appendActivity,
+  canonical,
+  INSTANCE_SCOPE,
+  verifyChain,
+  type ActivityEntry,
+  type ChainVerification,
+} from './activity.js';
 export { systemContext, userContext, withContext, type DbContext } from './context.js';
 export { MAINTENANCE_JOBS, runMaintenanceJob, type MaintenanceJob } from './maintenance.js';
 export { pingDatabase } from './health.js';

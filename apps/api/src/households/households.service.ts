@@ -6,7 +6,6 @@ import { MEMBER_COLORS } from '@fiscus/shared';
 import { and, eq } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
-import { AuditService } from '../audit/audit.service.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from './household-context.js';
 import { HouseholdScope } from './household-scope.js';
@@ -59,7 +58,6 @@ export class HouseholdsService {
   constructor(
     private readonly scope: HouseholdScope,
     private readonly keys: HouseholdKeyStore,
-    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -69,34 +67,34 @@ export class HouseholdsService {
   async create(user: CurrentUser, input: HouseholdInput): Promise<Household> {
     const { displayName, ...settings } = input;
     const id = uuidv7();
-    const { household, member } = await this.scope.asSystem(id, async (tx) => {
-      const [household] = await tx
-        .insert(households)
-        .values({ id, ...settings })
-        .returning();
-      const [member] = await tx
-        .insert(householdMembers)
-        .values({
-          householdId: id,
-          userId: user.id,
-          role: 'owner',
-          displayName: displayName ?? user.displayName,
-          color: MEMBER_COLORS[0]!,
-        })
-        .returning();
-      await this.keys.createForHousehold(id, tx);
-      return { household: household!, member: member! };
-    });
-    await this.audit.record({
-      actorKind: 'user',
-      actorUserId: user.id,
-      actorMemberId: member.id,
-      householdId: id,
-      action: 'household.created',
-      targetType: 'household',
-      targetId: id,
-      visibleToHousehold: true,
-    });
+    const { household, member } = await this.scope.asSystem(
+      id,
+      { kind: 'user', userId: user.id, memberId: null },
+      async (tx, activity) => {
+        const [household] = await tx
+          .insert(households)
+          .values({ id, ...settings })
+          .returning();
+        const [member] = await tx
+          .insert(householdMembers)
+          .values({
+            householdId: id,
+            userId: user.id,
+            role: 'owner',
+            displayName: displayName ?? user.displayName,
+            color: MEMBER_COLORS[0]!,
+          })
+          .returning();
+        await this.keys.createForHousehold(id, tx);
+        await activity.record({
+          action: 'household.created',
+          targetType: 'household',
+          targetId: id,
+          actorMemberId: member!.id,
+        });
+        return { household: household!, member: member! };
+      },
+    );
     return toHousehold(household, { memberId: member.id, role: 'owner' });
   }
 
@@ -114,7 +112,7 @@ export class HouseholdsService {
     baseVersion: number,
     patch: HouseholdPatch,
   ): Promise<Household> {
-    const result = await this.scope.run(ctx, async (tx) => {
+    const result = await this.scope.run(ctx, async (tx, activity) => {
       const [row] = await tx
         .select()
         .from(households)
@@ -149,21 +147,19 @@ export class HouseholdsService {
         })
         .where(and(eq(households.id, row.id), eq(households.version, row.version)))
         .returning();
-      return { row: updated!, changed: Object.keys(plan.changes) };
-    });
-    if (result.changed.length > 0) {
-      await this.audit.record({
-        actorKind: 'user',
-        actorUserId: ctx.userId,
-        actorMemberId: ctx.memberId,
-        householdId: ctx.householdId,
+      const changed = Object.keys(plan.changes);
+      await activity.record({
         action: 'household.updated',
         targetType: 'household',
         targetId: ctx.householdId,
-        visibleToHousehold: true,
-        metadata: { fields: result.changed },
+        metadata: { fields: changed },
+        changes: {
+          before: Object.fromEntries(changed.map((k) => [k, current[k]])),
+          after: plan.changes,
+        },
       });
-    }
+      return { row: updated!, changed };
+    });
     return toHousehold(result.row, ctx);
   }
 }
