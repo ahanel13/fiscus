@@ -208,6 +208,8 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 
 **`account_owners`**: `(account_id, member_id)` PK, `share_bps`. A deferred trigger enforces **≥1 owner** and **Σ share_bps = 10 000** per account at commit.
 
+> **Proposed change (M1 Phase 1):** compute this per statement with a read-only function instead of a trigger-maintained table. See [accounts and visibility §3](accounts-and-visibility.md#3-enforcing-visibility-in-the-database).
+
 **`member_account_access`**: a **derived** table maintained by triggers on `accounts.visibility`, `account_owners`, and `household_members`. It is the single lookup RLS uses (§4).
 
 | Column | Type | Notes |
