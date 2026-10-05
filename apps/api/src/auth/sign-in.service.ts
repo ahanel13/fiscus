@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { CurrentUser } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';

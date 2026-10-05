@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { FieldCrypto } from '@fiscus/crypto';
 import { auditEvents, verifyChain } from '@fiscus/db';
 import type { ActivityItem, ActivityVerification } from '@fiscus/shared';

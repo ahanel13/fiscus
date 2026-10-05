@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Household, HouseholdMember } from '@fiscus/shared';
 
 export type Lens = 'all' | 'me' | 'shared' | `member:${string}`;

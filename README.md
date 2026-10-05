@@ -23,6 +23,7 @@ See [ADR 0005](docs/adr/0005-tenancy-and-trust-model.md).
 
 ## License
 [AGPL-3.0-or-later](LICENSE). You may use, modify, and host Fiscus, including commercially,
-but modified versions offered to users must publish their source.
+but modified versions offered to users must publish their source: set `FISCUS_SOURCE_URL` so the
+app links to it.
 
 Fiscus is an independent project and is not affiliated with Monarch Money.

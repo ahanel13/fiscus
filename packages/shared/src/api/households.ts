@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
 import { type CurrentUser, displayNameSchema, emailSchema } from './auth.js';
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /** Expands #rgb to #rrggbb (minifiers shorten colors in built CSS). */
 const normalize = (hex: string) =>
   /^#[0-9a-f]{3}$/i.test(hex) ? `#${[...hex.slice(1)].map((c) => c + c).join('')}` : hex;

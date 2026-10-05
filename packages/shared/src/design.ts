@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Member identity colors (ADR 0006): distinct from each other and from the semantic red/green,
  * readable with white initials (≥4.5:1), and ≥3:1 against both light and dark surfaces.

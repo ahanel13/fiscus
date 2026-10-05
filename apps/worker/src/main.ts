@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import 'reflect-metadata';
 import { MasterKey } from '@fiscus/crypto';
 import { createDb, pingDatabase } from '@fiscus/db';

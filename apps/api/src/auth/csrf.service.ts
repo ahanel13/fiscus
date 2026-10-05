@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { MasterKey } from '@fiscus/crypto';
 import { Injectable } from '@nestjs/common';

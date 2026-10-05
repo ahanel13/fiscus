@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { hkdfSync, randomBytes } from 'node:crypto';
 import { inspect } from 'node:util';
 import { z } from 'zod';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { clsx } from 'clsx';
 import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
 import {

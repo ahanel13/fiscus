@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
 import { type ReactNode, useState } from 'react';

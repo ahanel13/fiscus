@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { timingSafeEqual } from 'node:crypto';
 import { type DbHandle, instanceSetup, users } from '@fiscus/db';
 import type { CurrentUser } from '@fiscus/shared';

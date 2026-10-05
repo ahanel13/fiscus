@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // @vitest-environment node
 // (reads tokens.css from disk; the browser-like environment stubs CSS imports)
 import { readFileSync } from 'node:fs';

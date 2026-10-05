@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { loadEnvOrExit } from '@fiscus/env';
 import migrateEnv from './env.js';
 import { runMigrations } from './migrate.js';

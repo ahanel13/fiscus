@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { type InvitePreview, inviteSignupSchema } from '@fiscus/shared';
 import { Body, Controller, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';

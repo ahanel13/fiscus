@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { InviteSummary } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { Copy, Monitor } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
+import { SourceLinks } from '../components/About.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
 import {
   Alert,
@@ -244,6 +246,10 @@ export function PersonalSettingsPage() {
             </li>
           ))}
         </ul>
+      </Card>
+      <Card>
+        <h2 className="mb-2 font-semibold">About</h2>
+        <SourceLinks size="sm" />
       </Card>
     </div>
   );

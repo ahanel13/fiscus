@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import optimizeLocales from '@react-aria/optimize-locales-plugin';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { thirdPartyLicenses } from './build/third-party-licenses.js';
 
 export default defineConfig({
   plugins: [
@@ -11,6 +13,7 @@ export default defineConfig({
     // interface is English for now, so keep only English. Dates, numbers, and money
     // are still formatted in the viewer's language by the browser's Intl APIs.
     { ...optimizeLocales.vite({ locales: ['en-US'] }), enforce: 'pre' },
+    thirdPartyLicenses(),
   ],
   server: {
     port: 5173,

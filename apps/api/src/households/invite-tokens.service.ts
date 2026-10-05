@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { type DbHandle, type Executor, householdMembers, invites, users } from '@fiscus/db';
 import type { CurrentUser, InvitePreview } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';

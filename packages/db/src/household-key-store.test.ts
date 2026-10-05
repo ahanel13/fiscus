@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DecryptionError, FieldCrypto, MasterKey } from '@fiscus/crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

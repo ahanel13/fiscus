@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { MEMBER_COLORS } from '@fiscus/shared';
 import { ArrowLeftRight, Landmark, MoreHorizontal, Pencil, Trash2, Wallet } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';

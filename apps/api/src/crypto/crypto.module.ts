@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { FieldCrypto, MasterKey } from '@fiscus/crypto';
 import { type DbHandle, HouseholdKeyStore } from '@fiscus/db';
 import { type DynamicModule, Global, Module } from '@nestjs/common';

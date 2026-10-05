@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { expect, type Page, test } from '@playwright/test';
 
 // One journey through a fresh instance: setup → household → navigate → sign out → sign in.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The design system (#32): React Aria Components styled with our tokens. Import everything from
 // here. Each component's rules are in docs/design/style-guide.md, and all of them are on /styleguide.
 

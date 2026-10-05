@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { minorUnitExponent } from '@fiscus/shared';
 
 // Money is integer minor units everywhere (API conventions §2). Number fields work in major units
