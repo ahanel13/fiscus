@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { integer, pgTable, primaryKey, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { bytea } from '../columns.js';
 import { households } from './households.js';

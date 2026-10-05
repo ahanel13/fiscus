@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomBytes } from 'node:crypto';
 import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';

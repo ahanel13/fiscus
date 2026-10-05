@@ -16,6 +16,9 @@
     "format:check": "prettier --check .",
     "env:example": "node scripts/env-example.mjs",
     "env:check": "node scripts/env-example.mjs --check",
+    "licenses:check": "node scripts/check-licenses.mjs",
+    "spdx:check": "node scripts/check-spdx.mjs",
+    "spdx:fix": "node scripts/check-spdx.mjs --fix",
     "db:generate": "pnpm --filter @fiscus/db generate",
     "db:migrate": "pnpm --filter @fiscus/db build && pnpm --filter @fiscus/db migrate",
     "db:seed": "pnpm --filter @fiscus/db build && pnpm --filter @fiscus/db seed"

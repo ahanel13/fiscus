@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import 'reflect-metadata';
 import { loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
 import { NestFactory } from '@nestjs/core';

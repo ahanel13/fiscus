@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { decrypt, encrypt, keyVersionOf } from './aead.js';
 import type { MasterKey } from './master-key.js';
 import type { SecretKey } from './secret-key.js';

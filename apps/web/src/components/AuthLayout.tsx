@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { SourceLinks } from './About.js';
 import type { ReactNode } from 'react';
 
 export function AuthLayout({
@@ -18,6 +20,7 @@ export function AuthLayout({
           {subtitle ? <p className="text-sm text-muted">{subtitle}</p> : null}
         </div>
         <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">{children}</div>
+        <SourceLinks className="text-center" />
       </div>
     </main>
   );

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { Injectable } from '@nestjs/common';
 
 export interface RateLimitResult {

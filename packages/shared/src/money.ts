@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // ISO 4217 minor-unit exponents that differ from the default of 2. Amounts are stored and
 // transported in these minor units (API conventions §2), so this table, not CLDR display
 // rules, decides where the decimal point goes.

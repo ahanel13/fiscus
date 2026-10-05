@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 /*
  * Fiscus design tokens: the single source of truth for color, type, shape, and motion
  * (docs/design/style-guide.md). Tailwind reads them via @theme in app.css. Contrast pairs are

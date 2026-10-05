@@ -19,7 +19,7 @@ network service, so the most likely commercial reuse is *hosting* it, not distri
 - Source files carry the SPDX header `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 - Contributions are accepted under the same license, using a **DCO** (`Signed-off-by:` on each
   commit) rather than a CLA.
-- The web UI's About page links to the source repository, which satisfies §13's "offer source to network users".
+- The web UI links to the source repository (sign-in pages and Personal settings → About), which satisfies §13's "offer source to network users". The link is configurable (`SOURCE_URL`), so operators of modified versions point it at their own source.
 
 ## Consequences
 - Companies can use, sell, and host it, but anyone running a modified version for users must publish their changes under AGPL.
@@ -27,3 +27,9 @@ network service, so the most likely commercial reuse is *hosting* it, not distri
   without every contributor's consent. This is accepted; revisit only if dual-licensing ever becomes a goal.
 - Dependencies must be AGPL-compatible: MIT, BSD, Apache-2.0, ISC, MPL-2.0, LGPL, or GPL-3.0.
   CI runs a license check to block incompatible ones.
+
+## As built (#14)
+- `pnpm spdx:check` / `spdx:fix` (`scripts/check-spdx.mjs`) enforce the header on every source file.
+- `pnpm licenses:check` (`scripts/check-licenses.mjs`) blocks incompatible dependency licenses, with a reviewed exceptions list.
+- The **DCO** workflow (`scripts/check-dco.sh`) requires a `Signed-off-by:` matching the author's email on every PR commit. Bots are exempt.
+- The web build ships `/third-party-licenses.txt` with the notices of every bundled package.

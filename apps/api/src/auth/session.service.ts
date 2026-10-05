@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { type DbHandle, sessions, users } from '@fiscus/db';
 import type { SessionSummary } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';

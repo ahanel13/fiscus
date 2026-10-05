@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { type DbHandle, householdMembers, households, userContext, withContext } from '@fiscus/db';
 import type { MemberRole, Membership as MembershipSummary } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';

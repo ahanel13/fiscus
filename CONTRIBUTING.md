@@ -22,7 +22,7 @@ Every issue has: an `area:*` label, a `priority:*` label, a milestone, and **acc
 
 - `main` is always releasable and protected; no direct pushes.
 - Branch name: `<type>/<issue#>-<short-slug>` — e.g. `feat/12-plaid-link`, `fix/40-rollover-rounding`.
-- Every commit is signed off (`git commit -s`) per the [DCO](https://developercertificate.org/). The project is AGPL-3.0-or-later ([ADR 0007](docs/adr/0007-license-agpl.md)).
+- Every commit is signed off (`git commit -s`) per the [DCO](https://developercertificate.org/): you certify you have the right to contribute it under the project's license, AGPL-3.0-or-later ([ADR 0007](docs/adr/0007-license-agpl.md)). The **DCO** check fails a PR with an unsigned commit; fix it with `git rebase --signoff origin/main && git push --force-with-lease`. Bot commits (Renovate) are exempt and reviewed instead.
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/):
   `feat(budget): add zero-based strategy engine (#31)`.
   Scopes = app or package names (`api`, `web`, `worker`, `mcp`, `db`, `shared`, `domain`) or areas.
@@ -121,6 +121,13 @@ Each app has a Dockerfile, built from the repository root: `docker build -f apps
 - `/healthz` (liveness) and `/readyz` (database reachable) on api `:3000` and worker `:3001`; web serves `/healthz` on `:8080`.
 - The web image writes `/env.js` from `API_URL` at startup, so one image works behind any proxy.
 - Run migrations from the api image: `docker run --rm -e MIGRATION_DATABASE_URL=… fiscus-api node_modules/.bin/fiscus-migrate`.
+
+### Licensing
+
+- **Headers:** every source file (`.ts`, `.tsx`, `.js`, `.mjs`, `.css`, `.sh`) starts with `SPDX-License-Identifier: AGPL-3.0-or-later` in that language's comment style. `pnpm spdx:fix` adds missing ones; CI runs `pnpm spdx:check`. Merged migrations are exempt (they're immutable).
+- **Dependencies:** `pnpm licenses:check` (in CI) fails on any license that isn't compatible with AGPL-3.0-or-later. Shipped packages may use MIT, BSD, Apache-2.0, ISC, MPL-2.0, LGPL, GPL-3.0, and similar (the list is in `scripts/check-licenses.mjs`); build-only tools may also use CC-BY data licenses. Wrong or missing metadata gets a reviewed entry in `EXCEPTIONS` with the reason, and a stale exception fails the check too.
+- **Notices:** the web build writes `/third-party-licenses.txt` with the license of every bundled package (minifying strips license comments). Server images keep each package's own license files in `node_modules`.
+- **Source offer (AGPL §13):** the sign-in pages and Personal settings link to the source code. Anyone running a **modified** Fiscus for others sets `FISCUS_SOURCE_URL` (compose) / `SOURCE_URL` (web image) to their own source.
 
 ### Dependencies
 

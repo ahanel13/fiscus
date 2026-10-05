@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { appendActivity, auditEvents, type DbHandle } from '@fiscus/db';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB } from '../database/database.module.js';

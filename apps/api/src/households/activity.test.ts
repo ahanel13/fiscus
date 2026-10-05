@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { households, INSTANCE_SCOPE, verifyChain } from '@fiscus/db';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';

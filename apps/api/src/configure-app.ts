@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import fastifyCookie from '@fastify/cookie';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 

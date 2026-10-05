@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { createLink } from '@tanstack/react-router';
 import { clsx } from 'clsx';
 import { forwardRef } from 'react';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Generates .env.example from each service's env definition, or with --check verifies it is
 // current. Run after `pnpm build`, since it imports the compiled definitions.
 import { readFileSync, writeFileSync } from 'node:fs';

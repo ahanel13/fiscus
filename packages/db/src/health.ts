@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type pg from 'pg';
 
 /** Returns true when the database answers a trivial query within `timeoutMs`. */

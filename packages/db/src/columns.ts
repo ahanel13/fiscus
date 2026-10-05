@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { sql } from 'drizzle-orm';
 import { bigint, customType, integer, jsonb, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
 
 // Request schemas for /api/v1/auth and /api/v1/me (API conventions, docs/design/api-conventions.md).

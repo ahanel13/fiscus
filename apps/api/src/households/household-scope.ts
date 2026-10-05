@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { FieldCrypto } from '@fiscus/crypto';
 import {
   appendActivity,

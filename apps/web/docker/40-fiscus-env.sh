@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Writes the SPA's runtime config from container env, so one image works behind any proxy
 # layout (ADR 0003). Served at /env.js by nginx.conf.
 #
@@ -10,8 +11,10 @@ json_escape() {
   printf '%s' "$1" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
-printf 'window.__FISCUS_CONFIG__ = {"apiUrl":"%s"};\n' "$(json_escape "${API_URL:-}")" \
-  > /tmp/fiscus-env.js
+# SOURCE_URL: where users can get this server's source (AGPL-3.0 §13). Set it if you run a
+# modified Fiscus; the app links to upstream otherwise.
+printf 'window.__FISCUS_CONFIG__ = {"apiUrl":"%s","sourceUrl":"%s"};\n' \
+  "$(json_escape "${API_URL:-}")" "$(json_escape "${SOURCE_URL:-}")" > /tmp/fiscus-env.js
 
 rm -f /tmp/fiscus-proxy.conf
 if [ -n "${API_UPSTREAM:-}" ]; then

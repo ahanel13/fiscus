@@ -45,6 +45,8 @@ jobs:
         if: github.event_name == 'pull_request'
         run: scripts/check-migrations.sh "origin/${{ github.base_ref }}"
       - run: pnpm format:check
+      - run: pnpm spdx:check
+      - run: pnpm licenses:check
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

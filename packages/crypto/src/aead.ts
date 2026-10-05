@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type { SecretKey } from './secret-key.js';
 

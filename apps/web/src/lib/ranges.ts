@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Time-range presets (ADR 0011). Rolling and calendar presets are grouped separately so the
 // difference is obvious.
 export const RANGE_GROUPS = [

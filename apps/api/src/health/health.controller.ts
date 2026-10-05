@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { type DbHandle, pingDatabase } from '@fiscus/db';
 import type { HealthStatus, ReadinessStatus } from '@fiscus/shared';
 import { Controller, Get, Inject, Res } from '@nestjs/common';

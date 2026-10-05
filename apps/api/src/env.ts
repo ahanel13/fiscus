@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { encryptionKeyEnv, encryptionKeyVersionEnv } from '@fiscus/crypto';
 import { booleanFlag, databaseUrl, defineEnv, host, logLevel, nodeEnv, port } from '@fiscus/env';
 import { signupModeSchema } from '@fiscus/shared';

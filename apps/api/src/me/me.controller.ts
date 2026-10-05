@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Me, SessionSummary } from '@fiscus/shared';
 import { Controller, Delete, Get, HttpCode, Param } from '@nestjs/common';
 import type { AuthContext } from '../auth/auth-context.js';

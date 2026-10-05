@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Field-level optimistic concurrency (API conventions §8): the first save wins, and a later save
  * conflicts only if it changes a field that someone else changed after the version it was based on.

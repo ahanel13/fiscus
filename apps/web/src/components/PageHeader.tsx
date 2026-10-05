@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { HouseholdMember } from '@fiscus/shared';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import type { ReactNode } from 'react';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { createDb, type Database } from './client.js';
 import { auditEvents } from './schema/identity.js';
 

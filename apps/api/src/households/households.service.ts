@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { householdMembers, households, HouseholdKeyStore } from '@fiscus/db';
 import { planVersionedPatch } from '@fiscus/domain';
 import type { CurrentUser, Household, updateHouseholdSchema } from '@fiscus/shared';

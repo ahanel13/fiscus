@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { createHash } from 'node:crypto';
 import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 import type { Executor } from './client.js';

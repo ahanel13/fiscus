@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { defineConfig, devices } from '@playwright/test';
 
 // Runs against a running stack (docker compose in CI): E2E_BASE_URL and E2E_SETUP_TOKEN.

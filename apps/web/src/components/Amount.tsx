@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { formatMoney } from '@fiscus/shared';
 import { clsx } from 'clsx';
 import { useLocale } from 'react-aria-components';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 const KEY = 'fiscus.lastHousehold';
 
 export function rememberHousehold(id: string): void {

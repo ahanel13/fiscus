@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { apiBase } from '../config.js';
 
 /** An RFC 9457 problem from the API (API conventions §4). Branch on `code`, never on text. */

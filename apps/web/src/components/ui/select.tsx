@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { clsx } from 'clsx';
 import { Check, ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
