@@ -12,6 +12,8 @@ async function signIn(page: Page) {
   await page.getByLabel('Password').fill(admin.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).not.toHaveURL(/\/login/);
+  // Wait for the shell to render, so keyboard shortcuts are listening before tests press keys.
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
 test('first run: setup creates the admin, then the first household', async ({ page }) => {
