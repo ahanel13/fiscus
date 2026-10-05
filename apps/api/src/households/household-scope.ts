@@ -28,6 +28,8 @@ export interface ActivityInput {
   /** IDs and field names only; values go in `changes`, which is encrypted. */
   metadata?: Record<string, unknown>;
   changes?: { before?: Record<string, unknown>; after?: Record<string, unknown> };
+  /** The account it concerns: members who can't see that account don't see the event. */
+  accountId?: string;
   /** Household-visible by default (activity feed, HH-11/12). */
   visibleToHousehold?: boolean;
   /** Override the actor, e.g. a user who only becomes a member inside this transaction. */
@@ -70,6 +72,7 @@ export class HouseholdActivity {
         action: input.action,
         targetType: input.targetType ?? null,
         targetId: input.targetId ?? null,
+        accountId: input.accountId ?? null,
         visibleToHousehold: input.visibleToHousehold ?? true,
         metadata: input.metadata ?? {},
       },
