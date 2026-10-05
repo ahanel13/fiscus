@@ -1,0 +1,1 @@
+ALTER TYPE "public"."finance_style" ADD VALUE 'roommates';

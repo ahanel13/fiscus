@@ -16,7 +16,7 @@ export const timeZoneSchema = z
 
 export const memberRoleSchema = z.enum(['owner', 'member', 'viewer']);
 export type MemberRole = z.infer<typeof memberRoleSchema>;
-export const financeStyleSchema = z.enum(['combined', 'hybrid', 'separate']);
+export const financeStyleSchema = z.enum(['combined', 'hybrid', 'separate', 'roommates']);
 export const dateBasisSchema = z.enum(['posted', 'authorized']);
 
 const householdSettings = {
@@ -61,7 +61,7 @@ export interface Household {
   weekStart: number;
   fiscalYearStartMonth: number;
   dateBasis: 'posted' | 'authorized';
-  financeStyle: 'combined' | 'hybrid' | 'separate';
+  financeStyle: 'combined' | 'hybrid' | 'separate' | 'roommates';
   status: 'active' | 'disabled' | 'deleting';
   version: number;
   you: { memberId: string; role: MemberRole };

@@ -18,7 +18,12 @@ import { users } from './identity.js';
 
 export const householdStatus = pgEnum('household_status', ['active', 'disabled', 'deleting']);
 export const dateBasis = pgEnum('date_basis', ['posted', 'authorized']);
-export const financeStyle = pgEnum('finance_style', ['combined', 'hybrid', 'separate']);
+export const financeStyle = pgEnum('finance_style', [
+  'combined',
+  'hybrid',
+  'separate',
+  'roommates',
+]);
 export const memberRole = pgEnum('member_role', ['owner', 'member', 'viewer']);
 
 export const households = pgTable(
