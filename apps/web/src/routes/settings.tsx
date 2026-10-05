@@ -5,9 +5,25 @@ import { Copy, Monitor } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
-import { Alert, Button, Card, Field, Input, Select } from '../components/ui.js';
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  DateText,
+  Form,
+  SegmentedControl,
+  Select,
+  SelectItem,
+  TextField,
+  toast,
+  Tooltip,
+} from '../components/ui.js';
 import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
+
+const ROLE_LABELS = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
 
 const STYLE_LABELS = {
   combined: "It's all ours",
@@ -52,7 +68,7 @@ export function HouseholdSettingsPage() {
           <dt className="text-muted">Finance style</dt>
           <dd>{STYLE_LABELS[household.financeStyle]}</dd>
           <dt className="text-muted">Your role</dt>
-          <dd className="capitalize">{household.you.role}</dd>
+          <dd>{ROLE_LABELS[household.you.role]}</dd>
         </dl>
       </Card>
       <Card>
@@ -60,19 +76,22 @@ export function HouseholdSettingsPage() {
         <ul className="divide-y divide-border">
           {members.map((m) => (
             <li key={m.id} className="flex items-center gap-3 py-2 text-sm">
-              <span aria-hidden className="size-3 rounded-full" style={{ background: m.color }} />
-              <span className="flex-1">
-                {m.displayName}
-                {m.isYou ? ' (you)' : ''}
-                {m.email ? <span className="ml-2 text-muted">{m.email}</span> : null}
+              <Avatar name={m.displayName} color={m.color} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">
+                  {m.displayName}
+                  {m.isYou ? ' (you)' : ''}
+                </span>
+                {m.email ? <span className="block truncate text-muted">{m.email}</span> : null}
               </span>
-              <span className="capitalize text-muted">{m.role}</span>
+              <Badge tone={m.role === 'owner' ? 'accent' : 'neutral'}>{ROLE_LABELS[m.role]}</Badge>
             </li>
           ))}
         </ul>
         {isOwner ? (
-          <form
-            className="mt-4 grid gap-3 border-t border-border pt-4 md:grid-cols-[1fr_9rem_auto] md:items-end"
+          <Form
+            className="mt-4 grid gap-3 space-y-0 border-t border-border pt-4 md:grid-cols-[1fr_9rem_auto] md:items-start"
+            validationErrors={err?.fieldErrors()}
             onSubmit={(e: FormEvent<HTMLFormElement>) => {
               e.preventDefault();
               invite.mutate(
@@ -80,43 +99,31 @@ export function HouseholdSettingsPage() {
               );
             }}
           >
-            <Field
+            <TextField
               label="Invite by email"
-              error={
-                err?.fieldError('email') ?? (err && err.errors.length === 0 ? err.title : undefined)
+              name="email"
+              type="email"
+              isRequired
+              placeholder="partner@example.com"
+              {...(err?.formError ? { isInvalid: true, errorMessage: err.formError } : {})}
+            />
+            <Select
+              label="Role"
+              name="role"
+              defaultValue={
+                household.financeStyle === 'combined' || household.financeStyle === 'hybrid'
+                  ? 'owner'
+                  : 'member'
               }
             >
-              {(p) => (
-                <Input
-                  {...p}
-                  name="email"
-                  type="email"
-                  required
-                  placeholder="partner@example.com"
-                />
-              )}
-            </Field>
-            <Field label="Role">
-              {(p) => (
-                <Select
-                  {...p}
-                  name="role"
-                  defaultValue={
-                    household.financeStyle === 'combined' || household.financeStyle === 'hybrid'
-                      ? 'owner'
-                      : 'member'
-                  }
-                >
-                  <option value="owner">Co-owner</option>
-                  <option value="member">Member</option>
-                  <option value="viewer">Viewer</option>
-                </Select>
-              )}
-            </Field>
-            <Button type="submit" busy={invite.isPending}>
+              <SelectItem id="owner">Co-owner</SelectItem>
+              <SelectItem id="member">Member</SelectItem>
+              <SelectItem id="viewer">Viewer</SelectItem>
+            </Select>
+            <Button type="submit" isPending={invite.isPending} className="md:mt-6.5">
               Create invite link
             </Button>
-          </form>
+          </Form>
         ) : null}
         {link ? (
           <div className="mt-3 space-y-2">
@@ -124,20 +131,27 @@ export function HouseholdSettingsPage() {
               Invite created. Share this link with them; it works once and expires in 7 days.
             </Alert>
             <div className="flex gap-2">
-              <Input
-                readOnly
-                value={link}
+              <TextField
                 aria-label="Invite link"
-                onFocus={(e) => e.currentTarget.select()}
+                value={link}
+                isReadOnly
+                className="flex-1"
+                onFocus={(e) => (e.target as HTMLInputElement).select()}
               />
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => void navigator.clipboard?.writeText(link)}
-                aria-label="Copy invite link"
-              >
-                <Copy aria-hidden className="size-4" />
-              </Button>
+              <Tooltip content="Copy link">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Copy invite link"
+                  onPress={() =>
+                    void navigator.clipboard
+                      ?.writeText(link)
+                      .then(() => toast('Invite link copied.'))
+                  }
+                >
+                  <Copy aria-hidden className="size-4" />
+                </Button>
+              </Tooltip>
             </div>
           </div>
         ) : null}
@@ -154,7 +168,10 @@ export function PersonalSettingsPage() {
   const [density, setDensity] = useState<Density>(storedDensity);
   const revoke = useMutation({
     mutationFn: (id: string) => api('DELETE', `/api/v1/me/sessions/${id}`),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['me', 'sessions'] }),
+    onSuccess: () => {
+      toast('Signed out that device.');
+      void queryClient.invalidateQueries({ queryKey: ['me', 'sessions'] });
+    },
   });
 
   return (
@@ -177,35 +194,27 @@ export function PersonalSettingsPage() {
       </Card>
       <Card>
         <h2 className="mb-3 font-semibold">Appearance</h2>
-        <div role="radiogroup" aria-label="Theme" className="flex gap-2">
-          {(['system', 'light', 'dark'] as const).map((t) => (
-            <Button
-              key={t}
-              role="radio"
-              aria-checked={theme === t}
-              variant={theme === t ? 'primary' : 'secondary'}
-              onClick={() => (setTheme(t), applyTheme(t))}
-              className="capitalize"
-            >
-              {t}
-            </Button>
-          ))}
-        </div>
+        <h3 className="mb-2 text-sm font-medium">Theme</h3>
+        <SegmentedControl
+          aria-label="Theme"
+          options={[
+            { value: 'system', label: 'System' },
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+          ]}
+          value={theme}
+          onChange={(t) => (setTheme(t), applyTheme(t))}
+        />
         <h3 className="mb-2 mt-5 text-sm font-medium">Density</h3>
-        <div role="radiogroup" aria-label="Density" className="flex gap-2">
-          {(['comfortable', 'compact'] as const).map((d) => (
-            <Button
-              key={d}
-              role="radio"
-              aria-checked={density === d}
-              variant={density === d ? 'primary' : 'secondary'}
-              onClick={() => (setDensity(d), applyDensity(d))}
-              className="capitalize"
-            >
-              {d}
-            </Button>
-          ))}
-        </div>
+        <SegmentedControl
+          aria-label="Density"
+          options={[
+            { value: 'comfortable', label: 'Comfortable' },
+            { value: 'compact', label: 'Compact' },
+          ]}
+          value={density}
+          onChange={(d) => (setDensity(d), applyDensity(d))}
+        />
       </Card>
       <Card>
         <h2 className="mb-3 font-semibold">Signed-in devices</h2>
@@ -216,17 +225,18 @@ export function PersonalSettingsPage() {
               <span className="flex-1">
                 <span className="block truncate">{s.userAgent ?? 'Unknown device'}</span>
                 <span className="text-xs text-muted">
-                  Last active {new Date(s.lastSeenAt).toLocaleString()}
+                  Last active <DateText value={s.lastSeenAt} format="datetime" />
                   {s.ip ? ` · ${s.ip}` : ''}
                 </span>
               </span>
               {s.current ? (
-                <span className="text-xs text-muted">This device</span>
+                <Badge>This device</Badge>
               ) : (
                 <Button
                   variant="danger"
-                  onClick={() => revoke.mutate(s.id)}
-                  busy={revoke.isPending && revoke.variables === s.id}
+                  size="sm"
+                  onPress={() => revoke.mutate(s.id)}
+                  isPending={revoke.isPending && revoke.variables === s.id}
                 >
                   Sign out
                 </Button>

@@ -40,7 +40,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 **Epic: Web app shell** (`area:web`)
 - [P0] Vite/React shell: routing, auth pages, layout, nav, dark mode
 - [P1] Typed API client generated from the OpenAPI spec, with TanStack Query conventions
-- [P1] Design system baseline (Tailwind + shadcn/ui), money/date formatting components
+- [P1] Design system baseline (Tailwind + React Aria Components), money/date formatting components
 - [P1] Responsive layout: usable in a phone browser (transaction review, quick categorize, receipt upload via camera). No native app
 
 ## M1 · Core ledger

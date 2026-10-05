@@ -6,13 +6,13 @@ import {
   ChevronsUpDown,
   Command as CommandIcon,
   LogOut,
+  Keyboard,
   Menu,
   Moon,
   Plus,
   Search,
   Settings,
   User,
-  X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { api } from '../api/client.js';
@@ -22,6 +22,17 @@ import { GROUP_LABELS, phoneTabs, type Section, sectionPath, visibleSections } f
 import { useShortcuts } from '../lib/shortcuts.js';
 import { applyTheme } from '../lib/theme.js';
 import { CommandPalette } from './CommandPalette.js';
+import {
+  Avatar,
+  Button,
+  Dialog,
+  Kbd,
+  Menu as ActionMenu,
+  MenuItem,
+  MenuSeparator,
+  MenuTrigger,
+  TimeZoneProvider,
+} from './ui.js';
 
 /** Sidebar + main area on desktop, top bar + bottom tabs on phones (IA §3). */
 export function AppShell() {
@@ -94,15 +105,16 @@ export function AppShell() {
           householdId={householdId}
           memberships={me.memberships}
         />
-        <button
-          onClick={() => setPaletteOpen(true)}
-          className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
+        <Button
+          variant="secondary"
+          onPress={() => setPaletteOpen(true)}
+          className="mx-3 mb-2 justify-start font-normal text-muted"
         >
           <Search aria-hidden className="size-4" /> Search
-          <kbd className="ml-auto flex items-center text-xs">
-            <CommandIcon aria-hidden className="size-3" />K
+          <kbd aria-hidden className="ml-auto flex items-center text-xs">
+            <CommandIcon className="size-3" />K
           </kbd>
-        </button>
+        </Button>
         <div className="flex-1 space-y-4 overflow-y-auto px-3 py-2">
           {groups.map((g) => (
             <div key={g}>
@@ -143,6 +155,7 @@ export function AppShell() {
           </Link>
           <UserMenu
             name={me.displayName}
+            color={members.find((m) => m.isYou)?.color ?? 'var(--accent)'}
             onSignOut={actions.signOut}
             onTheme={actions.toggleTheme}
             onShortcuts={actions.showShortcuts}
@@ -154,17 +167,20 @@ export function AppShell() {
         {/* Phone top bar */}
         <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
           <span className="mr-auto truncate font-semibold">{household.name}</span>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             aria-label="Search"
-            onClick={() => setPaletteOpen(true)}
-            className="rounded-lg p-2 hover:bg-surface-2"
+            onPress={() => setPaletteOpen(true)}
           >
             <Search aria-hidden className="size-5" />
-          </button>
+          </Button>
         </div>
 
         <main id="main" className="flex-1 overflow-y-auto pb-20 md:pb-0">
-          <Outlet />
+          <TimeZoneProvider timeZone={household.timezone}>
+            <Outlet />
+          </TimeZoneProvider>
         </main>
 
         {/* Phone bottom tabs */}
@@ -185,74 +201,39 @@ export function AppShell() {
               <s.icon aria-hidden className="size-5" /> {s.label.split(' ')[0]}
             </Link>
           ))}
-          <button
-            onClick={() => setMoreOpen(true)}
-            className="flex flex-col items-center gap-0.5 py-2 text-xs text-muted"
+          <Button
+            variant="ghost"
+            onPress={() => setMoreOpen(true)}
+            className="h-auto flex-col gap-0.5 rounded-none py-2 text-xs font-normal text-muted"
           >
             <Menu aria-hidden className="size-5" /> More
-          </button>
+          </Button>
         </nav>
       </div>
 
-      {moreOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="More"
-          className="fixed inset-0 z-40 md:hidden"
-        >
-          <button
-            aria-label="Close"
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setMoreOpen(false)}
-          />
-          <div className="absolute inset-x-0 bottom-0 rounded-t-2xl bg-surface p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-semibold">More</span>
-              <button
-                aria-label="Close"
-                onClick={() => setMoreOpen(false)}
-                className="rounded p-1 hover:bg-surface-2"
-              >
-                <X aria-hidden className="size-5" />
-              </button>
-            </div>
-            <ul className="grid grid-cols-3 gap-2">
-              {sections
+      <Dialog title="More" variant="sheet" isOpen={moreOpen} onOpenChange={setMoreOpen}>
+        {(close) => (
+          <ul className="grid grid-cols-3 gap-2">
+            {[
+              ...sections
                 .filter((s) => !tabs.includes(s))
-                .map((s) => (
-                  <li key={s.id}>
-                    <Link
-                      to={href(s)}
-                      onClick={() => setMoreOpen(false)}
-                      className="flex flex-col items-center gap-1 rounded-lg p-3 text-xs hover:bg-surface-2"
-                    >
-                      <s.icon aria-hidden className="size-5" /> {s.label}
-                    </Link>
-                  </li>
-                ))}
-              <li>
+                .map((s) => ({ to: href(s), icon: s.icon, label: s.label })),
+              { to: `/h/${householdId}/settings`, icon: Settings, label: 'Settings' },
+              { to: '/settings', icon: User, label: 'You' },
+            ].map((item) => (
+              <li key={item.to}>
                 <Link
-                  to={`/h/${householdId}/settings`}
-                  onClick={() => setMoreOpen(false)}
-                  className="flex flex-col items-center gap-1 rounded-lg p-3 text-xs hover:bg-surface-2"
+                  to={item.to}
+                  onClick={close}
+                  className="flex flex-col items-center gap-1 rounded-lg p-3 text-center text-xs hover:bg-surface-2"
                 >
-                  <Settings aria-hidden className="size-5" /> Settings
+                  <item.icon aria-hidden className="size-5" /> {item.label}
                 </Link>
               </li>
-              <li>
-                <Link
-                  to="/settings"
-                  onClick={() => setMoreOpen(false)}
-                  className="flex flex-col items-center gap-1 rounded-lg p-3 text-xs hover:bg-surface-2"
-                >
-                  <User aria-hidden className="size-5" /> You
-                </Link>
-              </li>
-            </ul>
-          </div>
-        </div>
-      ) : null}
+            ))}
+          </ul>
+        )}
+      </Dialog>
 
       <CommandPalette
         open={paletteOpen}
@@ -263,7 +244,7 @@ export function AppShell() {
         memberships={me.memberships}
         actions={actions}
       />
-      {helpOpen ? <ShortcutsHelp sections={sections} onClose={() => setHelpOpen(false)} /> : null}
+      <ShortcutsHelp sections={sections} isOpen={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }
@@ -277,7 +258,6 @@ function HouseholdSwitcher({
   householdId: string;
   memberships: { householdId: string; householdName: string; role: string }[];
 }) {
-  const [open, setOpen] = useState(false);
   if (memberships.length <= 1) {
     return (
       <div className="px-6 pb-3 pt-5">
@@ -286,130 +266,79 @@ function HouseholdSwitcher({
     );
   }
   return (
-    <div className="relative px-3 pb-2 pt-4">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
-      >
-        <span className="flex-1 truncate font-semibold">{current}</span>
-        <ChevronsUpDown aria-hidden className="size-4 text-muted" />
-      </button>
-      {open ? (
-        <ul
-          role="menu"
-          className="absolute inset-x-3 top-full z-20 rounded-lg border border-border bg-surface p-1 shadow-lg"
-        >
+    <div className="px-3 pb-2 pt-4">
+      <MenuTrigger>
+        <Button variant="ghost" className="w-full justify-start text-left">
+          <span className="flex-1 truncate text-base font-semibold">{current}</span>
+          <ChevronsUpDown aria-hidden className="size-4 text-muted" />
+        </Button>
+        <ActionMenu placement="bottom start" aria-label="Switch household">
           {memberships.map((m) => (
-            <li key={m.householdId} role="none">
-              <Link
-                role="menuitem"
-                to={`/h/${m.householdId}`}
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-surface-2"
-              >
-                <span className="flex-1 truncate">{m.householdName}</span>
-                <span className="text-xs text-muted">{m.role}</span>
-                {m.householdId === householdId ? <Check aria-hidden className="size-4" /> : null}
-              </Link>
-            </li>
+            <MenuItem key={m.householdId} href={`/h/${m.householdId}`} textValue={m.householdName}>
+              <span className="flex-1 truncate">{m.householdName}</span>
+              <span className="text-xs text-muted capitalize">{m.role}</span>
+              {m.householdId === householdId ? (
+                <Check aria-label="Current household" className="text-accent-text" />
+              ) : null}
+            </MenuItem>
           ))}
-          <li role="none">
-            <Link
-              role="menuitem"
-              to="/welcome"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted hover:bg-surface-2"
-            >
-              <Plus aria-hidden className="size-4" /> Create household
-            </Link>
-          </li>
-        </ul>
-      ) : null}
+          <MenuSeparator />
+          <MenuItem href="/welcome">
+            <Plus aria-hidden /> Create household
+          </MenuItem>
+        </ActionMenu>
+      </MenuTrigger>
     </div>
   );
 }
 
 function UserMenu({
   name,
+  color,
   onSignOut,
   onTheme,
   onShortcuts,
 }: {
   name: string;
+  color: string;
   onSignOut: () => void;
   onTheme: () => void;
   onShortcuts: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="relative mt-1">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-sm hover:bg-surface-2"
-      >
-        <span
-          aria-hidden
-          className="flex size-6 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-fg"
-        >
-          {name.slice(0, 1).toUpperCase()}
-        </span>
+    <MenuTrigger>
+      <Button variant="ghost" className="mt-1 w-full justify-start font-normal">
+        <Avatar name={name} color={color} size="sm" />
         <span className="flex-1 truncate text-left">{name}</span>
-      </button>
-      {open ? (
-        <ul
-          role="menu"
-          className="absolute inset-x-0 bottom-full z-20 mb-1 rounded-lg border border-border bg-surface p-1 shadow-lg"
-        >
-          <li role="none">
-            <Link
-              role="menuitem"
-              to="/settings"
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-surface-2"
-            >
-              <User aria-hidden className="size-4" /> Personal settings
-            </Link>
-          </li>
-          <li role="none">
-            <button
-              role="menuitem"
-              onClick={() => (setOpen(false), onTheme())}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-surface-2"
-            >
-              <Moon aria-hidden className="size-4" /> Toggle dark mode
-            </button>
-          </li>
-          <li role="none">
-            <button
-              role="menuitem"
-              onClick={() => (setOpen(false), onShortcuts())}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-surface-2"
-            >
-              <span aria-hidden className="w-4 text-center">
-                ?
-              </span>{' '}
-              Keyboard shortcuts
-            </button>
-          </li>
-          <li role="none">
-            <button
-              role="menuitem"
-              onClick={onSignOut}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-danger hover:bg-surface-2"
-            >
-              <LogOut aria-hidden className="size-4" /> Sign out
-            </button>
-          </li>
-        </ul>
-      ) : null}
-    </div>
+      </Button>
+      <ActionMenu placement="top start" aria-label="Account">
+        <MenuItem href="/settings">
+          <User aria-hidden /> Personal settings
+        </MenuItem>
+        <MenuItem onAction={onTheme}>
+          <Moon aria-hidden /> Toggle dark mode
+        </MenuItem>
+        <MenuItem onAction={onShortcuts}>
+          <Keyboard aria-hidden /> Keyboard shortcuts
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem onAction={onSignOut} tone="danger">
+          <LogOut aria-hidden /> Sign out
+        </MenuItem>
+      </ActionMenu>
+    </MenuTrigger>
   );
 }
 
-function ShortcutsHelp({ sections, onClose }: { sections: Section[]; onClose: () => void }) {
+function ShortcutsHelp({
+  sections,
+  isOpen,
+  onOpenChange,
+}: {
+  sections: Section[];
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const rows: [string, string][] = [
     ['⌘K / Ctrl+K', 'Command palette'],
     ['?', 'This help'],
@@ -418,39 +347,17 @@ function ShortcutsHelp({ sections, onClose }: { sections: Section[]; onClose: ()
       .map((s): [string, string] => [`g ${s.shortcut}`, `Go to ${s.label}`]),
   ];
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Keyboard shortcuts"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
-    >
-      <button aria-label="Close" className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-2xl">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">Keyboard shortcuts</h2>
-          <button
-            aria-label="Close"
-            autoFocus
-            onClick={onClose}
-            className="rounded p-1 hover:bg-surface-2"
-          >
-            <X aria-hidden className="size-5" />
-          </button>
-        </div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-          {rows.map(([keys, label]) => (
-            <div key={keys} className="contents">
-              <dt>
-                <kbd className="rounded border border-border bg-surface-2 px-1.5 py-0.5 text-xs">
-                  {keys}
-                </kbd>
-              </dt>
-              <dd className="text-muted">{label}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </div>
+    <Dialog title="Keyboard shortcuts" size="sm" isOpen={isOpen} onOpenChange={onOpenChange}>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+        {rows.map(([keys, label]) => (
+          <div key={keys} className="contents">
+            <dt>
+              <Kbd>{keys}</Kbd>
+            </dt>
+            <dd className="text-muted">{label}</dd>
+          </div>
+        ))}
+      </dl>
+    </Dialog>
   );
 }

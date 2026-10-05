@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './styles/tokens.css';
+@plugin 'tailwindcss-react-aria-components';
 
 @custom-variant dark (&:where(.dark, .dark *));
 

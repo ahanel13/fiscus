@@ -3,20 +3,24 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Link,
   Outlet,
   redirect,
+  type ToOptions,
+  useRouter,
 } from '@tanstack/react-router';
+import { RouterProvider as AriaRouterProvider } from 'react-aria-components';
 import { ApiError } from './api/client.js';
 import { householdQuery, meQuery } from './api/queries.js';
 import { AppShell } from './components/AppShell.js';
 import { AuthLayout } from './components/AuthLayout.js';
+import { Toaster } from './components/ui.js';
 import { lastHousehold } from './lib/last-household.js';
 import { SECTIONS } from './lib/nav.js';
 import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
 import { SectionPage } from './routes/section.js';
 import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
-import { StyleGuidePage } from './routes/styleguide.js';
 import { WelcomePage } from './routes/welcome.js';
 
 interface Context {
@@ -28,7 +32,7 @@ function NotFound() {
     <AuthLayout title="Not found">
       <p className="text-sm text-muted">
         This page doesn't exist, or you don't have access to it.{' '}
-        <Link to="/" className="font-medium text-accent">
+        <Link to="/" className="font-medium text-accent-text">
           Go home
         </Link>
       </p>
@@ -36,8 +40,29 @@ function NotFound() {
   );
 }
 
+declare module 'react-aria-components' {
+  interface RouterConfig {
+    href: ToOptions['to'];
+    routerOptions: Omit<ToOptions, 'to'>;
+  }
+}
+
+/** Lets React Aria links and menu items navigate with the router, without a page load. */
+function Root() {
+  const router = useRouter();
+  return (
+    <AriaRouterProvider
+      navigate={(to, options) => void router.navigate({ to, ...options })}
+      useHref={(to) => router.buildLocation({ to }).href}
+    >
+      <Outlet />
+      <Toaster />
+    </AriaRouterProvider>
+  );
+}
+
 const rootRoute = createRootRouteWithContext<Context>()({
-  component: Outlet,
+  component: Root,
   notFoundComponent: NotFound,
 });
 
@@ -59,7 +84,12 @@ const publicRoutes = [
     path: '/reset-password',
     component: ResetPasswordPage,
   }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/styleguide', component: StyleGuidePage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/styleguide',
+    // Loaded on demand: contributors and design review use it, households don't.
+    component: lazyRouteComponent(() => import('./routes/styleguide.js'), 'StyleGuidePage'),
+  }),
 ];
 
 /** Everything below requires a session; a 401 sends you to login and back afterwards. */

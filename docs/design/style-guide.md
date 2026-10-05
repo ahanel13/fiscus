@@ -2,7 +2,7 @@
 
 - Status: Accepted (#231)
 - Source of truth: `apps/web/src/styles/tokens.css` (tokens), the living page at **`/styleguide`**
-- Implemented by: #32 (design system); used by every screen
+- Implemented by: #32 (design system, `apps/web/src/components/ui.tsx`); used by every screen
 - Accessibility is enforced by `apps/web/src/styles/tokens.test.ts` (WCAG contrast for every pair below)
 
 ## 1. Personality
@@ -130,7 +130,34 @@ buttons), and 24 px (empty states). Decorative icons are `aria-hidden`; icon-onl
 - Errors say what happened and what to do next. Successes are brief ("Split saved.").
 - Numbers keep their context: "$84.12 at Trader Joe's", not "84.12".
 
-## 11. Changing tokens
+## 11. Components
+Built on [React Aria Components](https://react-spectrum.adobe.com/react-aria/) (Adobe, Apache-2.0)
+for keyboard, screen-reader, and touch behavior, styled with these tokens. Import from
+`components/ui.tsx`; every component is on `/styleguide`.
+
+| Need | Use | Notes |
+|---|---|---|
+| An action | `Button` (`primary` · `secondary` · `ghost` · `danger`) | `onPress`, not `onClick`. `isPending` shows progress and blocks repeat presses. One primary per view |
+| A link that looks like a button | `ButtonLink` | Never put a button inside a link |
+| Text entry | `TextField` inside `Form` | Server errors: `validationErrors={err?.fieldErrors()}`; each clears when edited |
+| Money entry | `AmountInput` | Value in and out is integer minor units; typed in the viewer's format; up to 15 significant digits |
+| A date / a custom range | `DatePicker` / `DateRangePicker` | Values are `"YYYY-MM-DD"` calendar dates |
+| Showing a date | `DateText` | Calendar dates never shift; instants use the household's time zone (`TimeZoneProvider`) |
+| One of a few options | `SegmentedControl` (2–4), `RadioGroup` / `RadioCard` (needs explanation), `Select` (short list), `ComboBox` (long, searchable) | |
+| On/off | `Switch` (takes effect now), `Checkbox` (part of a form) | |
+| Ask before something hard to undo | `ConfirmDialog` | Focus starts on the dialog, not the destructive button |
+| Anything else modal | `Dialog` (`variant="sheet"` on phones) | Focus is trapped and returns to the trigger |
+| A list of actions | `Menu` in `MenuTrigger` | Items take `href` or `onAction` |
+| Confirmation after an action | `toast()` | Errors stay until dismissed. Don't toast what's already on screen |
+| Status | `Badge`, `Alert` | Words carry the meaning, color reinforces |
+| A person | `Avatar` | Color plus initials; hidden from screen readers next to a visible name |
+| Data | `Table` | Needs `aria-label`; numbers `align="end"`; rows follow density |
+| Loading | `Skeleton` in `LoadingRegion` | |
+
+Touch targets are at least 44 px on phones and 24 px everywhere (WCAG 2.5.8). axe checks
+`/styleguide` in CI.
+
+## 12. Changing tokens
 1. Edit `tokens.css` (both the light and dark blocks).
 2. `pnpm --filter @fiscus/web test` checks every contrast pair; CI fails below AA.
 3. Check `/styleguide` in both themes and both densities.

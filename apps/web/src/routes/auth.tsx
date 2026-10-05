@@ -5,7 +5,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client.js';
 import { authStatusQuery, lookupInvite, meQuery } from '../api/queries.js';
 import { AuthLayout } from '../components/AuthLayout.js';
-import { Alert, Button, Field, Input } from '../components/ui.js';
+import { Alert, Button, ButtonLink, Form, TextField } from '../components/ui.js';
 
 type SignedIn = { data: { user: CurrentUser; csrfToken: string } };
 
@@ -39,33 +39,24 @@ export function LoginPage() {
 
   return (
     <AuthLayout title="Sign in">
-      <form
-        className="space-y-4"
-        onSubmit={(e) => (e.preventDefault(), login.mutate(formValues(e)))}
-      >
+      <Form onSubmit={(e) => (e.preventDefault(), login.mutate(formValues(e)))}>
         {login.error ? <Alert>{(login.error as ApiError).title}</Alert> : null}
-        <Field label="Email">
-          {(p) => <Input {...p} name="email" type="email" autoComplete="email" required />}
-        </Field>
-        <Field label="Password">
-          {(p) => (
-            <Input
-              {...p}
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-            />
-          )}
-        </Field>
-        <Button type="submit" className="w-full" busy={login.isPending}>
+        <TextField label="Email" name="email" type="email" autoComplete="email" isRequired />
+        <TextField
+          label="Password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          isRequired
+        />
+        <Button type="submit" className="w-full" isPending={login.isPending}>
           Sign in
         </Button>
-      </form>
+      </Form>
       {status.data?.signupMode === 'open' ? (
         <p className="mt-4 text-center text-sm text-muted">
           New here?{' '}
-          <Link to="/signup" className="font-medium text-accent">
+          <Link to="/signup" className="font-medium text-accent-text">
             Create an account
           </Link>
         </p>
@@ -84,33 +75,26 @@ export function SignupPage() {
   const err = signup.error as ApiError | null;
   return (
     <AuthLayout title="Create your account">
-      <form
-        className="space-y-4"
+      <Form
         onSubmit={(e) => (e.preventDefault(), signup.mutate(formValues(e)))}
+        validationErrors={err?.fieldErrors()}
       >
-        {err && err.errors.length === 0 ? <Alert>{err.detail ?? err.title}</Alert> : null}
-        <Field label="Your name" error={err?.fieldError('displayName')}>
-          {(p) => <Input {...p} name="displayName" autoComplete="name" required />}
-        </Field>
-        <Field label="Email" error={err?.fieldError('email')}>
-          {(p) => <Input {...p} name="email" type="email" autoComplete="email" required />}
-        </Field>
-        <Field label="Password" error={err?.fieldError('password')} hint="At least 12 characters.">
-          {(p) => (
-            <Input
-              {...p}
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={12}
-            />
-          )}
-        </Field>
-        <Button type="submit" className="w-full" busy={signup.isPending}>
+        {err?.formError ? <Alert>{err.formError}</Alert> : null}
+        <TextField label="Your name" name="displayName" autoComplete="name" isRequired />
+        <TextField label="Email" name="email" type="email" autoComplete="email" isRequired />
+        <TextField
+          label="Password"
+          description="At least 12 characters."
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          isRequired
+          minLength={12}
+        />
+        <Button type="submit" className="w-full" isPending={signup.isPending}>
           Create account
         </Button>
-      </form>
+      </Form>
     </AuthLayout>
   );
 }
@@ -136,36 +120,33 @@ export function SetupPage() {
         </>
       }
     >
-      <form
-        className="space-y-4"
+      <Form
         onSubmit={(e) => (e.preventDefault(), setup.mutate(formValues(e)))}
+        validationErrors={err?.fieldErrors()}
       >
-        {err && err.errors.length === 0 ? <Alert>{err.title}</Alert> : null}
-        <Field label="Setup token" error={err?.fieldError('setupToken')}>
-          {(p) => <Input {...p} name="setupToken" autoComplete="off" required spellCheck={false} />}
-        </Field>
-        <Field label="Your name" error={err?.fieldError('displayName')}>
-          {(p) => <Input {...p} name="displayName" autoComplete="name" required />}
-        </Field>
-        <Field label="Email" error={err?.fieldError('email')}>
-          {(p) => <Input {...p} name="email" type="email" autoComplete="email" required />}
-        </Field>
-        <Field label="Password" error={err?.fieldError('password')} hint="At least 12 characters.">
-          {(p) => (
-            <Input
-              {...p}
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={12}
-            />
-          )}
-        </Field>
-        <Button type="submit" className="w-full" busy={setup.isPending}>
+        {err?.formError ? <Alert>{err.formError}</Alert> : null}
+        <TextField
+          label="Setup token"
+          name="setupToken"
+          autoComplete="off"
+          isRequired
+          inputClassName="font-mono"
+        />
+        <TextField label="Your name" name="displayName" autoComplete="name" isRequired />
+        <TextField label="Email" name="email" type="email" autoComplete="email" isRequired />
+        <TextField
+          label="Password"
+          description="At least 12 characters."
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          isRequired
+          minLength={12}
+        />
+        <Button type="submit" className="w-full" isPending={setup.isPending}>
           Create admin account
         </Button>
-      </form>
+      </Form>
     </AuthLayout>
   );
 }
@@ -219,10 +200,10 @@ export function InvitePage() {
       title={`Join ${invite.householdName}`}
       subtitle={`${invite.invitedBy ?? 'A household owner'} invited ${invite.email} as ${invite.role === 'owner' ? 'a co-owner' : `a ${invite.role}`}.`}
     >
-      {err && err.errors.length === 0 ? <Alert>{err.detail ?? err.title}</Alert> : null}
+      {err?.formError ? <Alert>{err.formError}</Alert> : null}
       {me.data ? (
         me.data.email === invite.email ? (
-          <Button className="w-full" busy={accept.isPending} onClick={() => accept.mutate()}>
+          <Button className="w-full" isPending={accept.isPending} onPress={() => accept.mutate()}>
             Accept and join
           </Button>
         ) : (
@@ -231,40 +212,29 @@ export function InvitePage() {
           </p>
         )
       ) : invite.accountExists ? (
-        <Link to="/login" search={{ redirect: back }} className="block">
-          <Button className="w-full">Sign in as {invite.email}</Button>
-        </Link>
+        <ButtonLink to="/login" search={{ redirect: back }} className="w-full">
+          Sign in as {invite.email}
+        </ButtonLink>
       ) : (
-        <form
-          className="space-y-4"
+        <Form
           onSubmit={(e) => (e.preventDefault(), signup.mutate(formValues(e)))}
+          validationErrors={err?.fieldErrors()}
         >
-          <Field label="Email">
-            {(p) => <Input {...p} value={invite.email} disabled readOnly />}
-          </Field>
-          <Field label="Your name" error={err?.fieldError('displayName')}>
-            {(p) => <Input {...p} name="displayName" autoComplete="name" required />}
-          </Field>
-          <Field
+          <TextField label="Email" value={invite.email} isDisabled isReadOnly />
+          <TextField label="Your name" name="displayName" autoComplete="name" isRequired />
+          <TextField
             label="Password"
-            error={err?.fieldError('password')}
-            hint="At least 12 characters."
-          >
-            {(p) => (
-              <Input
-                {...p}
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={12}
-              />
-            )}
-          </Field>
-          <Button type="submit" className="w-full" busy={signup.isPending}>
+            description="At least 12 characters."
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            isRequired
+            minLength={12}
+          />
+          <Button type="submit" className="w-full" isPending={signup.isPending}>
             Create account and join
           </Button>
-        </form>
+        </Form>
       )}
     </AuthLayout>
   );
@@ -282,36 +252,29 @@ export function ResetPasswordPage() {
       {reset.isSuccess ? (
         <div className="space-y-4">
           <Alert tone="success">Password changed. You've been signed out everywhere.</Alert>
-          <Link to="/login" className="block">
-            <Button className="w-full">Sign in</Button>
-          </Link>
+          <ButtonLink to="/login" className="w-full">
+            Sign in
+          </ButtonLink>
         </div>
       ) : (
-        <form
-          className="space-y-4"
+        <Form
           onSubmit={(e) => (e.preventDefault(), reset.mutate(formValues(e)))}
+          validationErrors={err?.fieldErrors()}
         >
-          {err && err.errors.length === 0 ? <Alert>{err.title}</Alert> : null}
-          <Field
+          {err?.formError ? <Alert>{err.formError}</Alert> : null}
+          <TextField
             label="New password"
-            error={err?.fieldError('password')}
-            hint="At least 12 characters."
-          >
-            {(p) => (
-              <Input
-                {...p}
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={12}
-              />
-            )}
-          </Field>
-          <Button type="submit" className="w-full" busy={reset.isPending} disabled={!token}>
+            description="At least 12 characters."
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            isRequired
+            minLength={12}
+          />
+          <Button type="submit" className="w-full" isPending={reset.isPending} isDisabled={!token}>
             Set password
           </Button>
-        </form>
+        </Form>
       )}
     </AuthLayout>
   );
