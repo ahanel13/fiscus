@@ -107,7 +107,8 @@ export interface Me extends CurrentUser {
 }
 
 export interface ActivityItem {
-  seq: number;
+  /** Opaque; also the cursor for the next page. Positions in the chain aren't exposed. */
+  id: string;
   occurredAt: string;
   action: string;
   actorKind: 'user' | 'instance_admin' | 'system' | 'assistant' | 'pat' | 'anonymous';
@@ -120,10 +121,10 @@ export interface ActivityItem {
 }
 
 export interface ActivityVerification {
+  /**
+   * Whether the household's history is intact. Members get no positions or counts: those would
+   * reveal events about accounts hidden from them (accounts-and-visibility §6).
+   */
   ok: boolean;
-  /** Last verified position in the household's chain and its SHA-256 (hex). */
-  seq: number;
-  headHash: string;
-  brokenAt?: number;
-  reason?: 'hash_mismatch' | 'gap' | 'head_mismatch';
+  checkedAt: string;
 }

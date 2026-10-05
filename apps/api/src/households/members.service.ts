@@ -3,9 +3,23 @@ import { type Executor, householdMembers, households, users } from '@fiscus/db';
 import type { HouseholdMember, MemberRole } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import { and, asc, count, eq, isNull } from 'drizzle-orm';
+import { violatedConstraint } from '../common/db-errors.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from './household-context.js';
 import { HouseholdScope } from './household-scope.js';
+
+/** Accounts must be handed over first; the departure flow (#62) will do it as one step. */
+function ownsAccounts(err: unknown): never {
+  if (violatedConstraint(err) === 'household_members_owns_accounts') {
+    throw new Problem(
+      409,
+      'owns_accounts',
+      'This member still owns accounts',
+      'Give their accounts other owners first (each account’s Settings → Owners).',
+    );
+  }
+  throw err;
+}
 
 const lastOwner = () =>
   new Problem(
@@ -46,63 +60,69 @@ export class MembersService {
   }
 
   async changeRole(access: HouseholdContext, memberId: string, role: MemberRole) {
-    await this.scope.run(access, async (tx, activity) => {
-      const target = await this.#lockTarget(tx, access.householdId, memberId);
-      if (target.role === role) return;
-      if (target.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
-        throw lastOwner();
-      }
-      // HH-06: once accounts exist (#35, #52), demoting a member who owns accounts to viewer is
-      // rejected here until their accounts are transferred.
-      await tx.update(householdMembers).set({ role }).where(eq(householdMembers.id, memberId));
-      await activity.record({
-        action: 'member.role_changed',
-        targetType: 'household_member',
-        targetId: memberId,
-        metadata: { from: target.role, to: role },
-      });
-    });
+    await this.scope
+      .run(access, async (tx, activity) => {
+        const target = await this.#lockTarget(tx, access.householdId, memberId);
+        if (target.role === role) return;
+        if (target.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
+          throw lastOwner();
+        }
+        // HH-06: once accounts exist (#35, #52), demoting a member who owns accounts to viewer is
+        // rejected here until their accounts are transferred.
+        await tx.update(householdMembers).set({ role }).where(eq(householdMembers.id, memberId));
+        await activity.record({
+          action: 'member.role_changed',
+          targetType: 'household_member',
+          targetId: memberId,
+          metadata: { from: target.role, to: role },
+        });
+      })
+      .catch(ownsAccounts);
   }
 
   async remove(access: HouseholdContext, memberId: string): Promise<void> {
     if (memberId === access.memberId) {
       throw new Problem(409, 'use_leave', 'To remove yourself, leave the household instead');
     }
-    await this.scope.run(access, async (tx, activity) => {
-      const target = await this.#lockTarget(tx, access.householdId, memberId);
-      if (target.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
-        throw lastOwner();
-      }
-      await tx
-        .update(householdMembers)
-        .set({ leftAt: new Date() })
-        .where(eq(householdMembers.id, memberId));
-      await activity.record({
-        action: 'member.removed',
-        targetType: 'household_member',
-        targetId: memberId,
-      });
-    });
+    await this.scope
+      .run(access, async (tx, activity) => {
+        const target = await this.#lockTarget(tx, access.householdId, memberId);
+        if (target.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
+          throw lastOwner();
+        }
+        await tx
+          .update(householdMembers)
+          .set({ leftAt: new Date() })
+          .where(eq(householdMembers.id, memberId));
+        await activity.record({
+          action: 'member.removed',
+          targetType: 'household_member',
+          targetId: memberId,
+        });
+      })
+      .catch(ownsAccounts);
   }
 
   async leave(access: HouseholdContext): Promise<void> {
-    await this.scope.run(access, async (tx, activity) => {
-      await this.#lockTarget(tx, access.householdId, access.memberId);
-      if (access.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
-        throw lastOwner();
-      }
-      // Record first: once left_at is set, this member's context no longer passes row-level
-      // security for the rest of the transaction.
-      await activity.record({
-        action: 'member.left',
-        targetType: 'household_member',
-        targetId: access.memberId,
-      });
-      await tx
-        .update(householdMembers)
-        .set({ leftAt: new Date() })
-        .where(eq(householdMembers.id, access.memberId));
-    });
+    await this.scope
+      .run(access, async (tx, activity) => {
+        await this.#lockTarget(tx, access.householdId, access.memberId);
+        if (access.role === 'owner' && (await this.#ownerCount(tx, access.householdId)) <= 1) {
+          throw lastOwner();
+        }
+        // Record first: once left_at is set, this member's context no longer passes row-level
+        // security for the rest of the transaction.
+        await activity.record({
+          action: 'member.left',
+          targetType: 'household_member',
+          targetId: access.memberId,
+        });
+        await tx
+          .update(householdMembers)
+          .set({ leftAt: new Date() })
+          .where(eq(householdMembers.id, access.memberId));
+      })
+      .catch(ownsAccounts);
   }
 
   /** Locks the household row so concurrent role changes can't remove the last owner together. */
