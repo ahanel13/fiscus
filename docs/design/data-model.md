@@ -245,8 +245,9 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 | has_splits | bool | True on a split parent. **Aggregates only count rows with `has_splits = false`** |
 | amount_minor | bigint | Signed (see §1) |
 | currency | char(3) | |
-| posted_date | date null | Null while pending |
-| authorized_date | date | |
+| posted_date | date null | Null while pending. As the bank or file reports it; sync may update it |
+| authorized_date | date | As reported; sync may update it |
+| date_override | date null | **The date a member set** ("move to another day"). Null = use the reported date. Sync and imports never write it (#281) |
 | pending | bool | |
 | original_description | text | Raw from provider/import. Untrusted (prompt-injection surface, ADR 0009) |
 | display_name | text | After merchant cleanup and rename rules |
@@ -268,7 +269,14 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 | deleted_at | timestamptz null | Tombstone (§6) |
 | version | int | |
 
-The effective date for ranges is `posted_date` or `authorized_date`, per `households.date_basis`. This is materialized as a generated column `effective_date` so it can be indexed.
+The effective date for ranges, budgets, and reports is `date_override` if set, else `posted_date` or `authorized_date` per `households.date_basis` (a pending row falls back to `authorized_date`). It's materialized as a generated column `effective_date` so it can be indexed.
+
+**Changing a transaction's date** (#281) sets `date_override` and never touches the reported dates:
+- **Sync can't undo it.** Providers keep updating `posted_date`/`authorized_date`; the override wins.
+- **The UI says so:** the date shows as edited with the bank's date beside it ("Bank date: Sep 30"), and **Reset to bank date** clears the override.
+- **Manual transactions** use the same column, so every source behaves alike.
+- It's an ordinary user edit: recorded in activity history with before/after values, covered by `field_versions` (first save wins), and carried from pending to posted (§5).
+- Budgets and reports are computed at read time, so moving a transaction across a month boundary moves it between months immediately. What happens when it moves into an **already-settled** settle-up period is decided in M3; the proposal is that closed statements stay fixed and the change shows as an adjustment in the next one.
 
 **`transaction_notes`**: two kinds of note (decided in #2 review).
 
@@ -381,9 +389,9 @@ and is only rewritten when ownership, visibility, or membership changes.
 | Source | Identity | Rule |
 |---|---|---|
 | Plaid / SimpleFIN | `provider_transaction_id` | UNIQUE `(account_id, provider_transaction_id) WHERE provider_transaction_id IS NOT NULL`. Upserts on sync |
-| Pending → posted | `provider_pending_id` | When a posted row arrives referencing a pending id, copy user edits (category, tags, notes, attribution, review state) from the pending row, then tombstone the pending row |
-| File import | `dedupe_key` = hash(account_id, date, amount_minor, normalized description, **occurrence index**) | The occurrence index distinguishes two identical coffees on the same day. UNIQUE per account where `source = 'import'`. The dedupe preview shows collisions before commit |
-| Import vs provider overlap | Fuzzy match (same account, amount, date ±3 days) | Flagged in the import preview, never silently dropped |
+| Pending → posted | `provider_pending_id` | When a posted row arrives referencing a pending id, copy user edits (category, tags, notes, attribution, review state, **date override**) from the pending row, then tombstone the pending row |
+| File import | `dedupe_key` = hash(account_id, **reported** date, amount_minor, normalized description, **occurrence index**) | The occurrence index distinguishes two identical coffees on the same day. UNIQUE per account where `source = 'import'`. The dedupe preview shows collisions before commit |
+| Import vs provider overlap | Fuzzy match (same account, amount, reported date ±3 days) | Flagged in the import preview, never silently dropped |
 
 ## 6. Deletion policy
 
