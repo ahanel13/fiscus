@@ -16,6 +16,8 @@ describe('row-level security', () => {
   const A = { household: randomUUID(), user: randomUUID(), member: randomUUID() };
   const B = { household: randomUUID(), user: randomUUID(), member: randomUUID() };
   const TABLES = ['households', 'household_members', 'invites', 'household_keys', 'audit_events'];
+  // Household tables with their own visibility suites (accounts.test.ts).
+  const COVERED_ELSEWHERE = ['accounts', 'account_owners', 'balance_snapshots'];
 
   /** Runs statements as fiscus_app inside one transaction with the given context. */
   async function asApp<T>(
@@ -80,7 +82,7 @@ describe('row-level security', () => {
           SELECT 1 FROM pg_attribute a
           WHERE a.attrelid = c.oid AND a.attname = 'household_id' AND NOT a.attisdropped))
       ORDER BY 1`);
-    expect(rows.map((r) => r.table).sort()).toEqual([...TABLES].sort());
+    expect(rows.map((r) => r.table).sort()).toEqual([...TABLES, ...COVERED_ELSEWHERE].sort());
     const unprotected = rows.filter((r) => !r.enabled || !r.forced || r.policies === 0);
     expect(unprotected, 'Add ENABLE + FORCE ROW LEVEL SECURITY and policies').toEqual([]);
   });

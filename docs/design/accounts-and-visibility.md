@@ -1,6 +1,6 @@
 # Accounts, ownership, and visibility (M1 Phase 1)
 
-- Status: Proposed
+- Status: Accepted (#285). Database layer built in migrations `0009_accounts` and `0010_accounts_rls`
 - Tickets: #51, #35, #52, #53, #20, #55, #56 (and the account half of #61)
 - Builds on: [data model §3.3, §4](data-model.md), [permissions](permissions.md) §3 and §4.2, [ADR 0006](../adr/0006-shared-finances-yours-mine-ours.md), [ADR 0013](../adr/0013-tamper-evident-activity-history.md)
 
@@ -25,7 +25,7 @@ Bank-linked accounts (`connection_id`) arrive in M2; the column exists now witho
 
 ## 2. Schema
 
-Migration `0009_accounts` (expand-only, per [upgrades](upgrades.md)):
+Migrations `0009_accounts` (tables) and `0010_accounts_rls` (policies and triggers), expand-only per [upgrades](upgrades.md):
 
 - **`accounts`**: as in data model §3.3, plus:
   - `balance_mode` enum `transactions` / `value`, see §5;
@@ -43,7 +43,8 @@ $500 is `-50000`, and net worth is a plain sum.
 ### Invariants (deferred constraint triggers, checked at commit)
 1. Every account has **≥ 1 owner**, and shares sum to **exactly 10 000**.
 2. Owners are **active members of the same household** with role `owner` or `member`. Viewers can't own (EDGE-05).
-3. Demoting an account owner to viewer fails (HH-06) with `409 owns_accounts`.
+3. A member who owns accounts can't be demoted to viewer (HH-06) or leave, until the departure flow (#62) hands their accounts over (`409 owns_accounts`).
+4. Composite foreign keys keep owners and snapshots in the account's household.
 
 Equal shares are split by the API with the remainder going to the first owner, e.g. three owners → 3 334 / 3 333 / 3 333.
 

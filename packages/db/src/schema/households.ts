@@ -11,6 +11,7 @@ import {
   uuid,
   char,
   check,
+  unique,
 } from 'drizzle-orm/pg-core';
 import { bytea, id, timestamps, versioning } from '../columns.js';
 import { users } from './identity.js';
@@ -65,6 +66,8 @@ export const householdMembers = pgTable(
     leftAt: timestamp({ withTimezone: true }),
   },
   (t) => [
+    // Target of composite foreign keys (account_owners): owners can't cross households.
+    unique('household_members_household_id_id').on(t.householdId, t.id),
     uniqueIndex('household_members_active_user')
       .on(t.householdId, t.userId)
       .where(sql`${t.leftAt} IS NULL AND ${t.userId} IS NOT NULL`),
