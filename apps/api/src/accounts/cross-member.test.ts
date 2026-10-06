@@ -323,7 +323,7 @@ describe('cross-member visibility (generated)', () => {
   });
 
   describe('two-member household (F2)', () => {
-    it('never makes a joint account private', async () => {
+    it('[EDGE-11] never makes a joint account private', async () => {
       const ann = await signup('Ann');
       const bo = await signup('Bo');
       const h = (
