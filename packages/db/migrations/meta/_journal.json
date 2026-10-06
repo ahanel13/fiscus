@@ -64,6 +64,20 @@
       "when": 1791214104289,
       "tag": "0008_activity_chain_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791241241665,
+      "tag": "0009_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791241243266,
+      "tag": "0010_accounts_rls",
+      "breakpoints": true
     }
   ]
 }

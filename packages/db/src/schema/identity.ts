@@ -113,6 +113,11 @@ export const auditEvents = pgTable(
     seq: bigint({ mode: 'number' }),
     /** SHA-256(previous entry hash ‖ canonical entry). */
     entryHash: bytea('entry_hash'),
+    /**
+     * The account an event concerns, if any. Members see such events only if they can see the
+     * account (accounts-and-visibility §6). No foreign key: events outlive deleted accounts.
+     */
+    accountId: uuid(),
     /** Before/after values, encrypted with the household key (ADR 0013 §1). */
     changesEnc: bytea('changes_enc'),
   },

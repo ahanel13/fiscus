@@ -49,8 +49,6 @@ erDiagram
     connections |o--o{ accounts : provides
     accounts ||--|{ account_owners : "owned by"
     household_members ||--o{ account_owners : owns
-    accounts ||--o{ member_account_access : "derived access"
-    household_members ||--o{ member_account_access : "can see"
     accounts ||--o{ balance_snapshots : history
 
     accounts ||--o{ transactions : contains
@@ -122,7 +120,7 @@ erDiagram
 
 UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
 
-**`member_guardians`** (ships with #223): `(member_id, guardian_member_id)` PK, `household_id`, `created_at`. Required for every member without a login (≥1 guardian). Guardians get `owner`-level access to the dependent's accounts in `member_account_access`. Guardians must be login members.
+**`member_guardians`** (ships with #223): `(member_id, guardian_member_id)` PK, `household_id`, `created_at`. Required for every member without a login (≥1 guardian). Guardians get `owner`-level access to the dependent's accounts (`fiscus_account_access()` will include them). Guardians must be login members.
 
 **`invites`**: `household_id`, `email` (only an account with this email can accept), `role`, `token_hash`, `invited_by_member_id`, `expires_at` (7 days), `accepted_at`, `accepted_by_user_id`, `revoked_at`. The token is only sent in URL fragments and request bodies, never in paths, so it stays out of logs.
 
@@ -199,6 +197,7 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 | mask_last4 | char(4) null | Plaintext; shown in UI |
 | account_number_enc | bytea null | Full number if ever provided. Never returned by the AI tools |
 | visibility | enum `full`/`view_only`/`balance_only`/`private` | ADR 0006 §4. `private` on a joint account in a two-member household is rejected by the API (F2) |
+| balance_mode | enum `transactions`/`value` | Bank-style accounts follow transactions; assets (house, car) are valued by hand ([accounts and visibility §5](accounts-and-visibility.md#5-balances)) |
 | include_in_net_worth | bool | |
 | is_business | bool default false | Default business flag for the account's transactions |
 | sort_order | int | |
@@ -206,18 +205,17 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 | closed_at | timestamptz null | |
 | version | int | |
 
-**`account_owners`**: `(account_id, member_id)` PK, `share_bps`. A deferred trigger enforces **≥1 owner** and **Σ share_bps = 10 000** per account at commit.
+**`account_owners`**: `(account_id, member_id)` PK, `household_id`, `share_bps`. Deferred triggers enforce **≥1 owner** and **Σ share_bps = 10 000** per account at commit. Owners must be active, non-viewer members, and a member who owns accounts can't become a viewer or leave until they're handed over.
 
-> **Proposed change (M1 Phase 1):** compute this per statement with a read-only function instead of a trigger-maintained table. See [accounts and visibility §3](accounts-and-visibility.md#3-enforcing-visibility-in-the-database).
+**Access** (who sees which account, at what level) is computed per statement by the read-only
+function `fiscus_account_access()`, not stored. It replaced the planned trigger-maintained
+`member_account_access` table ([accounts and visibility §3](accounts-and-visibility.md#3-enforcing-visibility-in-the-database)).
+Levels, lowest first: `balance_only` < `view_only` < `full` < `owner`. Private accounts a member
+doesn't own are absent.
 
-**`member_account_access`**: a **derived** table maintained by triggers on `accounts.visibility`, `account_owners`, and `household_members`. It is the single lookup RLS uses (§4).
-
-| Column | Type | Notes |
-|---|---|---|
-| member_id | uuid | PK part |
-| account_id | uuid | PK part |
-| household_id | uuid | |
-| level | enum `owner`/`full`/`view_only`/`balance_only` | No row = cannot see the account |
+Children of `accounts` (`account_owners`, `balance_snapshots`) use **composite foreign keys**
+`(household_id, account_id)`, and owners reference `(household_id, member_id)`, so no row can
+point across households.
 
 **`balance_snapshots`**: `(account_id, as_of)` PK, `household_id`, `balance_minor`, `available_minor` null, `credit_limit_minor` null, `source` enum `provider`/`computed`/`manual`. One row per account per day (end of day). Net-worth history and range charts read only this table (ADR 0011).
 
@@ -346,20 +344,15 @@ settings are missing, policies evaluate to false and the query returns **nothing
 ### 4.3 Policies
 1. **Household isolation** (every household-scoped table):
    `USING (household_id = current_setting('app.household_id', true)::uuid)`.
-2. **Account visibility** (`accounts`, `balance_snapshots`, `connections`):
+2. **Account visibility** (`accounts`, `account_owners`, `balance_snapshots`, `connections`):
    ```sql
-   app.system = 'on'
-   OR EXISTS (SELECT 1 FROM member_account_access a
-              WHERE a.member_id = current_setting('app.member_id')::uuid
-                AND a.account_id = <row>.account_id)
+   account_id IN (SELECT account_id FROM fiscus_account_access())
    ```
-   `balance_only` passes this check, because balances are visible at that level.
+   `balance_only` passes this check, because balances are visible at that level. Writes require `level = 'owner'`.
 3. **Transaction visibility** (`transactions`, `transaction_attributions`, `transaction_tags`):
    ```sql
-   app.system = 'on'
-   OR EXISTS (SELECT 1 FROM member_account_access a
-              WHERE a.member_id = :me AND a.account_id = t.account_id
-                AND a.level IN ('owner','full','view_only'))
+   t.account_id IN (SELECT account_id FROM fiscus_account_access()
+                    WHERE level IN ('owner','full','view_only'))
    OR EXISTS (SELECT 1 FROM transaction_attributions ta          -- F1: attribution shares it
               WHERE ta.transaction_id = t.id AND ta.member_id = :me)
    ```
@@ -381,10 +374,17 @@ settings are missing, policies evaluate to false and the query returns **nothing
 - `runMaintenanceJob()` is the only way to use `fiscus_maintenance`. It accepts only allow-listed jobs and records each run in the audit log first.
 - A test lists every table with a `household_id` column and fails if any lacks ENABLE + FORCE RLS and a policy.
 
-### 4.4 Why a derived access table
-Evaluating ownership and visibility joins per row would make every transaction query slow.
-`member_account_access` reduces the check to one indexed lookup. It is small (members × accounts)
-and is only rewritten when ownership, visibility, or membership changes.
+### 4.3b As built (M1 Phase 1)
+- **`fiscus_account_access()`** (SECURITY DEFINER, owned by the read-only `fiscus_definer`) returns `(account_id, level)` for the context member, or every account at `owner` for system context.
+- Policies use it in an uncorrelated `IN (SELECT …)`, which Postgres runs **once per statement** as a hashed subplan. A test checks the plan.
+- `fiscus_can_manage_owners(account)` lets owners, system jobs, or the creator of a not-yet-owned account change `account_owners`.
+- `audit_events` rows with an `account_id` are visible only to members who can see that account.
+
+### 4.4 Why access is computed, not stored
+The original plan was a `member_account_access` table maintained by triggers. Computing access per
+statement leaves nothing to drift out of sync, and it keeps the definer role read-only. A
+household has tens of accounts, so the per-statement query is cheap. If profiling ever shows
+otherwise, the function can be backed by a table without changing any policy.
 
 ## 5. Identity and dedupe for incoming transactions
 
@@ -420,7 +420,7 @@ and is only rewritten when ownership, visibility, or membership changes.
 | transactions | GIN `pg_trgm` on `display_name`, `original_description` | Search |
 | transactions | UNIQUE `(account_id, provider_transaction_id)` partial | Sync upsert |
 | transaction_attributions | `(member_id, transaction_id)` | RLS F1 branch, "Mine"/"Ours" spending lens |
-| member_account_access | PK `(member_id, account_id)` | Every RLS check |
+| account_owners | `(member_id)` | Access computation ("which accounts do I own?") |
 | balance_snapshots | PK `(account_id, as_of)` | Net worth and balance charts |
 | transaction_notes | `(transaction_id)` | Load notes with a transaction |
 | fx_rates | PK `(rate_date, base, quote)` | Conversion join |

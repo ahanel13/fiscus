@@ -22,6 +22,8 @@ export interface ActivityEntry {
   action: string;
   targetType?: string | null;
   targetId?: string | null;
+  /** The account the event concerns: only members who can see it see the event (RLS). */
+  accountId?: string | null;
   visibleToHousehold?: boolean;
   /** IDs and field names only, never financial plaintext. */
   metadata?: Record<string, unknown>;
@@ -54,6 +56,8 @@ interface HashedFields {
   action: string;
   targetType: string | null;
   targetId: string | null;
+  /** Hashed only when set (undefined is skipped), so chains recorded before it still verify. */
+  accountId?: string;
   visibleToHousehold: boolean;
   metadata: Record<string, unknown>;
   ip: string | null;
@@ -103,6 +107,7 @@ export async function appendActivity(
     action: entry.action,
     targetType: entry.targetType ?? null,
     targetId: entry.targetId ?? null,
+    ...(entry.accountId ? { accountId: entry.accountId } : {}),
     visibleToHousehold: entry.visibleToHousehold ?? false,
     metadata: entry.metadata ?? {},
     ip,
@@ -129,7 +134,10 @@ export interface ChainVerification {
   reason?: 'hash_mismatch' | 'gap' | 'head_mismatch';
 }
 
-/** Recomputes a chain from genesis and compares every entry and the stored head. */
+/**
+ * Recomputes a chain from genesis and compares every entry and the stored head. Run it in system
+ * context: a member can't see events about accounts hidden from them, which would look like gaps.
+ */
 export async function verifyChain(tx: Executor, scopeId: string): Promise<ChainVerification> {
   const rows = await tx
     .select()
@@ -159,6 +167,7 @@ export async function verifyChain(tx: Executor, scopeId: string): Promise<ChainV
       action: row.action,
       targetType: row.targetType,
       targetId: row.targetId,
+      ...(row.accountId ? { accountId: row.accountId } : {}),
       visibleToHousehold: row.visibleToHousehold,
       metadata: row.metadata,
       ip: row.ip,

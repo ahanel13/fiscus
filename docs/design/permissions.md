@@ -50,7 +50,7 @@ Unless noted, PAT-R = the member's read rights only, PAT-W = the member's rights
 
 ## 3. Visibility levels (recap and exact effect)
 
-`member_account_access.level` for (member, account):
+The access level (`fiscus_account_access()`) for (member, account):
 
 | Data | `owner` | `full` | `view_only` | `balance_only` | none (private, not owner) |
 |---|---|---|---|---|---|
@@ -198,7 +198,7 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 
 | ID | Situation | Required behaviour |
 |---|---|---|
-| EDGE-01 | Member leaves | Sessions and PATs for that household are revoked immediately. `member_account_access` rows are removed. Their private notes on household transactions are **included in their personal export, then deleted**. Attribution rows stay for history. Settlement balances are finalized (M3) |
+| EDGE-01 | Member leaves | Sessions and PATs for that household are revoked immediately. They lose all account access (it's computed from active membership). Their private notes on household transactions are **included in their personal export, then deleted**. Attribution rows stay for history. Settlement balances are finalized (M3) |
 | EDGE-02 | Joint account where one owner left | The leaver's ownership share passes to the remaining co-owners **at departure** (ADR 0012), and the leaver keeps a read-only snapshot in their own household. If the leaver had linked the bank connection, it goes with them, and the remaining owners re-link to keep syncing. No consent from the leaver is needed after they've left |
 | EDGE-03 | Solely owned account of a leaver | Moves **at departure** to the leaver's personal household (created if needed), with its bank connection. Nothing is orphaned in the old household |
 | EDGE-04 | PAT of a removed member | 401 on next use (PAT-03) |
