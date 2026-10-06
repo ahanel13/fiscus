@@ -845,6 +845,12 @@ function AccountsStep({
                   </>
                 ) : null}
               </p>
+              {c.duplicateOf ? (
+                <p className="mt-1 text-warning">
+                  Looks like a second copy of {c.duplicateOf}: the same balance every day and no
+                  transactions of its own.
+                </p>
+              ) : null}
               {c.closeOn && c.mode !== 'skip' ? (
                 <Checkbox
                   className="mt-1"

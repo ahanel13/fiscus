@@ -194,12 +194,17 @@ const TYPE_HINTS: [AccountType, RegExp][] = [
 
 /**
  * A first guess at an account's type from its name and balances, for the wizard to show and you to
- * change. A name that says "loan" wins over "auto"; mostly-negative balances suggest credit.
+ * change. A name that says "loan" wins over "auto"; mostly-negative balances suggest a card, or a
+ * loan when they're large.
  */
-export function guessAccountType(name: string, balances: number[] = []): AccountType {
+export function guessAccountType(name: string, balances: number[] = [], exponent = 2): AccountType {
   for (const [type, re] of TYPE_HINTS) if (re.test(name)) return type;
-  const negative = balances.filter((b) => b < 0).length;
-  if (balances.length > 0 && negative > balances.length / 2) return 'credit';
+  const negative = balances.filter((b) => b < 0);
+  if (balances.length > 0 && negative.length > balances.length / 2) {
+    // Owing tens of thousands is a loan (a mortgage, say), not a card.
+    const typical = [...negative].sort((x, y) => x - y)[Math.floor(negative.length / 2)]!;
+    return -typical >= 50_000 * 10 ** exponent ? 'loan' : 'credit';
+  }
   return 'depository';
 }
 

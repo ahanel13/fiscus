@@ -44,6 +44,12 @@ export interface MonarchAccount {
   closeOn: string | null;
   /** Its last balance is under one unit (say $1): clearly closed, so the wizard ticks it. */
   closedAtZero: boolean;
+  /**
+   * Another account in the file with the same balance on every day both have (30 days or
+   * more), and this one has no transactions of its own: the same account connected twice in
+   * Monarch. The wizard leaves it out unless you choose otherwise.
+   */
+  duplicateOf: string | null;
 }
 
 export interface MonarchImport {
@@ -71,6 +77,7 @@ export function readMonarch(
   const problems: RowProblem[] = [];
   const owners = new Set<string>();
   const amounts = new Map<string, number[]>();
+  const byDay = new Map<string, Map<string, number>>();
   const stats = new Map<string, MonarchAccount>();
   const account = (key: string) => {
     let a = stats.get(key);
@@ -87,6 +94,7 @@ export function readMonarch(
         suggestedMode: 'value',
         closeOn: null,
         closedAtZero: false,
+        duplicateOf: null,
       };
       stats.set(key, a);
     }
@@ -167,6 +175,9 @@ export function readMonarch(
         return problems.push({ line, message: 'This balance row can’t be read' });
       }
       balances.push({ account: key, date, balanceMinor });
+      const days = byDay.get(key) ?? new Map<string, number>();
+      days.set(date, balanceMinor);
+      byDay.set(key, days);
       const a = account(key);
       a.balances++;
       amounts.set(key, [...(amounts.get(key) ?? []), balanceMinor]);
@@ -182,13 +193,14 @@ export function readMonarch(
     null,
   );
   for (const a of stats.values()) {
-    a.suggestedType = guessAccountType(a.key, amounts.get(a.key));
+    a.suggestedType = guessAccountType(a.key, amounts.get(a.key), exponent);
     a.suggestedMode = a.transactions > 0 ? 'transactions' : 'value';
     if (exportEnd && a.lastBalanceDate && a.lastBalanceDate < exportEnd) {
       a.closeOn = nextDay(a.lastBalanceDate);
       a.closedAtZero = Math.abs(a.lastBalanceMinor ?? 0) < 10 ** exponent;
     }
   }
+  findDuplicates([...stats.values()], byDay);
   return {
     transactions,
     balances,
@@ -196,4 +208,39 @@ export function readMonarch(
     owners: [...owners].sort(),
     problems,
   };
+}
+
+/** Marks accounts that mirror another account's balances day for day (see `duplicateOf`). */
+function findDuplicates(accounts: MonarchAccount[], byDay: Map<string, Map<string, number>>) {
+  const MIN_DAYS = 30;
+  // Keep the one with transactions, then the one with more history; mark the other.
+  const rank = (a: MonarchAccount) => [a.transactions, a.balances, a.key.length];
+  const better = (x: MonarchAccount, y: MonarchAccount) => {
+    const [a, b] = [rank(x), rank(y)];
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! > b[i]!;
+    return x.key < y.key;
+  };
+  for (const a of accounts) {
+    const mine = byDay.get(a.key);
+    if (a.transactions > 0 || !mine || mine.size < MIN_DAYS) continue;
+    for (const b of accounts) {
+      const theirs = byDay.get(b.key);
+      if (b === a || b.duplicateOf || !theirs || !better(b, a)) continue;
+      let shared = 0;
+      let same = true;
+      for (const [day, value] of mine) {
+        const other = theirs.get(day);
+        if (other === undefined) continue;
+        shared++;
+        if (other !== value) {
+          same = false;
+          break;
+        }
+      }
+      if (same && shared >= MIN_DAYS) {
+        a.duplicateOf = b.key;
+        break;
+      }
+    }
+  }
 }

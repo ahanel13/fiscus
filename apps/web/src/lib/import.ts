@@ -60,6 +60,8 @@ export interface AccountChoice {
   balances: number;
   firstDate: string | null;
   lastDate: string | null;
+  /** The account this one seems to duplicate (connected twice in Monarch). */
+  duplicateOf: string | null;
 }
 
 const lower = (s: string) => s.trim().toLowerCase();
@@ -75,7 +77,8 @@ export function suggestAccounts(found: MonarchAccount[], existing: Account[]): A
     const match = owned.find((e) => lower(e.name) === lower(a.key));
     return {
       key: a.key,
-      mode: match ? 'existing' : 'new',
+      // A second copy of another account is left out unless you choose otherwise.
+      mode: match ? 'existing' : a.duplicateOf ? 'skip' : 'new',
       accountId: match?.id ?? null,
       name: a.key,
       type: a.suggestedType,
@@ -86,6 +89,7 @@ export function suggestAccounts(found: MonarchAccount[], existing: Account[]): A
       balances: a.balances,
       firstDate: a.firstDate,
       lastDate: a.lastDate ?? a.lastBalanceDate,
+      duplicateOf: a.duplicateOf,
     };
   });
 }
@@ -188,6 +192,7 @@ export function readCsvFile(file: LoadedFile, mapping: CsvMapping, exponent: num
       suggestedMode: 'transactions',
       closeOn: null,
       closedAtZero: false,
+      duplicateOf: null,
     };
   });
   return { transactions, balances: [], problems, monarchAccounts, owners: [] };

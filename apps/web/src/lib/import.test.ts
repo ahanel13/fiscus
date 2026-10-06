@@ -23,6 +23,7 @@ const found = (key: string, extra: Partial<MonarchAccount> = {}): MonarchAccount
   suggestedMode: 'transactions',
   closeOn: null,
   closedAtZero: false,
+  duplicateOf: null,
   ...extra,
 });
 const account = (id: string, name: string, extra: Partial<Account> = {}) =>
@@ -44,6 +45,7 @@ describe('import wizard logic', () => {
         found('Old Savings', { closeOn: '2024-02-01', closedAtZero: true }),
         found('Truck', { closeOn: '2024-09-09', closedAtZero: false, suggestedType: 'vehicle' }),
         found('Partner card'),
+        found('SAVINGS', { transactions: 0, duplicateOf: 'SAVINGS (...2124)' }),
       ],
       [account('a1', 'sofi checking'), account('a2', 'Partner card', { yourAccess: 'full' })],
     );
@@ -53,6 +55,8 @@ describe('import wizard logic', () => {
       ['Truck', 'new', null, false, '2024-09-09'],
       // Only accounts you own can take imports.
       ['Partner card', 'new', null, false, null],
+      // A second copy of another account is left out.
+      ['SAVINGS', 'skip', null, false, null],
     ]);
   });
 
