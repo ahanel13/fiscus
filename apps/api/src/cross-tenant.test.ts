@@ -12,8 +12,9 @@ import { createTestApp, TestClient } from './testing/test-app.js';
  */
 const SECRET_NAME = 'Bob household (secret)';
 const SECRET_ACCOUNT = 'Bob savings (secret)';
+const SECRET_TAG = 'Bob tag (secret)';
 /** Path parameters that aren't ids: the same value in every household. */
-const FIXED: Record<string, string> = { date: '2026-01-01' };
+const FIXED: Record<string, string> = { date: '2026-01-01', kind: 'shared' };
 
 describe('cross-tenant isolation (generated from routes)', () => {
   let tdb: TestDatabase;
@@ -64,6 +65,25 @@ describe('cross-tenant isolation (generated from routes)', () => {
       ).body.data.id as string;
     ids.a.accountId = await account(alice, a.id, 'A checking');
     ids.b.accountId = await account(bob, b.id, SECRET_ACCOUNT);
+    // Ledger fixtures: a transaction, a category (and its group), and a tag in each household.
+    const ledger = async (c: TestClient, householdId: string, accountId: string, tag: string) => {
+      const base = `/api/v1/households/${householdId}`;
+      const groups = (await c.get(`${base}/categories`)).body.data;
+      const custom = (await c.post(`${base}/categories`, { name: 'Custom', groupId: groups[0].id }))
+        .body.data;
+      const txn = (
+        await c.post(`${base}/transactions`, {
+          accountId,
+          amountMinor: -4200,
+          date: '2026-01-02',
+          displayName: tag,
+        })
+      ).body.data;
+      const t = (await c.post(`${base}/tags`, { name: tag, color: '#2f6fdb' })).body.data;
+      return { transactionId: txn.id, categoryId: custom.id, groupId: groups[0].id, tagId: t.id };
+    };
+    Object.assign(ids.a, await ledger(alice, a.id, ids.a.accountId, 'A tag'));
+    Object.assign(ids.b, await ledger(bob, b.id, ids.b.accountId, SECRET_TAG));
     // B also gets a second member, so member routes have a non-owner target.
     const token = new URLSearchParams(new URL(inviteB.body.data.url).hash.slice(1)).get('token')!;
     await carol.post('/api/v1/invites/accept', { token });
@@ -159,10 +179,14 @@ describe('cross-tenant isolation (generated from routes)', () => {
       const bSecrets = [
         SECRET_NAME,
         SECRET_ACCOUNT,
+        SECRET_TAG,
         ids.b.memberId!,
         ids.b.otherMemberId!,
         ids.b.inviteId!,
         ids.b.accountId!,
+        ids.b.transactionId!,
+        ids.b.tagId!,
+        ids.b.categoryId!,
       ];
       try {
         for (const route of householdRoutes()) {

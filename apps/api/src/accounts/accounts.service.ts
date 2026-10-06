@@ -32,6 +32,7 @@ import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
 import { accessLevels, moneyScope } from '../visibility/visibility-scope.js';
+import { recomputeBalances } from './balances.js';
 
 type AccountRow = typeof accounts.$inferSelect;
 type CreateInput = z.infer<typeof createAccountSchema>;
@@ -262,6 +263,7 @@ export class AccountsService {
           fieldVersions: plan.next.fieldVersions,
         })
         .where(and(eq(accounts.id, accountId), eq(accounts.version, row.version)));
+      if (changes.balanceMode !== undefined) await recomputeBalances(tx, accountId);
       await activity.record({
         action: 'account.updated',
         targetType: 'account',
@@ -407,6 +409,8 @@ export class AccountsService {
           target: [balanceSnapshots.accountId, balanceSnapshots.asOf],
           set: { ...values, updatedAt: new Date() },
         });
+      // An entered balance is an anchor: days around it are recomputed (transactions design §2).
+      await recomputeBalances(tx, accountId);
       await activity.record({
         action: 'account.balance_set',
         targetType: 'account',

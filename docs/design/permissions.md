@@ -214,6 +214,12 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 
 ## 7. Test plan mapping
 
+- **Matrix tests** (`apps/api/src/permissions.test.ts`): one test per built (row, actor) cell, named
+  `[ROW/ACTOR]`, checking both the allowed and the refused side.
+- **Coverage check** (`apps/api/src/permissions-coverage.test.ts`): reads this document and fails
+  if a built rule has an actor without a tagged test. Rules not built yet are listed there with
+  where they land, and listing a rule that's already tested fails too.
+
 - **Cross-tenant suite** (ADR 0005): every household-scoped endpoint is called with a valid
   session for household A against resource IDs from household B, and must return 404. This is
   generated from the route table, so new routes are covered automatically.

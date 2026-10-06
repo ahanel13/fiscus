@@ -174,3 +174,17 @@ All under `/api/v1/households/:householdId/`.
   members; splits are one level deep, on the parent's account and currency, with at least two
   parts adding up to the parent exactly.
 - Search uses `pg_trgm` GIN indexes on the display name and original description.
+
+## 11. As built: API
+- **Viewers are read-only** for transactions (no categorizing or shared notes), whatever an
+  account's visibility allows. The permissions matrix tests caught the first version allowing it.
+- **Lists show split parts, not split parents**, so lists and totals always agree; parts carry
+  `parentId`.
+- **Bulk edits** record one activity event per account, so each is visible only to members who
+  can see that account.
+- **Private notes** are recorded as activity that's visible only to the author's own audit.
+- Reading a transaction you can see but not change answers `403`, not `404`, even though
+  Postgres hides it from a locked read.
+- **Attribution changes** on a hidden account are recorded against that account, so the person
+  it's attributed to doesn't see the event in the feed (they see the current attribution on the
+  transaction). Notifying them is part of flags and disputes (M3).
