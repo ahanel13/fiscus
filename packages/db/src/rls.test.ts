@@ -16,8 +16,19 @@ describe('row-level security', () => {
   const A = { household: randomUUID(), user: randomUUID(), member: randomUUID() };
   const B = { household: randomUUID(), user: randomUUID(), member: randomUUID() };
   const TABLES = ['households', 'household_members', 'invites', 'household_keys', 'audit_events'];
-  // Household tables with their own visibility suites (accounts.test.ts).
-  const COVERED_ELSEWHERE = ['accounts', 'account_owners', 'balance_snapshots'];
+  // Household tables with their own visibility suites (accounts.test.ts, ledger.test.ts).
+  const COVERED_ELSEWHERE = [
+    'accounts',
+    'account_owners',
+    'balance_snapshots',
+    'categories',
+    'category_groups',
+    'tags',
+    'transaction_attributions',
+    'transaction_notes',
+    'transaction_tags',
+    'transactions',
+  ];
 
   /** Runs statements as fiscus_app inside one transaction with the given context. */
   async function asApp<T>(
