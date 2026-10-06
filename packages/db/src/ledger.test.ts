@@ -305,6 +305,22 @@ describe('transaction visibility (RLS)', () => {
          original_description, display_name, source, parent_id, has_splits)
        VALUES ('${id}', '${H}', '${acct.id}', ${amount}, 'USD', '2026-08-02', 'x', 'x', 'manual', ${parent ? `'${parent}'` : 'NULL'}, ${split});`;
 
+    it('refuses posted transactions of $0, but allows a pending $0 hold', async () => {
+      const zero = (pending: boolean) =>
+        errorOf(() =>
+          asMember('A', (q) =>
+            q.query(
+              `INSERT INTO transactions (id, household_id, account_id, amount_minor, currency, authorized_date,
+                 original_description, display_name, source, pending)
+               VALUES ($1, $2, $3, 0, 'USD', '2026-08-03', 'x', 'x', 'manual', $4)`,
+              [randomUUID(), H, acct.id, pending],
+            ),
+          ),
+        );
+      expect((await zero(false))?.constraint).toBe('transactions_nonzero');
+      expect(await zero(true)).toBeUndefined();
+    });
+
     it('requires attribution shares to sum to 100%', async () => {
       const err = await errorOf(() =>
         asMember(

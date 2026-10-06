@@ -88,9 +88,12 @@ export const setAttributionSchema = z.object({ attribution: attributionSchema })
 
 const description = label(200);
 
+/** A transaction or split part of nothing means nothing; only a pending hold can be $0. */
+const nonZeroAmount = (message: string) => minorUnitsSchema.refine((n) => n !== 0, message);
+
 export const createTransactionSchema = z.object({
   accountId: z.uuid(),
-  amountMinor: minorUnitsSchema,
+  amountMinor: nonZeroAmount('Enter an amount'),
   date: isoDateSchema,
   displayName: description,
   categoryId: z.uuid().nullable().optional(),
@@ -101,8 +104,8 @@ export const createTransactionSchema = z.object({
 export const updateTransactionSchema = z
   .object({
     displayName: description,
-    /** Manual transactions only (TXN-03). */
-    amountMinor: minorUnitsSchema,
+    /** Manual transactions only (TXN-03). Never zero (only pending holds can be). */
+    amountMinor: nonZeroAmount('Enter an amount'),
     /** Manual: the date. Imported: a date override, or null to go back to the bank's (#281). */
     date: isoDateSchema.nullable(),
     categoryId: z.uuid().nullable(),
@@ -133,7 +136,7 @@ export const setSplitsSchema = z.object({
   parts: z
     .array(
       z.object({
-        amountMinor: minorUnitsSchema,
+        amountMinor: nonZeroAmount('A part can’t be zero'),
         categoryId: z.uuid().nullable().optional(),
         displayName: description.optional(),
         attribution: attributionSchema.optional(),

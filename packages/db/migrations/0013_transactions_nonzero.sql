@@ -1,0 +1,1 @@
+ALTER TABLE "transactions" ADD CONSTRAINT "transactions_nonzero" CHECK ("transactions"."amount_minor" <> 0 OR "transactions"."pending");

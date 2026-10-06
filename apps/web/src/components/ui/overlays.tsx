@@ -36,8 +36,11 @@ export interface DialogProps extends Omit<ModalOverlayProps, 'children' | 'class
   /** Hide the title visually (it is still announced). */
   hideTitle?: boolean;
   children: DialogChildren;
-  /** `sheet` slides up from the bottom on phones (menus, quick actions). */
-  variant?: 'center' | 'sheet';
+  /**
+   * `sheet` slides up from the bottom on phones (menus, quick actions); `drawer` is a full-height
+   * panel on the right on larger screens and a sheet on phones (details you edit beside a list).
+   */
+  variant?: 'center' | 'sheet' | 'drawer';
   size?: 'sm' | 'md' | 'lg';
   role?: 'dialog' | 'alertdialog';
   /** Show a close (×) button in the corner. */
@@ -60,24 +63,31 @@ export function Dialog({
   ...props
 }: DialogProps) {
   const sheet = variant === 'sheet';
+  const drawer = variant === 'drawer';
   return (
     <ModalOverlay
       {...props}
       isDismissable={isDismissable}
       className={clsx(
         'fixed inset-0 z-50 flex bg-black/40',
-        sheet
-          ? 'items-end justify-center md:items-center md:p-4'
-          : 'items-center justify-center p-4',
+        drawer
+          ? 'items-end justify-center md:items-stretch md:justify-end'
+          : sheet
+            ? 'items-end justify-center md:items-center md:p-4'
+            : 'items-center justify-center p-4',
         fade,
       )}
     >
       <Modal
         className={clsx(
           'max-h-[90dvh] w-full overflow-y-auto border border-border bg-surface text-fg shadow-lg',
-          sheet ? 'rounded-t-2xl md:rounded-xl' : 'rounded-xl',
+          drawer
+            ? 'rounded-t-2xl md:h-full md:max-h-none md:max-w-lg md:rounded-none md:border-y-0 md:border-r-0'
+            : sheet
+              ? 'rounded-t-2xl md:rounded-xl'
+              : 'rounded-xl',
           size === 'sm' && 'md:max-w-sm',
-          size === 'md' && 'max-w-md',
+          size === 'md' && !drawer && 'max-w-md',
           size === 'lg' && 'max-w-2xl',
           sheet && size === 'md' && 'md:max-w-md',
         )}

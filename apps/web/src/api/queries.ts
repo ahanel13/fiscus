@@ -3,6 +3,7 @@ import type {
   Account,
   AuthStatus,
   BalancePoint,
+  CategoryGroup,
   Household,
   HouseholdMember,
   InvitePreview,
@@ -10,8 +11,10 @@ import type {
   Me,
   NetWorth,
   SessionSummary,
+  Tag,
+  Transaction,
 } from '@fiscus/shared';
-import { queryOptions } from '@tanstack/react-query';
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { api } from './client.js';
 
 type Data<T> = { data: T };
@@ -81,4 +84,53 @@ export const netWorthQuery = (id: string, lens: Lens) =>
     queryFn: async () =>
       (await api<Data<NetWorth>>('GET', `${hh(id)}/net-worth?lens=${encodeURIComponent(lens)}`))
         .data,
+  });
+
+export const categoriesQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'categories'],
+    queryFn: async () => (await api<Data<CategoryGroup[]>>('GET', `${hh(id)}/categories`)).data,
+    staleTime: 60_000,
+  });
+
+export const tagsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'tags'],
+    queryFn: async () => (await api<Data<Tag[]>>('GET', `${hh(id)}/tags`)).data,
+    staleTime: 60_000,
+  });
+
+export interface TransactionFilters {
+  lens: Lens;
+  accounts?: string[];
+  categories?: string[];
+  q?: string;
+  review?: 'needs_review' | 'reviewed';
+}
+
+/** Pages of transactions, newest first, by cursor. */
+export const transactionsQuery = (id: string, filters: TransactionFilters) =>
+  infiniteQueryOptions({
+    queryKey: ['households', id, 'transactions', filters],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ lens: filters.lens, limit: '50' });
+      if (filters.accounts?.length) params.set('accounts', filters.accounts.join(','));
+      if (filters.categories?.length) params.set('categories', filters.categories.join(','));
+      if (filters.q) params.set('q', filters.q);
+      if (filters.review) params.set('review', filters.review);
+      if (pageParam) params.set('cursor', pageParam);
+      return api<{ data: Transaction[]; meta: { nextCursor: string | null } }>(
+        'GET',
+        `${hh(id)}/transactions?${params}`,
+      );
+    },
+    getNextPageParam: (last) => last.meta.nextCursor ?? undefined,
+  });
+
+export const transactionQuery = (id: string, transactionId: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'transactions', 'one', transactionId],
+    queryFn: async () =>
+      (await api<Data<Transaction>>('GET', `${hh(id)}/transactions/${transactionId}`)).data,
   });
