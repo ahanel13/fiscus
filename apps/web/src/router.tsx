@@ -25,6 +25,7 @@ import { TransactionsPage } from './routes/transactions.js';
 import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
 import { SectionPage } from './routes/section.js';
 import { ImportPage } from './routes/import.js';
+import { RulesPage } from './routes/rules.js';
 import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
 import { WelcomePage } from './routes/welcome.js';
 
@@ -170,6 +171,11 @@ const importRoute = createRoute({
   path: '/import',
   component: ImportPage,
 });
+const rulesRoute = createRoute({
+  getParentRoute: () => householdRoute,
+  path: '/rules',
+  component: RulesPage,
+});
 const householdSettingsRoute = createRoute({
   getParentRoute: () => householdRoute,
   path: '/settings',
@@ -186,6 +192,7 @@ const routeTree = rootRoute.addChildren([
       ...sectionRoutes,
       accountDetailRoute,
       importRoute,
+      rulesRoute,
       householdSettingsRoute,
     ]),
   ]),

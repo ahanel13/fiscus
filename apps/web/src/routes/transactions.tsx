@@ -16,7 +16,7 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { useParams, useSearch } from '@tanstack/react-router';
-import { ArrowLeftRight, Plus, Search, SplitSquareHorizontal, Upload } from 'lucide-react';
+import { ArrowLeftRight, Plus, Search, SplitSquareHorizontal, Upload, Wand2 } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -61,6 +61,7 @@ import {
 import { categoryIndex, byDay, forLabel, paidByLabel } from '../lib/transactions.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
 import { rangeParams } from '../lib/ranges.js';
+import { RuleEditor, suggestMatchText } from './rules.js';
 import { useRange } from '../lib/use-range.js';
 
 type Data<T> = { data: T };
@@ -303,6 +304,9 @@ export function TransactionsPage() {
         action={
           household.you.role !== 'viewer' ? (
             <div className="flex gap-2">
+              <ButtonLink variant="ghost" to="/h/$householdId/rules" params={{ householdId }}>
+                <Wand2 aria-hidden className="size-4" /> Rules
+              </ButtonLink>
               <ButtonLink variant="secondary" to="/h/$householdId/import" params={{ householdId }}>
                 <Upload aria-hidden className="size-4" /> Import
               </ButtonLink>
@@ -684,6 +688,9 @@ function TransactionDetails({
         </p>
         {t.originalDescription !== t.displayName ? (
           <p className="mt-1 text-xs text-muted">Original: {t.originalDescription}</p>
+        ) : null}
+        {t.can.categorize && !t.parentId ? (
+          <MakeRule householdId={householdId} t={t} groups={groups} members={members} />
         ) : null}
         {t.account && t.can.edit && t.source !== 'provider' ? (
           // A part of a split moves with its whole purchase.
@@ -1169,3 +1176,57 @@ const MOVE_REFUSALS: Record<BulkUpdateResult['refused'][number]['code'], string>
   different_currency: 'in another currency',
   already_there: 'already imported into that account',
 };
+
+/** "Make a rule" from a transaction: a new rule matching its description, doing what it has. */
+function MakeRule({
+  householdId,
+  t,
+  groups,
+  members,
+}: {
+  householdId: string;
+  t: Transaction;
+  groups: CategoryGroup[];
+  members: HouseholdMember[];
+}) {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const tags = useQuery(tagsQuery(householdId)).data ?? [];
+  const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
+  const household = useQuery(householdQuery(householdId)).data;
+  const { uncategorized } = categoryIndex(groups);
+  return (
+    <>
+      <Button variant="ghost" size="sm" className="-ml-2.5 mt-1" onPress={() => setOpen(true)}>
+        <Wand2 aria-hidden className="size-4" /> Make a rule
+      </Button>
+      {open ? (
+        <RuleEditor
+          householdId={householdId}
+          rule={null}
+          initial={{
+            conditions: {
+              description: { op: 'contains', value: suggestMatchText(t.originalDescription) },
+            },
+            actions: {
+              ...(t.displayName !== t.originalDescription ? { rename: t.displayName } : {}),
+              ...(t.categoryId && t.categoryId !== uncategorized
+                ? { categoryId: t.categoryId }
+                : {}),
+              ...(t.tagIds.length ? { addTagIds: t.tagIds } : {}),
+            },
+          }}
+          groups={groups}
+          tags={tags}
+          members={members}
+          accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+          currency={household?.baseCurrency ?? t.currency}
+          onClose={() => setOpen(false)}
+          onSaved={() =>
+            void queryClient.invalidateQueries({ queryKey: ['households', householdId] })
+          }
+        />
+      ) : null}
+    </>
+  );
+}

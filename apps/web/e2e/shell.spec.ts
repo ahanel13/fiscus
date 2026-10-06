@@ -311,6 +311,39 @@ test('imports a bank CSV into an existing account, saving the column mapping', a
   ).toBeVisible();
 });
 
+test('creates a rule with a live preview, then applies it to existing transactions', async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/transactions`);
+  await page.getByRole('link', { name: 'Rules' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Rules' })).toBeVisible();
+  await expect(page.getByText('No rules yet')).toBeVisible();
+
+  await page.getByRole('button', { name: 'New rule' }).click();
+  const editor = page.getByRole('dialog', { name: 'New rule' });
+  await editor.getByRole('textbox', { name: 'Text' }).fill('coffee');
+  await editor.getByRole('textbox', { name: 'Rename to' }).fill('Coffee');
+  await editor.getByRole('button', { name: /Set category/ }).click();
+  await page.getByRole('option', { name: 'Coffee', exact: true }).click();
+  // The bank CSV's "COFFEE SHOP" from the previous test.
+  await expect(editor.getByText(/Would change 1 transaction you can see/)).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await editor.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page.getByText('Rule created.')).toBeVisible();
+  await expect(page.getByText('When: Description contains “coffee”')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Apply to existing' }).click();
+  const apply = page.getByRole('dialog', { name: 'Apply to existing transactions' });
+  await expect(apply.getByText('1 transaction would change.', { exact: false })).toBeVisible();
+  await apply.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.getByText('1 changed.')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+
+  await page.goto(`${householdUrl}/transactions?range=all_time`);
+  await expect(page.getByRole('button', { name: /^Coffee Coffee/ })).toBeVisible();
+});
+
 test('the dashboard shows cash flow by period, and ranges are remembered', async ({ page }) => {
   await signIn(page);
   await page.goto(householdUrl);
