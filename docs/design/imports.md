@@ -50,7 +50,7 @@ is skipped and shown as done.
 |---|---|---|
 | 1. **Source** | Pick where it's from: *Monarch*, or *A bank or card statement (CSV)*. Drop the file(s); a short "how to export from Monarch" guide sits beside the drop zone | Always |
 | 2. **Columns** | Match columns, with the first rows shown live as you choose. A saved profile is picked automatically and the step collapses to "Using *Chase checking*. Change" | CSV only |
-| 3. **Accounts** | Each account in the file → *new* or *an existing one*, with type, owners, and visibility. Closed accounts listed with their close date. Monarch Owner names → members | Monarch, or a CSV with an Account column; otherwise one picker in step 1 |
+| 3. **Accounts** | Each account in the file → *new*, *an existing one*, or ***Don't import*** (its transactions and balances are left out; a transfer to it keeps its Transfer category on the side you import), with type, owners, and visibility. Closed accounts listed with their close date. Monarch Owner names → members | Monarch, or a CSV with an Account column; otherwise one picker in step 1 |
 | 4. **Categories** | Each category in the file → matched, or *new in "From Monarch"*; change any to an existing category | When the file has categories |
 | 5. **Review** | Totals in plain words ("1 204 new transactions, 38 already imported, 3 possible duplicates"), then a table filtered by status: new, already imported, possible duplicate (tick to include), skipped, error. Transfers to be linked and rules that will apply are shown here | Always |
 | 6. **Done** | Progress, then a summary with **Undo this import**, "Review 7 transactions", and "Go to transactions" | Always |
