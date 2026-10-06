@@ -217,8 +217,17 @@ export interface Transaction {
 
 export interface BulkUpdateResult {
   updated: string[];
-  refused: { id: string; code: 'not_found' | 'forbidden' | 'not_editable' }[];
+  refused: {
+    id: string;
+    code: 'not_found' | 'forbidden' | 'not_editable' | 'different_currency' | 'already_there';
+  }[];
 }
+
+/** Moves transactions to another account (TXN-12). Splits move with all their parts. */
+export const moveTransactionsSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(500),
+  accountId: z.uuid(),
+});
 
 export const cashFlowQuerySchema = z
   .object({ lens: lensSchema.default('all'), ...optionalRangeFields })

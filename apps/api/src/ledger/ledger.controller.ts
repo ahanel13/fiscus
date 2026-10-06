@@ -12,6 +12,7 @@ import {
   createTagSchema,
   createTransactionSchema,
   deleteCategoryQuerySchema,
+  moveTransactionsSchema,
   noteSchema,
   setAttributionSchema,
   setSplitsSchema,
@@ -215,6 +216,16 @@ export class TransactionsController {
     body: z.infer<typeof bulkUpdateTransactionsSchema>,
   ): Promise<{ data: BulkUpdateResult }> {
     return { data: await this.transactions.bulkUpdate(ctx, body) };
+  }
+
+  /** TXN-12: move to another account; each row is allowed or refused on its own. */
+  @Post('move')
+  @HttpCode(200)
+  async move(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(moveTransactionsSchema)) body: z.infer<typeof moveTransactionsSchema>,
+  ): Promise<{ data: BulkUpdateResult }> {
+    return { data: await this.transactions.move(ctx, body) };
   }
 
   @Get(':transactionId')

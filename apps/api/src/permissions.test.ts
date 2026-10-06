@@ -304,6 +304,23 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
         parts: [{ amountMinor: -1 }, { amountMinor: -1 }],
       }),
     ),
+  // Moving needs ownership of both accounts (acct-own).
+  'TXN-12/OWN': async () => {
+    const t = await txn(f.A, f.accA);
+    const r = await f.A.post(url('/transactions/move'), { ids: [t], accountId: f.accAview });
+    ok(r);
+    expect(r.body.data.updated).toEqual([t]);
+  },
+  'TXN-12/MEM': async () => {
+    const t = await txn(f.B, f.accB);
+    ok(await f.B.post(url('/transactions/move'), { ids: [t], accountId: await account(f.B) }));
+    // Into a visible account they don't own: refused; out of one: refused per row.
+    refused(await f.B.post(url('/transactions/move'), { ids: [t], accountId: f.accA }));
+    const r = await f.B.post(url('/transactions/move'), { ids: [f.tA], accountId: f.accB });
+    expect(r.body.data.refused).toEqual([{ id: f.tA, code: 'forbidden' }]);
+  },
+  'TXN-12/VIEW': async () =>
+    refused(await f.V.post(url('/transactions/move'), { ids: [f.tA], accountId: f.accA })),
   // Importing needs ownership of the account (acct-own); undoing, the importer or an owner.
   'TXN-09/OWN': async () => ok(await importInto(f.A, f.accA)),
   'TXN-09/MEM': async () => {

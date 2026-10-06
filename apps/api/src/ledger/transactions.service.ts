@@ -19,6 +19,7 @@ import type {
   BulkUpdateResult,
   bulkUpdateTransactionsSchema,
   createTransactionSchema,
+  moveTransactionsSchema,
   setSplitsSchema,
   RangeMeta,
   Transaction,
@@ -59,6 +60,7 @@ type Query = z.infer<typeof transactionsQuerySchema>;
 type CreateInput = z.infer<typeof createTransactionSchema>;
 type UpdateInput = z.infer<typeof updateTransactionSchema>;
 type BulkInput = z.infer<typeof bulkUpdateTransactionsSchema>;
+type MoveInput = z.infer<typeof moveTransactionsSchema>;
 type SplitsInput = z.infer<typeof setSplitsSchema>;
 
 /** What the caller may see and do, computed once per request. */
@@ -502,6 +504,112 @@ export class TransactionsService {
   }
 
   /** ATT-01/02: owners of the paying account say who it's for. `[]` inherits from the owners. */
+  /**
+   * TXN-12: moves transactions to another account, each checked on its own. Needs ownership of
+   * both accounts and the same currency; a split moves with all its parts. Bank-synced rows stay
+   * with their bank (M2).
+   */
+  async move(ctx: HouseholdContext, input: MoveInput): Promise<BulkUpdateResult> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const access = await this.#access(tx, ctx);
+      const level = access.levels.get(input.accountId);
+      if (access.viewer || level !== 'owner') {
+        throw level
+          ? forbidden('You can only move transactions into accounts you own.')
+          : problems.notFound();
+      }
+      const [target] = await tx
+        .select({ currency: accounts.currency })
+        .from(accounts)
+        .where(eq(accounts.id, input.accountId));
+      const rows = await tx
+        .select()
+        .from(transactions)
+        .where(and(inArray(transactions.id, input.ids), isNull(transactions.deletedAt)));
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      // Imported rows can't land where the same row was already imported.
+      const keys = rows.filter((r) => r.dedupeKey).map((r) => r.dedupeKey!);
+      const taken = new Set(
+        keys.length
+          ? (
+              await tx
+                .select({ key: transactions.dedupeKey })
+                .from(transactions)
+                .where(
+                  and(
+                    eq(transactions.accountId, input.accountId),
+                    eq(transactions.source, 'import'),
+                    inArray(transactions.dedupeKey, keys),
+                  ),
+                )
+            ).map((r) => r.key)
+          : [],
+      );
+      const result: BulkUpdateResult = { updated: [], refused: [] };
+      const from = new Map<string, string[]>();
+      for (const id of input.ids) {
+        const row = byId.get(id);
+        if (!row) {
+          result.refused.push({ id, code: 'not_found' });
+          continue;
+        }
+        if (row.accountId === input.accountId) continue; // already there
+        if (!this.#permissions(row, access).edit) {
+          result.refused.push({ id, code: 'forbidden' });
+          continue;
+        }
+        if (row.parentId || row.source === 'provider') {
+          // A part moves with its whole purchase; the bank feed owns synced rows.
+          result.refused.push({ id, code: 'not_editable' });
+          continue;
+        }
+        if (row.currency !== target!.currency) {
+          result.refused.push({ id, code: 'different_currency' });
+          continue;
+        }
+        if (row.dedupeKey && taken.has(row.dedupeKey)) {
+          result.refused.push({ id, code: 'already_there' });
+          continue;
+        }
+        result.updated.push(id);
+        from.set(row.accountId, [...(from.get(row.accountId) ?? []), id]);
+      }
+      if (result.updated.length === 0) return result;
+
+      await tx
+        .update(transactions)
+        .set({ accountId: input.accountId, version: sql`${transactions.version} + 1` })
+        .where(
+          or(
+            inArray(transactions.id, result.updated),
+            inArray(transactions.parentId, result.updated),
+          ),
+        );
+      for (const [accountId, ids] of from) {
+        await recomputeBalances(tx, accountId);
+        // One event per account, so each is visible only to members who can see that account.
+        await activity.record({
+          action: 'transaction.moved_out',
+          targetType: 'account',
+          targetId: accountId,
+          accountId,
+          metadata: { count: ids.length, to: input.accountId },
+          changes: { after: { ids } },
+        });
+      }
+      await recomputeBalances(tx, input.accountId);
+      await activity.record({
+        action: 'transaction.moved_in',
+        targetType: 'account',
+        targetId: input.accountId,
+        accountId: input.accountId,
+        metadata: { count: result.updated.length, from: [...from.keys()] },
+        changes: { after: { ids: result.updated } },
+      });
+      return result;
+    });
+  }
+
   async setAttribution(ctx: HouseholdContext, id: string, input: AttributionInput): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
       const access = await this.#access(tx, ctx);

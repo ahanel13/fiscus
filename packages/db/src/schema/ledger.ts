@@ -151,6 +151,11 @@ export const transactions = pgTable(
     providerTransactionId: text(),
     providerPendingId: text(),
     importBatchId: uuid(),
+    /**
+     * The account an import put it in. Moving it to another account (TXN-12) keeps this, so
+     * importing the same file again recognizes it. No foreign key: it's a historical reference.
+     */
+    importAccountId: uuid(),
     dedupeKey: text(),
     deletedAt: timestamp({ withTimezone: true }),
     ...versioning(),
@@ -190,6 +195,9 @@ export const transactions = pgTable(
     uniqueIndex('transactions_provider')
       .on(t.accountId, t.providerTransactionId)
       .where(sql`${t.providerTransactionId} IS NOT NULL`),
+    index('transactions_import_dedupe')
+      .on(t.importAccountId, t.dedupeKey)
+      .where(sql`${t.importAccountId} IS NOT NULL`),
     uniqueIndex('transactions_dedupe')
       .on(t.accountId, t.dedupeKey)
       .where(sql`${t.source} = 'import' AND ${t.dedupeKey} IS NOT NULL`),

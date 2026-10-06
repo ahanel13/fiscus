@@ -122,6 +122,7 @@ caller can't see ("Transfer to Anthony").
 | TXN-09 | Import file into account | acct-own | acct-own | ❌ | |
 | TXN-10 | Revert an import batch | own | own | ❌ | The member who imported it, or any owner of the account |
 | TXN-11 | Read edit history of a transaction | vis | vis | vis | Entries never reveal data the caller can't otherwise see |
+| TXN-12 | Move a transaction to another account | acct-own | acct-own | ❌ | Needs ownership of **both** accounts. A split moves with all its parts; same currency only |
 
 ### 4.4 Attribution (ADR 0006 §3, F1, F6)
 | ID | Action | OWN | MEM | VIEW | Notes |

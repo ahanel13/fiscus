@@ -4,8 +4,10 @@ import type {
   BulkUpdateResult,
   CategoryGroup,
   HouseholdMember,
+  Tag,
   Transaction,
 } from '@fiscus/shared';
+import { MEMBER_COLORS } from '@fiscus/shared';
 import {
   useInfiniteQuery,
   useMutation,
@@ -51,6 +53,7 @@ import {
   SelectSection,
   Skeleton,
   Switch,
+  TagPicker,
   TextField,
   toast,
   useToday,
@@ -378,6 +381,14 @@ export function TransactionsPage() {
                 >
                   Mark reviewed
                 </Button>
+                {ownsAny ? (
+                  <MoveToAccount
+                    householdId={householdId}
+                    ids={[...selected]}
+                    trigger="select"
+                    onMoved={() => setSelected(new Set())}
+                  />
+                ) : null}
                 <Button variant="ghost" size="sm" onPress={() => setSelected(new Set())}>
                   Clear
                 </Button>
@@ -581,6 +592,7 @@ function TransactionDetails({
   onDeleted: () => void;
 }) {
   const invalidate = useInvalidateLedger(householdId);
+  const queryClient = useQueryClient();
   const tags = useQuery(tagsQuery(householdId)).data ?? [];
   const url = `${base(householdId)}/transactions/${t.id}`;
   const manual = t.source === 'manual';
@@ -673,6 +685,17 @@ function TransactionDetails({
         {t.originalDescription !== t.displayName ? (
           <p className="mt-1 text-xs text-muted">Original: {t.originalDescription}</p>
         ) : null}
+        {t.account && t.can.edit && t.source !== 'provider' ? (
+          // A part of a split moves with its whole purchase.
+          <MoveToAccount
+            householdId={householdId}
+            ids={[t.parentId ?? t.id]}
+            from={t.account.id}
+            currency={t.currency}
+            trigger="button"
+            label={t.parentId ? 'Move this purchase to another account' : undefined}
+          />
+        ) : null}
       </div>
 
       <Form
@@ -723,34 +746,19 @@ function TransactionDetails({
             />
           ) : null}
         </div>
-        {tags.length ? (
-          <fieldset className="space-y-1">
-            <legend className="mb-1 text-sm font-medium">Tags</legend>
-            <div className="flex flex-wrap gap-x-4">
-              {tags.map((tag) => (
-                <Checkbox
-                  key={tag.id}
-                  isSelected={form.tagIds.includes(tag.id)}
-                  isDisabled={!t.can.categorize}
-                  onChange={(on) =>
-                    set({
-                      tagIds: on
-                        ? [...form.tagIds, tag.id]
-                        : form.tagIds.filter((id) => id !== tag.id),
-                    })
-                  }
-                >
-                  <span
-                    aria-hidden
-                    className="size-2.5 rounded-full"
-                    style={{ background: tag.color }}
-                  />
-                  {tag.name}
-                </Checkbox>
-              ))}
-            </div>
-          </fieldset>
-        ) : null}
+        <TagPicker
+          tags={tags}
+          value={form.tagIds}
+          onChange={(tagIds) => set({ tagIds })}
+          onCreate={async (name) => {
+            const r = await api<Data<Tag>>('POST', `${base(householdId)}/tags`, {
+              body: { name, color: MEMBER_COLORS[tags.length % MEMBER_COLORS.length] },
+            });
+            await queryClient.invalidateQueries({ queryKey: tagsQuery(householdId).queryKey });
+            return r.data;
+          }}
+          isDisabled={!t.can.categorize}
+        />
         <div className="space-y-1">
           <Switch
             isSelected={form.reviewed}
@@ -1049,3 +1057,115 @@ function SplitEditor({
     </DialogTrigger>
   );
 }
+
+/**
+ * Moves transactions to another account you own (TXN-12): a button and dialog in the drawer, or a
+ * select in the bulk bar. Each transaction is moved or refused on its own, and the toast says why.
+ */
+function MoveToAccount({
+  householdId,
+  ids,
+  from,
+  currency,
+  trigger,
+  label = 'Move to another account',
+  onMoved,
+}: {
+  householdId: string;
+  ids: string[];
+  from?: string;
+  currency?: string;
+  trigger: 'button' | 'select';
+  label?: string | undefined;
+  onMoved?: () => void;
+}) {
+  const invalidate = useInvalidateLedger(householdId);
+  const accounts = (useQuery(accountsQuery(householdId, 'all')).data ?? []).filter(
+    (a) => a.yourAccess === 'owner' && a.id !== from && (!currency || a.currency === currency),
+  );
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState<string | null>(null);
+  const move = useMutation({
+    mutationFn: (accountId: string) =>
+      api<Data<BulkUpdateResult>>('POST', `${base(householdId)}/transactions/move`, {
+        body: { ids, accountId },
+      }),
+    onSuccess: async (r, accountId) => {
+      await invalidate();
+      const name = accounts.find((a) => a.id === accountId)?.name ?? 'the account';
+      const { updated, refused } = r.data;
+      const why = refused.map((x) => MOVE_REFUSALS[x.code]);
+      toast(
+        updated.length === 1 && ids.length === 1
+          ? `Moved to ${name}.`
+          : `${updated.length} moved to ${name}.`,
+        {
+          ...(refused.length
+            ? { description: `${refused.length} not moved: ${[...new Set(why)].join('; ')}.` }
+            : {}),
+        },
+      );
+      setOpen(false);
+      onMoved?.();
+    },
+    onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
+  });
+  if (accounts.length === 0) return null;
+
+  const picker = (
+    <Select
+      aria-label="Move to account"
+      placeholder="Move to account"
+      value={trigger === 'select' ? null : target}
+      onChange={(v) => {
+        if (!v) return;
+        if (trigger === 'select') move.mutate(String(v));
+        else setTarget(String(v));
+      }}
+      triggerClassName={trigger === 'select' ? 'min-w-44' : undefined}
+    >
+      {accounts.map((a) => (
+        <SelectItem key={a.id} id={a.id}>
+          {a.name}
+        </SelectItem>
+      ))}
+    </Select>
+  );
+  if (trigger === 'select') return picker;
+  return (
+    <DialogTrigger isOpen={open} onOpenChange={setOpen}>
+      <Button variant="ghost" size="sm" className="-ml-2.5 mt-1">
+        {label}
+      </Button>
+      <Dialog title={label} size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            For a bank that reported it under the wrong account. Both balances update; a split moves
+            with all its parts.
+          </p>
+          {picker}
+          <DialogActions>
+            <Button variant="secondary" onPress={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              isDisabled={!target}
+              isPending={move.isPending}
+              onPress={() => target && move.mutate(target)}
+            >
+              Move
+            </Button>
+          </DialogActions>
+        </div>
+      </Dialog>
+    </DialogTrigger>
+  );
+}
+
+const MOVE_REFUSALS: Record<BulkUpdateResult['refused'][number]['code'], string> = {
+  not_found: 'no longer there',
+  forbidden: 'not in an account you own',
+  not_editable: 'part of a split (move the whole purchase), or from a bank feed',
+  different_currency: 'in another currency',
+  already_there: 'already imported into that account',
+};
