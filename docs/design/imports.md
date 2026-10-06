@@ -17,11 +17,27 @@ source → columns (CSV) → accounts → categories → review → done (undo a
 - **Files are parsed in the browser.** The server receives rows as JSON, never the file, and
   stores nothing but the resulting transactions: no raw files to secure, back up, or delete.
   The parser lives in `@fiscus/shared`, so the server re-validates every row with the same code.
-- **Preview, then import.** `POST imports/preview` dry-runs the whole import (dedupe, rules,
-  transfer matches, errors) and changes nothing. `POST imports` repeats the same steps in one
-  transaction and records an **import batch**.
-- **Undo:** reverting a batch soft-deletes its transactions (TXN-10: the member who imported it or
-  an owner of the account). Balances recompute.
+- **Preview, then import in steps.** Nothing holds the household for long: every change in a
+  household is written to its activity log, which is locked while a write is in progress, so one
+  long import would make everyone else's edits wait.
+  - `POST imports/preview` works out the whole import (dedupe, overlaps, new categories and tags,
+    balances, errors) and **reads only**: no writes, no locks. Under a second for a large export.
+  - `POST imports` **starts a run**: creates the new accounts, categories, and tags, closes
+    accounts the file shows closed, and opens an **import batch** per account, recording how
+    category and person names map.
+  - `POST imports/:batchId/rows` adds **one part of one account's rows** (up to 5 000, never
+    splitting a day, so identical purchases on one day stay distinct), then its balances. Each
+    request is short, and the wizard shows real progress ("SoFi Checking, 12 of 50").
+  - If a part fails, the accounts already done stay done; the wizard offers to retry the rest
+    (safe: duplicates are skipped) or undo everything.
+- **Undo:** reverting a batch soft-deletes its transactions and removes its balances (TXN-10: the
+  member who imported it or an owner of the account). Balances recompute. An account the import
+  created is removed too, unless something else has been added to it since; one it closed is
+  reopened. `POST import-runs/:runId/revert` undoes every account of a file at once.
+- **Speed**, for a 9 000-transaction Monarch export with 23 000 balance rows over 50 accounts:
+  preview 0.25 s, start 2 s, then 90 parts of at most 1.5 s each, about 18 s in all.
+- When the background worker arrives (M2), imports can move to a job that continues after you
+  close the tab, using the same steps.
 - Limits: 50 000 rows and 20 MB per import; larger files are split by date.
 
 ### The wizard
@@ -34,7 +50,7 @@ is skipped and shown as done.
 |---|---|---|
 | 1. **Source** | Pick where it's from: *Monarch*, or *A bank or card statement (CSV)*. Drop the file(s); a short "how to export from Monarch" guide sits beside the drop zone | Always |
 | 2. **Columns** | Match columns, with the first rows shown live as you choose. A saved profile is picked automatically and the step collapses to "Using *Chase checking*. Change" | CSV only |
-| 3. **Accounts** | Each account in the file → *new* or *an existing one*, with type, owners, and visibility. Closed accounts listed with their close date. Monarch Owner names → members | Monarch, or a CSV with an Account column; otherwise one picker in step 1 |
+| 3. **Accounts** | Each account in the file → *new*, *an existing one*, or ***Don't import*** (its transactions and balances are left out; a transfer to it keeps its Transfer category on the side you import), with type, owners, and visibility. Closed accounts listed with their close date. Monarch Owner names → members | Monarch, or a CSV with an Account column; otherwise one picker in step 1 |
 | 4. **Categories** | Each category in the file → matched, or *new in "From Monarch"*; change any to an existing category | When the file has categories |
 | 5. **Review** | Totals in plain words ("1 204 new transactions, 38 already imported, 3 possible duplicates"), then a table filtered by status: new, already imported, possible duplicate (tick to include), skipped, error. Transfers to be linked and rules that will apply are shown here | Always |
 | 6. **Done** | Progress, then a summary with **Undo this import**, "Review 7 transactions", and "Go to transactions" | Always |
@@ -93,7 +109,7 @@ transactions in the export).
 | Id | The **dedupe key**. Monarch's id is stable, so importing a newer export later adds only what's new. Rows that are otherwise identical (85 in the sample: same day, account, amount, and description) stay distinct |
 | Merchant | Name (`display_name`) |
 | Original Statement | Original description; the merchant when it's empty |
-| Category | Matched by name to your categories; **unmatched ones are created** in a "From Monarch" group, and you can move them later. Kind: `transfer` for Transfer, Credit Card Payment, and Balance Adjustments; `income` when every transaction in it is money in; otherwise `flexible`. "Uncategorized" and "Transfer" map to the system categories |
+| Category | Matched by name to your categories; **unmatched ones are created**, and you can move them later: everyday spending in a "From Monarch" group, income and transfer categories in your existing Income and Transfers groups. Kind: `transfer` for Transfer, Credit Card Payment, and Balance Adjustments; `income` when every transaction in it is money in; otherwise `flexible`. "Uncategorized" and "Transfer" map to the system categories |
 | Tags | Comma-separated in one field; matched or created |
 | Notes | The **shared note**, encrypted |
 | Reviewed | `Needs Review` stays **needs review**; `Reviewed` and blank (most rows: Monarch leaves it blank unless you used its review flow) import as **reviewed** |
@@ -112,8 +128,8 @@ transactions in the export).
   from reports", and **goals**. Accounts that backed a Monarch goal import as ordinary accounts
   with their full history; the goal itself is recreated in Fiscus once goals exist (M5, #132)
   and pointed at that account.
-- Size: a 1 MB, 9 000-row export is well within the limits. Of the daily balances, only days
-  where the balance **changed** are stored (and the first day): balances carry forward between
+- Size: a 1 MB, 9 000-row export is well within the limits. Of the daily balances, only the first
+  day, days where the balance **changed**, and days with transactions are stored: balances carry forward between
   stored days (ADR 0011), so every day reads the same as in Monarch with far fewer rows, and the
   account's "entered balances" list isn't flooded with identical days. Imported balances are
   labelled as from Monarch there.
@@ -173,8 +189,9 @@ linked by `transfer_group_id`, both in the **Transfer** category (left out of ca
 | Route | Who | Notes |
 |---|---|---|
 | `POST imports/preview` | Owners of the target accounts (TXN-09) | Dry run: counts, per-row status (new, already imported, overlap, error), rules and transfer matches |
-| `POST imports` | Same | Creates batches; returns them |
-| `GET imports`, `POST imports/:batchId/revert` | Importer or account owner (TXN-10) | |
+| `POST imports` | Same | Starts a run: new accounts, categories, tags; a batch per account |
+| `POST imports/:batchId/rows` | The member who started the run, still an owner | One part of one account's rows |
+| `GET imports`, `POST imports/:batchId/revert`, `POST import-runs/:runId/revert` | Importer or account owner (TXN-10) | |
 | `GET`/`POST`/`PATCH`/`DELETE import-profiles` | OWN, MEM | Saved mappings, household-wide |
 | `GET`/`POST`/`PATCH`/`DELETE rules`, `PUT rules/order` | RULE-01/03 | |
 | `POST rules/:id/preview`, `POST rules/:id/apply` | RULE-06 | Apply to existing, visible rows only |

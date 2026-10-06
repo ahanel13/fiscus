@@ -9,6 +9,7 @@ import { CryptoModule } from './crypto/crypto.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthController } from './health/health.controller.js';
 import { HouseholdsModule } from './households/households.module.js';
+import { ImportsModule } from './imports/imports.module.js';
 import { LedgerModule } from './ledger/ledger.module.js';
 import { MeController } from './me/me.controller.js';
 
@@ -37,6 +38,7 @@ export class AppModule {
         HouseholdsModule,
         AccountsModule,
         LedgerModule,
+        ImportsModule,
       ],
       controllers: [HealthController, MeController],
       providers: [{ provide: APP_FILTER, useClass: ProblemFilter }],

@@ -125,6 +125,11 @@ export const balanceSnapshots = pgTable(
     availableMinor: money('available_minor'),
     creditLimitMinor: money('credit_limit_minor'),
     source: balanceSource().notNull(),
+    /**
+     * The import it came from (shown as "from Monarch"; reverting removes it). The foreign key to
+     * import_batches is declared in migration 0017, which avoids a cycle between schema files.
+     */
+    importBatchId: uuid(),
     ...timestamps(),
   },
   (t) => [
@@ -134,5 +139,6 @@ export const balanceSnapshots = pgTable(
       foreignColumns: [accounts.householdId, accounts.id],
     }).onDelete('cascade'),
     index().on(t.householdId, t.asOf),
+    index().on(t.importBatchId),
   ],
 );

@@ -20,6 +20,7 @@ import {
 import { bytea, id, money, timestamps, versioning } from '../columns.js';
 import { accounts } from './accounts.js';
 import { householdMembers, households } from './households.js';
+import { importBatches } from './imports.js';
 
 // Categories, tags, transactions, attribution, and notes (data model §3.5,
 // docs/design/transactions.md). Visibility is enforced by row-level security (migration 0012).
@@ -169,6 +170,11 @@ export const transactions = pgTable(
       columns: [t.householdId, t.categoryId],
       foreignColumns: [categories.householdId, categories.id],
     }),
+    foreignKey({
+      columns: [t.householdId, t.importBatchId],
+      foreignColumns: [importBatches.householdId, importBatches.id],
+    }),
+    index().on(t.importBatchId),
     index('transactions_list')
       .on(t.householdId, t.effectiveDate.desc(), t.id.desc())
       .where(sql`${t.deletedAt} IS NULL AND ${t.hasSplits} = false`),
