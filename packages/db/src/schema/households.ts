@@ -11,6 +11,7 @@ import {
   uuid,
   char,
   check,
+  date,
   unique,
 } from 'drizzle-orm/pg-core';
 import { bytea, id, timestamps, versioning } from '../columns.js';
@@ -63,6 +64,11 @@ export const householdMembers = pgTable(
     color: text().notNull(),
     avatarUrl: text(),
     joinedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Earliest date of shared records this member sees, unless they're part of them (ADR 0012).
+     * Null = the day they joined. Owners can move it earlier, never later.
+     */
+    historyFrom: date({ mode: 'string' }),
     leftAt: timestamp({ withTimezone: true }),
   },
   (t) => [

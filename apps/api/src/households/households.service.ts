@@ -4,7 +4,7 @@ import { planVersionedPatch } from '@fiscus/domain';
 import type { CurrentUser, Household, updateHouseholdSchema } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import { MEMBER_COLORS } from '@fiscus/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
@@ -87,6 +87,8 @@ export class HouseholdsService {
           })
           .returning();
         await this.keys.createForHousehold(id, tx);
+        // Default categories (transactions design §1), defined once in migration 0012.
+        await tx.execute(sql`SELECT fiscus_seed_default_categories(${id})`);
         await activity.record({
           action: 'household.created',
           targetType: 'household',

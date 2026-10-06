@@ -1,6 +1,6 @@
 # Categories and transactions (M1 Phase 2)
 
-- Status: Proposed
+- Status: Accepted (#290). Database layer: migrations `0011_ledger`, `0012_ledger_rls`
 - Tickets: #37, #36, #54, #59, #38, #39, #281, the transaction half of #61, and #256
 - Builds on: [data model §3.5](data-model.md#35-transactions), [permissions](permissions.md) §3, §4.3–4.6, [ADR 0006](../adr/0006-shared-finances-yours-mine-ours.md) §3, §5, [accounts and visibility](accounts-and-visibility.md)
 
@@ -29,9 +29,11 @@ purchases (F1), splits, and the API. Phase 4 adds imports, the review queue, and
 | Financial (fixed) | Loan payments · Fees · Taxes |
 | Savings (savings) | Savings transfers · Investments |
 | Transfers (transfer) | **Transfer** · **Settlement** (system) |
-| — | **Uncategorized** (system) |
+| Other (flexible) | **Uncategorized** (system) · Miscellaneous |
 
 - **System categories** (`uncategorized`, `transfer`, `settlement`) can be renamed but not deleted (CAT-04).
+- The set lives in one place, the SQL function `fiscus_seed_default_categories()`, which seeds new
+  households and backfilled existing ones.
 - **Deleting a category in use** asks for a replacement, and moves every transaction to it,
   including ones the deleting member can't see. It reports only the count of affected *visible*
   rows, so nothing leaks (CAT-03). Archiving hides a category from pickers but keeps its history.
@@ -157,3 +159,16 @@ All under `/api/v1/households/:householdId/`.
 3. **Attribution reveals the transaction, never the account**, with "Paid by …" (§3). Already decided in ADR 0006; restated because it shapes the whole API.
 4. **Split children** are shared individually through attribution, without their siblings (§4).
 5. **History window** for new members applies to transactions only, not to balances (§6).
+
+## 10. As built: database
+- **Effective date** is a generated column: the date override, else the posted date, else the
+  authorized date. The household "authorized date" basis (#69, Phase 3) adds a second generated
+  column, since a stored column can't read the household's setting.
+- **Visibility** (migration 0012): the policy in §3 plus the history window (§6), through two
+  read-only definer functions, `fiscus_history_from()` and `fiscus_attributed_to_me()`. Owners
+  of the paying account see all of its history; `full` members categorize within their window.
+- **Private notes** are visible only to their author, including to household owners and system jobs.
+- **Commit-time checks:** attribution shares sum to 10 000; attributed members are current
+  members; splits are one level deep, on the parent's account and currency, with at least two
+  parts adding up to the parent exactly.
+- Search uses `pg_trgm` GIN indexes on the display name and original description.
