@@ -53,7 +53,9 @@ import {
 import {
   type AccountChoice,
   type CategoryChoice,
+  type CheckReason,
   chooseAccount,
+  chooseMany,
   classifyFile,
   combinedInto,
   combineTargets,
@@ -71,6 +73,7 @@ import {
   suggestCategories,
   summarize,
   undoRun,
+  withType,
   type WizardChoices,
 } from '../lib/import.js';
 
@@ -787,6 +790,15 @@ function ColumnsStep({
 
 // ── 3. Accounts ────────────────────────────────────────────────────────────────────────────
 
+const CHECK_LABELS: Record<CheckReason, string> = {
+  duplicate: 'Possible copy',
+  continued: 'Continues in another account',
+  closed_with_money: 'Closed with money in it?',
+  type_unsure: 'Check the type',
+};
+
+type ExistingAccount = { id: string; name: string; closedAt: string | null };
+
 function AccountsStep({
   choices,
   onChange,
@@ -800,7 +812,7 @@ function AccountsStep({
 }: {
   choices: AccountChoice[];
   onChange: (c: AccountChoice[]) => void;
-  accounts: { id: string; name: string; closedAt: string | null }[];
+  accounts: ExistingAccount[];
   people: { name: string; memberId: string | null }[];
   onPeople: (p: { name: string; memberId: string | null }[]) => void;
   members: { id: string; displayName: string }[];
@@ -808,22 +820,45 @@ function AccountsStep({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showReady, setShowReady] = useState(false);
   const update = (key: string, patch: Partial<AccountChoice>) =>
     onChange(chooseAccount(choices, key, patch));
-
-  const taken = (except: string) =>
-    new Set(
-      choices.filter((c) => c.key !== except && c.mode === 'existing').map((c) => c.accountId),
-    );
+  const bulk = (patch: (c: AccountChoice) => Partial<AccountChoice>) => {
+    onChange(chooseMany(choices, selected, patch));
+    setSelected(new Set());
+  };
+  const select = (key: string, on: boolean) => {
+    const next = new Set(selected);
+    if (on) next.add(key);
+    else next.delete(key);
+    setSelected(next);
+  };
+  const toCheck = choices.filter((c) => c.check.length > 0);
+  const ready = choices.filter((c) => c.check.length === 0);
   const importing = choices.filter((c) => c.mode !== 'skip').length;
-  const closing = choices.filter((c) => c.mode !== 'skip' && c.close).length;
+  const closing = choices.filter(
+    (c) => c.mode !== 'skip' && c.mode !== 'combine' && c.close,
+  ).length;
+  const row = (c: AccountChoice) => (
+    <AccountRow
+      key={c.key}
+      choice={c}
+      choices={choices}
+      accounts={accounts}
+      selected={selected.has(c.key)}
+      onSelect={(on) => select(c.key, on)}
+      onUpdate={(patch) => update(c.key, patch)}
+    />
+  );
+
   return (
     <Card className="space-y-5">
       <StepHeading>Where does each account go?</StepHeading>
       <p className="text-sm text-muted">
-        Each account in the file becomes a new account, goes into one you already have, is combined
-        with another account in the file, or is left out. Accounts whose history stops early are
-        offered as closed from the day after.
+        Each account becomes a new account, goes into one you already have, is combined with another
+        account in the file, or is left out. Names, types, and closing can all be changed after
+        importing; copies and combining are easiest to get right here.
       </p>
       {problems ? (
         <Alert tone="warning">
@@ -831,137 +866,96 @@ function AccountsStep({
           out.
         </Alert>
       ) : null}
-      <ul className="divide-y divide-border rounded-lg border border-border">
-        {choices.map((c) => (
-          <li key={c.key} className="grid gap-3 p-3 md:grid-cols-[1fr_15rem_12rem] md:items-start">
-            <div className="min-w-0 text-sm">
-              <p className="truncate font-medium">{c.key}</p>
-              <p className="text-muted">
-                {[
-                  c.transactions ? `${n(c.transactions)} transactions` : '',
-                  c.balances ? `${n(c.balances)} days of balances` : '',
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                {c.firstDate && c.lastDate ? (
-                  <>
-                    {' · '}
-                    <DateText value={c.firstDate} /> – <DateText value={c.lastDate} />
-                  </>
-                ) : null}
-              </p>
-              {c.duplicateOf ? (
-                <p className="mt-1 text-warning">
-                  Looks like a second copy of {c.duplicateOf}: the same balance every day and no
-                  transactions of its own.
-                </p>
-              ) : null}
-              {combinedInto(choices, c.key).map((o) => (
-                <p key={o.key} className="mt-1 text-muted">
-                  Also includes {o.key}
-                  {o.from && o.to ? (
-                    <>
-                      {' '}
-                      (<DateText value={o.from} /> – <DateText value={o.to} />)
-                    </>
-                  ) : null}
-                  .
-                </p>
-              ))}
-              {c.continuedBy ? (
-                <p className="mt-1 text-muted">
-                  {c.continuedBy} picks up the day after this one stops: combining them keeps one
-                  account with the whole history.
-                </p>
-              ) : null}
-              {c.closeOn && c.mode !== 'skip' && c.mode !== 'combine' ? (
-                <Checkbox
-                  className="mt-1"
-                  isSelected={c.close}
-                  onChange={(close) => update(c.key, { close })}
-                >
-                  <span>
-                    Closed from <DateText value={c.closeOn} />
-                  </span>
-                </Checkbox>
-              ) : null}
-            </div>
-            <Select
-              aria-label={`Where ${c.key} goes`}
-              value={
-                c.mode === 'existing'
-                  ? c.accountId
-                  : c.mode === 'combine'
-                    ? `combine:${c.sameAs}`
-                    : c.mode
-              }
-              onChange={(v) => {
-                const value = String(v);
-                if (value === 'new' || value === 'skip')
-                  update(c.key, { mode: value, accountId: null, sameAs: null });
-                else if (value.startsWith('combine:'))
-                  update(c.key, {
-                    mode: 'combine',
-                    accountId: null,
-                    sameAs: value.slice('combine:'.length),
-                  });
-                else update(c.key, { mode: 'existing', accountId: value, sameAs: null });
-              }}
+
+      {selected.size ? (
+        <div
+          role="toolbar"
+          aria-label="Change the selected accounts"
+          className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-2 p-2 text-sm"
+        >
+          <span className="px-1 font-medium">{n(selected.size)} selected</span>
+          <Select
+            aria-label="Set the type of the selected accounts"
+            placeholder="Set type"
+            value={null}
+            onChange={(v) => v && bulk((c) => ({ ...withType(c, v as AccountType) }))}
+            triggerClassName="min-w-40"
+          >
+            {(Object.keys(TYPE_LABELS) as AccountType[]).map((t) => (
+              <SelectItem key={t} id={t}>
+                {TYPE_LABELS[t]}
+              </SelectItem>
+            ))}
+          </Select>
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={() => bulk(() => ({ mode: 'new', accountId: null, sameAs: null }))}
+          >
+            New accounts
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={() => bulk(() => ({ mode: 'skip', accountId: null, sameAs: null }))}
+          >
+            Don’t import
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={() => bulk((c) => ({ close: !!c.closeOn }))}
+          >
+            Closed
+          </Button>
+          <Button variant="secondary" size="sm" onPress={() => bulk(() => ({ close: false }))}>
+            Not closed
+          </Button>
+          <Button variant="ghost" size="sm" onPress={() => setSelected(new Set())}>
+            Clear
+          </Button>
+        </div>
+      ) : null}
+
+      {toCheck.length ? (
+        <section className="space-y-2" aria-labelledby="check-these">
+          <h3 id="check-these" className="text-sm font-medium">
+            Check these ({n(toCheck.length)})
+          </h3>
+          <ul className="divide-y divide-border rounded-lg border border-border">
+            {toCheck.map(row)}
+          </ul>
+        </section>
+      ) : null}
+
+      {ready.length ? (
+        <section className="space-y-2" aria-labelledby="ready">
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 id="ready" className="text-sm font-medium">
+              Ready to import ({n(ready.length)})
+            </h3>
+            <span className="text-sm text-muted">
+              {ready.some((c) => c.mode === 'existing')
+                ? 'Matched to your accounts by name, or new with the type their name says.'
+                : 'New accounts with the type their name says.'}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={showReady}
+              aria-controls="ready-list"
+              onPress={() => setShowReady(!showReady)}
             >
-              <SelectItem id="new">New account</SelectItem>
-              <SelectItem id="skip">Don’t import</SelectItem>
-              {accounts.length ? (
-                <SelectSection title="Your accounts">
-                  {accounts
-                    .filter((a) => !taken(c.key).has(a.id))
-                    .map((a) => (
-                      <SelectItem key={a.id} id={a.id}>
-                        {a.name}
-                        {a.closedAt ? ' (closed)' : ''}
-                      </SelectItem>
-                    ))}
-                </SelectSection>
-              ) : null}
-              {combineTargets(choices, c.key).length ? (
-                <SelectSection title="Combine with">
-                  {combineTargets(choices, c.key).map((o) => (
-                    <SelectItem key={`combine:${o.key}`} id={`combine:${o.key}`}>
-                      {o.key}
-                    </SelectItem>
-                  ))}
-                </SelectSection>
-              ) : null}
-            </Select>
-            {c.mode === 'new' ? (
-              <Select
-                aria-label={`Type of ${c.key}`}
-                value={c.type}
-                onChange={(v) => {
-                  const type = v as AccountType;
-                  update(c.key, {
-                    type,
-                    // Bank-style accounts follow transactions; assets are valued by hand.
-                    balanceMode:
-                      c.transactions > 0 && ['depository', 'credit', 'loan'].includes(type)
-                        ? 'transactions'
-                        : c.transactions > 0
-                          ? c.balanceMode
-                          : 'value',
-                  });
-                }}
-              >
-                {(Object.keys(TYPE_LABELS) as AccountType[]).map((t) => (
-                  <SelectItem key={t} id={t}>
-                    {TYPE_LABELS[t]}
-                  </SelectItem>
-                ))}
-              </Select>
-            ) : (
-              <span />
-            )}
-          </li>
-        ))}
-      </ul>
+              {showReady ? 'Hide' : 'Show'}
+            </Button>
+          </div>
+          {showReady ? (
+            <ul id="ready-list" className="divide-y divide-border rounded-lg border border-border">
+              {ready.map(row)}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       {people.length ? (
         <div className="space-y-2">
@@ -1004,6 +998,149 @@ function AccountsStep({
         {closing ? `, ${n(closing)} closed` : ''}
       </StepActions>
     </Card>
+  );
+}
+
+function AccountRow({
+  choice: c,
+  choices,
+  accounts,
+  selected,
+  onSelect,
+  onUpdate,
+}: {
+  choice: AccountChoice;
+  choices: AccountChoice[];
+  accounts: ExistingAccount[];
+  selected: boolean;
+  onSelect: (on: boolean) => void;
+  onUpdate: (patch: Partial<AccountChoice>) => void;
+}) {
+  const taken = new Set(
+    choices.filter((o) => o.key !== c.key && o.mode === 'existing').map((o) => o.accountId),
+  );
+  const targets = combineTargets(choices, c.key);
+  return (
+    <li className="grid gap-3 p-3 md:grid-cols-[auto_1fr_15rem_12rem] md:items-start">
+      <Checkbox aria-label={`Select ${c.key}`} isSelected={selected} onChange={onSelect} />
+      <div className="min-w-0 text-sm">
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="truncate font-medium">{c.key}</span>
+          {c.check.map((r) => (
+            <Badge key={r} tone="warning">
+              {CHECK_LABELS[r]}
+            </Badge>
+          ))}
+        </p>
+        <p className="text-muted">
+          {[
+            c.transactions ? `${n(c.transactions)} transactions` : '',
+            c.balances ? `${n(c.balances)} days of balances` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          {c.from && c.to ? (
+            <>
+              {' · '}
+              <DateText value={c.from} /> – <DateText value={c.to} />
+            </>
+          ) : null}
+        </p>
+        {c.duplicateOf ? (
+          <p className="mt-1 text-muted">
+            Same balance as {c.duplicateOf} every day, and no transactions of its own: probably the
+            same account connected twice in Monarch, so it’s left out.
+          </p>
+        ) : null}
+        {c.continuedBy ? (
+          <p className="mt-1 text-muted">
+            {c.continuedBy} picks up the day after this one stops: combining them keeps one account
+            with the whole history.
+          </p>
+        ) : null}
+        {c.check.includes('type_unsure') ? (
+          <p className="mt-1 text-muted">
+            The name doesn’t say what it is, and its balances look like a card or a loan.
+          </p>
+        ) : null}
+        {combinedInto(choices, c.key).map((o) => (
+          <p key={o.key} className="mt-1 text-muted">
+            Also includes {o.key}
+            {o.from && o.to ? (
+              <>
+                {' '}
+                (<DateText value={o.from} /> – <DateText value={o.to} />)
+              </>
+            ) : null}
+            .
+          </p>
+        ))}
+        {c.closeOn && c.mode !== 'skip' && c.mode !== 'combine' ? (
+          <Checkbox className="mt-1" isSelected={c.close} onChange={(close) => onUpdate({ close })}>
+            <span>
+              Closed from <DateText value={c.closeOn} />
+            </span>
+          </Checkbox>
+        ) : null}
+      </div>
+      <Select
+        aria-label={`Where ${c.key} goes`}
+        value={
+          c.mode === 'existing'
+            ? c.accountId
+            : c.mode === 'combine'
+              ? `combine:${c.sameAs}`
+              : c.mode
+        }
+        onChange={(v) => {
+          const value = String(v);
+          if (value === 'new' || value === 'skip')
+            onUpdate({ mode: value, accountId: null, sameAs: null });
+          else if (value.startsWith('combine:'))
+            onUpdate({ mode: 'combine', accountId: null, sameAs: value.slice('combine:'.length) });
+          else onUpdate({ mode: 'existing', accountId: value, sameAs: null });
+        }}
+      >
+        <SelectItem id="new">New account</SelectItem>
+        <SelectItem id="skip">Don’t import</SelectItem>
+        {accounts.length ? (
+          <SelectSection title="Your accounts">
+            {accounts
+              .filter((a) => !taken.has(a.id))
+              .map((a) => (
+                <SelectItem key={a.id} id={a.id}>
+                  {a.name}
+                  {a.closedAt ? ' (closed)' : ''}
+                </SelectItem>
+              ))}
+          </SelectSection>
+        ) : null}
+        {targets.length ? (
+          <SelectSection title="Combine with">
+            {targets.map((o) => (
+              <SelectItem key={`combine:${o.key}`} id={`combine:${o.key}`}>
+                {o.key}
+              </SelectItem>
+            ))}
+          </SelectSection>
+        ) : null}
+      </Select>
+      {c.mode === 'new' ? (
+        <Select
+          aria-label={`Type of ${c.key}`}
+          value={c.type}
+          onChange={(v) => onUpdate(withType(c, v as AccountType))}
+        >
+          {(Object.keys(TYPE_LABELS) as AccountType[]).map((t) => (
+            <SelectItem key={t} id={t}>
+              {TYPE_LABELS[t]}
+            </SelectItem>
+          ))}
+        </Select>
+      ) : (
+        <span />
+      )}
+    </li>
   );
 }
 

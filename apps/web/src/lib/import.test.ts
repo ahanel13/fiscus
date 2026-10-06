@@ -4,6 +4,8 @@ import { parseCsv } from '@fiscus/shared';
 import { describe, expect, it } from 'vitest';
 import {
   chooseAccount,
+  chooseMany,
+  withType,
   classifyFile,
   combinedInto,
   combineTargets,
@@ -24,6 +26,7 @@ const found = (key: string, extra: Partial<MonarchAccount> = {}): MonarchAccount
   lastBalanceDate: null,
   lastBalanceMinor: null,
   suggestedType: 'depository',
+  typeFromName: true,
   suggestedMode: 'transactions',
   closeOn: null,
   closedAtZero: false,
@@ -65,6 +68,35 @@ describe('import wizard logic', () => {
       ['SAVINGS', 'skip', null, false, null],
       // One another account continues is combined with it, not closed.
       ['Old truck', 'combine', null, false, '2024-09-09'],
+    ]);
+  });
+
+  it('lists what needs a look, and applies changes to several accounts at once', () => {
+    const choices = suggestAccounts(
+      [
+        found('Checking'),
+        found('Wedding', { typeFromName: false, closeOn: '2025-06-11', closedAtZero: true }),
+        found('SOFI', { typeFromName: false, suggestedType: 'loan' }),
+        found('Truck', { closeOn: '2024-09-09', closedAtZero: false }),
+        found('SAVINGS', { transactions: 0, duplicateOf: 'SAVINGS (...2124)' }),
+      ],
+      [],
+    );
+    expect(choices.map((c) => [c.key, c.check])).toEqual([
+      ['Checking', []],
+      // Unnamed, but checking or savings is the likely answer: ready as it is.
+      ['Wedding', []],
+      ['SOFI', ['type_unsure']],
+      ['Truck', ['closed_with_money']],
+      ['SAVINGS', ['duplicate']],
+    ]);
+    const next = chooseMany(choices, ['Checking', 'Truck'], (c) => withType(c, 'vehicle'));
+    expect(next.map((c) => [c.key, c.type, c.balanceMode])).toEqual([
+      ['Checking', 'vehicle', 'transactions'], // it has transactions: they still count
+      ['Wedding', 'depository', 'transactions'],
+      ['SOFI', 'loan', 'transactions'],
+      ['Truck', 'vehicle', 'transactions'],
+      ['SAVINGS', 'depository', 'transactions'],
     ]);
   });
 

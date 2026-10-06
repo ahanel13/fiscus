@@ -70,7 +70,23 @@ export interface AccountChoice {
   duplicateOf: string | null;
   /** The account that picks up where this one stops (re-added in Monarch). */
   continuedBy: string | null;
+  /**
+   * Why to look at this one before importing, decided when the file is read (so rows don't move
+   * while you edit). Empty: the wizard is confident; it goes in "Ready to import".
+   */
+  check: CheckReason[];
 }
+
+/** What makes an account worth a look on the Accounts step. */
+export type CheckReason =
+  /** Same balances as another account, no transactions: probably a second copy. */
+  | 'duplicate'
+  /** Another account picks up where it stops: probably one account, re-added. */
+  | 'continued'
+  /** Its history stops early with money still in it: closed, or just stopped syncing? */
+  | 'closed_with_money'
+  /** The name doesn't say what type it is, and its balances suggest a card or a loan. */
+  | 'type_unsure';
 
 const lower = (s: string) => s.trim().toLowerCase();
 
@@ -109,6 +125,20 @@ export function suggestAccounts(found: MonarchAccount[], existing: Account[]): A
       ...span(a),
       duplicateOf: a.duplicateOf,
       continuedBy: a.continuedBy,
+      check: match
+        ? []
+        : ([
+            a.duplicateOf ? 'duplicate' : null,
+            a.continuedBy ? 'continued' : null,
+            a.closeOn && !a.closedAtZero && !a.duplicateOf && !a.continuedBy
+              ? 'closed_with_money'
+              : null,
+            // Unnamed accounts default to checking or savings, usually right and easy to change;
+            // a guess of card or loan from the balances is worth a look.
+            !a.typeFromName && a.suggestedType !== 'depository' && !a.duplicateOf && !a.continuedBy
+              ? 'type_unsure'
+              : null,
+          ].filter((r) => r !== null) as CheckReason[]),
     };
   });
 }
@@ -209,6 +239,7 @@ export function readCsvFile(file: LoadedFile, mapping: CsvMapping, exponent: num
       lastBalanceDate: null,
       lastBalanceMinor: null,
       suggestedType: 'depository',
+      typeFromName: false,
       suggestedMode: 'transactions',
       closeOn: null,
       closedAtZero: false,
@@ -447,3 +478,30 @@ export function combineTargets(choices: AccountChoice[], key: string): AccountCh
 /** Accounts combined into `key`. */
 export const combinedInto = (choices: AccountChoice[], key: string) =>
   choices.filter((c) => c.mode === 'combine' && c.sameAs === key);
+
+/** Changes an account's type; bank-style accounts with transactions follow them, others are valued. */
+export function withType(c: AccountChoice, type: AccountType): Partial<AccountChoice> {
+  return {
+    type,
+    balanceMode:
+      c.transactions > 0 && ['depository', 'credit', 'loan'].includes(type)
+        ? 'transactions'
+        : c.transactions > 0
+          ? c.balanceMode
+          : 'value',
+  };
+}
+
+/** Applies a change to several accounts at once (bulk actions). */
+export function chooseMany(
+  choices: AccountChoice[],
+  keys: Iterable<string>,
+  patch: (c: AccountChoice) => Partial<AccountChoice>,
+): AccountChoice[] {
+  let next = choices;
+  for (const key of keys) {
+    const c = next.find((x) => x.key === key);
+    if (c) next = chooseAccount(next, key, patch(c));
+  }
+  return next;
+}

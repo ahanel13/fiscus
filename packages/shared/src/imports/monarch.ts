@@ -2,7 +2,7 @@
 import type { AccountType, BalanceMode } from '../api/accounts.js';
 import type { ImportBalance, ImportTransaction } from '../api/imports.js';
 import type { CsvTable } from './csv.js';
-import { guessAccountType, type RowProblem } from './mapping.js';
+import { explainAccountType, type RowProblem } from './mapping.js';
 import { parseAmount, parseDate } from './values.js';
 
 // Monarch's export (docs/design/imports.md §2), checked against a real one in October 2026:
@@ -36,6 +36,8 @@ export interface MonarchAccount {
   lastBalanceDate: string | null;
   lastBalanceMinor: number | null;
   suggestedType: AccountType;
+  /** The name said what type it is; otherwise the guess comes from balances (or is a default). */
+  typeFromName: boolean;
   /** Accounts with no transactions in the export are valued by hand. */
   suggestedMode: BalanceMode;
   /**
@@ -43,7 +45,7 @@ export interface MonarchAccount {
    * is offered as closed the day after (docs/design/imports.md §2).
    */
   closeOn: string | null;
-  /** Its last balance is under one unit (say $1): clearly closed, so the wizard ticks it. */
+  /** Its last balance is under ten units (say $10): clearly closed, so the wizard ticks it. */
   closedAtZero: boolean;
   /**
    * Another account in the file with the same balance on every day both have (30 days or
@@ -99,6 +101,7 @@ export function readMonarch(
         lastBalanceDate: null,
         lastBalanceMinor: null,
         suggestedType: 'depository',
+        typeFromName: false,
         suggestedMode: 'value',
         closeOn: null,
         closedAtZero: false,
@@ -203,11 +206,13 @@ export function readMonarch(
     null,
   );
   for (const a of stats.values()) {
-    a.suggestedType = guessAccountType(a.key, amounts.get(a.key), exponent);
+    const guess = explainAccountType(a.key, amounts.get(a.key), exponent);
+    a.suggestedType = guess.type;
+    a.typeFromName = guess.fromName;
     a.suggestedMode = a.transactions > 0 ? 'transactions' : 'value';
     if (exportEnd && a.lastBalanceDate && a.lastBalanceDate < exportEnd) {
       a.closeOn = nextDay(a.lastBalanceDate);
-      a.closedAtZero = Math.abs(a.lastBalanceMinor ?? 0) < 10 ** exponent;
+      a.closedAtZero = Math.abs(a.lastBalanceMinor ?? 0) < 10 * 10 ** exponent;
     }
   }
   findDuplicates([...stats.values()], byDay);

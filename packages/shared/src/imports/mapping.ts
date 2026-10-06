@@ -187,7 +187,7 @@ const TYPE_HINTS: [AccountType, RegExp][] = [
   ],
   [
     'credit',
-    /\b(credit|card|visa|mastercard|amex|american express|discover|sapphire|freedom|preferred|rewards)\b|®/i,
+    /\b(credit|card|visa|mastercard|amex|american express|discover|sapphire|freedom|preferred|rewards|signature|quicksilver|venture|savor|platinum)\b|®/i,
   ],
   ['depository', /\b(checking|savings|cd|money market|cash|bank)\b/i],
 ];
@@ -198,7 +198,20 @@ const TYPE_HINTS: [AccountType, RegExp][] = [
  * loan when they're large.
  */
 export function guessAccountType(name: string, balances: number[] = [], exponent = 2): AccountType {
-  for (const [type, re] of TYPE_HINTS) if (re.test(name)) return type;
+  return explainAccountType(name, balances, exponent).type;
+}
+
+/** The guess, and whether the name said so (a surer guess than balances alone). */
+export function explainAccountType(
+  name: string,
+  balances: number[] = [],
+  exponent = 2,
+): { type: AccountType; fromName: boolean } {
+  for (const [type, re] of TYPE_HINTS) if (re.test(name)) return { type, fromName: true };
+  return { type: typeFromBalances(balances, exponent), fromName: false };
+}
+
+function typeFromBalances(balances: number[], exponent: number): AccountType {
   const negative = balances.filter((b) => b < 0);
   if (balances.length > 0 && negative.length > balances.length / 2) {
     // Owing tens of thousands is a loan (a mortgage, say), not a card.
