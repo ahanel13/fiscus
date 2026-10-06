@@ -79,6 +79,7 @@ format money by hand.
 | Money out (flow < 0) | Plain text, true minus "−" (U+2212) | −$84.12 |
 | Balance ≥ 0 | Plain | $5,132.06 |
 | Negative balance, overspent budget | `--danger` | **−$120.00** |
+| Liability (credit card, loan): what you owe | Plain, true minus (`kind="liability"`) | −$287,654.00 |
 | Zero | Plain, no sign | $0.00 |
 
 - Formatting uses `formatMoney()` with the household's currency and the viewer's locale.
