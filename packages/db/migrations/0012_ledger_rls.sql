@@ -38,6 +38,21 @@ CREATE FUNCTION fiscus_attributed_to_me() RETURNS SETOF uuid
 ALTER FUNCTION fiscus_attributed_to_me() OWNER TO fiscus_definer;
 --> statement-breakpoint
 
+-- Who paid for the transactions attributed to the context member: the paying account's owners,
+-- as members. This is what "Paid by Ada" shows when the account itself is hidden (F1); it
+-- reveals people, never the account.
+CREATE FUNCTION fiscus_attributed_payers()
+  RETURNS TABLE (transaction_id uuid, member_id uuid)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+  AS $$
+    SELECT t.id, o.member_id
+    FROM transactions t JOIN account_owners o ON o.account_id = t.account_id
+    WHERE t.id IN (SELECT fiscus_attributed_to_me())
+  $$;
+--> statement-breakpoint
+ALTER FUNCTION fiscus_attributed_payers() OWNER TO fiscus_definer;
+--> statement-breakpoint
+
 -- transactions: owners of the paying account see all of it; full and view-only members see it
 -- from their history window on (unless they're part of it); attribution shares it.
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
