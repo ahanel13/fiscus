@@ -123,6 +123,17 @@ describe('ledger', () => {
       expect(await balances(acct)).toEqual({ '2026-04-01': 50000, '2026-04-02': 48750 });
     });
 
+    it('never computes a bank-connected account’s balance from its transactions', async () => {
+      const acct = await account(A, {
+        openingBalance: { amountMinor: 500000, asOf: '2026-03-10' },
+      });
+      // Simulate a bank connection (M2): the reported balance is the truth.
+      await sql('UPDATE accounts SET connection_id = gen_random_uuid() WHERE id = $1', [acct]);
+      await txn(A, acct, '2026-03-12', -2000);
+      await txn(A, acct, '2026-03-01', -1000);
+      expect(await balances(acct)).toEqual({ '2026-03-10': 500000 });
+    });
+
     it('leaves hand-valued assets alone', async () => {
       const house = await account(A, {
         type: 'property',
