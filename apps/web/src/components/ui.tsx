@@ -44,5 +44,6 @@ export {
 export { ComboBox, Select, SelectItem, SelectSection } from './ui/select.js';
 export { Cell, Column, Row, Table, TableBody, TableHeader } from './ui/table.js';
 export { Tab, TabList, TabPanel, Tabs } from './ui/tabs.js';
+export { type PickerTag, TagPicker } from './ui/tag-picker.js';
 export { toast, Toaster } from './ui/toast.js';
 export { Checkbox, Radio, RadioCard, RadioGroup, SegmentedControl, Switch } from './ui/toggles.js';

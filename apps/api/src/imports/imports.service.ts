@@ -383,8 +383,9 @@ export class ImportsService {
       if (batch.revertedAt) {
         throw new Problem(409, 'already_reverted', 'This import was already undone');
       }
-      await this.#revertBatch(tx, activity, ctx, batch, await accessLevels(tx));
-      await this.#afterRevert(tx, activity, [batch]);
+      const moved = new Set<string>();
+      await this.#revertBatch(tx, activity, ctx, batch, await accessLevels(tx), moved);
+      await this.#afterRevert(tx, activity, [batch], moved);
     });
   }
 
@@ -398,8 +399,9 @@ export class ImportsService {
         throw new Problem(409, 'already_reverted', 'This import was already undone');
       }
       const levels = await accessLevels(tx);
-      for (const b of open) await this.#revertBatch(tx, activity, ctx, b, levels);
-      await this.#afterRevert(tx, activity, open);
+      const moved = new Set<string>();
+      for (const b of open) await this.#revertBatch(tx, activity, ctx, b, levels, moved);
+      await this.#afterRevert(tx, activity, open, moved);
     });
   }
 
@@ -647,7 +649,11 @@ export class ImportsService {
           .from(transactions)
           .where(
             and(
-              eq(transactions.accountId, accountId),
+              // Also rows imported here and since moved to another account (TXN-12).
+              or(
+                eq(transactions.accountId, accountId),
+                eq(transactions.importAccountId, accountId),
+              ),
               eq(transactions.source, 'import'),
               inArray(transactions.dedupeKey, part),
             ),
@@ -935,6 +941,7 @@ export class ImportsService {
           reviewStatus: p.row.reviewed ? ('reviewed' as const) : ('needs_review' as const),
           source: 'import' as const,
           importBatchId: batch.id,
+          importAccountId: batch.accountId,
           dedupeKey: p.dedupeKey,
         })),
       );
@@ -1017,6 +1024,7 @@ export class ImportsService {
     ctx: HouseholdContext,
     batch: Batch,
     levels: Map<string, string>,
+    moved: Set<string>,
   ) {
     if (batch.memberId !== ctx.memberId && levels.get(batch.accountId) !== 'owner') {
       throw problems.forbidden(
@@ -1029,7 +1037,9 @@ export class ImportsService {
       .update(transactions)
       .set({ deletedAt: now, dedupeKey: null })
       .where(and(eq(transactions.importBatchId, batch.id), isNull(transactions.deletedAt)))
-      .returning({ id: transactions.id });
+      .returning({ id: transactions.id, accountId: transactions.accountId });
+    // Rows moved to another account since (TXN-12): that account's balance changes too.
+    for (const r of reverted) if (r.accountId !== batch.accountId) moved.add(r.accountId);
     for (const ids of chunks(reverted.map((r) => r.id))) {
       await tx
         .update(transactions)
@@ -1055,7 +1065,15 @@ export class ImportsService {
    * removed, accounts it closed are reopened, and the rest recompute their balances. Done after
    * every batch, since batches of one run can share an account ("Combine with").
    */
-  async #afterRevert(tx: Executor, activity: HouseholdActivity, batches: Batch[]) {
+  async #afterRevert(
+    tx: Executor,
+    activity: HouseholdActivity,
+    batches: Batch[],
+    moved: Set<string>,
+  ) {
+    for (const accountId of moved) {
+      if (!batches.some((b) => b.accountId === accountId)) await recomputeBalances(tx, accountId);
+    }
     for (const [accountId, list] of Map.groupBy(batches, (b) => b.accountId)) {
       if (list.some((b) => b.createdAccount) && (await this.#accountIsEmpty(tx, accountId))) {
         // The import made this account and nothing else is in it: undo that too.

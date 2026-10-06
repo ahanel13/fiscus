@@ -14,5 +14,13 @@ try {
   });
 } catch (err) {
   console.error('[migrate] failed:', err instanceof Error ? err.message : err);
+  // The ORM's message is the SQL that failed; the database's reason is in the cause.
+  for (let cause = (err as { cause?: unknown }).cause; cause;) {
+    const c = cause as { message?: string; detail?: string; hint?: string; cause?: unknown };
+    console.error('[migrate] because:', c.message ?? cause);
+    if (c.detail) console.error('[migrate] detail:', c.detail);
+    if (c.hint) console.error('[migrate] hint:', c.hint);
+    cause = c.cause;
+  }
   process.exit(1);
 }

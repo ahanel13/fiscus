@@ -14,6 +14,8 @@ export interface MigrateOptions {
   appPassword?: string | undefined;
   maintenancePassword?: string | undefined;
   log?: (message: string) => void;
+  /** Tests only: a folder holding the first N migrations, to stop partway. */
+  migrationsFolder?: string;
 }
 
 /**
@@ -22,13 +24,18 @@ export interface MigrateOptions {
  */
 export async function runMigrations(
   url: string,
-  { appPassword, maintenancePassword, log = () => {} }: MigrateOptions = {},
+  {
+    appPassword,
+    maintenancePassword,
+    log = () => {},
+    migrationsFolder = MIGRATIONS_FOLDER,
+  }: MigrateOptions = {},
 ): Promise<void> {
   const client = new pg.Client({ connectionString: url });
   await client.connect();
   try {
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK]);
-    await migrate(drizzle(client), { migrationsFolder: MIGRATIONS_FOLDER });
+    await migrate(drizzle(client), { migrationsFolder });
     log('Migrations applied');
 
     // Role passwords can't be bind parameters, so they are escaped as literals.

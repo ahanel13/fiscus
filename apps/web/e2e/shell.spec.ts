@@ -156,6 +156,43 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   await expect(page.getByRole('link', { name: /Wallet/ })).toContainText('−$120.00');
 });
 
+test('tags a transaction from a search box, and moves a split purchase to another account', async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/accounts`);
+  await page.getByRole('button', { name: 'Add account' }).first().click();
+  const add = page.getByRole('dialog', { name: 'Add account' });
+  await add.getByLabel('Name').fill('Pocket');
+  await add.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Pocket' })).toBeVisible();
+
+  await page.goto(`${householdUrl}/transactions`);
+  await page.getByRole('button', { name: /Costco run \(1\/2\)/ }).click();
+  const drawer = page.getByRole('dialog', { name: /Costco run/ });
+  // Tags: only the transaction's own show; others are found or created by typing.
+  await expect(drawer.getByText('No tags')).toBeVisible();
+  await drawer.getByRole('combobox', { name: 'Add tags' }).fill('Bulk buy');
+  await page.getByRole('option', { name: 'Create tag “Bulk buy”' }).click();
+  await expect(drawer.getByRole('row', { name: 'Bulk buy' })).toBeVisible();
+  await drawer.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+
+  // A part moves with its whole purchase.
+  await drawer.getByRole('button', { name: 'Move this purchase to another account' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Move this purchase to another account' });
+  await dialog.getByRole('button', { name: /Move to account/ }).click();
+  await page.getByRole('option', { name: 'Pocket' }).click();
+  await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(page.getByText('Moved to Pocket.')).toBeVisible();
+
+  await page.goto(`${householdUrl}/accounts`);
+  await expect(page.getByRole('link', { name: /Pocket/ })).toContainText('−$120.00');
+  // Nothing left in the wallet.
+  await expect(page.getByRole('link', { name: /Wallet/ })).toContainText('No balance');
+});
+
 test('imports a Monarch export with the wizard, then undoes it', async ({ page }) => {
   await signIn(page);
   await page.goto(`${householdUrl}/accounts`);

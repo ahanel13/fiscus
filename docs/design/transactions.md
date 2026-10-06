@@ -201,3 +201,17 @@ All under `/api/v1/households/:householdId/`.
 - **Attribution changes** on a hidden account are recorded against that account, so the person
   it's attributed to doesn't see the event in the feed (they see the current attribution on the
   transaction). Notifying them is part of flags and disputes (M3).
+
+## Moving transactions between accounts (TXN-12)
+
+Banks sometimes report one account's transactions under another (SoFi once put its separate
+accounts' transactions into one), so a transaction can be moved to another account: one from its
+drawer, or many from the list.
+
+- Needs ownership of both accounts; same currency only. A split moves with all its parts.
+- Explicit attribution stays; inherited attribution follows the new account's owners.
+- Both accounts' computed balances are rebuilt (§2). Entered balances, including ones imported
+  from Monarch, don't change: they were the bank's figure.
+- An imported transaction remembers the account it was imported into (`import_account_id`), so
+  importing the same file again doesn't bring back what you moved out.
+- Bank-synced transactions (M2) stay in their bank's account: the feed owns them.
