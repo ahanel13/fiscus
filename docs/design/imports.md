@@ -54,7 +54,8 @@ the next file's headers match.
 ## 2. Monarch import (#75)
 
 Checked against a real export (Settings → Data, October 2026: 9 160 transactions over 40
-accounts, 23 333 balance rows over 50 accounts). Monarch gives two files:
+accounts, 23 333 balance rows over 50 accounts). Monarch gives two files, each covering every
+account; no per-account downloads are needed. The importer takes either or both:
 
 **Transactions:** `Date, Merchant, Category, Account, Original Statement, Notes, Amount, Tags, Owner, Reviewed, Id`
 - Dates are `YYYY-MM-DD`; amounts are plain decimals with a `.` and no thousands separator,
