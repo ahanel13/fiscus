@@ -264,6 +264,39 @@ describe('transaction visibility (RLS)', () => {
     });
   });
 
+  it('keeps member preferences private to their member', async () => {
+    await owner.query(
+      `INSERT INTO member_preferences (household_id, member_id, key, value) VALUES ($1, $2, 'range:reports', '"last_6m"')`,
+      [H, people.A.member],
+    );
+    await asMember('A', async (q) => {
+      expect((await q.query('SELECT value FROM member_preferences')).rows).toEqual([
+        { value: 'last_6m' },
+      ]);
+    });
+    await asMember('B', async (q) => {
+      expect((await q.query('SELECT 1 FROM member_preferences')).rowCount).toBe(0);
+      const err = await errorOf(() =>
+        q.query(
+          `INSERT INTO member_preferences (household_id, member_id, key, value) VALUES ($1, $2, 'x', '1')`,
+          [H, people.A.member],
+        ),
+      );
+      expect(err?.message).toMatch(/row-level security/);
+    });
+  });
+
+  it('dates transactions by the authorized date when the household prefers it (#69)', async () => {
+    const { rows } = await owner.query(
+      `INSERT INTO transactions (id, household_id, account_id, amount_minor, currency, authorized_date, posted_date,
+         original_description, display_name, source)
+       VALUES (gen_random_uuid(), $1, $2, -100, 'USD', '2026-07-30', '2026-08-02', 'x', 'x', 'import')
+       RETURNING effective_date::text AS posted, effective_authorized_date::text AS authorized`,
+      [H, accounts[0]!.id],
+    );
+    expect(rows[0]).toEqual({ posted: '2026-08-02', authorized: '2026-07-30' });
+  });
+
   it('shows nothing to another household or without context', async () => {
     await as({ household: X, member: people.Z.member, user: people.Z.user }, async (q) => {
       expect((await q.query('SELECT 1 FROM transactions')).rowCount).toBe(0);

@@ -9,6 +9,7 @@ import {
   households,
 } from '@fiscus/db';
 import { planVersionedPatch } from '@fiscus/domain';
+import { buckets } from '@fiscus/shared';
 import type {
   AccessLevel,
   Account,
@@ -32,7 +33,17 @@ import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
 import { accessLevels, moneyScope } from '../visibility/visibility-scope.js';
+import { householdRanges, type RangeParams, resolveParams } from '../ranges/household-ranges.js';
 import { recomputeBalances } from './balances.js';
+
+type WindowParams = RangeParams;
+
+/** One bucket per day, for requests without a range. */
+const dayBuckets = (from: string, to: string) => {
+  const out: { start: string; end: string; partial: boolean }[] = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) out.push({ start: d, end: d, partial: false });
+  return out;
+};
 
 type AccountRow = typeof accounts.$inferSelect;
 type CreateInput = z.infer<typeof createAccountSchema>;
@@ -354,7 +365,7 @@ export class AccountsService {
   async balances(
     ctx: HouseholdContext,
     accountId: string,
-    window: { from?: string | undefined; to?: string | undefined },
+    window: WindowParams,
   ): Promise<BalancePoint[]> {
     return this.scope.run(ctx, async (tx) => {
       if (!(await accessLevels(tx)).has(accountId)) throw problems.notFound();
@@ -437,14 +448,10 @@ export class AccountsService {
    * series that carries each account's last balance forward (ADR 0011). Accounts in other
    * currencies are reported, not converted, until #43.
    */
-  async netWorth(
-    ctx: HouseholdContext,
-    lens: Lens,
-    window: { from?: string | undefined; to?: string | undefined },
-  ): Promise<NetWorth> {
+  async netWorth(ctx: HouseholdContext, lens: Lens, window: WindowParams): Promise<NetWorth> {
     return this.scope.run(ctx, async (tx) => {
       const hh = await this.#household(tx, ctx);
-      const { from, to } = await this.#window(tx, ctx, window);
+      const { from, to, resolved, ranges } = await this.#window(tx, ctx, window);
       const scoped = await moneyScope(tx, ctx, lens);
       const rows =
         scoped.size === 0
@@ -493,24 +500,44 @@ export class AccountsService {
         }
       }
 
-      const series = new Map<string, bigint>();
-      for (let d = from; d <= to; d = addDays(d, 1)) series.set(d, 0n);
-      if (ids.length) {
+      // One point per bucket, valued at the bucket's end (ADR 0011 §3: the last snapshot per bucket).
+      const bucketsFor = (r: { from: string; to: string; periodEnd: string }) =>
+        resolved
+          ? buckets(r, resolved.granularity, ranges.settings, ranges.today)
+          : dayBuckets(r.from, r.to);
+      const valueAt = async (ends: string[]) => {
+        const out = new Map<string, bigint>(ends.map((e) => [e, 0n]));
+        if (!ids.length || !ends.length) return out;
         const { rows: points } = await tx.execute<{ day: string; net: string }>(sql`
-          SELECT d.day::date::text AS day,
+          SELECT d.day::text AS day,
                  coalesce(sum(round(s.balance_minor::numeric * w.bps / 10000)), 0)::bigint AS net
-          FROM generate_series(${from}::date, ${to}::date, interval '1 day') AS d(day)
+          FROM unnest(${sql.param(ends)}::date[]) AS d(day)
           CROSS JOIN unnest(${sql.param(ids)}::uuid[], ${sql.param(bps)}::int[]) AS w(account_id, bps)
           JOIN accounts a ON a.id = w.account_id
           JOIN LATERAL (
             SELECT b.balance_minor FROM balance_snapshots b
-            WHERE b.account_id = w.account_id AND b.as_of <= d.day::date
+            WHERE b.account_id = w.account_id AND b.as_of <= d.day
             ORDER BY b.as_of DESC LIMIT 1
           ) s ON true
-          WHERE a.closed_at IS NULL OR d.day::date < (a.closed_at AT TIME ZONE ${hh.timezone})::date
-          GROUP BY d.day ORDER BY d.day`);
-        for (const p of points) series.set(p.day, BigInt(p.net));
-      }
+          WHERE a.closed_at IS NULL OR d.day < (a.closed_at AT TIME ZONE ${hh.timezone})::date
+          GROUP BY d.day`);
+        for (const p of points) out.set(p.day, BigInt(p.net));
+        return out;
+      };
+      const seriesFor = async (r: { from: string; to: string; periodEnd: string }) => {
+        const bs = bucketsFor(r);
+        const values = await valueAt(bs.map((b) => b.end));
+        return bs.map((b) => ({
+          start: b.start,
+          end: b.end,
+          partial: b.partial,
+          net: values.get(b.end)!,
+        }));
+      };
+      const series = await seriesFor({ from, to, periodEnd: resolved?.range.periodEnd ?? to });
+      const comparisonSeries = resolved?.comparison
+        ? await seriesFor(resolved.comparison)
+        : undefined;
 
       const safe = (n: bigint) => {
         if (n > BigInt(Number.MAX_SAFE_INTEGER) || n < -BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -523,24 +550,50 @@ export class AccountsService {
         assetsMinor: safe(assets),
         liabilitiesMinor: safe(liabilities),
         netWorthMinor: safe(assets - liabilities),
-        series: [...series].map(([date, net]) => ({ date, netWorthMinor: safe(net) })),
+        series: series.map((p) => ({
+          date: p.end,
+          start: p.start,
+          netWorthMinor: safe(p.net),
+          partial: p.partial,
+        })),
+        ...(comparisonSeries
+          ? {
+              comparisonSeries: comparisonSeries.map((p) => ({
+                date: p.end,
+                start: p.start,
+                netWorthMinor: safe(p.net),
+                partial: p.partial,
+              })),
+            }
+          : {}),
+        range: resolved?.meta ?? { from, to, periodEnd: to, partial: false, granularity: 'day' },
         unconverted: [...unconverted].map(([currency, count]) => ({ currency, accounts: count })),
       };
     });
   }
 
-  async #window(
-    tx: Executor,
-    ctx: HouseholdContext,
-    window: { from?: string | undefined; to?: string | undefined },
-  ) {
-    const hh = await this.#household(tx, ctx);
-    const to = window.to ?? todayIn(hh.timezone);
+  /**
+   * The dates a request covers: a `range` (preset or custom) resolved for the household (ADR
+   * 0011), or plain `from`/`to` (default: the last 365 days).
+   */
+  async #window(tx: Executor, ctx: HouseholdContext, window: WindowParams) {
+    const ranges = await householdRanges(tx, ctx.householdId);
+    const earliest = window.range === 'all_time' ? await this.#earliestBalance(tx) : undefined;
+    const resolved = resolveParams(window, ranges, earliest);
+    if (resolved) return { from: resolved.range.from, to: resolved.range.to, resolved, ranges };
+    const to = window.to ?? ranges.today;
     const from = window.from ?? addDays(to, -364);
     if (daysBetween(from, to) > MAX_WINDOW_DAYS) {
       throw new Problem(422, 'window_too_long', 'Choose a period of 10 years or less');
     }
-    return { from, to };
+    return { from, to, resolved: null, ranges };
+  }
+
+  async #earliestBalance(tx: Executor): Promise<string | undefined> {
+    const { rows } = await tx.execute<{ d: string | null }>(
+      sql`SELECT min(as_of)::text AS d FROM balance_snapshots`,
+    );
+    return rows[0]?.d ?? undefined;
   }
 
   #householdCache = new WeakMap<Executor, Promise<HouseholdInfo>>();

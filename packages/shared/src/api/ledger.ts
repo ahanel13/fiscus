@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
+import { optionalRangeFields, type RangeMeta } from '../ranges.js';
 import { isoDateSchema, lensSchema, minorUnitsSchema } from './accounts.js';
 
 // Categories, tags, and transactions (docs/design/transactions.md, permissions §4.3–4.6).
@@ -155,6 +156,8 @@ const csv = z
 
 export const transactionsQuerySchema = z.object({
   lens: lensSchema.default('all'),
+  /** A preset or `custom` (with from/to); plain from/to also work on their own. */
+  range: optionalRangeFields.range,
   accounts: csv.optional(),
   categories: csv.optional(),
   tags: csv.optional(),
@@ -216,3 +219,42 @@ export interface BulkUpdateResult {
   updated: string[];
   refused: { id: string; code: 'not_found' | 'forbidden' | 'not_editable' }[];
 }
+
+export const cashFlowQuerySchema = z
+  .object({ lens: lensSchema.default('all'), ...optionalRangeFields })
+  .extend({
+    range: optionalRangeFields.range.default('last_6m'),
+    from: isoDateSchema.optional(),
+    to: isoDateSchema.optional(),
+  })
+  .refine((q) => q.range !== 'custom' || (q.from && q.to), 'A custom range needs "from" and "to"');
+
+export interface CashFlowBucket {
+  start: string;
+  end: string;
+  /** Not over yet, or cut off by the range (ADR 0011 §3). */
+  partial: boolean;
+  /** Null before the first transaction in view: no data, not zero. */
+  incomeMinor: number | null;
+  spendingMinor: number | null;
+  netMinor: number | null;
+}
+
+export interface CashFlow {
+  currency: string;
+  range: RangeMeta;
+  buckets: CashFlowBucket[];
+  totals: { incomeMinor: number; spendingMinor: number; netMinor: number };
+  /** Per bucket, over complete buckets with data only. */
+  averages: { incomeMinor: number | null; spendingMinor: number | null; netMinor: number | null };
+  comparison: { incomeMinor: number; spendingMinor: number; netMinor: number } | null;
+  /** Transactions left out because they're in another currency (#43). */
+  unconverted: { currency: string; transactions: number }[];
+}
+
+export const preferenceKeySchema = z
+  .string()
+  .regex(/^[a-z0-9:_-]{1,64}$/, 'Invalid preference key');
+export const setPreferenceSchema = z.object({
+  value: z.json().refine((v) => JSON.stringify(v).length <= 2000, 'Preference is too large'),
+});

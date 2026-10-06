@@ -118,14 +118,20 @@ export const transactions = pgTable(
     /** A member moved it to another day (#281). Sync and imports never write it. */
     dateOverride: date({ mode: 'string' }),
     /**
-     * The day it counts on: the override, else the posted date, else the authorized date. The
-     * household "authorized date" basis (#69) adds a second column like this one.
+     * The day it counts on: the override, else the posted date, else the authorized date.
+     * Households on the "authorized date" basis use `effectiveAuthorizedDate` instead (#69).
      */
     effectiveDate: date({ mode: 'string' })
       .notNull()
       .generatedAlwaysAs(
         (): SQL =>
           sql`coalesce(${transactions.dateOverride}, ${transactions.postedDate}, ${transactions.authorizedDate})`,
+      ),
+    /** The same, for households that count purchases on the day they were made (#69). */
+    effectiveAuthorizedDate: date({ mode: 'string' })
+      .notNull()
+      .generatedAlwaysAs(
+        (): SQL => sql`coalesce(${transactions.dateOverride}, ${transactions.authorizedDate})`,
       ),
     pending: boolean().notNull().default(false),
     /** As the bank or file had it. Untrusted text (ADR 0009). */
@@ -165,6 +171,9 @@ export const transactions = pgTable(
     }),
     index('transactions_list')
       .on(t.householdId, t.effectiveDate.desc(), t.id.desc())
+      .where(sql`${t.deletedAt} IS NULL AND ${t.hasSplits} = false`),
+    index('transactions_list_authorized')
+      .on(t.householdId, t.effectiveAuthorizedDate.desc(), t.id.desc())
       .where(sql`${t.deletedAt} IS NULL AND ${t.hasSplits} = false`),
     index().on(t.accountId, t.effectiveDate.desc()),
     index().on(t.householdId, t.categoryId, t.effectiveDate),

@@ -3,8 +3,8 @@ import { accounts, balanceSnapshots, type Executor } from '@fiscus/db';
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 
 /**
- * Rebuilds the computed balances of an account that follows its transactions
- * (transactions design §2). Balances people entered are anchors and always win:
+ * Rebuilds the computed balances of a manual account that follows its transactions
+ * (transactions design §2). Bank-connected accounts never get computed balances. Balances people entered are anchors and always win:
  * - after an anchor: the anchor plus the transactions after it;
  * - before the first anchor: that anchor minus the transactions between the day and it;
  * - with no anchors: the running total of the transactions.
@@ -13,13 +13,20 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
  */
 export async function recomputeBalances(tx: Executor, accountId: string): Promise<void> {
   const [account] = await tx
-    .select({ householdId: accounts.householdId, mode: accounts.balanceMode })
+    .select({
+      householdId: accounts.householdId,
+      mode: accounts.balanceMode,
+      connectionId: accounts.connectionId,
+    })
     .from(accounts)
     .where(eq(accounts.id, accountId));
   await tx
     .delete(balanceSnapshots)
     .where(and(eq(balanceSnapshots.accountId, accountId), eq(balanceSnapshots.source, 'computed')));
-  if (!account || account.mode !== 'transactions') return;
+  // A bank-connected account's balance is whatever the bank reports: its transaction history is
+  // never complete (Plaid returns ~24 months, and no opening balance), so adding transactions up
+  // would be wrong. Reported balances carry forward between syncs (transactions design §2).
+  if (!account || account.connectionId !== null || account.mode !== 'transactions') return;
 
   const { rows: days } = await tx.execute<{ day: string; total: string }>(sql`
     SELECT effective_date::text AS day, sum(amount_minor)::text AS total
