@@ -84,8 +84,10 @@ transactions in the export).
   transfer category run through transfer detection (§5), so most pairs link on their own.
 - Ownership and visibility of new accounts follow the household's finance style; you can change
   them in the mapping step.
-- Not in the export: splits (each part arrives as a separate row, already unlinked) and "hide
-  from reports". Nothing to do for either.
+- Not in the export: splits (each part arrives as a separate row, already unlinked), "hide
+  from reports", and **goals**. Accounts that backed a Monarch goal import as ordinary accounts
+  with their full history; the goal itself is recreated in Fiscus once goals exist (M5, #132)
+  and pointed at that account.
 - Size: a 1 MB, 9 000-row export is well within the limits; daily balances are inserted in bulk.
 
 ## 3. Rules (#41)
