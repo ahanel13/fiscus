@@ -1,19 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { AxeBuilder } from '@axe-core/playwright';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { axeViolations } from './axe.js';
 
 // Automated accessibility checks (#32): every component is on /styleguide, so scanning it in both
 // themes covers the design system. Any WCAG 2.2 A/AA violation fails the build.
 
-const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-
-async function violations(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-  return results.violations.map(
-    (v) =>
-      `${v.id} (${v.impact}): ${v.help}\n  ${v.nodes.map((n) => n.html.slice(0, 160)).join('\n  ')}`,
-  );
-}
+const violations = axeViolations;
 
 for (const theme of ['light', 'dark'] as const) {
   test.describe(`style guide, ${theme} theme`, () => {

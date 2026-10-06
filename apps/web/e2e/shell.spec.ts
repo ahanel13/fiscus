@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { expect, type Page, test } from '@playwright/test';
+import { axeViolations } from './axe.js';
 
 // One journey through a fresh instance: setup → household → navigate → sign out → sign in.
 test.describe.configure({ mode: 'serial' });
@@ -72,6 +73,34 @@ test('creates an invite link from household settings', async ({ page }) => {
   await page.getByLabel('Invite by email').fill('partner@e2e.test');
   await page.getByRole('button', { name: 'Create invite link' }).click();
   await expect(page.getByRole('textbox', { name: 'Invite link' })).toHaveValue(/\/invite#token=/);
+});
+
+test('adds an account, updates its balance, and shows net worth', async ({ page }) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/accounts`);
+  await expect(page.getByRole('heading', { name: 'No accounts yet' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add account' }).first().click();
+
+  const dialog = page.getByRole('dialog', { name: 'Add account' });
+  await dialog.getByLabel('Name').fill('Everyday checking');
+  await dialog.getByLabel('Current balance').fill('2,500');
+  await dialog.getByRole('button', { name: 'Add account' }).click();
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Everyday checking' })).toBeVisible();
+  await expect(page.getByText('$2,500.00').first()).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+
+  await page.getByRole('button', { name: 'Update balance' }).click();
+  const update = page.getByRole('dialog', { name: 'Update balance' });
+  await update.getByLabel('Balance').fill('2,750.25');
+  await update.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Balance updated.')).toBeVisible();
+  await expect(page.getByText('$2,750.25').first()).toBeVisible();
+
+  await page.getByRole('link', { name: 'Accounts', exact: true }).first().click();
+  await expect(page.getByText('Net worth')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Everyday checking/ })).toContainText('$2,750.25');
+  expect(await axeViolations(page)).toEqual([]);
 });
 
 test('dark mode, sign out, and back', async ({ page }) => {

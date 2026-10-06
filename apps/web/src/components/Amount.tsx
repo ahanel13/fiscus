@@ -3,12 +3,13 @@ import { formatMoney } from '@fiscus/shared';
 import { clsx } from 'clsx';
 import { useLocale } from 'react-aria-components';
 
-export type AmountKind = 'flow' | 'balance';
+export type AmountKind = 'flow' | 'balance' | 'liability';
 
 /**
  * Money on screen (style guide §4):
  * - flows: money in is green with "+", money out is plain text with "−" (spending isn't an error);
  * - balances: plain, except a negative balance (overdraft, overspent budget) is red;
+ * - liabilities (credit cards, loans): plain with their sign. Owing on a mortgage isn't a problem;
  * - in the viewer's language ("1.234,56 €" in German);
  * - never color alone: the sign and an accessible label carry the meaning too.
  */

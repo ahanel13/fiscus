@@ -10,6 +10,7 @@ import {
   Label as AriaLabel,
   type LabelProps,
   Text,
+  TextArea as AriaTextArea,
   TextField as AriaTextField,
   type TextFieldProps as AriaTextFieldProps,
   type ValidationResult,
@@ -53,7 +54,12 @@ export interface FieldProps {
 }
 
 export type TextFieldProps = AriaTextFieldProps &
-  FieldProps & { placeholder?: string; inputClassName?: string };
+  FieldProps & {
+    placeholder?: string;
+    inputClassName?: string;
+    /** A multi-line text area, e.g. notes. */
+    multiline?: boolean;
+  };
 
 /** A labelled text input with an optional description and inline validation. */
 export function TextField({
@@ -62,13 +68,22 @@ export function TextField({
   errorMessage,
   placeholder,
   inputClassName,
+  multiline,
   className,
   ...props
 }: TextFieldProps) {
   return (
     <AriaTextField {...props} className={cx('flex flex-col gap-1.5', className)}>
       {label ? <Label>{label}</Label> : null}
-      <Input placeholder={placeholder} className={inputClassName} />
+      {multiline ? (
+        <AriaTextArea
+          placeholder={placeholder}
+          rows={4}
+          className={clsx(controlStyles, 'py-2', inputClassName)}
+        />
+      ) : (
+        <Input placeholder={placeholder} className={inputClassName} />
+      )}
       {description ? <Description>{description}</Description> : null}
       <FieldError>{errorMessage}</FieldError>
     </AriaTextField>

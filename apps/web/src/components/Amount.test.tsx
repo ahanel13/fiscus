@@ -23,6 +23,12 @@ describe('Amount', () => {
     expect(screen.getByText('−$120.00')).toHaveClass('text-danger');
   });
 
+  it('shows what you owe on a credit card or loan without alarm', () => {
+    render(<Amount minor={-28765400} currency="USD" kind="liability" />);
+    const el = screen.getByText('−$287,654.00');
+    expect(el.className).not.toMatch(/danger|positive/);
+  });
+
   it('uses tabular figures', () => {
     render(<Amount minor={100} currency="JPY" kind="balance" />);
     expect(screen.getByText('¥100')).toHaveClass('amount');

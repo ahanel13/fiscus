@@ -19,6 +19,7 @@ import { AuthLayout } from './components/AuthLayout.js';
 import { Toaster } from './components/ui.js';
 import { lastHousehold } from './lib/last-household.js';
 import { SECTIONS } from './lib/nav.js';
+import { AccountDetailPage, AccountsPage } from './routes/accounts.js';
 import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
 import { SectionPage } from './routes/section.js';
 import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
@@ -146,9 +147,14 @@ const sectionRoutes = SECTIONS.map((section) =>
   createRoute({
     getParentRoute: () => householdRoute,
     path: section.path || '/',
-    component: () => <SectionPage section={section} />,
+    component: section.id === 'accounts' ? AccountsPage : () => <SectionPage section={section} />,
   }),
 );
+const accountDetailRoute = createRoute({
+  getParentRoute: () => householdRoute,
+  path: '/accounts/$accountId',
+  component: AccountDetailPage,
+});
 const householdSettingsRoute = createRoute({
   getParentRoute: () => householdRoute,
   path: '/settings',
@@ -161,7 +167,7 @@ const routeTree = rootRoute.addChildren([
     homeRoute,
     welcomeRoute,
     personalSettingsRoute,
-    householdRoute.addChildren([...sectionRoutes, householdSettingsRoute]),
+    householdRoute.addChildren([...sectionRoutes, accountDetailRoute, householdSettingsRoute]),
   ]),
 ]);
 
