@@ -78,7 +78,7 @@ transactions in the export).
 | Notes | The **shared note**, encrypted |
 | Reviewed | `Needs Review` stays **needs review**; `Reviewed` and blank (most rows: Monarch leaves it blank unless you used its review flow) import as **reviewed** |
 | Owner | `Shared`, or a person's name: names are mapped to members in the mapping step and become **who it's for** (attribution); `Shared` sets nothing |
-| Balance history | **Daily balances** become the account's history: for a "follows transactions" account they're entered balances (anchors); for an account with no transactions in the export it becomes a **valued** account (value mode). The export has no "closed" flag, so it's inferred: an account whose history stops before the export date is offered as **closed** on its last day, **ticked when that balance is $0** (clearly closed) and unticked otherwise (it may have stopped syncing, or been sold or paid off), for you to decide |
+| Balance history | **Daily balances** become the account's history: for a "follows transactions" account they're entered balances (anchors); for an account with no transactions in the export it becomes a **valued** account (value mode). The export has no "closed" flag, so it's inferred: an account whose history stops before the export date is offered as **closed** the day after its last balance (closed accounts stop counting toward net worth from that day, so a stale last balance never lingers), **ticked when that balance is $0** (clearly closed) and unticked otherwise (it may have stopped syncing, or been sold or paid off), for you to decide |
 
 - Transfers: Monarch categorizes both legs but doesn't link them. After import, rows in a
   transfer category run through transfer detection (§5), so most pairs link on their own.
