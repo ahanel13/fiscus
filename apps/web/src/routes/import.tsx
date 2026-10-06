@@ -828,7 +828,9 @@ function AccountsStep({
   onNext: () => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [showReady, setShowReady] = useState(false);
+  // Collapsing only helps with a long list: a bank file's one account is always in view.
+  const collapsible = choices.length > 5;
+  const [showReady, setShowReady] = useState(!collapsible);
   const update = (key: string, patch: Partial<AccountChoice>) =>
     onChange(chooseAccount(choices, key, patch));
   const bulk = (patch: (c: AccountChoice) => Partial<AccountChoice>) => {
@@ -942,20 +944,24 @@ function AccountsStep({
             <h3 id="ready" className="text-sm font-medium">
               Ready to import ({n(ready.length)})
             </h3>
-            <span className="text-sm text-muted">
-              {ready.some((c) => c.mode === 'existing')
-                ? 'Matched to your accounts by name, or new with the type their name says.'
-                : 'New accounts with the type their name says.'}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-expanded={showReady}
-              aria-controls="ready-list"
-              onPress={() => setShowReady(!showReady)}
-            >
-              {showReady ? 'Hide' : 'Show'}
-            </Button>
+            {collapsible ? (
+              <span className="text-sm text-muted">
+                {ready.some((c) => c.mode === 'existing')
+                  ? 'Matched to your accounts by name, or new with the type their name says.'
+                  : 'New accounts with the type their name says.'}
+              </span>
+            ) : null}
+            {collapsible ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-expanded={showReady}
+                aria-controls="ready-list"
+                onPress={() => setShowReady(!showReady)}
+              >
+                {showReady ? 'Hide' : 'Show'}
+              </Button>
+            ) : null}
           </div>
           {showReady ? (
             <ul id="ready-list" className="divide-y divide-border rounded-lg border border-border">

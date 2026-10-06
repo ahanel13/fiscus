@@ -191,7 +191,7 @@ test('imports a Monarch export with the wizard, then undoes it', async ({ page }
   await expect(page.getByRole('heading', { name: 'Where does each account go?' })).toBeFocused();
   await expect(page.getByRole('heading', { name: 'Ready to import (3)' })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Check these/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Show' }).click();
+  // Three accounts: short enough to show them all.
   await expect(page.getByRole('checkbox', { name: /Closed from/ })).toBeChecked();
   expect(await axeViolations(page)).toEqual([]);
   await page.getByRole('button', { name: 'Continue' }).click();
