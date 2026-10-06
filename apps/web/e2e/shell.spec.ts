@@ -32,6 +32,9 @@ test('first run: setup creates the admin, then the first household', async ({ pa
 
   await expect(page).toHaveURL(/\/welcome$/);
   await page.getByLabel('Household name').fill('E2E Home');
+  // On your own, there's no finance style to choose.
+  await expect(page.getByText('Yours, mine, and ours')).toHaveCount(0);
+  await page.getByText('Me and others').click();
   await page.getByText('Yours, mine, and ours').click();
   await page.getByRole('button', { name: 'Create household' }).click();
 
