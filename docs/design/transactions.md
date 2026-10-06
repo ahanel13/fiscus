@@ -62,6 +62,9 @@ balances you entered by hand become **anchors**, and every other day is computed
   same transaction** as the change, from the changed date onward (only the affected account).
   Manual volumes are small; bank sync (M2) moves this into the worker.
 - Anchors always win: a computed value never overwrites an entered one.
+- An entered balance is the balance **at the end of that day**, so it already includes that day's
+  transactions: copying today's balance from your bank and then recording today's purchases
+  doesn't count them twice. The balance fields say so.
 
 ### Pagination, filters, search
 - Ordered by `effective_date DESC, id DESC`, with an opaque cursor (API conventions §6).

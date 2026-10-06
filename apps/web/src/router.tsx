@@ -18,8 +18,9 @@ import { AppShell } from './components/AppShell.js';
 import { AuthLayout } from './components/AuthLayout.js';
 import { Toaster } from './components/ui.js';
 import { lastHousehold } from './lib/last-household.js';
-import { SECTIONS } from './lib/nav.js';
+import { type SectionId, SECTIONS } from './lib/nav.js';
 import { AccountDetailPage, AccountsPage } from './routes/accounts.js';
+import { TransactionsPage } from './routes/transactions.js';
 import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
 import { SectionPage } from './routes/section.js';
 import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
@@ -143,11 +144,17 @@ const householdRoute = createRoute({
   errorComponent: NotFound,
 });
 
+/** Sections that have shipped; the rest show their "on the way" page. */
+const SECTION_PAGES: Partial<Record<SectionId, () => React.JSX.Element>> = {
+  accounts: AccountsPage,
+  transactions: TransactionsPage,
+};
+
 const sectionRoutes = SECTIONS.map((section) =>
   createRoute({
     getParentRoute: () => householdRoute,
     path: section.path || '/',
-    component: section.id === 'accounts' ? AccountsPage : () => <SectionPage section={section} />,
+    component: SECTION_PAGES[section.id] ?? (() => <SectionPage section={section} />),
   }),
 );
 const accountDetailRoute = createRoute({

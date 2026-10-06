@@ -15,6 +15,7 @@ import {
   accountQuery,
   accountsQuery,
   balancesQuery,
+  categoriesQuery,
   householdQuery,
   membersQuery,
   netWorthQuery,
@@ -71,6 +72,7 @@ import {
   VISIBILITY,
 } from '../lib/accounts.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
+import { TransactionDrawer, TransactionList } from './transactions.js';
 
 type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
@@ -451,7 +453,7 @@ function AddAccountDialog({
               currency={household.baseCurrency}
               value={state.balance}
               onChange={(balance) => set({ balance })}
-              description="Optional. You can update it any time."
+              description="Optional. Your balance at the end of that day, including that day’s transactions."
             />
             <DatePicker
               label="As of"
@@ -562,11 +564,16 @@ export function AccountDetailPage() {
         </div>
       </div>
 
-      <Tabs>
+      {/* Bank-style accounts open on their transactions; hand-valued assets on their balances. */}
+      <Tabs defaultSelectedKey={a.balanceMode === 'transactions' ? 'transactions' : 'history'}>
         <TabList aria-label="Account">
-          <Tab id="history">History</Tab>
+          <Tab id="transactions">Transactions</Tab>
+          <Tab id="history">Balances</Tab>
           <Tab id="settings">{owner ? 'Settings' : 'Details'}</Tab>
         </TabList>
+        <TabPanel id="transactions">
+          <AccountTransactions householdId={householdId} accountId={a.id} members={members} />
+        </TabPanel>
         <TabPanel id="history" className="space-y-4">
           {owner ? <UpdateBalance account={a} householdId={householdId} /> : null}
           <BalanceHistory account={a} points={balances.data} />
@@ -675,6 +682,7 @@ function UpdateBalance({ account, householdId }: { account: Account; householdId
               onChange={setAmount}
               isRequired
               autoFocus
+              description="At the end of that day, including that day’s transactions. Other days are worked out from your transactions."
             />
             <DatePicker
               label="As of"
@@ -686,7 +694,7 @@ function UpdateBalance({ account, householdId }: { account: Account; householdId
               <Button variant="secondary" onPress={close}>
                 Cancel
               </Button>
-              <Button type="submit" isPending={save.isPending} isDisabled={amount === null}>
+              <Button type="submit" isPending={save.isPending}>
                 Save
               </Button>
             </DialogActions>
@@ -942,5 +950,38 @@ function AccountSettings({
         )}
       </Card>
     </div>
+  );
+}
+
+function AccountTransactions({
+  householdId,
+  accountId,
+  members,
+}: {
+  householdId: string;
+  accountId: string;
+  members: HouseholdMember[];
+}) {
+  const groups = useQuery(categoriesQuery(householdId)).data ?? [];
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <>
+      <TransactionList
+        householdId={householdId}
+        filters={{ lens: 'all', accounts: [accountId] }}
+        members={members}
+        groups={groups}
+        onOpen={setOpen}
+      />
+      {open ? (
+        <TransactionDrawer
+          householdId={householdId}
+          transactionId={open}
+          members={members}
+          groups={groups}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
+    </>
   );
 }

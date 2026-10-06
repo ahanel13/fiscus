@@ -59,6 +59,8 @@ test('navigates with the command palette, shortcuts, and the range control', asy
   await page.keyboard.press('g');
   await page.keyboard.press('t');
   await expect(page).toHaveURL(/\/transactions/);
+  // Reports still shows the shared page header's range control (ranges reach the rest in Phase 3).
+  await page.goto(`${householdUrl}/reports`);
   await page.getByRole('button', { name: /Time range/ }).click();
   await page.getByRole('option', { name: 'Year to date' }).click();
   await expect(page).toHaveURL(/range=ytd/);
@@ -90,6 +92,7 @@ test('adds an account, updates its balance, and shows net worth', async ({ page 
   await expect(page.getByText('$2,500.00').first()).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
 
+  await page.getByRole('tab', { name: 'Balances' }).click();
   await page.getByRole('button', { name: 'Update balance' }).click();
   const update = page.getByRole('dialog', { name: 'Update balance' });
   await update.getByLabel('Balance').fill('2,750.25');
@@ -101,6 +104,53 @@ test('adds an account, updates its balance, and shows net worth', async ({ page 
   await expect(page.getByText('Net worth')).toBeVisible();
   await expect(page.getByRole('link', { name: /Everyday checking/ })).toContainText('$2,750.25');
   expect(await axeViolations(page)).toEqual([]);
+});
+
+test('records a transaction, categorizes and splits it, and the balance follows', async ({
+  page,
+}) => {
+  await signIn(page);
+  // A wallet with no balance entered: its balance is the running total of its transactions.
+  await page.goto(`${householdUrl}/accounts`);
+  await page.getByRole('button', { name: 'Add account' }).first().click();
+  const newAccount = page.getByRole('dialog', { name: 'Add account' });
+  await newAccount.getByLabel('Name').fill('Wallet');
+  await newAccount.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Wallet' })).toBeVisible();
+
+  await page.goto(`${householdUrl}/transactions`);
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const add = page.getByRole('dialog', { name: 'Add transaction' });
+  await add.getByRole('button', { name: /Account/ }).click();
+  await page.getByRole('option', { name: 'Wallet' }).click();
+  await add.getByLabel('Description').fill('Costco run');
+  await add.getByLabel('Amount').fill('120');
+  await add.getByRole('button', { name: 'Add transaction' }).click();
+  await expect(page.getByText('Transaction added.')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+
+  await page.getByRole('button', { name: /Costco run/ }).click();
+  const drawer = page.getByRole('dialog', { name: 'Costco run' });
+  await drawer.getByRole('button', { name: /Category/ }).click();
+  await page.getByRole('option', { name: 'Groceries' }).click();
+  await drawer.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+
+  await drawer.getByRole('button', { name: 'Split' }).click();
+  const split = page.getByRole('dialog', { name: 'Split Costco run' });
+  await expect(split.getByText('Adds up')).toBeVisible();
+  await split.getByRole('button', { name: 'Save split' }).click();
+  await expect(page.getByText('Split saved.')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Two parts of $60.00 replace the $120.00 purchase in the list.
+  await expect(page.getByRole('button', { name: /Costco run \(1\/2\)/ })).toContainText('−$60.00');
+  await expect(page.getByRole('button', { name: /Costco run \(2\/2\)/ })).toContainText('−$60.00');
+
+  // The wallet's balance follows its transactions, split or not.
+  await page.goto(`${householdUrl}/accounts`);
+  await expect(page.getByRole('link', { name: /Wallet/ })).toContainText('−$120.00');
 });
 
 test('dark mode, sign out, and back', async ({ page }) => {

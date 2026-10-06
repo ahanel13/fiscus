@@ -6,6 +6,7 @@ import { Copy, Monitor } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { SourceLinks } from '../components/About.js';
+import { CategoriesSettings } from './categories-settings.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
 import {
   Alert,
@@ -158,6 +159,7 @@ export function HouseholdSettingsPage() {
           </div>
         ) : null}
       </Card>
+      <CategoriesSettings householdId={householdId} canEdit={household.you.role !== 'viewer'} />
     </div>
   );
 }
