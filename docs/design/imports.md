@@ -1,6 +1,6 @@
 # Getting data in: imports, rules, review, transfers (M1 Phase 4)
 
-- Status: Proposed
+- Status: Accepted
 - Tickets: #73 (CSV import), #75 (Monarch import), #41 (rules), #44 (review queue), #40 (transfers)
 - Builds on: [data model §3.5, §5, §6](data-model.md), [transactions](transactions.md), [permissions](permissions.md) TXN-08/09/10, RULE-01–07, [accounts and visibility](accounts-and-visibility.md)
 
