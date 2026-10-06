@@ -1,0 +1,675 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { FieldCrypto } from '@fiscus/crypto';
+import {
+  accountOwners,
+  accounts,
+  balanceSnapshots,
+  type Executor,
+  householdMembers,
+  households,
+} from '@fiscus/db';
+import { planVersionedPatch } from '@fiscus/domain';
+import type {
+  AccessLevel,
+  Account,
+  AccountType,
+  AccountVisibility,
+  BalanceMode,
+  BalancePoint,
+  createAccountSchema,
+  Lens,
+  NetWorth,
+  OwnersInput,
+  setBalanceSchema,
+  updateAccountSchema,
+} from '@fiscus/shared';
+import { Injectable } from '@nestjs/common';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
+import type { z } from 'zod';
+import { addDays, daysBetween, todayIn } from '../common/dates.js';
+import { Problem, problems } from '../common/problem.js';
+import type { HouseholdContext } from '../households/household-context.js';
+import { HouseholdScope } from '../households/household-scope.js';
+import { accessLevels, moneyScope } from '../visibility/visibility-scope.js';
+
+type AccountRow = typeof accounts.$inferSelect;
+type CreateInput = z.infer<typeof createAccountSchema>;
+type UpdateInput = z.infer<typeof updateAccountSchema>;
+type BalanceInput = z.infer<typeof setBalanceSchema>;
+
+/** Bank-style accounts follow their transactions; assets are valued by hand (design §5). */
+const DEFAULT_BALANCE_MODE: Record<AccountType, BalanceMode> = {
+  depository: 'transactions',
+  credit: 'transactions',
+  loan: 'transactions',
+  investment: 'value',
+  property: 'value',
+  vehicle: 'value',
+  crypto: 'value',
+  other: 'value',
+};
+
+/** New-account visibility per finance style (ADR 0006 §8). */
+const STYLE_VISIBILITY: Record<string, AccountVisibility> = {
+  combined: 'full',
+  hybrid: 'full',
+  separate: 'view_only',
+  roommates: 'private',
+};
+
+const MAX_WINDOW_DAYS = 3660;
+
+/** Equal shares in basis points; the first owner takes the remainder (3 → 3334/3333/3333). */
+export function equalShares(count: number): number[] {
+  const base = Math.floor(10000 / count);
+  return Array.from({ length: count }, (_, i) => (i === 0 ? 10000 - base * (count - 1) : base));
+}
+
+const notVisibleOrForbidden = (level: AccessLevel | undefined) =>
+  level ? problems.forbidden('Only the account’s owners can do this.') : problems.notFound();
+
+const privateJointDisallowed = () =>
+  new Problem(
+    422,
+    'private_joint_disallowed',
+    'A joint account can’t be private in a two-person household',
+    'Both of you own it, so there is no one to hide it from. Choose who else can see it instead.',
+  );
+
+const futureDate = () => new Problem(422, 'future_date', 'Balances can’t be set for a future date');
+
+interface HouseholdInfo {
+  baseCurrency: string;
+  timezone: string;
+  financeStyle: string;
+  /** Active members who may own accounts (not viewers). */
+  owners: Set<string>;
+  activeMembers: number;
+}
+
+@Injectable()
+export class AccountsService {
+  constructor(
+    private readonly scope: HouseholdScope,
+    private readonly crypto: FieldCrypto,
+  ) {}
+
+  async list(ctx: HouseholdContext, lens: Lens, include: 'open' | 'closed'): Promise<Account[]> {
+    return this.scope.run(ctx, async (tx) => {
+      const scoped = await moneyScope(tx, ctx, lens);
+      if (scoped.size === 0) return [];
+      const rows = await tx
+        .select()
+        .from(accounts)
+        .where(
+          and(
+            inArray(accounts.id, [...scoped.keys()]),
+            include === 'open' ? isNull(accounts.closedAt) : undefined,
+          ),
+        )
+        .orderBy(asc(accounts.sortOrder), asc(accounts.name));
+      const levels = new Map([...scoped].map(([id, s]) => [id, s.level]));
+      return this.#present(tx, ctx, rows, levels);
+    });
+  }
+
+  async get(ctx: HouseholdContext, accountId: string): Promise<Account> {
+    return this.scope.run(ctx, async (tx) => {
+      const levels = await accessLevels(tx);
+      if (!levels.has(accountId)) throw problems.notFound();
+      const rows = await tx.select().from(accounts).where(eq(accounts.id, accountId));
+      const [account] = await this.#present(tx, ctx, rows, levels);
+      if (!account) throw problems.notFound();
+      return account;
+    });
+  }
+
+  async create(ctx: HouseholdContext, input: CreateInput): Promise<Account> {
+    const id = uuidv7();
+    return this.scope.run(ctx, async (tx, activity) => {
+      const hh = await this.#household(tx, ctx);
+      const owners = this.#resolveOwners(
+        input.owners ??
+          (hh.financeStyle === 'combined'
+            ? [...hh.owners].map((memberId) => ({ memberId }))
+            : [{ memberId: ctx.memberId }]),
+        hh,
+      );
+      if (!owners.some((o) => o.memberId === ctx.memberId)) {
+        throw new Problem(
+          422,
+          'must_own',
+          'You can only add accounts you own or co-own',
+          'Include yourself as an owner.',
+        );
+      }
+      const visibility = input.visibility ?? STYLE_VISIBILITY[hh.financeStyle] ?? 'full';
+      if (visibility === 'private' && owners.length >= 2 && hh.activeMembers === 2) {
+        throw privateJointDisallowed();
+      }
+      const today = todayIn(hh.timezone);
+      if (input.openingBalance?.asOf && input.openingBalance.asOf > today) throw futureDate();
+
+      // No RETURNING: the account isn't visible until its owners exist (RLS, migration 0010).
+      await tx.insert(accounts).values({
+        id,
+        householdId: ctx.householdId,
+        name: input.name,
+        type: input.type,
+        subtype: input.subtype ?? null,
+        currency: input.currency ?? hh.baseCurrency,
+        maskLast4: input.mask ?? null,
+        visibility,
+        balanceMode: input.balanceMode ?? DEFAULT_BALANCE_MODE[input.type],
+        includeInNetWorth: input.includeInNetWorth ?? true,
+        isBusiness: input.isBusiness ?? false,
+        notesEnc: input.notes ? await this.#encryptNotes(ctx, id, input.notes) : null,
+      });
+      await tx
+        .insert(accountOwners)
+        .values(owners.map((o) => ({ accountId: id, householdId: ctx.householdId, ...o })));
+      if (input.openingBalance) {
+        await tx.insert(balanceSnapshots).values({
+          accountId: id,
+          householdId: ctx.householdId,
+          asOf: input.openingBalance.asOf ?? today,
+          balanceMinor: input.openingBalance.amountMinor,
+          source: 'manual',
+        });
+      }
+      await activity.record({
+        action: 'account.created',
+        targetType: 'account',
+        targetId: id,
+        accountId: id,
+        metadata: { type: input.type, visibility, owners: owners.map((o) => o.memberId) },
+        changes: { after: { name: input.name } },
+      });
+      const levels = await accessLevels(tx);
+      const rows = await tx.select().from(accounts).where(eq(accounts.id, id));
+      return (await this.#present(tx, ctx, rows, levels))[0]!;
+    });
+  }
+
+  /** ACC-06/07/11: owners edit, field-level first save wins (API conventions §8). */
+  async update(
+    ctx: HouseholdContext,
+    accountId: string,
+    baseVersion: number,
+    patch: UpdateInput,
+  ): Promise<Account> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const levels = await accessLevels(tx);
+      const level = levels.get(accountId);
+      if (level !== 'owner') throw notVisibleOrForbidden(level);
+      const [row] = await tx
+        .select()
+        .from(accounts)
+        .where(eq(accounts.id, accountId))
+        .for('update');
+      if (!row) throw problems.notFound();
+
+      const current: Record<keyof UpdateInput, unknown> = {
+        name: row.name,
+        subtype: row.subtype,
+        visibility: row.visibility,
+        balanceMode: row.balanceMode,
+        includeInNetWorth: row.includeInNetWorth,
+        isBusiness: row.isBusiness,
+        sortOrder: row.sortOrder,
+        mask: row.maskLast4,
+        notes: row.notesEnc ? await this.#decryptNotes(ctx, row.id, row.notesEnc) : null,
+      };
+      const plan = planVersionedPatch(
+        current,
+        { version: row.version, fieldVersions: row.fieldVersions },
+        baseVersion,
+        patch,
+      );
+      if (!plan.ok) {
+        const [present] = await this.#present(tx, ctx, [row], levels);
+        throw new Problem(
+          409,
+          'edit_conflict',
+          'Someone else changed this first',
+          'Reload to see their changes, then apply yours again if still needed.',
+          undefined,
+          {},
+          { conflicts: plan.conflicts, current: present },
+        );
+      }
+      const changes = plan.changes as Partial<UpdateInput>;
+      const changed = Object.keys(changes);
+      if (changed.length === 0) return (await this.#present(tx, ctx, [row], levels))[0]!;
+
+      if (changes.visibility === 'private') {
+        const hh = await this.#household(tx, ctx);
+        const ownerCount = (await this.#owners(tx, [accountId])).get(accountId)?.length ?? 0;
+        if (ownerCount >= 2 && hh.activeMembers === 2) throw privateJointDisallowed();
+      }
+
+      const { mask, notes, ...columns } = changes;
+      await tx
+        .update(accounts)
+        .set({
+          ...columns,
+          ...(mask !== undefined ? { maskLast4: mask } : {}),
+          ...(notes !== undefined
+            ? { notesEnc: notes ? await this.#encryptNotes(ctx, accountId, notes) : null }
+            : {}),
+          version: plan.next.version,
+          fieldVersions: plan.next.fieldVersions,
+        })
+        .where(and(eq(accounts.id, accountId), eq(accounts.version, row.version)));
+      await activity.record({
+        action: 'account.updated',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: { fields: changed },
+        changes: {
+          before: Object.fromEntries(changed.map((k) => [k, current[k as keyof typeof current]])),
+          after: changes,
+        },
+      });
+      const [updated] = await tx.select().from(accounts).where(eq(accounts.id, accountId));
+      return (await this.#present(tx, ctx, [updated!], await accessLevels(tx)))[0]!;
+    });
+  }
+
+  /**
+   * ACC-08: owners change who owns an account and in what shares. You can remove yourself, never
+   * another co-owner (ADR 0012), and at least one owner remains.
+   */
+  async setOwners(ctx: HouseholdContext, accountId: string, input: OwnersInput): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const level = (await accessLevels(tx)).get(accountId);
+      if (level !== 'owner') throw notVisibleOrForbidden(level);
+      const [row] = await tx
+        .select()
+        .from(accounts)
+        .where(eq(accounts.id, accountId))
+        .for('update');
+      if (!row) throw problems.notFound();
+      const hh = await this.#household(tx, ctx);
+      const before = (await this.#owners(tx, [accountId])).get(accountId) ?? [];
+      const after = this.#resolveOwners(input, hh);
+
+      const removed = before.filter((o) => !after.some((a) => a.memberId === o.memberId));
+      if (removed.some((o) => o.memberId !== ctx.memberId)) {
+        throw new Problem(
+          403,
+          'remove_other_owner',
+          'You can only remove yourself as an owner',
+          'Co-owners leave an account themselves (or through the departure flow).',
+        );
+      }
+      if (row.visibility === 'private' && after.length >= 2 && hh.activeMembers === 2) {
+        throw privateJointDisallowed();
+      }
+
+      await tx.delete(accountOwners).where(eq(accountOwners.accountId, accountId));
+      await tx
+        .insert(accountOwners)
+        .values(after.map((o) => ({ accountId, householdId: ctx.householdId, ...o })));
+      await activity.record({
+        action: 'account.owners_changed',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: {
+          added: after
+            .filter((a) => !before.some((b) => b.memberId === a.memberId))
+            .map((a) => a.memberId),
+          removed: removed.map((o) => o.memberId),
+        },
+        changes: { before: { owners: before }, after: { owners: after } },
+      });
+    });
+  }
+
+  /** ACC-09: close (history kept) or reopen. */
+  async setClosed(ctx: HouseholdContext, accountId: string, closed: boolean): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const level = (await accessLevels(tx)).get(accountId);
+      if (level !== 'owner') throw notVisibleOrForbidden(level);
+      const [row] = await tx.select().from(accounts).where(eq(accounts.id, accountId));
+      if (!row || (row.closedAt !== null) === closed) return; // already in that state
+      await tx
+        .update(accounts)
+        .set({ closedAt: closed ? new Date() : null, version: row.version + 1 })
+        .where(eq(accounts.id, accountId));
+      await activity.record({
+        action: closed ? 'account.closed' : 'account.reopened',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+      });
+    });
+  }
+
+  async balances(
+    ctx: HouseholdContext,
+    accountId: string,
+    window: { from?: string | undefined; to?: string | undefined },
+  ): Promise<BalancePoint[]> {
+    return this.scope.run(ctx, async (tx) => {
+      if (!(await accessLevels(tx)).has(accountId)) throw problems.notFound();
+      const { from, to } = await this.#window(tx, ctx, window);
+      const rows = await tx
+        .select()
+        .from(balanceSnapshots)
+        .where(
+          and(
+            eq(balanceSnapshots.accountId, accountId),
+            gte(balanceSnapshots.asOf, from),
+            lte(balanceSnapshots.asOf, to),
+          ),
+        )
+        .orderBy(asc(balanceSnapshots.asOf));
+      return rows.map((r) => ({
+        asOf: r.asOf,
+        amountMinor: r.balanceMinor,
+        availableMinor: r.availableMinor,
+        creditLimitMinor: r.creditLimitMinor,
+        source: r.source,
+      }));
+    });
+  }
+
+  /** Owners set the balance for a day; setting the same day again replaces it. */
+  async setBalance(
+    ctx: HouseholdContext,
+    accountId: string,
+    asOf: string,
+    input: BalanceInput,
+  ): Promise<BalancePoint> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const level = (await accessLevels(tx)).get(accountId);
+      if (level !== 'owner') throw notVisibleOrForbidden(level);
+      const hh = await this.#household(tx, ctx);
+      if (asOf > todayIn(hh.timezone)) throw futureDate();
+      const [previous] = await tx
+        .select()
+        .from(balanceSnapshots)
+        .where(and(eq(balanceSnapshots.accountId, accountId), eq(balanceSnapshots.asOf, asOf)));
+      const values = {
+        balanceMinor: input.amountMinor,
+        availableMinor: input.availableMinor ?? null,
+        creditLimitMinor: input.creditLimitMinor ?? null,
+        source: 'manual' as const,
+      };
+      await tx
+        .insert(balanceSnapshots)
+        .values({ accountId, householdId: ctx.householdId, asOf, ...values })
+        .onConflictDoUpdate({
+          target: [balanceSnapshots.accountId, balanceSnapshots.asOf],
+          set: { ...values, updatedAt: new Date() },
+        });
+      await activity.record({
+        action: 'account.balance_set',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: { asOf },
+        changes: {
+          before: previous ? { amountMinor: previous.balanceMinor } : {},
+          after: { amountMinor: input.amountMinor },
+        },
+      });
+      return {
+        asOf,
+        amountMinor: values.balanceMinor,
+        availableMinor: values.availableMinor,
+        creditLimitMinor: values.creditLimitMinor,
+        source: 'manual',
+      };
+    });
+  }
+
+  /**
+   * Net worth "visible to you" (F3) under a lens: current assets and liabilities, plus a daily
+   * series that carries each account's last balance forward (ADR 0011). Accounts in other
+   * currencies are reported, not converted, until #43.
+   */
+  async netWorth(
+    ctx: HouseholdContext,
+    lens: Lens,
+    window: { from?: string | undefined; to?: string | undefined },
+  ): Promise<NetWorth> {
+    return this.scope.run(ctx, async (tx) => {
+      const hh = await this.#household(tx, ctx);
+      const { from, to } = await this.#window(tx, ctx, window);
+      const scoped = await moneyScope(tx, ctx, lens);
+      const rows =
+        scoped.size === 0
+          ? []
+          : await tx
+              .select({ id: accounts.id, currency: accounts.currency })
+              .from(accounts)
+              .where(
+                and(inArray(accounts.id, [...scoped.keys()]), eq(accounts.includeInNetWorth, true)),
+              );
+
+      const unconverted = new Map<string, number>();
+      const counted: { id: string; bps: number }[] = [];
+      for (const r of rows) {
+        if (r.currency === hh.baseCurrency)
+          counted.push({ id: r.id, bps: scoped.get(r.id)!.weightBps });
+        else unconverted.set(r.currency, (unconverted.get(r.currency) ?? 0) + 1);
+      }
+
+      const ids = counted.map((c) => c.id);
+      const bps = counted.map((c) => c.bps);
+      const today = todayIn(hh.timezone);
+
+      // Each account's weighted balance on `day`, carried forward from its last snapshot. Closed
+      // accounts stop counting from the day they were closed.
+      const weighted = (day: string) => sql`
+        SELECT w.account_id,
+               round(s.balance_minor::numeric * w.bps / 10000)::bigint AS amount
+        FROM unnest(${sql.param(ids)}::uuid[], ${sql.param(bps)}::int[]) AS w(account_id, bps)
+        JOIN accounts a ON a.id = w.account_id
+        JOIN LATERAL (
+          SELECT b.balance_minor FROM balance_snapshots b
+          WHERE b.account_id = w.account_id AND b.as_of <= ${day}::date
+          ORDER BY b.as_of DESC LIMIT 1
+        ) s ON true
+        WHERE a.closed_at IS NULL OR ${day}::date < (a.closed_at AT TIME ZONE ${hh.timezone})::date`;
+
+      let assets = 0n;
+      let liabilities = 0n;
+      if (ids.length) {
+        const { rows: current } = await tx.execute<{ amount: string }>(weighted(today));
+        for (const r of current) {
+          const amount = BigInt(r.amount);
+          if (amount >= 0n) assets += amount;
+          else liabilities -= amount;
+        }
+      }
+
+      const series = new Map<string, bigint>();
+      for (let d = from; d <= to; d = addDays(d, 1)) series.set(d, 0n);
+      if (ids.length) {
+        const { rows: points } = await tx.execute<{ day: string; net: string }>(sql`
+          SELECT d.day::date::text AS day,
+                 coalesce(sum(round(s.balance_minor::numeric * w.bps / 10000)), 0)::bigint AS net
+          FROM generate_series(${from}::date, ${to}::date, interval '1 day') AS d(day)
+          CROSS JOIN unnest(${sql.param(ids)}::uuid[], ${sql.param(bps)}::int[]) AS w(account_id, bps)
+          JOIN accounts a ON a.id = w.account_id
+          JOIN LATERAL (
+            SELECT b.balance_minor FROM balance_snapshots b
+            WHERE b.account_id = w.account_id AND b.as_of <= d.day::date
+            ORDER BY b.as_of DESC LIMIT 1
+          ) s ON true
+          WHERE a.closed_at IS NULL OR d.day::date < (a.closed_at AT TIME ZONE ${hh.timezone})::date
+          GROUP BY d.day ORDER BY d.day`);
+        for (const p of points) series.set(p.day, BigInt(p.net));
+      }
+
+      const safe = (n: bigint) => {
+        if (n > BigInt(Number.MAX_SAFE_INTEGER) || n < -BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new Problem(422, 'amount_too_large', 'Total is too large to report');
+        }
+        return Number(n);
+      };
+      return {
+        currency: hh.baseCurrency,
+        assetsMinor: safe(assets),
+        liabilitiesMinor: safe(liabilities),
+        netWorthMinor: safe(assets - liabilities),
+        series: [...series].map(([date, net]) => ({ date, netWorthMinor: safe(net) })),
+        unconverted: [...unconverted].map(([currency, count]) => ({ currency, accounts: count })),
+      };
+    });
+  }
+
+  async #window(
+    tx: Executor,
+    ctx: HouseholdContext,
+    window: { from?: string | undefined; to?: string | undefined },
+  ) {
+    const hh = await this.#household(tx, ctx);
+    const to = window.to ?? todayIn(hh.timezone);
+    const from = window.from ?? addDays(to, -364);
+    if (daysBetween(from, to) > MAX_WINDOW_DAYS) {
+      throw new Problem(422, 'window_too_long', 'Choose a period of 10 years or less');
+    }
+    return { from, to };
+  }
+
+  #householdCache = new WeakMap<Executor, Promise<HouseholdInfo>>();
+
+  #household(tx: Executor, ctx: HouseholdContext): Promise<HouseholdInfo> {
+    let info = this.#householdCache.get(tx);
+    if (!info) {
+      info = (async () => {
+        const [h] = await tx
+          .select({
+            baseCurrency: households.baseCurrency,
+            timezone: households.timezone,
+            financeStyle: households.financeStyle,
+          })
+          .from(households)
+          .where(eq(households.id, ctx.householdId));
+        if (!h) throw problems.notFound();
+        const members = await tx
+          .select({ id: householdMembers.id, role: householdMembers.role })
+          .from(householdMembers)
+          .where(
+            and(eq(householdMembers.householdId, ctx.householdId), isNull(householdMembers.leftAt)),
+          );
+        return {
+          ...h,
+          owners: new Set(members.filter((m) => m.role !== 'viewer').map((m) => m.id)),
+          activeMembers: members.length,
+        };
+      })();
+      this.#householdCache.set(tx, info);
+    }
+    return info;
+  }
+
+  /** Validates owners (active, non-viewer members) and fills in equal shares if none given. */
+  #resolveOwners(input: OwnersInput, hh: HouseholdInfo): { memberId: string; shareBps: number }[] {
+    const invalid = input.filter((o) => !hh.owners.has(o.memberId));
+    if (invalid.length) {
+      throw new Problem(
+        422,
+        'invalid_owner',
+        'Owners must be current members who aren’t viewers',
+        undefined,
+        invalid.map((o) => ({ path: 'owners', code: 'invalid_owner', message: o.memberId })),
+      );
+    }
+    const shares = input[0]?.shareBps === undefined ? equalShares(input.length) : undefined;
+    return input.map((o, i) => ({
+      memberId: o.memberId,
+      shareBps: shares ? shares[i]! : o.shareBps!,
+    }));
+  }
+
+  async #owners(tx: Executor, ids: string[]) {
+    const out = new Map<string, { memberId: string; shareBps: number }[]>();
+    if (ids.length === 0) return out;
+    for (const o of await tx
+      .select()
+      .from(accountOwners)
+      .where(inArray(accountOwners.accountId, ids))
+      .orderBy(desc(accountOwners.shareBps), asc(accountOwners.memberId))) {
+      const list = out.get(o.accountId) ?? [];
+      list.push({ memberId: o.memberId, shareBps: o.shareBps });
+      out.set(o.accountId, list);
+    }
+    return out;
+  }
+
+  async #present(
+    tx: Executor,
+    ctx: HouseholdContext,
+    rows: AccountRow[],
+    levels: Map<string, AccessLevel>,
+  ): Promise<Account[]> {
+    const ids = rows.map((r) => r.id);
+    const owners = await this.#owners(tx, ids);
+    const latest = new Map<string, { amountMinor: number; asOf: string }>();
+    if (ids.length) {
+      const { rows: balances } = await tx.execute<{
+        account_id: string;
+        as_of: string;
+        balance_minor: string;
+      }>(sql`
+        SELECT DISTINCT ON (account_id) account_id, as_of::text AS as_of, balance_minor
+        FROM balance_snapshots WHERE account_id = ANY(${sql.param(ids)}::uuid[])
+        ORDER BY account_id, as_of DESC`);
+      for (const b of balances) {
+        latest.set(b.account_id, { amountMinor: Number(b.balance_minor), asOf: b.as_of });
+      }
+    }
+    return Promise.all(
+      rows.map(async (r): Promise<Account> => {
+        const level = levels.get(r.id)!;
+        return {
+          id: r.id,
+          name: r.name,
+          type: r.type,
+          subtype: r.subtype,
+          currency: r.currency,
+          mask: r.maskLast4,
+          visibility: r.visibility,
+          balanceMode: r.balanceMode,
+          includeInNetWorth: r.includeInNetWorth,
+          isBusiness: r.isBusiness,
+          sortOrder: r.sortOrder,
+          closedAt: r.closedAt?.toISOString() ?? null,
+          owners: owners.get(r.id) ?? [],
+          yourAccess: level,
+          balance: latest.get(r.id) ?? null,
+          // Account notes need view_only or above (permissions §3).
+          ...(level !== 'balance_only'
+            ? { notes: r.notesEnc ? await this.#decryptNotes(ctx, r.id, r.notesEnc) : null }
+            : {}),
+          version: r.version,
+        };
+      }),
+    );
+  }
+
+  #notesContext(ctx: HouseholdContext, accountId: string) {
+    return {
+      householdId: ctx.householdId,
+      table: 'accounts',
+      column: 'notes_enc',
+      rowId: accountId,
+    };
+  }
+
+  #encryptNotes(ctx: HouseholdContext, accountId: string, notes: string) {
+    return this.crypto.encrypt(this.#notesContext(ctx, accountId), notes);
+  }
+
+  #decryptNotes(ctx: HouseholdContext, accountId: string, notes: Buffer) {
+    return this.crypto.decrypt(this.#notesContext(ctx, accountId), notes);
+  }
+}

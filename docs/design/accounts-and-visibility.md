@@ -114,8 +114,10 @@ Every money query goes through it; nothing filters accounts by hand.
 | `member:<id>` | Accounts that member owns | Their share |
 | `shared` | Joint accounts (≥ 2 owners) | 1 |
 
-An unknown or departed member in `lens` → `422 invalid_lens`. Single-member households accept
-only `all`/`me` (the switcher is hidden).
+An unknown or departed member in `lens` → `422 invalid_lens`. (Single-member households simply
+hide the switcher in the web app.)
+
+
 
 ## 5. Balances
 
@@ -186,3 +188,12 @@ encrypted `changes`), `account.visibility_changed`, `account.owners_changed`, `a
 4. **Avatars** are initials on the member color until uploads exist (M9).
 5. **Activity privacy** (§6): an `account_id` on events, opaque cursors, and verification that
    reports only ok or broken to members.
+
+## 10. As built: API (#35, #52, #53, #55, #56)
+Where the build differs from the plan above:
+- **Date windows** are `?from=&to=` (default: the last 365 days, at most 10 years) until shared time ranges reach every endpoint (#64, #65).
+- **Account numbers** aren't accepted or revealed yet. Manual accounts only need the last four characters (`mask`). Full numbers arrive with bank sync (M2), with the owner-only, audit-logged reveal.
+- **Activity actions** are `account.created`, `account.updated` (visibility changes included, as field names), `account.owners_changed`, `account.closed`, `account.reopened`, and `account.balance_set`.
+- `PUT …/owners` answers `204`: if you remove yourself from a private account, you can no longer see it.
+- **Net worth** counts accounts in the household's base currency. Others are listed under `unconverted` until multi-currency (#43).
+- Creating an account requires you to be one of its owners (`422 must_own`).

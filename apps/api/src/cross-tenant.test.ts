@@ -11,6 +11,9 @@ import { createTestApp, TestClient } from './testing/test-app.js';
  * automatically; a new kind of path parameter fails the suite until it gets a filler below.
  */
 const SECRET_NAME = 'Bob household (secret)';
+const SECRET_ACCOUNT = 'Bob savings (secret)';
+/** Path parameters that aren't ids: the same value in every household. */
+const FIXED: Record<string, string> = { date: '2026-01-01' };
 
 describe('cross-tenant isolation (generated from routes)', () => {
   let tdb: TestDatabase;
@@ -51,6 +54,16 @@ describe('cross-tenant isolation (generated from routes)', () => {
     });
     ids.a.inviteId = inviteA.body.data.invite.id;
     ids.b.inviteId = inviteB.body.data.invite.id;
+    const account = async (c: TestClient, householdId: string, name: string) =>
+      (
+        await c.post(`/api/v1/households/${householdId}/accounts`, {
+          name,
+          type: 'depository',
+          openingBalance: { amountMinor: 123456, asOf: '2026-01-01' },
+        })
+      ).body.data.id as string;
+    ids.a.accountId = await account(alice, a.id, 'A checking');
+    ids.b.accountId = await account(bob, b.id, SECRET_ACCOUNT);
     // B also gets a second member, so member routes have a non-owner target.
     const token = new URLSearchParams(new URL(inviteB.body.data.url).hash.slice(1)).get('token')!;
     await carol.post('/api/v1/invites/accept', { token });
@@ -73,7 +86,8 @@ describe('cross-tenant isolation (generated from routes)', () => {
   const fill = (url: string, values: Record<string, string>) =>
     url.replace(/:(\w+)/g, (_, param: string) => {
       const value =
-        param === 'memberId' ? (values.otherMemberId ?? values.memberId) : values[param];
+        FIXED[param] ??
+        (param === 'memberId' ? (values.otherMemberId ?? values.memberId) : values[param]);
       if (!value) throw new Error(`No test value for :${param}. Add one to cross-tenant.test.ts`);
       return value;
     });
@@ -142,7 +156,14 @@ describe('cross-tenant isolation (generated from routes)', () => {
         role: 'owner',
       });
       const leaks: string[] = [];
-      const bSecrets = [SECRET_NAME, ids.b.memberId!, ids.b.otherMemberId!, ids.b.inviteId!];
+      const bSecrets = [
+        SECRET_NAME,
+        SECRET_ACCOUNT,
+        ids.b.memberId!,
+        ids.b.otherMemberId!,
+        ids.b.inviteId!,
+        ids.b.accountId!,
+      ];
       try {
         for (const route of householdRoutes()) {
           const res = await call(route.method, fill(route.url, ids.b));

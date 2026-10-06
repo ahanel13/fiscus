@@ -22,7 +22,15 @@ describe('activity history', () => {
 
   const sql = async (text: string, params: unknown[] = []) =>
     (await owner.query(text, params)).rows;
-  const verify = async () => (await ann.get(`/api/v1/households/${hid}/activity/verify`)).body.data;
+  // The API reports only ok/broken to members; the details are checked against the chain itself.
+  const verifyApi = async () =>
+    (await ann.get(`/api/v1/households/${hid}/activity/verify`)).body.data;
+  const verify = async () =>
+    app
+      .get(HouseholdScope)
+      .asSystem(hid, { kind: 'system', userId: null, memberId: null }, (tx) =>
+        verifyChain(tx, hid),
+      );
   const feed = async () => (await ann.get(`/api/v1/households/${hid}/activity`)).body.data;
   const ifMatch = (v: number) => ({ headers: { 'if-match': `"v${v}"` } });
 
@@ -81,7 +89,10 @@ describe('activity history', () => {
         'household.updated',
         'household.created',
       ]);
-      expect(items.map((i: { seq: number }) => i.seq)).toEqual([4, 3, 2, 1]);
+      // Ids are opaque: no chain positions leak to members.
+      const ids = items.map((i: { id: string }) => i.id);
+      expect(new Set(ids).size).toBe(4);
+      expect(ids.every((id: string) => !/^\d+$/.test(id))).toBe(true);
       const updated = items.find((i: { action: string }) => i.action === 'household.updated');
       expect(updated.changes).toEqual({
         before: { name: 'Home', weekStart: 1 },
@@ -134,6 +145,7 @@ describe('activity history', () => {
 
   describe('tamper evidence', () => {
     it('verifies an untouched chain and reports its head', async () => {
+      expect(await verifyApi()).toEqual({ ok: true, checkedAt: expect.any(String) });
       const result = await verify();
       expect(result).toMatchObject({ ok: true, seq: 5 });
       expect(result.headHash).toMatch(/^[0-9a-f]{64}$/);
@@ -150,6 +162,7 @@ describe('activity history', () => {
         [hid],
       );
       expect(await verify()).toMatchObject({ ok: false, brokenAt: 2, reason: 'hash_mismatch' });
+      expect(await verifyApi()).toEqual({ ok: false, checkedAt: expect.any(String) });
       await sql(
         'UPDATE audit_events SET metadata = \'{"fields":["name","weekStart"]}\' WHERE household_id = $1 AND seq = 2',
         [hid],
