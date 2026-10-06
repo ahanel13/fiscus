@@ -3,6 +3,7 @@ import type {
   Account,
   AuthStatus,
   BalancePoint,
+  CashFlow,
   CategoryGroup,
   Household,
   HouseholdMember,
@@ -102,6 +103,8 @@ export const tagsQuery = (id: string) =>
 
 export interface TransactionFilters {
   lens: Lens;
+  /** Range parameters (ADR 0011), from rangeParams(). */
+  range?: string;
   accounts?: string[];
   categories?: string[];
   q?: string;
@@ -114,7 +117,9 @@ export const transactionsQuery = (id: string, filters: TransactionFilters) =>
     queryKey: ['households', id, 'transactions', filters],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams({ lens: filters.lens, limit: '50' });
+      const params = new URLSearchParams(filters.range ?? '');
+      params.set('lens', filters.lens);
+      params.set('limit', '50');
       if (filters.accounts?.length) params.set('accounts', filters.accounts.join(','));
       if (filters.categories?.length) params.set('categories', filters.categories.join(','));
       if (filters.q) params.set('q', filters.q);
@@ -133,4 +138,36 @@ export const transactionQuery = (id: string, transactionId: string) =>
     queryKey: ['households', id, 'transactions', 'one', transactionId],
     queryFn: async () =>
       (await api<Data<Transaction>>('GET', `${hh(id)}/transactions/${transactionId}`)).data,
+  });
+
+export const preferencesQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'preferences'],
+    queryFn: async () =>
+      (await api<Data<Record<string, unknown>>>('GET', `${hh(id)}/preferences`)).data,
+    staleTime: 5 * 60_000,
+  });
+
+export const cashFlowQuery = (id: string, lens: Lens, params: URLSearchParams) =>
+  queryOptions({
+    queryKey: ['households', id, 'cash-flow', { lens, params: params.toString() }],
+    queryFn: async () =>
+      (
+        await api<Data<CashFlow>>(
+          'GET',
+          `${hh(id)}/cash-flow?lens=${encodeURIComponent(lens)}&${params}`,
+        )
+      ).data,
+  });
+
+export const netWorthRangeQuery = (id: string, lens: Lens, params: URLSearchParams) =>
+  queryOptions({
+    queryKey: ['households', id, 'net-worth', { lens, params: params.toString() }],
+    queryFn: async () =>
+      (
+        await api<Data<NetWorth>>(
+          'GET',
+          `${hh(id)}/net-worth?lens=${encodeURIComponent(lens)}&${params}`,
+        )
+      ).data,
   });

@@ -20,6 +20,7 @@ import { Toaster } from './components/ui.js';
 import { lastHousehold } from './lib/last-household.js';
 import { type SectionId, SECTIONS } from './lib/nav.js';
 import { AccountDetailPage, AccountsPage } from './routes/accounts.js';
+import { DashboardPage } from './routes/dashboard.js';
 import { TransactionsPage } from './routes/transactions.js';
 import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
 import { SectionPage } from './routes/section.js';
@@ -146,6 +147,7 @@ const householdRoute = createRoute({
 
 /** Sections that have shipped; the rest show their "on the way" page. */
 const SECTION_PAGES: Partial<Record<SectionId, () => React.JSX.Element>> = {
+  dashboard: DashboardPage,
   accounts: AccountsPage,
   transactions: TransactionsPage,
 };

@@ -7,6 +7,7 @@ import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { SourceLinks } from '../components/About.js';
 import { CategoriesSettings } from './categories-settings.js';
+import { HouseholdGeneral } from './household-general.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
 import {
   Alert,
@@ -27,13 +28,6 @@ import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
 
 const ROLE_LABELS = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
-
-const STYLE_LABELS = {
-  combined: "It's all ours",
-  hybrid: 'Yours, mine, and ours',
-  separate: 'Separate, split shared costs',
-  roommates: 'Roommates',
-};
 
 export function HouseholdSettingsPage() {
   const { householdId } = useParams({ strict: false }) as { householdId: string };
@@ -59,21 +53,12 @@ export function HouseholdSettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 md:px-8 md:py-10">
       <h1 className="text-2xl font-semibold">Household settings</h1>
-      <Card>
-        <h2 className="mb-3 font-semibold">General</h2>
-        <dl className="grid grid-cols-[10rem_1fr] gap-y-2 text-sm">
-          <dt className="text-muted">Name</dt>
-          <dd>{household.name}</dd>
-          <dt className="text-muted">Currency</dt>
-          <dd>{household.baseCurrency}</dd>
-          <dt className="text-muted">Time zone</dt>
-          <dd>{household.timezone}</dd>
-          <dt className="text-muted">Finance style</dt>
-          <dd>{STYLE_LABELS[household.financeStyle]}</dd>
-          <dt className="text-muted">Your role</dt>
-          <dd>{ROLE_LABELS[household.you.role]}</dd>
-        </dl>
-      </Card>
+      <HouseholdGeneral
+        key={household.version}
+        household={household}
+        memberCount={members.length}
+      />
+      <p className="-mt-3 px-1 text-sm text-muted">Your role: {ROLE_LABELS[household.you.role]}</p>
       <Card>
         <h2 className="mb-3 font-semibold">Members</h2>
         <ul className="divide-y divide-border">

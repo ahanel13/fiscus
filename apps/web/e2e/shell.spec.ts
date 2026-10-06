@@ -156,6 +156,29 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   await expect(page.getByRole('link', { name: /Wallet/ })).toContainText('−$120.00');
 });
 
+test('the dashboard shows cash flow by period, and ranges are remembered', async ({ page }) => {
+  await signIn(page);
+  await page.goto(householdUrl);
+  await expect(page.getByRole('heading', { level: 2, name: /Cash flow/ })).toBeVisible();
+  // The wallet's split purchase from the previous test is money out this month.
+  await expect(page.getByRole('table', { name: 'Money in and out per period' })).toContainText(
+    '$120.00',
+  );
+  expect(await axeViolations(page)).toEqual([]);
+
+  await page.getByRole('button', { name: /Time range/ }).click();
+  await page.getByRole('option', { name: 'This month' }).click();
+  await expect(page).toHaveURL(/range=this_month/);
+  await expect(page.getByRole('group', { name: 'Month' })).toBeVisible(); // the period stepper
+  await page.getByRole('button', { name: 'Previous month' }).click();
+  await expect(page).toHaveURL(/range=custom/);
+  await page.getByRole('button', { name: 'This month' }).click();
+
+  // Remembered for this member: a fresh visit without the URL opens on it.
+  await page.goto(householdUrl);
+  await expect(page.getByRole('button', { name: /Time range/ })).toContainText('This month');
+});
+
 test('dark mode, sign out, and back', async ({ page }) => {
   await signIn(page);
   await page.goto('/settings');

@@ -18,7 +18,7 @@ import {
   categoriesQuery,
   householdQuery,
   membersQuery,
-  netWorthQuery,
+  netWorthRangeQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
@@ -71,7 +71,10 @@ import {
   TYPE_LABELS,
   VISIBILITY,
 } from '../lib/accounts.js';
-import { lensVisible, parseLens } from '../lib/lens.js';
+import { type Lens, lensVisible, parseLens } from '../lib/lens.js';
+import { formatSpan, rangeParams } from '../lib/ranges.js';
+import { useRange } from '../lib/use-range.js';
+import { RangeChips } from '../components/RangeControls.js';
 import { TransactionDrawer, TransactionList } from './transactions.js';
 
 type Data<T> = { data: T };
@@ -101,7 +104,6 @@ export function AccountsPage() {
   const showLens = lensVisible(household, members.length);
   const lens = showLens ? parseLens(search.lens) : 'all';
   const accounts = useQuery(accountsQuery(householdId, lens));
-  const netWorth = useQuery(netWorthQuery(householdId, lens));
   const [adding, setAdding] = useState(false);
   const canAdd = household.you.role !== 'viewer';
   const add = canAdd ? (
@@ -112,13 +114,7 @@ export function AccountsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Accounts"
-        showRange={false}
-        showLens={showLens}
-        members={members}
-        action={add}
-      />
+      <PageHeader title="Accounts" showLens={showLens} members={members} action={add} />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
         {accounts.isPending ? (
           <LoadingRegion label="Loading accounts">
@@ -140,7 +136,7 @@ export function AccountsPage() {
           </EmptyState>
         ) : (
           <>
-            {netWorth.data ? <NetWorthCard data={netWorth.data} /> : <Skeleton className="h-28" />}
+            <NetWorthCard household={household} lens={lens} />
             {GROUPS.map((g) => {
               const items = accounts.data.filter((a) => g.types.includes(a.type));
               return items.length ? (
@@ -169,9 +165,15 @@ export function AccountsPage() {
   );
 }
 
-function NetWorthCard({ data }: { data: import('@fiscus/shared').NetWorth }) {
+/** Net worth "visible to you" (F3), with one-click ranges for its trend (ADR 0011 §2). */
+export function NetWorthCard({ household, lens }: { household: Household; lens: Lens }) {
+  const range = useRange(household, 'net-worth', 'last_12m');
+  const query = useQuery(netWorthRangeQuery(household.id, lens, rangeParams(range.selection)));
+  const data = query.data;
+  if (!data) return <Skeleton className="h-36" />;
+  const values = trend(data.series.map((p) => p.netWorthMinor));
   return (
-    <Card className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+    <Card className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start">
       <div>
         <h2 className="text-sm font-medium text-muted">
           Net worth <span className="font-normal">(visible to you)</span>
@@ -209,10 +211,13 @@ function NetWorthCard({ data }: { data: import('@fiscus/shared').NetWorth }) {
           </p>
         ) : null}
       </div>
-      <div className="md:w-64">
-        <Sparkline values={trend(data.series.map((p) => p.netWorthMinor))} />
-        {trend(data.series.map((p) => p.netWorthMinor)).length > 1 ? (
-          <p className="text-right text-xs text-muted">Last 12 months</p>
+      <div className="space-y-2 md:w-72">
+        <RangeChips state={range} label="Net worth range" />
+        <Sparkline values={values} />
+        {values.length > 1 ? (
+          <p className="text-right text-xs text-muted">
+            {formatSpan(data.range.from, data.range.to)}
+          </p>
         ) : null}
       </div>
     </Card>
