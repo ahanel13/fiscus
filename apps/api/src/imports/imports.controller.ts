@@ -20,9 +20,10 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { UuidPipe } from '../common/uuid-pipe.js';
 import { ZodPipe } from '../common/zod-pipe.js';
 import {
@@ -50,6 +51,16 @@ export class ImportsController {
   @Get('imports')
   async list(@Household() ctx: HouseholdContext): Promise<{ data: ImportBatch[] }> {
     return { data: await this.imports.list(ctx) };
+  }
+
+  /** How earlier imports mapped category names (lower-cased name → category id). */
+  @Get('imports/category-map')
+  async categoryMap(
+    @Household() ctx: HouseholdContext,
+    @Query(new ZodPipe(z.object({ format: z.enum(['csv', 'monarch']).optional() })))
+    query: { format?: 'csv' | 'monarch' },
+  ): Promise<{ data: Record<string, string> }> {
+    return { data: await this.imports.categoryMap(ctx, query.format) };
   }
 
   /** Everything importing the file would do, with nothing saved. */

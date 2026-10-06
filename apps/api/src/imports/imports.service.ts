@@ -121,7 +121,9 @@ export class ImportsService {
             results.push({ line: r.line, status: 'skipped', message: 'Account skipped' });
           }
         }
-        const existing = a.skip ? null : await this.#existing(tx, levels, a, today);
+        // Combined with another account in the file: that account's target.
+        const target = a.sameAs ? input.accounts.find((x) => x.key === a.sameAs)! : a;
+        const existing = a.skip ? null : await this.#existing(tx, levels, target, today);
         const accountId = existing?.id ?? null;
         const before = results.length;
         let kept: Planned[] = [];
@@ -152,14 +154,14 @@ export class ImportsService {
         summaries.push({
           key: a.key,
           accountId,
-          name: existing?.name ?? a.create?.name ?? a.key,
+          name: existing?.name ?? target.create?.name ?? target.key,
           new: kept.length,
           duplicates: of('duplicate'),
           overlaps: of('overlap'),
           skipped: a.skip ? rows.length : of('skipped'),
           errors: of('error'),
           balances: balances.length,
-          closeOn: a.skip || existing?.closedAt ? null : (a.closeOn ?? null),
+          closeOn: a.skip || a.sameAs || existing?.closedAt ? null : (a.closeOn ?? null),
         });
       }
 
@@ -221,10 +223,18 @@ export class ImportsService {
       };
 
       const batches: ImportRun['batches'] = [];
-      for (const a of input.accounts) {
+      const ids = new Map<string, string>();
+      // Accounts combined with another go last, into the account that one resolved to.
+      const ordered = [
+        ...input.accounts.filter((a) => !a.sameAs),
+        ...input.accounts.filter((a) => a.sameAs),
+      ];
+      for (const a of ordered) {
         if (a.skip) continue;
-        const existing = await this.#existing(tx, levels, a, today);
+        const combined = a.sameAs ? ids.get(a.sameAs)! : null;
+        const existing = combined ? null : await this.#existing(tx, levels, a, today);
         const accountId =
+          combined ??
           existing?.id ??
           (await this.accounts.createWithin(tx, activity, ctx, {
             name: a.create!.name,
@@ -233,7 +243,8 @@ export class ImportsService {
             ...(a.create!.visibility ? { visibility: a.create!.visibility } : {}),
             ...(a.create!.owners ? { owners: a.create!.owners } : {}),
           }));
-        const close = !!a.closeOn && !existing?.closedAt;
+        ids.set(a.key, accountId);
+        const close = !combined && !!a.closeOn && !existing?.closedAt;
         if (close) {
           // Closed from the start of that day in the household's time zone.
           await tx
@@ -263,7 +274,7 @@ export class ImportsService {
           filename: input.filename,
           transactionCount: 0,
           balanceCount: 0,
-          createdAccount: !existing,
+          createdAccount: !existing && !combined,
           closedAccount: close,
           mapping,
         });
@@ -373,6 +384,7 @@ export class ImportsService {
         throw new Problem(409, 'already_reverted', 'This import was already undone');
       }
       await this.#revertBatch(tx, activity, ctx, batch, await accessLevels(tx));
+      await this.#afterRevert(tx, activity, [batch]);
     });
   }
 
@@ -387,6 +399,43 @@ export class ImportsService {
       }
       const levels = await accessLevels(tx);
       for (const b of open) await this.#revertBatch(tx, activity, ctx, b, levels);
+      await this.#afterRevert(tx, activity, open);
+    });
+  }
+
+  /**
+   * How earlier imports of this kind mapped category names, latest choice winning: lower-cased
+   * name → category id, for categories that still exist. The wizard starts from it, so a
+   * Monarch category mapped to one of yours once is mapped the same way next time.
+   */
+  async categoryMap(
+    ctx: HouseholdContext,
+    format: 'csv' | 'monarch' | undefined,
+  ): Promise<Record<string, string>> {
+    return this.scope.run(ctx, async (tx) => {
+      const rows = await tx
+        .select({ mapping: importBatches.mapping })
+        .from(importBatches)
+        .where(
+          and(
+            isNull(importBatches.revertedAt),
+            format ? eq(importBatches.format, format) : undefined,
+          ),
+        )
+        .orderBy(asc(importBatches.createdAt));
+      const merged = new Map<string, string>();
+      for (const r of rows) {
+        for (const [name, id] of Object.entries(r.mapping.categories)) merged.set(name, id);
+      }
+      const live = new Set(
+        (
+          await tx
+            .select({ id: categories.id })
+            .from(categories)
+            .where(isNull(categories.archivedAt))
+        ).map((c) => c.id),
+      );
+      return Object.fromEntries([...merged].filter(([, id]) => live.has(id)));
     });
   }
 
@@ -508,6 +557,17 @@ export class ImportsService {
         'Choose where every account in the file goes',
         [...unknown].slice(0, 5).join(', '),
       );
+    }
+    for (const a of mapped) {
+      if (!a.sameAs || a.skip) continue;
+      const other = mapped.find((x) => x.key === a.sameAs);
+      if (!other || other.skip || other.sameAs || other === a) {
+        throw new Problem(
+          422,
+          'invalid_combine',
+          `“${a.key}” can only be combined with an account that’s being imported on its own`,
+        );
+      }
     }
     const targets = mapped.filter((a) => a.accountId && !a.skip).map((a) => a.accountId);
     if (new Set(targets).size !== targets.length) {
@@ -988,32 +1048,42 @@ export class ImportsService {
       accountId: batch.accountId,
       metadata: { transactions: reverted.length },
     });
-    if (batch.createdAccount && (await this.#accountIsEmpty(tx, batch.accountId))) {
-      // The import made this account and nothing else is in it: undo that too.
-      await tx.delete(accounts).where(eq(accounts.id, batch.accountId));
-      await activity.record({
-        action: 'account.deleted',
-        targetType: 'account',
-        targetId: batch.accountId,
-        accountId: batch.accountId,
-        metadata: { reason: 'import_reverted' },
-      });
-      return;
+  }
+
+  /**
+   * Once a revert's batches are all undone: accounts an import created that are now empty are
+   * removed, accounts it closed are reopened, and the rest recompute their balances. Done after
+   * every batch, since batches of one run can share an account ("Combine with").
+   */
+  async #afterRevert(tx: Executor, activity: HouseholdActivity, batches: Batch[]) {
+    for (const [accountId, list] of Map.groupBy(batches, (b) => b.accountId)) {
+      if (list.some((b) => b.createdAccount) && (await this.#accountIsEmpty(tx, accountId))) {
+        // The import made this account and nothing else is in it: undo that too.
+        await tx.delete(accounts).where(eq(accounts.id, accountId));
+        await activity.record({
+          action: 'account.deleted',
+          targetType: 'account',
+          targetId: accountId,
+          accountId,
+          metadata: { reason: 'import_reverted' },
+        });
+        continue;
+      }
+      if (list.some((b) => b.closedAccount)) {
+        await tx
+          .update(accounts)
+          .set({ closedAt: null, version: sql`${accounts.version} + 1` })
+          .where(eq(accounts.id, accountId));
+        await activity.record({
+          action: 'account.reopened',
+          targetType: 'account',
+          targetId: accountId,
+          accountId,
+          metadata: { reason: 'import_reverted' },
+        });
+      }
+      await recomputeBalances(tx, accountId);
     }
-    if (batch.closedAccount) {
-      await tx
-        .update(accounts)
-        .set({ closedAt: null, version: sql`${accounts.version} + 1` })
-        .where(eq(accounts.id, batch.accountId));
-      await activity.record({
-        action: 'account.reopened',
-        targetType: 'account',
-        targetId: batch.accountId,
-        accountId: batch.accountId,
-        metadata: { reason: 'import_reverted' },
-      });
-    }
-    await recomputeBalances(tx, batch.accountId);
   }
 
   async #accountIsEmpty(tx: Executor, accountId: string): Promise<boolean> {

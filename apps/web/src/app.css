@@ -68,6 +68,12 @@ svg.lucide {
   outline-offset: 2px;
 }
 
+/* Headings focused by script so screen readers announce a new step aren't controls: no ring. */
+h1[tabindex='-1']:focus-visible,
+h2[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

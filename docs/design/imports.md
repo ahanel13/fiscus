@@ -51,7 +51,7 @@ is skipped and shown as done.
 | 1. **Source** | Pick where it's from: *Monarch*, or *A bank or card statement (CSV)*. Drop the file(s); a short "how to export from Monarch" guide sits beside the drop zone | Always |
 | 2. **Columns** | Match columns, with the first rows shown live as you choose. A saved profile is picked automatically and the step collapses to "Using *Chase checking*. Change" | CSV only |
 | 3. **Accounts** | Each account in the file → *new*, *an existing one*, or ***Don't import*** (its transactions and balances are left out; a transfer to it keeps its Transfer category on the side you import), with type, owners, and visibility. Closed accounts listed with their close date. Monarch Owner names → members | Monarch, or a CSV with an Account column; otherwise one picker in step 1 |
-| 4. **Categories** | Each category in the file → matched, or *new in "From Monarch"*; change any to an existing category | When the file has categories |
+| 4. **Categories** | Each category in the file → one of yours (several can share one), or *new*. Starts from how your **last import mapped it** ("As last time"), else the same name. New ones get a kind guessed from the data (transfer names, all money in = income), which you can change | When the file has categories |
 | 5. **Review** | Totals in plain words ("1 204 new transactions, 38 already imported, 3 possible duplicates"), then a table filtered by status: new, already imported, possible duplicate (tick to include), skipped, error. Transfers to be linked and rules that will apply are shown here | Always |
 | 6. **Done** | Progress, then a summary with **Undo this import**, "Review 7 transactions", and "Go to transactions" | Always |
 
@@ -120,6 +120,11 @@ transactions in the export).
   mapping step lists every account found in either, and confirming it creates the new accounts,
   then imports transactions, then balances, then links transfers, in one database transaction.
   Nothing has to be set up in Fiscus first; accounts you already created can be picked instead.
+- **Accounts Monarch has twice.** An account with no transactions whose balance matches another
+  account's on every shared day (30 or more) is the same account connected twice: the wizard
+  leaves it out, with a note. An account that a similarly named one picks up from within a week
+  (a vehicle re-added with automatic valuation) is offered **combined** with it: one account, the
+  whole history, no close date.
 - Transfers: Monarch categorizes both legs but doesn't link them. After import, rows in a
   transfer category run through transfer detection (§5), so most pairs link on their own.
 - Ownership and visibility of new accounts follow the household's finance style; you can change

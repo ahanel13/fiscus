@@ -2,7 +2,7 @@
 import type { AccountType, BalanceMode } from '../api/accounts.js';
 import type { ImportBalance, ImportTransaction } from '../api/imports.js';
 import type { CsvTable } from './csv.js';
-import { guessAccountType, type RowProblem } from './mapping.js';
+import { explainAccountType, type RowProblem } from './mapping.js';
 import { parseAmount, parseDate } from './values.js';
 
 // Monarch's export (docs/design/imports.md §2), checked against a real one in October 2026:
@@ -32,9 +32,12 @@ export interface MonarchAccount {
   firstDate: string | null;
   lastDate: string | null;
   balances: number;
+  firstBalanceDate: string | null;
   lastBalanceDate: string | null;
   lastBalanceMinor: number | null;
   suggestedType: AccountType;
+  /** The name said what type it is; otherwise the guess comes from balances (or is a default). */
+  typeFromName: boolean;
   /** Accounts with no transactions in the export are valued by hand. */
   suggestedMode: BalanceMode;
   /**
@@ -42,8 +45,20 @@ export interface MonarchAccount {
    * is offered as closed the day after (docs/design/imports.md §2).
    */
   closeOn: string | null;
-  /** Its last balance is under one unit (say $1): clearly closed, so the wizard ticks it. */
+  /** Its last balance is under ten units (say $10): clearly closed, so the wizard ticks it. */
   closedAtZero: boolean;
+  /**
+   * Another account in the file with the same balance on every day both have (30 days or
+   * more), and this one has no transactions of its own: the same account connected twice in
+   * Monarch. The wizard leaves it out unless you choose otherwise.
+   */
+  duplicateOf: string | null;
+  /**
+   * An account with a similar name whose history starts within a week after this one's ends:
+   * the same thing re-added in Monarch (a vehicle switched to automatic valuation, say). The
+   * wizard suggests combining them into one account.
+   */
+  continuedBy: string | null;
 }
 
 export interface MonarchImport {
@@ -71,6 +86,7 @@ export function readMonarch(
   const problems: RowProblem[] = [];
   const owners = new Set<string>();
   const amounts = new Map<string, number[]>();
+  const byDay = new Map<string, Map<string, number>>();
   const stats = new Map<string, MonarchAccount>();
   const account = (key: string) => {
     let a = stats.get(key);
@@ -81,12 +97,16 @@ export function readMonarch(
         firstDate: null,
         lastDate: null,
         balances: 0,
+        firstBalanceDate: null,
         lastBalanceDate: null,
         lastBalanceMinor: null,
         suggestedType: 'depository',
+        typeFromName: false,
         suggestedMode: 'value',
         closeOn: null,
         closedAtZero: false,
+        duplicateOf: null,
+        continuedBy: null,
       };
       stats.set(key, a);
     }
@@ -167,9 +187,13 @@ export function readMonarch(
         return problems.push({ line, message: 'This balance row can’t be read' });
       }
       balances.push({ account: key, date, balanceMinor });
+      const days = byDay.get(key) ?? new Map<string, number>();
+      days.set(date, balanceMinor);
+      byDay.set(key, days);
       const a = account(key);
       a.balances++;
       amounts.set(key, [...(amounts.get(key) ?? []), balanceMinor]);
+      if (!a.firstBalanceDate || date < a.firstBalanceDate) a.firstBalanceDate = date;
       if (!a.lastBalanceDate || date > a.lastBalanceDate) {
         a.lastBalanceDate = date;
         a.lastBalanceMinor = balanceMinor;
@@ -182,13 +206,17 @@ export function readMonarch(
     null,
   );
   for (const a of stats.values()) {
-    a.suggestedType = guessAccountType(a.key, amounts.get(a.key));
+    const guess = explainAccountType(a.key, amounts.get(a.key), exponent);
+    a.suggestedType = guess.type;
+    a.typeFromName = guess.fromName;
     a.suggestedMode = a.transactions > 0 ? 'transactions' : 'value';
     if (exportEnd && a.lastBalanceDate && a.lastBalanceDate < exportEnd) {
       a.closeOn = nextDay(a.lastBalanceDate);
-      a.closedAtZero = Math.abs(a.lastBalanceMinor ?? 0) < 10 ** exponent;
+      a.closedAtZero = Math.abs(a.lastBalanceMinor ?? 0) < 10 * 10 ** exponent;
     }
   }
+  findDuplicates([...stats.values()], byDay);
+  findContinuations([...stats.values()], byDay);
   return {
     transactions,
     balances,
@@ -196,4 +224,71 @@ export function readMonarch(
     owners: [...owners].sort(),
     problems,
   };
+}
+
+/** Marks accounts that mirror another account's balances day for day (see `duplicateOf`). */
+function findDuplicates(accounts: MonarchAccount[], byDay: Map<string, Map<string, number>>) {
+  const MIN_DAYS = 30;
+  // Keep the one with transactions, then the one with more history; mark the other.
+  const rank = (a: MonarchAccount) => [a.transactions, a.balances, a.key.length];
+  const better = (x: MonarchAccount, y: MonarchAccount) => {
+    const [a, b] = [rank(x), rank(y)];
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! > b[i]!;
+    return x.key < y.key;
+  };
+  for (const a of accounts) {
+    const mine = byDay.get(a.key);
+    if (a.transactions > 0 || !mine || mine.size < MIN_DAYS) continue;
+    for (const b of accounts) {
+      const theirs = byDay.get(b.key);
+      if (b === a || b.duplicateOf || !theirs || !better(b, a)) continue;
+      let shared = 0;
+      let same = true;
+      for (const [day, value] of mine) {
+        const other = theirs.get(day);
+        if (other === undefined) continue;
+        shared++;
+        if (other !== value) {
+          same = false;
+          break;
+        }
+      }
+      if (same && shared >= MIN_DAYS) {
+        a.duplicateOf = b.key;
+        break;
+      }
+    }
+  }
+}
+
+/** "2021 Toyota Tacoma TRD Pro (...1234)" → "toyota tacoma trd pro": names compared loosely. */
+export const looseName = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/\(\.{3}\d+\)/g, '')
+    .replace(/\b(19|20)\d{2}\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+/** Marks accounts another one picks up from (see `continuedBy`). */
+function findContinuations(accounts: MonarchAccount[], byDay: Map<string, Map<string, number>>) {
+  const span = (key: string) => {
+    const days = [...(byDay.get(key)?.keys() ?? [])].sort();
+    return days.length ? { first: days[0]!, last: days.at(-1)! } : null;
+  };
+  for (const a of accounts) {
+    const mine = span(a.key);
+    if (!mine || a.duplicateOf || !a.closeOn) continue;
+    const name = looseName(a.key);
+    if (name.length < 4) continue;
+    const next = accounts.find((b) => {
+      const theirs = span(b.key);
+      if (b === a || !theirs || b.duplicateOf || b.continuedBy) return false;
+      const other = looseName(b.key);
+      const similar = other.includes(name) || name.includes(other);
+      const gap = (Date.parse(theirs.first) - Date.parse(mine.last)) / 86_400_000;
+      return similar && other.length >= 4 && gap >= 1 && gap <= 7;
+    });
+    if (next) a.continuedBy = next.key;
+  }
 }

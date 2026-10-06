@@ -8,7 +8,7 @@ import type {
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight, Landmark, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Landmark, Plus, Upload } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -30,6 +30,7 @@ import {
   Avatar,
   Badge,
   Button,
+  ButtonLink,
   Card,
   Cell,
   Checkbox,
@@ -107,9 +108,14 @@ export function AccountsPage() {
   const [adding, setAdding] = useState(false);
   const canAdd = household.you.role !== 'viewer';
   const add = canAdd ? (
-    <Button onPress={() => setAdding(true)}>
-      <Plus aria-hidden className="size-4" /> Add account
-    </Button>
+    <div className="flex gap-2">
+      <ButtonLink variant="secondary" to="/h/$householdId/import" params={{ householdId }}>
+        <Upload aria-hidden className="size-4" /> Import
+      </ButtonLink>
+      <Button onPress={() => setAdding(true)}>
+        <Plus aria-hidden className="size-4" /> Add account
+      </Button>
+    </div>
   ) : undefined;
 
   return (

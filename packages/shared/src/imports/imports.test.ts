@@ -132,7 +132,12 @@ describe('CSV mapping', () => {
     expect(guessAccountType('Auto Roth IRA')).toBe('investment');
     expect(guessAccountType('Blue Cash Preferred® ')).toBe('credit');
     expect(guessAccountType('SoFi Checking')).toBe('depository');
+    expect(guessAccountType('SCHEELS Signature (...0963)')).toBe('credit');
+    expect(guessAccountType('Quicksilver (...4480)')).toBe('credit');
+    expect(guessAccountType('123 W 400 N Springville UT')).toBe('depository');
+    expect(guessAccountType('42 Elm St, Provo UT')).toBe('property');
     expect(guessAccountType('Wedding', [-100, -200])).toBe('credit');
+    expect(guessAccountType('SOFI (...8884)', [-49050000, -48797499])).toBe('loan');
     expect(inferCategoryKind('Credit Card Payment', [-5])).toBe('transfer');
     expect(inferCategoryKind('Paychecks', [100, 200])).toBe('income');
     expect(inferCategoryKind('Groceries', [-100, 20])).toBe('flexible');
@@ -188,6 +193,60 @@ describe('Monarch export', () => {
       ['Blue Cash Preferred®', '1002', true],
     ]);
     expect(m.owners).toEqual(['Bea']);
+  });
+
+  it('spots an account connected twice: same balance every day, no transactions', () => {
+    // 40 days: a duplicate needs at least a month of identical balances.
+    const unique = Array.from({ length: 40 }, (_, i) =>
+      new Date(Date.UTC(2026, 7, 1 + i)).toISOString().slice(0, 10),
+    );
+    const rows = (name: string, offset = 0) =>
+      unique.map((d, i) => `${d},${(100 + i + offset).toFixed(2)},${name}`);
+    const m = readMonarch(
+      {
+        transactions: parseCsv(
+          'Date,Merchant,Category,Account,Amount\n2026-08-02,X,Y,SAVINGS (...2124),1.00',
+        ),
+        balances: parseCsv(
+          [
+            'Date,Balance,Account',
+            ...rows('SAVINGS'),
+            ...rows('SAVINGS (...2124)'),
+            ...rows('Other savings', 1),
+          ].join('\n'),
+        ),
+      },
+      2,
+    );
+    expect(m.accounts.map((a) => [a.key, a.duplicateOf])).toEqual([
+      ['Other savings', null],
+      ['SAVINGS', 'SAVINGS (...2124)'],
+      ['SAVINGS (...2124)', null],
+    ]);
+  });
+
+  it('spots an account that another picks up from the next day, under a similar name', () => {
+    const m = readMonarch(
+      {
+        balances: parseCsv(
+          [
+            'Date,Balance,Account',
+            '2024-09-07,39010.00,Toyota Tacoma TRD Pro',
+            '2024-09-08,39010.00,Toyota Tacoma TRD Pro',
+            '2024-09-09,38797.97,2021 Toyota Tacoma TRD Pro',
+            '2024-09-10,38797.97,2021 Toyota Tacoma TRD Pro',
+            '2024-09-09,500.00,Other',
+            '2024-09-10,500.00,Other',
+          ].join('\n'),
+        ),
+      },
+      2,
+    );
+    expect(m.accounts.map((a) => [a.key, a.continuedBy])).toEqual([
+      ['2021 Toyota Tacoma TRD Pro', null],
+      ['Other', null],
+      ['Toyota Tacoma TRD Pro', '2021 Toyota Tacoma TRD Pro'],
+    ]);
   });
 
   it('summarizes accounts from both files and infers closed ones', () => {

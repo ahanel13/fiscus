@@ -156,6 +156,124 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   await expect(page.getByRole('link', { name: /Wallet/ })).toContainText('−$120.00');
 });
 
+test('imports a Monarch export with the wizard, then undoes it', async ({ page }) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/accounts`);
+  await page.getByRole('link', { name: 'Import' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Import' })).toBeVisible();
+
+  // Made-up rows in the format of a real Monarch export.
+  const transactions = [
+    'Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags,Owner,Reviewed,Id',
+    '2026-01-05,Harmons,Groceries,Blue Cash Preferred® ,HARMONS,,-97.55,,Shared,,1',
+    '2026-01-06,Payroll,Paychecks,Imported Checking,ACME,,2500.00,,Shared,Needs Review,2',
+    '2026-01-07,Amex,Credit Card Payment,Imported Checking,AMEX,,-97.55,,Shared,,3',
+    '2026-01-07,Amex,Credit Card Payment,Blue Cash Preferred® ,PAYMENT,,97.55,,Shared,,4',
+  ].join('\n');
+  const balances = [
+    'Date,Balance,Account',
+    '2026-01-06,2500.00,Imported Checking',
+    '2026-01-07,2402.45,Imported Checking',
+    '2025-01-30,10.00,Old Savings',
+    '2025-01-31,0.00,Old Savings',
+  ].join('\n');
+  await page.locator('input[type=file]').setInputFiles([
+    { name: 'Transactions.csv', mimeType: 'text/csv', buffer: Buffer.from(transactions) },
+    { name: 'Balances.csv', mimeType: 'text/csv', buffer: Buffer.from(balances) },
+  ]);
+  await expect(page.getByText('Transactions · 4 rows')).toBeVisible();
+  await expect(page.getByText('Balances · 4 rows')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  // Accounts: their names say what they are, so nothing needs a look; Old Savings ended at
+  // zero, so it's closed.
+  await expect(page.getByRole('heading', { name: 'Where does each account go?' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Ready to import (3)' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Check these/ })).toHaveCount(0);
+  // Three accounts: short enough to show them all.
+  await expect(page.getByRole('checkbox', { name: /Closed from/ })).toBeChecked();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  // Categories: Groceries and Paychecks match; Credit Card Payment is new.
+  await expect(page.getByText('2 matched, 1 new')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.getByText('4 new transactions.')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Import 4 transactions' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Imported' })).toBeVisible();
+  await expect(
+    page.getByText(/4 transactions and \d+ balances imported into 3 accounts/),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Review 1 transaction' })).toHaveAttribute(
+    'href',
+    /review=needs_review/,
+  );
+
+  // Undo removes everything, including the accounts it created.
+  await page.getByRole('button', { name: 'Undo this import' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Undo import' }).click();
+  await expect(page.getByRole('heading', { name: 'Import undone' })).toBeVisible();
+  await page.goto(`${householdUrl}/accounts`);
+  await expect(page.getByRole('link', { name: /Imported Checking/ })).toHaveCount(0);
+});
+
+test('imports a bank CSV into an existing account, saving the column mapping', async ({ page }) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/import`);
+  await page.getByText('A bank or card statement').click();
+  const csv = [
+    'Posting Date,Description,Debit,Credit',
+    '01/15/2026,COFFEE SHOP,4.50,',
+    '01/16/2026,REFUND,,"1,000.00"',
+    '01/32/2026,BAD DATE,1.00,',
+  ].join('\n');
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'bank.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(csv),
+  });
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  // Columns are guessed from the headers and data; the first rows show how they read.
+  await expect(page.getByRole('heading', { name: 'Match the columns' })).toBeFocused();
+  await expect(page.getByText('COFFEE SHOP')).toBeVisible();
+  await expect(page.getByText('Line 4: The date “01/32/2026”')).toBeVisible();
+  await page.getByText('Save this mapping for this bank’s next file').click();
+  await page.getByRole('textbox', { name: 'Mapping name' }).fill('E2E bank');
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await page.getByRole('button', { name: 'Where This file goes' }).click();
+  await page.getByRole('option', { name: 'Wallet' }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('2 new transactions, 1 with problems.')).toBeVisible();
+  await page.getByRole('button', { name: 'Import 2 transactions' }).click();
+  await expect(page.getByRole('heading', { name: 'Imported' })).toBeVisible();
+
+  // The saved mapping is picked for the next file from this bank.
+  await page.goto(`${householdUrl}/import`);
+  await page.getByText('A bank or card statement').click();
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'bank-2.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(csv),
+  });
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('Using your saved mapping')).toContainText('E2E bank');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Where This file goes' }).click();
+  await page.getByRole('option', { name: 'Wallet' }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(
+    page.getByText('0 new transactions, 2 already imported, 1 with problems.'),
+  ).toBeVisible();
+});
+
 test('the dashboard shows cash flow by period, and ranges are remembered', async ({ page }) => {
   await signIn(page);
   await page.goto(householdUrl);

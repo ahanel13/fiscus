@@ -2,6 +2,7 @@
 import type { AccountType } from '../api/accounts.js';
 import type { CsvMapping, ImportTransaction } from '../api/imports.js';
 import type { CategoryKind } from '../api/ledger.js';
+import { typeFromName } from './account-names.js';
 import type { CsvTable } from './csv.js';
 import { detectDateFormat, detectDecimalSeparator, parseAmount, parseDate } from './values.js';
 
@@ -171,30 +172,33 @@ export function inferCategoryKind(name: string, amounts: number[]): CategoryKind
   return 'flexible';
 }
 
-const TYPE_HINTS: [AccountType, RegExp][] = [
-  ['loan', /\b(loan|mortgage|heloc|student)\b/i],
-  [
-    'investment',
-    /\b(ira|roth|401\s?k|403\s?b|brokerage|invest(ing|ment)?s?|hsa|stocks?|fidelity|vanguard|schwab|robinhood|529)\b/i,
-  ],
-  ['crypto', /\b(crypto|bitcoin|btc|eth|coinbase)\b/i],
-  ['vehicle', /\b(car|truck|vehicle|auto|tacoma|toyota|honda|ford|tesla|subaru|motorcycle)\b/i],
-  ['property', /\b(house|home|property|condo|zillow|residence)\b/i],
-  [
-    'credit',
-    /\b(credit|card|visa|mastercard|amex|american express|discover|sapphire|freedom|preferred|rewards)\b|®/i,
-  ],
-  ['depository', /\b(checking|savings|cd|money market|cash|bank)\b/i],
-];
-
 /**
  * A first guess at an account's type from its name and balances, for the wizard to show and you to
- * change. A name that says "loan" wins over "auto"; mostly-negative balances suggest credit.
+ * change. A name that says "loan" wins over "auto"; mostly-negative balances suggest a card, or a
+ * loan when they're large.
  */
-export function guessAccountType(name: string, balances: number[] = []): AccountType {
-  for (const [type, re] of TYPE_HINTS) if (re.test(name)) return type;
-  const negative = balances.filter((b) => b < 0).length;
-  if (balances.length > 0 && negative > balances.length / 2) return 'credit';
+export function guessAccountType(name: string, balances: number[] = [], exponent = 2): AccountType {
+  return explainAccountType(name, balances, exponent).type;
+}
+
+/** The guess, and whether the name said so (a surer guess than balances alone). */
+export function explainAccountType(
+  name: string,
+  balances: number[] = [],
+  exponent = 2,
+): { type: AccountType; fromName: boolean } {
+  const named = typeFromName(name);
+  if (named) return { type: named, fromName: true };
+  return { type: typeFromBalances(balances, exponent), fromName: false };
+}
+
+function typeFromBalances(balances: number[], exponent: number): AccountType {
+  const negative = balances.filter((b) => b < 0);
+  if (balances.length > 0 && negative.length > balances.length / 2) {
+    // Owing tens of thousands is a loan (a mortgage, say), not a card.
+    const typical = [...negative].sort((x, y) => x - y)[Math.floor(negative.length / 2)]!;
+    return -typical >= 50_000 * 10 ** exponent ? 'loan' : 'credit';
+  }
   return 'depository';
 }
 

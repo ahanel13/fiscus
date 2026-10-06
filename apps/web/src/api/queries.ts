@@ -7,6 +7,8 @@ import type {
   CategoryGroup,
   Household,
   HouseholdMember,
+  ImportBatch,
+  ImportProfile,
   InvitePreview,
   Lens,
   Me,
@@ -168,6 +170,32 @@ export const netWorthRangeQuery = (id: string, lens: Lens, params: URLSearchPara
         await api<Data<NetWorth>>(
           'GET',
           `${hh(id)}/net-worth?lens=${encodeURIComponent(lens)}&${params}`,
+        )
+      ).data,
+  });
+
+export const importProfilesQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'import-profiles'],
+    queryFn: async () =>
+      (await api<Data<ImportProfile[]>>('GET', `${hh(id)}/import-profiles`)).data,
+  });
+
+export const importsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'imports'],
+    queryFn: async () => (await api<Data<ImportBatch[]>>('GET', `${hh(id)}/imports`)).data,
+  });
+
+/** How earlier imports mapped category names (lower-cased name → category id). */
+export const importCategoryMapQuery = (id: string, format: 'csv' | 'monarch') =>
+  queryOptions({
+    queryKey: ['households', id, 'imports', 'category-map', format],
+    queryFn: async () =>
+      (
+        await api<Data<Record<string, string>>>(
+          'GET',
+          `${hh(id)}/imports/category-map?format=${format}`,
         )
       ).data,
   });
