@@ -511,3 +511,10 @@ export function chooseMany(
   }
   return next;
 }
+
+/** Days between an account's last day and the first day of the one that continues it. */
+export function continuationGap(choices: AccountChoice[], c: AccountChoice): number | null {
+  const next = choices.find((o) => o.key === c.continuedBy);
+  if (!c.to || !next?.from) return null;
+  return Math.round((Date.parse(next.from) - Date.parse(c.to)) / 86_400_000);
+}

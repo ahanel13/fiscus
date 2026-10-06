@@ -3,6 +3,7 @@ import type { Account, CategoryGroup, MonarchAccount } from '@fiscus/shared';
 import { parseCsv } from '@fiscus/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  continuationGap,
   chooseAccount,
   chooseMany,
   withType,
@@ -138,6 +139,7 @@ describe('import wizard logic', () => {
       ],
       [],
     );
+    expect(continuationGap(choices, choices[1]!)).toBe(1);
     // Truck is combined into 2021 Truck already, Checking overlaps, Auto loan doesn't.
     expect(combineTargets(choices, '2021 Truck').map((c) => c.key)).toEqual(['Auto loan']);
     expect(combinedInto(choices, '2021 Truck').map((c) => c.key)).toEqual(['Truck']);

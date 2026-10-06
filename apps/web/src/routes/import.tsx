@@ -56,6 +56,7 @@ import {
   type CheckReason,
   chooseAccount,
   chooseMany,
+  continuationGap,
   classifyFile,
   combinedInto,
   combineTargets,
@@ -1008,6 +1009,10 @@ function AccountsStep({
   );
 }
 
+/** "the day after", "3 days after". */
+const gapText = (days: number | null) =>
+  days === null || days <= 1 ? 'the day after' : `${days} days after`;
+
 function AccountRow({
   choice: c,
   choices,
@@ -1063,8 +1068,8 @@ function AccountRow({
         ) : null}
         {c.continuedBy ? (
           <p className="mt-1 text-muted">
-            {c.continuedBy} picks up the day after this one stops: combining them keeps one account
-            with the whole history.
+            {c.continuedBy} picks up {gapText(continuationGap(choices, c))} this one stops:
+            combining them keeps one account with the whole history.
           </p>
         ) : null}
         {c.check.includes('type_unsure') ? (
