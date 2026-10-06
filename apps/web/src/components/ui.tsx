@@ -26,6 +26,7 @@ export {
   Skeleton,
 } from './ui/display.js';
 export { Description, FieldError, Form, Input, Label, TextField } from './ui/field.js';
+export { FileDrop } from './ui/files.js';
 export {
   ConfirmDialog,
   Dialog,

@@ -14,7 +14,7 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { useParams, useSearch } from '@tanstack/react-router';
-import { ArrowLeftRight, Plus, Search, SplitSquareHorizontal } from 'lucide-react';
+import { ArrowLeftRight, Plus, Search, SplitSquareHorizontal, Upload } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -35,6 +35,7 @@ import {
   AmountInput,
   Badge,
   Button,
+  ButtonLink,
   Checkbox,
   ConfirmDialog,
   DatePicker,
@@ -247,7 +248,7 @@ export function TransactionsPage() {
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
-  const search = useSearch({ strict: false }) as { lens?: string };
+  const search = useSearch({ strict: false }) as { lens?: string; review?: string };
   const showLens = lensVisible(household, members.length);
   const lens = showLens ? parseLens(search.lens) : 'all';
   const invalidate = useInvalidateLedger(householdId);
@@ -260,7 +261,8 @@ export function TransactionsPage() {
     return () => clearTimeout(t);
   }, [text]);
   const [account, setAccount] = useState<string>(ALL);
-  const [review, setReview] = useState(false);
+  // ?review=needs_review opens the list on what needs review (the import's "Review" link).
+  const [review, setReview] = useState(search.review === 'needs_review');
   const filters: TransactionFilters = {
     lens,
     range: rangeParams(range.selection).toString(),
@@ -296,17 +298,27 @@ export function TransactionsPage() {
         showLens={showLens}
         members={members}
         action={
-          ownsAny ? (
-            <Button onPress={() => setAdding(true)}>
-              <Plus aria-hidden className="size-4" /> Add transaction
-            </Button>
+          household.you.role !== 'viewer' ? (
+            <div className="flex gap-2">
+              <ButtonLink variant="secondary" to="/h/$householdId/import" params={{ householdId }}>
+                <Upload aria-hidden className="size-4" /> Import
+              </ButtonLink>
+              {ownsAny ? (
+                <Button onPress={() => setAdding(true)}>
+                  <Plus aria-hidden className="size-4" /> Add transaction
+                </Button>
+              ) : null}
+            </div>
           ) : undefined
         }
       />
       <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 md:px-8">
         {accounts.length === 0 ? (
           <EmptyState icon={ArrowLeftRight} title="No transactions yet">
-            <p>Add an account first, then record transactions in it. File import arrives soon.</p>
+            <p>
+              Add an account and record transactions in it, or import your history from Monarch or a
+              bank’s CSV file.
+            </p>
           </EmptyState>
         ) : (
           <>

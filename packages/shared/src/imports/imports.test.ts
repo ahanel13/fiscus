@@ -132,6 +132,8 @@ describe('CSV mapping', () => {
     expect(guessAccountType('Auto Roth IRA')).toBe('investment');
     expect(guessAccountType('Blue Cash Preferred® ')).toBe('credit');
     expect(guessAccountType('SoFi Checking')).toBe('depository');
+    expect(guessAccountType('123 W 400 N Springville UT')).toBe('depository');
+    expect(guessAccountType('42 Elm St, Provo UT')).toBe('property');
     expect(guessAccountType('Wedding', [-100, -200])).toBe('credit');
     expect(inferCategoryKind('Credit Card Payment', [-5])).toBe('transfer');
     expect(inferCategoryKind('Paychecks', [100, 200])).toBe('income');

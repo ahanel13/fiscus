@@ -180,6 +180,11 @@ const TYPE_HINTS: [AccountType, RegExp][] = [
   ['crypto', /\b(crypto|bitcoin|btc|eth|coinbase)\b/i],
   ['vehicle', /\b(car|truck|vehicle|auto|tacoma|toyota|honda|ford|tesla|subaru|motorcycle)\b/i],
   ['property', /\b(house|home|property|condo|zillow|residence)\b/i],
+  // A street address: "123 Main St".
+  [
+    'property',
+    /^\d+ .*\b(st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|way|blvd|pl|place|cir|circle)\b/i,
+  ],
   [
     'credit',
     /\b(credit|card|visa|mastercard|amex|american express|discover|sapphire|freedom|preferred|rewards)\b|®/i,

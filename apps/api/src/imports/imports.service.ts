@@ -390,6 +390,42 @@ export class ImportsService {
     });
   }
 
+  /**
+   * How earlier imports of this kind mapped category names, latest choice winning: lower-cased
+   * name → category id, for categories that still exist. The wizard starts from it, so a
+   * Monarch category mapped to one of yours once is mapped the same way next time.
+   */
+  async categoryMap(
+    ctx: HouseholdContext,
+    format: 'csv' | 'monarch' | undefined,
+  ): Promise<Record<string, string>> {
+    return this.scope.run(ctx, async (tx) => {
+      const rows = await tx
+        .select({ mapping: importBatches.mapping })
+        .from(importBatches)
+        .where(
+          and(
+            isNull(importBatches.revertedAt),
+            format ? eq(importBatches.format, format) : undefined,
+          ),
+        )
+        .orderBy(asc(importBatches.createdAt));
+      const merged = new Map<string, string>();
+      for (const r of rows) {
+        for (const [name, id] of Object.entries(r.mapping.categories)) merged.set(name, id);
+      }
+      const live = new Set(
+        (
+          await tx
+            .select({ id: categories.id })
+            .from(categories)
+            .where(isNull(categories.archivedAt))
+        ).map((c) => c.id),
+      );
+      return Object.fromEntries([...merged].filter(([, id]) => live.has(id)));
+    });
+  }
+
   // ── Saved mappings ───────────────────────────────────────────────────────────────────────
 
   async listProfiles(ctx: HouseholdContext): Promise<ImportProfile[]> {

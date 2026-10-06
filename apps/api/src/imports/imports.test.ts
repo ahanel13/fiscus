@@ -362,6 +362,14 @@ describe('imports', () => {
           },
         ],
       };
+      // The first import's category choices are remembered for the next one.
+      const remembered = (await A.get(url('/imports/category-map?format=monarch'))).body.data;
+      expect(Object.keys(remembered).sort()).toEqual([
+        'coffee beans',
+        'credit card payment',
+        'pretax paycheck',
+        'uncategorized',
+      ]);
       const r = await run(body);
       expect(r.preview.totals).toMatchObject({ new: 1, duplicates: 6 });
       expect(r.added).toBe(1);

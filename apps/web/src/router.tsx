@@ -24,6 +24,7 @@ import { DashboardPage } from './routes/dashboard.js';
 import { TransactionsPage } from './routes/transactions.js';
 import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
 import { SectionPage } from './routes/section.js';
+import { ImportPage } from './routes/import.js';
 import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
 import { WelcomePage } from './routes/welcome.js';
 
@@ -164,6 +165,11 @@ const accountDetailRoute = createRoute({
   path: '/accounts/$accountId',
   component: AccountDetailPage,
 });
+const importRoute = createRoute({
+  getParentRoute: () => householdRoute,
+  path: '/import',
+  component: ImportPage,
+});
 const householdSettingsRoute = createRoute({
   getParentRoute: () => householdRoute,
   path: '/settings',
@@ -176,7 +182,12 @@ const routeTree = rootRoute.addChildren([
     homeRoute,
     welcomeRoute,
     personalSettingsRoute,
-    householdRoute.addChildren([...sectionRoutes, accountDetailRoute, householdSettingsRoute]),
+    householdRoute.addChildren([
+      ...sectionRoutes,
+      accountDetailRoute,
+      importRoute,
+      householdSettingsRoute,
+    ]),
   ]),
 ]);
 
