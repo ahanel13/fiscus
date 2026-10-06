@@ -43,6 +43,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { AccountsService } from '../accounts/accounts.service.js';
 import { recomputeBalances } from '../accounts/balances.js';
+import { activeRules, runRules } from '../rules/engine.js';
 import { addDays, todayIn } from '../common/dates.js';
 import { violatedConstraint } from '../common/db-errors.js';
 import { Problem, problems } from '../common/problem.js';
@@ -330,7 +331,26 @@ export class ImportsService {
         ctx,
         accepted.flatMap((p) => p.row.tags ?? []),
       );
-      await this.#insertTransactions(tx, ctx, batch, account!.currency, accepted, tagIds.ids);
+      const inserted = await this.#insertTransactions(
+        tx,
+        ctx,
+        batch,
+        account!.currency,
+        accepted,
+        tagIds.ids,
+      );
+      // Rules run on what arrived, within each rule's author's reach (RULE-05). They leave alone
+      // what the file supplied: its names, categories, and tags (marked in #insertTransactions).
+      const ruled = inserted.length
+        ? await runRules(
+            tx,
+            ctx,
+            await tx.select().from(transactions).where(inArray(transactions.id, inserted)),
+            await activeRules(tx),
+            null,
+            true,
+          )
+        : [];
 
       const txnDays = new Set(await this.#transactionDays(tx, batch.accountId));
       const balances = this.#balancesToStore(input.balances, txnDays, today);
@@ -353,10 +373,19 @@ export class ImportsService {
         targetType: 'import_batch',
         targetId: batch.id,
         accountId: batch.accountId,
-        metadata: { transactions: accepted.length, balances: balances.length },
+        metadata: {
+          transactions: accepted.length,
+          balances: balances.length,
+          changedByRules: ruled.length,
+        },
       });
       results.sort((x, y) => x.line - y.line);
-      return { added: accepted.length, balances: balances.length, rows: results };
+      return {
+        added: accepted.length,
+        balances: balances.length,
+        changedByRules: ruled.length,
+        rows: results,
+      };
     });
   }
 
@@ -922,7 +951,7 @@ export class ImportsService {
     currency: string,
     rows: Planned[],
     tagIds: Map<string, string>,
-  ) {
+  ): Promise<string[]> {
     const ids = rows.map(() => uuidv7());
     const mapping = batch.mapping;
     for (const part of chunks(rows.map((p, i) => ({ p, id: ids[i]! })))) {
@@ -938,6 +967,17 @@ export class ImportsService {
           originalDescription: p.row.description.trim() || p.row.name!.trim(),
           displayName: p.row.name?.trim() || p.row.description.trim(),
           categoryId: p.row.category ? (mapping.categories[lower(p.row.category)] ?? null) : null,
+          // What the file supplied counts as someone's decision: rules don't change it.
+          fieldVersions: Object.fromEntries(
+            [
+              ...(p.row.name ? ['displayName'] : []),
+              ...(p.row.category && mapping.categories[lower(p.row.category)]
+                ? ['categoryId']
+                : []),
+              ...(p.row.tags?.length ? ['tagIds'] : []),
+              ...(p.row.owner && mapping.members[lower(p.row.owner)] ? ['attribution'] : []),
+            ].map((f) => [f, 1]),
+          ),
           reviewStatus: p.row.reviewed ? ('reviewed' as const) : ('needs_review' as const),
           source: 'import' as const,
           importBatchId: batch.id,
@@ -983,6 +1023,7 @@ export class ImportsService {
       ),
     );
     for (const part of chunks(notes, 200)) await tx.insert(transactionNotes).values(part);
+    return ids;
   }
 
   /** Imported balances are entered balances, marked with their batch. Ones you entered win. */

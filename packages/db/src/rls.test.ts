@@ -26,6 +26,7 @@ describe('row-level security', () => {
     'import_batches',
     'import_profiles',
     'member_preferences',
+    'rules',
     'tags',
     'transaction_attributions',
     'transaction_notes',

@@ -103,7 +103,15 @@ describe('cross-tenant isolation (generated from routes)', () => {
           },
         })
       ).body.data;
+      const rule = (
+        await c.post(`${base}/rules`, {
+          name: tag,
+          conditions: { description: { op: 'contains', value: tag } },
+          actions: { markReviewed: true },
+        })
+      ).body.data;
       return {
+        ruleId: rule.id,
         transactionId: txn.id,
         categoryId: custom.id,
         groupId: groups[0].id,

@@ -175,6 +175,8 @@ export type ImportRows = z.input<typeof importRowsSchema>;
 export interface ImportRowsResult {
   added: number;
   balances: number;
+  /** Of those added, how many your rules changed (renamed, categorized, …). */
+  changedByRules: number;
   /** Rows that aren't simply new. */
   rows: ImportRowResult[];
 }

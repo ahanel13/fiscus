@@ -103,6 +103,16 @@ export const transactionNoteContext = (
   rowId: `${transactionId}:${author ?? 'shared'}`,
 });
 
+/**
+ * Records fields a person set, in the next version. `field_versions` is both the edit-conflict
+ * record (first save wins per field) and how rules know not to touch a field (imports.md §3).
+ */
+export const markPersonSet = (fields: string[]) =>
+  sql`${transactions.fieldVersions} || jsonb_build_object(${sql.join(
+    fields.map((f) => sql`${f}::text, ${transactions.version} + 1`),
+    sql`, `,
+  )})`;
+
 /** Equal shares in basis points; the first member takes the remainder. */
 function equalShares(count: number): number[] {
   const base = Math.floor(10000 / count);
@@ -242,6 +252,15 @@ export class TransactionsService {
         categoryId: input.categoryId ?? null,
         reviewStatus: 'reviewed', // you entered it yourself
         source: 'manual',
+        // You chose these: rules leave them alone.
+        fieldVersions: Object.fromEntries(
+          [
+            'displayName',
+            ...(input.categoryId ? ['categoryId'] : []),
+            ...(input.tagIds?.length ? ['tagIds'] : []),
+            ...(input.attribution?.length ? ['attribution'] : []),
+          ].map((f) => [f, 1]),
+        ),
       });
       if (input.tagIds?.length) {
         await tx.insert(transactionTags).values(
@@ -461,7 +480,20 @@ export class TransactionsService {
       if (Object.keys(columns).length) {
         await tx
           .update(transactions)
-          .set({ ...columns, version: sql`${transactions.version} + 1` })
+          .set({
+            ...columns,
+            fieldVersions: markPersonSet(Object.keys(columns)),
+            version: sql`${transactions.version} + 1`,
+          })
+          .where(inArray(transactions.id, result.updated));
+      }
+      if (changes.addTagIds?.length || changes.removeTagIds?.length) {
+        await tx
+          .update(transactions)
+          .set({
+            fieldVersions: markPersonSet(['tagIds']),
+            version: sql`${transactions.version} + 1`,
+          })
           .where(inArray(transactions.id, result.updated));
       }
       if (changes.removeTagIds?.length) {
@@ -629,6 +661,13 @@ export class TransactionsService {
         .where(eq(transactionAttributions.transactionId, id));
       await tx.delete(transactionAttributions).where(eq(transactionAttributions.transactionId, id));
       const after = input.length ? await this.#writeAttribution(tx, ctx, id, input) : [];
+      await tx
+        .update(transactions)
+        .set({
+          fieldVersions: markPersonSet(['attribution']),
+          version: sql`${transactions.version} + 1`,
+        })
+        .where(eq(transactions.id, id));
       await activity.record({
         action: 'transaction.attribution_changed',
         targetType: 'transaction',

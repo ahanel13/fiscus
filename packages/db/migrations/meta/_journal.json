@@ -134,6 +134,20 @@
       "when": 1791322961706,
       "tag": "0018_move_transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791327558071,
+      "tag": "0019_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791327558885,
+      "tag": "0020_rules_rls",
+      "breakpoints": true
     }
   ]
 }

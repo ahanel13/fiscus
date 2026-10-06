@@ -61,6 +61,15 @@ const txn = async (c: TestClient, accountId: string, amountMinor = -1500) =>
 const account = async (c: TestClient, visibility = 'full') =>
   (await c.post(url('/accounts'), { name: 'Extra', type: 'depository', visibility })).body.data
     .id as string;
+const RULE = {
+  conditions: { description: { op: 'contains', value: 'zzz-never' } },
+  actions: { markReviewed: true },
+};
+/** Categorizes every uncategorized transaction in the fixture ("Item"). */
+const PREVIEW = () => ({
+  conditions: { description: { op: 'contains', value: 'item' }, categoryId: null },
+  actions: { categoryId: f.uncategorized },
+});
 let imported = 0;
 /** A one-row import into an account (start, then rows); each call imports a new row. */
 const importInto = async (
@@ -304,6 +313,33 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
         parts: [{ amountMinor: -1 }, { amountMinor: -1 }],
       }),
     ),
+  // Rules: everyone reads household-wide rules; owners and members change and apply them.
+  'RULE-01/OWN': async () => ok(await f.A.get(url('/rules'))),
+  'RULE-01/MEM': async () => ok(await f.B.get(url('/rules'))),
+  'RULE-01/VIEW': async () => ok(await f.V.get(url('/rules'))),
+  'RULE-03/OWN': async () => {
+    const r = await f.A.post(url('/rules'), RULE);
+    ok(r);
+    ok(await f.A.request('DELETE', url(`/rules/${r.body.data.id}`)));
+  },
+  'RULE-03/MEM': async () => {
+    const r = await f.B.post(url('/rules'), RULE);
+    ok(r);
+    ok(await f.B.request('PATCH', url(`/rules/${r.body.data.id}`), { enabled: false }));
+  },
+  'RULE-03/VIEW': async () => refused(await f.V.post(url('/rules'), RULE)),
+  // The preview lists only rows the caller can see: B never sees A's private account's rows.
+  'RULE-06/OWN': async () => {
+    const r = await f.A.post(url('/rules/preview'), PREVIEW());
+    ok(r);
+    expect(JSON.stringify(r.body)).toContain(f.tPriv);
+  },
+  'RULE-06/MEM': async () => {
+    const r = await f.B.post(url('/rules/preview'), PREVIEW());
+    ok(r);
+    expect(JSON.stringify(r.body)).not.toContain(f.tPriv);
+  },
+  'RULE-06/VIEW': async () => refused(await f.V.post(url('/rules/preview'), PREVIEW())),
   // Moving needs ownership of both accounts (acct-own).
   'TXN-12/OWN': async () => {
     const t = await txn(f.A, f.accA);
