@@ -931,6 +931,7 @@ function SplitEditor({
   ]);
   const total = parts.reduce((s, p) => s + (p.amountMinor ?? 0), 0);
   const left = t.amountMinor - total;
+  const zeroPart = parts.some((p) => !p.amountMinor);
   const split = useMutation({
     mutationFn: () =>
       api('PUT', `${base(householdId)}/transactions/${t.id}/splits`, {
@@ -1002,8 +1003,10 @@ function SplitEditor({
               >
                 <Plus aria-hidden className="size-4" /> Add part
               </Button>
-              <span className={left === 0 ? 'text-muted' : 'text-danger'}>
-                {left === 0 ? (
+              <span className={left === 0 && !zeroPart ? 'text-muted' : 'text-danger'}>
+                {zeroPart ? (
+                  'Every part needs an amount'
+                ) : left === 0 ? (
                   'Adds up'
                 ) : (
                   <>
@@ -1017,7 +1020,7 @@ function SplitEditor({
                 Cancel
               </Button>
               <Button
-                isDisabled={left !== 0}
+                isDisabled={left !== 0 || zeroPart}
                 isPending={split.isPending}
                 onPress={() => split.mutate(undefined, { onSuccess: close })}
               >

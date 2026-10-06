@@ -47,6 +47,9 @@ purchases (F1), splits, and the API. Phase 4 adds imports, the review queue, and
 | `import`, `provider` (Phase 4, M2) | The import or sync | Read-only | **Date override** only (#281, data model §3.5) |
 
 - New manual transactions are `reviewed` (you entered them). Imports and bank sync arrive as `needs_review`.
+- **No $0 transactions or split parts**, except a pending $0 hold (a card check that disappears
+  when it settles). The API refuses them, and a database constraint (`amount <> 0 OR pending`)
+  backs it up; bank sync (M2) skips posted $0 rows.
 - Deleting is a soft delete (`deleted_at`). Manual transactions are purged after 30 days (undo
   window); provider tombstones stay so sync can't bring them back (data model §6).
 

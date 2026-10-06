@@ -180,6 +180,8 @@ export const transactions = pgTable(
       .where(sql`${t.source} = 'import' AND ${t.dedupeKey} IS NOT NULL`),
     check('transactions_currency', sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check('transactions_parent', sql`${t.parentId} IS NULL OR ${t.hasSplits} = false`),
+    // A posted transaction of nothing means nothing; a pending $0 hold (card check) is real.
+    check('transactions_nonzero', sql`${t.amountMinor} <> 0 OR ${t.pending}`),
   ],
 );
 

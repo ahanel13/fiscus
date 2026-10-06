@@ -133,6 +133,18 @@ describe('ledger', () => {
     });
   });
 
+  it('refuses a $0 transaction', async () => {
+    const acct = await account(A, {});
+    const r = await A.post(url('/transactions'), {
+      accountId: acct,
+      date: '2026-05-01',
+      amountMinor: 0,
+      displayName: 'Nothing',
+    });
+    expect(r.status).toBe(422);
+    expect(r.body.errors[0].message).toBe('Enter an amount');
+  });
+
   describe('splits', () => {
     it('requires the parts to add up, lists parts instead of the whole, and unsplits', async () => {
       const acct = await account(A, {});
@@ -141,6 +153,11 @@ describe('ledger', () => {
         parts: [{ amountMinor: -6000 }, { amountMinor: -3000 }],
       });
       expect(bad.body.code).toBe('split_total');
+      const zero = await A.request('PUT', url(`/transactions/${id}/splits`), {
+        parts: [{ amountMinor: -10000 }, { amountMinor: 0 }],
+      });
+      expect(zero.status).toBe(422);
+      expect(zero.body.errors[0].message).toBe('A part can’t be zero');
       const ok = await A.request('PUT', url(`/transactions/${id}/splits`), {
         parts: [
           { amountMinor: -6000, displayName: 'Groceries' },
