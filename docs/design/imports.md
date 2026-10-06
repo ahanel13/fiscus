@@ -32,6 +32,7 @@ pick file → parse in the browser → map columns (or a saved profile) → prev
 | Description | one column | Becomes the original description and the starting name |
 | Category, Notes, Tags | optional | Categories matched by name (§3) |
 | Account | optional | For files with several accounts (Monarch); otherwise you pick the account |
+| Id | optional | A bank's own transaction id, when the file has one: used as the dedupe key instead of the hash |
 
 A mapping can be **saved as a profile** ("Chase checking CSV") and is picked automatically when
 the next file's headers match.
@@ -52,27 +53,39 @@ the next file's headers match.
 
 ## 2. Monarch import (#75)
 
-A Monarch export is a CSV of every transaction across accounts (`Date, Merchant, Category,
-Account, Original Statement, Notes, Amount, Tags`), and optionally a balance-history CSV per
-account. Monarch has already been curated by you, so the import keeps that work:
+Checked against a real export (Settings → Data, October 2026: 9 160 transactions over 40
+accounts, 23 333 balance rows over 50 accounts). Monarch gives two files:
+
+**Transactions:** `Date, Merchant, Category, Account, Original Statement, Notes, Amount, Tags, Owner, Reviewed, Id`
+- Dates are `YYYY-MM-DD`; amounts are plain decimals with a `.` and no thousands separator,
+  already signed the Fiscus way (negative = money out). No $0 rows.
+- Quoted fields can contain line breaks (notes), so we use a real CSV parser, not line splitting.
+- Account names can have trailing spaces and symbols like `®`: trimmed, otherwise kept.
+
+**Balances:** `Date, Balance, Account`, **one row per account per day** for as long as Monarch
+tracked it. Some accounts appear only here (vehicles, investments, closed accounts with no
+transactions in the export).
 
 | Monarch | Fiscus |
 |---|---|
-| Account (name) | **You map each to an account**: an existing one, or a new manual account created for it (type guessed from the name, editable). Each account gets its own batch, so one can be undone alone |
+| Account (from either file) | **You map each to an account**: an existing one, or a new manual account (type guessed from the name, editable). Each account gets its own batch, so one can be undone alone |
+| Id | The **dedupe key**. Monarch's id is stable, so importing a newer export later adds only what's new. Rows that are otherwise identical (85 in the sample: same day, account, amount, and description) stay distinct |
 | Merchant | Name (`display_name`) |
-| Original Statement | Original description |
-| Category | Matched by name to your categories; **unmatched ones are created** in a "From Monarch" group (kind `flexible`, or `income` when every transaction in it is money in), and you can move them later |
-| Tags | Matched or created |
+| Original Statement | Original description; the merchant when it's empty |
+| Category | Matched by name to your categories; **unmatched ones are created** in a "From Monarch" group, and you can move them later. Kind: `transfer` for Transfer, Credit Card Payment, and Balance Adjustments; `income` when every transaction in it is money in; otherwise `flexible`. "Uncategorized" and "Transfer" map to the system categories |
+| Tags | Comma-separated in one field; matched or created |
 | Notes | The **shared note**, encrypted |
-| Amount | Already signed the Fiscus way (negative = money out) |
-| Balance history (optional) | Entered balances (anchors) per account, so net-worth history starts where Monarch's did |
-| Review status | Imported as **reviewed**: you reviewed them in Monarch |
+| Reviewed | `Needs Review` stays **needs review**; `Reviewed` and blank (most rows: Monarch leaves it blank unless you used its review flow) import as **reviewed** |
+| Owner | `Shared`, or a person's name: names are mapped to members in the mapping step and become **who it's for** (attribution); `Shared` sets nothing |
+| Balance history | **Daily balances** become the account's history: for a "follows transactions" account they're entered balances (anchors); for an account with no transactions in the export it becomes a **valued** account (value mode). An account whose history stops before the export date is offered as **closed** on that day |
 
+- Transfers: Monarch categorizes both legs but doesn't link them. After import, rows in a
+  transfer category run through transfer detection (§5), so most pairs link on their own.
 - Ownership and visibility of new accounts follow the household's finance style; you can change
-  them in the mapping step. Splits and Monarch's "hide from reports" become plain transactions
-  and `excluded`, as far as the export includes them.
-- **To be confirmed against a real export** before building: column names, date and amount
-  formats, and how splits appear.
+  them in the mapping step.
+- Not in the export: splits (each part arrives as a separate row, already unlinked) and "hide
+  from reports". Nothing to do for either.
+- Size: a 1 MB, 9 000-row export is well within the limits; daily balances are inserted in bulk.
 
 ## 3. Rules (#41)
 
@@ -139,7 +152,9 @@ linked by `transfer_group_id`, both in the **Transfer** category (left out of ca
 ## 7. Decisions to confirm in review
 1. **Parse files in the browser** and keep no raw files on the server (§1).
 2. **Duplicates skipped, overlaps flagged and left out** unless you tick them (§1).
-3. **Monarch:** unmatched categories created in a "From Monarch" group; transactions imported as
-   **reviewed**; balance history imported as entered balances (§2).
+3. **Monarch:** Monarch's id is the dedupe key; unmatched categories created in a "From Monarch"
+   group; rows imported as **reviewed** unless Monarch says "Needs Review"; Owner names become
+   attribution; daily balance history imported as entered balances, or values for accounts with
+   no transactions (§2).
 4. **Rules:** ordered, all matching rules apply, later wins; they never overwrite manual edits (§3).
 5. **Transfers:** auto-link only unambiguous pairs the importer can see both sides of (§5).
