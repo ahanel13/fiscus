@@ -21,15 +21,16 @@ export const IMPORT_LIMITS = {
   balances: 200_000,
   accounts: 200,
   categories: 500,
+  /** Transactions per rows request; files go up in parts (docs/design/imports.md §1). */
+  rowsPerRequest: 5_000,
   /** Request body, in bytes. */
   bodyBytes: 25 * 1024 * 1024,
 } as const;
 
-/** A transaction as read from the file. `account` is the key of an entry in `accounts`. */
-export const importTransactionSchema = z.object({
+/** A transaction as read from the file. */
+export const importRowSchema = z.object({
   /** The file line it came from, for messages. */
   line: z.number().int().min(1),
-  account: z.string().min(1).max(200),
   date: isoDateSchema,
   amountMinor: minorUnitsSchema,
   /** The bank's text: the original description and, without `name`, the starting name. */
@@ -45,6 +46,12 @@ export const importTransactionSchema = z.object({
   reviewed: z.boolean().optional(),
   /** A person's name (Monarch's Owner column), mapped to a member in `members`. */
   owner: z.string().max(100).optional(),
+});
+export type ImportRow = z.infer<typeof importRowSchema>;
+
+/** A row in a whole file: `account` is the key of an entry in `accounts`. */
+export const importTransactionSchema = importRowSchema.extend({
+  account: z.string().min(1).max(200),
 });
 export type ImportTransaction = z.infer<typeof importTransactionSchema>;
 
@@ -101,19 +108,68 @@ export const importMemberSchema = z.object({
   memberId: z.uuid().nullable(),
 });
 
-export const importRequestSchema = z.object({
+/** How a file maps onto the household: where each account, category, and person goes. */
+const importMappingFields = {
   format: importFormatSchema,
   filename: z.string().trim().min(1).max(255),
   profileId: z.uuid().optional(),
   accounts: z.array(importAccountSchema).min(1).max(IMPORT_LIMITS.accounts),
   categories: z.array(importCategorySchema).max(IMPORT_LIMITS.categories).default([]),
   members: z.array(importMemberSchema).max(50).default([]),
+};
+
+/** The whole file, for the preview: nothing is saved. */
+export const importRequestSchema = z.object({
+  ...importMappingFields,
   transactions: z.array(importTransactionSchema).max(IMPORT_LIMITS.transactions).default([]),
   balances: z.array(importBalanceSchema).max(IMPORT_LIMITS.balances).default([]),
   /** Lines of possible duplicates to import anyway. */
   includeOverlaps: z.array(z.number().int().min(1)).max(IMPORT_LIMITS.transactions).default([]),
 });
 export type ImportRequest = z.input<typeof importRequestSchema>;
+
+/**
+ * Starts an import run: creates the new accounts, categories, and tags, closes accounts the file
+ * shows closed, and opens a batch per account. Rows follow per batch.
+ */
+export const startImportSchema = z.object({
+  ...importMappingFields,
+  /** Every tag name in the file, so they exist before rows arrive. */
+  tags: z.array(z.string().trim().min(1).max(100)).max(IMPORT_LIMITS.categories).default([]),
+  /** Every category name in the file, likewise. */
+  categoryNames: z
+    .array(z.string().trim().min(1).max(100))
+    .max(IMPORT_LIMITS.categories)
+    .default([]),
+});
+export type StartImport = z.input<typeof startImportSchema>;
+
+export interface ImportRun {
+  runId: string;
+  batches: { key: string; batchId: string; accountId: string }[];
+}
+
+/**
+ * One part of an account's rows. Keep each day's rows in one request (chunkRowsByDate), so two
+ * identical purchases on one day are counted as two. Send an account's balances after its
+ * transactions, all in one request.
+ */
+export const importRowsSchema = z.object({
+  transactions: z.array(importRowSchema).max(IMPORT_LIMITS.rowsPerRequest).default([]),
+  balances: z
+    .array(importBalanceSchema.omit({ account: true }))
+    .max(IMPORT_LIMITS.balances)
+    .default([]),
+  includeOverlaps: z.array(z.number().int().min(1)).max(IMPORT_LIMITS.rowsPerRequest).default([]),
+});
+export type ImportRows = z.input<typeof importRowsSchema>;
+
+export interface ImportRowsResult {
+  added: number;
+  balances: number;
+  /** Rows that aren't simply new. */
+  rows: ImportRowResult[];
+}
 
 export type ImportRowStatus =
   | 'new'
@@ -160,6 +216,8 @@ export interface ImportPreview {
 
 export interface ImportBatch {
   id: string;
+  /** Batches from one file share a run. */
+  runId: string;
   accountId: string;
   /** Null when the account is hidden from you or was removed. */
   accountName: string | null;
@@ -172,10 +230,6 @@ export interface ImportBatch {
   revertedAt: string | null;
   /** You imported it, or own the account (TXN-10). */
   canRevert: boolean;
-}
-
-export interface ImportResult extends ImportPreview {
-  batches: ImportBatch[];
 }
 
 /** A saved column mapping for a bank's CSV files. */

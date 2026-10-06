@@ -197,3 +197,22 @@ export function guessAccountType(name: string, balances: number[] = []): Account
   if (balances.length > 0 && negative > balances.length / 2) return 'credit';
   return 'depository';
 }
+
+/**
+ * Splits an account's rows into request-sized parts by date, never splitting a day: rows that
+ * look identical (two coffees on one day) must arrive together to be counted as two.
+ */
+export function chunkRowsByDate<T extends { date: string }>(rows: T[], max: number): T[][] {
+  const byDate = [...Map.groupBy(rows, (r) => r.date)].sort(([a], [b]) => a.localeCompare(b));
+  const parts: T[][] = [];
+  let current: T[] = [];
+  for (const [, day] of byDate) {
+    if (current.length > 0 && current.length + day.length > max) {
+      parts.push(current);
+      current = [];
+    }
+    current.push(...day);
+  }
+  if (current.length > 0) parts.push(current);
+  return parts;
+}

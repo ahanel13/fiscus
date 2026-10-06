@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
 import { CsvError, parseCsv } from './csv.js';
-import { applyMapping, guessAccountType, inferCategoryKind, suggestMapping } from './mapping.js';
+import {
+  applyMapping,
+  chunkRowsByDate,
+  guessAccountType,
+  inferCategoryKind,
+  suggestMapping,
+} from './mapping.js';
 import { isMonarchBalances, isMonarchTransactions, readMonarch } from './monarch.js';
 import { detectDateFormat, detectDecimalSeparator, parseAmount, parseDate } from './values.js';
 
@@ -192,6 +198,19 @@ describe('Monarch export', () => {
       ['Blue Cash Preferred®', 'credit', 'transactions', null, false],
       ['Old Savings', 'depository', 'value', '2024-02-01', true],
       ['SoFi Checking', 'depository', 'transactions', null, false],
+    ]);
+  });
+});
+
+describe('chunkRowsByDate', () => {
+  it('fills parts up to the size, sorted by date, without splitting a day', () => {
+    const rows = ['2026-01-02', '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-02'].map(
+      (date, line) => ({ date, line }),
+    );
+    expect(chunkRowsByDate(rows, 2).map((p) => p.map((r) => r.date))).toEqual([
+      ['2026-01-01'],
+      ['2026-01-02', '2026-01-02', '2026-01-02'], // a day larger than a part stays whole
+      ['2026-01-03'],
     ]);
   });
 });

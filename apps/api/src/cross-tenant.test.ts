@@ -80,16 +80,16 @@ describe('cross-tenant isolation (generated from routes)', () => {
         })
       ).body.data;
       const t = (await c.post(`${base}/tags`, { name: tag, color: '#2f6fdb' })).body.data;
-      const imported = (
+      const run = (
         await c.post(`${base}/imports`, {
           format: 'csv',
           filename: 'bank.csv',
           accounts: [{ key: 'file', accountId }],
-          transactions: [
-            { line: 2, account: 'file', date: '2026-01-03', amountMinor: -1, description: tag },
-          ],
         })
       ).body.data;
+      await c.post(`${base}/imports/${run.batches[0].batchId}/rows`, {
+        transactions: [{ line: 2, date: '2026-01-03', amountMinor: -1, description: tag }],
+      });
       const profile = (
         await c.post(`${base}/import-profiles`, {
           name: tag,
@@ -108,7 +108,8 @@ describe('cross-tenant isolation (generated from routes)', () => {
         categoryId: custom.id,
         groupId: groups[0].id,
         tagId: t.id,
-        batchId: imported.batches[0].id,
+        batchId: run.batches[0].batchId,
+        runId: run.runId,
         profileId: profile.id,
       };
     };

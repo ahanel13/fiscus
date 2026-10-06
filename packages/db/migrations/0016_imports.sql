@@ -4,12 +4,15 @@ CREATE TABLE "import_batches" (
 	"household_id" uuid NOT NULL,
 	"account_id" uuid NOT NULL,
 	"member_id" uuid NOT NULL,
+	"run_id" uuid NOT NULL,
 	"profile_id" uuid,
 	"format" "import_format" NOT NULL,
 	"filename" text NOT NULL,
 	"transaction_count" integer NOT NULL,
 	"balance_count" integer NOT NULL,
 	"created_account" boolean DEFAULT false NOT NULL,
+	"closed_account" boolean DEFAULT false NOT NULL,
+	"mapping" jsonb NOT NULL,
 	"reverted_at" timestamp with time zone,
 	"reverted_by_member_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -39,6 +42,7 @@ ALTER TABLE "import_batches" ADD CONSTRAINT "import_batches_profile_id_import_pr
 ALTER TABLE "import_profiles" ADD CONSTRAINT "import_profiles_household_id_households_id_fk" FOREIGN KEY ("household_id") REFERENCES "public"."households"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "import_batches_household_id_created_at_index" ON "import_batches" USING btree ("household_id","created_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "import_batches_account_id_index" ON "import_batches" USING btree ("account_id");--> statement-breakpoint
+CREATE INDEX "import_batches_household_id_run_id_index" ON "import_batches" USING btree ("household_id","run_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "import_profiles_name" ON "import_profiles" USING btree ("household_id",lower("name"));--> statement-breakpoint
 ALTER TABLE "transactions" ADD CONSTRAINT "transactions_household_id_import_batch_id_import_batches_household_id_id_fk" FOREIGN KEY ("household_id","import_batch_id") REFERENCES "public"."import_batches"("household_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "balance_snapshots_import_batch_id_index" ON "balance_snapshots" USING btree ("import_batch_id");--> statement-breakpoint

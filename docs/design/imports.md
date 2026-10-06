@@ -17,14 +17,27 @@ source → columns (CSV) → accounts → categories → review → done (undo a
 - **Files are parsed in the browser.** The server receives rows as JSON, never the file, and
   stores nothing but the resulting transactions: no raw files to secure, back up, or delete.
   The parser lives in `@fiscus/shared`, so the server re-validates every row with the same code.
-- **Preview, then import.** `POST imports/preview` dry-runs the whole import (dedupe, rules,
-  transfer matches, errors) and changes nothing. `POST imports` repeats the same steps in one
-  transaction and records an **import batch**.
+- **Preview, then import in steps.** Nothing holds the household for long: every change in a
+  household is written to its activity log, which is locked while a write is in progress, so one
+  long import would make everyone else's edits wait.
+  - `POST imports/preview` works out the whole import (dedupe, overlaps, new categories and tags,
+    balances, errors) and **reads only**: no writes, no locks. Under a second for a large export.
+  - `POST imports` **starts a run**: creates the new accounts, categories, and tags, closes
+    accounts the file shows closed, and opens an **import batch** per account, recording how
+    category and person names map.
+  - `POST imports/:batchId/rows` adds **one part of one account's rows** (up to 5 000, never
+    splitting a day, so identical purchases on one day stay distinct), then its balances. Each
+    request is short, and the wizard shows real progress ("SoFi Checking, 12 of 50").
+  - If a part fails, the accounts already done stay done; the wizard offers to retry the rest
+    (safe: duplicates are skipped) or undo everything.
 - **Undo:** reverting a batch soft-deletes its transactions and removes its balances (TXN-10: the
   member who imported it or an owner of the account). Balances recompute. An account the import
-  created is removed too, unless something else has been added to it since.
-- **Speed:** a 9 000-transaction Monarch export with 23 000 balance rows takes about 15 seconds,
-  for the preview and again for the import. The wizard shows progress and what it's doing.
+  created is removed too, unless something else has been added to it since; one it closed is
+  reopened. `POST import-runs/:runId/revert` undoes every account of a file at once.
+- **Speed**, for a 9 000-transaction Monarch export with 23 000 balance rows over 50 accounts:
+  preview 0.25 s, start 2 s, then 90 parts of at most 1.5 s each, about 18 s in all.
+- When the background worker arrives (M2), imports can move to a job that continues after you
+  close the tab, using the same steps.
 - Limits: 50 000 rows and 20 MB per import; larger files are split by date.
 
 ### The wizard
@@ -176,8 +189,9 @@ linked by `transfer_group_id`, both in the **Transfer** category (left out of ca
 | Route | Who | Notes |
 |---|---|---|
 | `POST imports/preview` | Owners of the target accounts (TXN-09) | Dry run: counts, per-row status (new, already imported, overlap, error), rules and transfer matches |
-| `POST imports` | Same | Creates batches; returns them |
-| `GET imports`, `POST imports/:batchId/revert` | Importer or account owner (TXN-10) | |
+| `POST imports` | Same | Starts a run: new accounts, categories, tags; a batch per account |
+| `POST imports/:batchId/rows` | The member who started the run, still an owner | One part of one account's rows |
+| `GET imports`, `POST imports/:batchId/revert`, `POST import-runs/:runId/revert` | Importer or account owner (TXN-10) | |
 | `GET`/`POST`/`PATCH`/`DELETE import-profiles` | OWN, MEM | Saved mappings, household-wide |
 | `GET`/`POST`/`PATCH`/`DELETE rules`, `PUT rules/order` | RULE-01/03 | |
 | `POST rules/:id/preview`, `POST rules/:id/apply` | RULE-06 | Apply to existing, visible rows only |

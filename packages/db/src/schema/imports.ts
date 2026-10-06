@@ -48,8 +48,10 @@ export const importProfiles = pgTable(
 );
 
 /**
- * One import into one account. Reverting soft-deletes its transactions and removes its balances
- * (TXN-10); the row stays as the record that it happened.
+ * One import into one account. An import run (one file, possibly many accounts) has a batch per
+ * account, all sharing `runId`; rows arrive in several requests (docs/design/imports.md §1).
+ * Reverting soft-deletes its transactions and removes its balances (TXN-10); the row stays as the
+ * record that it happened, unless its account was created by the import and goes with it.
  */
 export const importBatches = pgTable(
   'import_batches',
@@ -59,6 +61,8 @@ export const importBatches = pgTable(
     accountId: uuid().notNull(),
     /** Who imported it. */
     memberId: uuid().notNull(),
+    /** The batches of one file share a run, undone together. */
+    runId: uuid().notNull(),
     profileId: uuid(),
     format: importFormat().notNull(),
     filename: text().notNull(),
@@ -66,6 +70,15 @@ export const importBatches = pgTable(
     balanceCount: integer().notNull(),
     /** The import created the account: reverting removes it too, if nothing else is in it. */
     createdAccount: boolean().notNull().default(false),
+    /** The import closed the account (the file shows it closed): reverting reopens it. */
+    closedAccount: boolean().notNull().default(false),
+    /**
+     * How the run maps names in the file, fixed when it starts: category, tag, and person names
+     * (lower-cased) to ids. Later requests for the run read it.
+     */
+    mapping: jsonb()
+      .$type<{ categories: Record<string, string>; members: Record<string, string | null> }>()
+      .notNull(),
     revertedAt: timestamp({ withTimezone: true }),
     revertedByMemberId: uuid(),
     ...timestamps(),
@@ -86,6 +99,7 @@ export const importBatches = pgTable(
     }).onDelete('set null'),
     index().on(t.householdId, t.createdAt.desc()),
     index().on(t.accountId),
+    index().on(t.householdId, t.runId),
     check('import_batches_filename', sql`length(${t.filename}) BETWEEN 1 AND 255`),
   ],
 );

@@ -21,8 +21,9 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
   const fastify = app.getHttpAdapter().getInstance();
   fastify.decorate('fiscusRoutes', []);
   fastify.addHook('onRoute', (route) => {
-    // Imports send a whole file's rows at once; every other route keeps the 1 MB default.
-    if (/\/imports(\/preview)?$/.test(route.url) && [route.method].flat().includes('POST')) {
+    // Import previews send a whole file's rows, and row parts can carry years of daily
+    // balances; every other route keeps the 1 MB default.
+    if (/\/imports\/(preview|:batchId\/rows)$/.test(route.url)) {
       route.bodyLimit = IMPORT_LIMITS.bodyBytes;
     }
     for (const method of [route.method].flat()) {

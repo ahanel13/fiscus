@@ -62,22 +62,30 @@ const account = async (c: TestClient, visibility = 'full') =>
   (await c.post(url('/accounts'), { name: 'Extra', type: 'depository', visibility })).body.data
     .id as string;
 let imported = 0;
-/** A one-row CSV import into an account; each call imports a new row. */
-const importInto = (c: TestClient, accountId: string) =>
-  c.post(url('/imports'), {
+/** A one-row import into an account (start, then rows); each call imports a new row. */
+const importInto = async (
+  c: TestClient,
+  accountId: string,
+): Promise<Res & { batchId?: string }> => {
+  const start = await c.post(url('/imports'), {
     format: 'csv',
     filename: 'perm.csv',
     accounts: [{ key: 'file', accountId }],
+  });
+  if (start.status >= 300) return start;
+  const batchId = start.body.data.batches[0].batchId as string;
+  const rows = await c.post(url(`/imports/${batchId}/rows`), {
     transactions: [
       {
         line: 2,
-        account: 'file',
         date: '2026-02-01',
         amountMinor: -++imported,
         description: `Imported ${imported}`,
       },
     ],
   });
+  return Object.assign(rows, { batchId });
+};
 const attribute = (c: TestClient, id: string, members: string[]) =>
   c.request('PUT', url(`/transactions/${id}/attribution`), {
     attribution: members.map((memberId) => ({ memberId })),
@@ -305,14 +313,14 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   },
   'TXN-09/VIEW': async () => refused(await importInto(f.V, f.accA)),
   'TXN-10/OWN': async () => {
-    const batch = (await importInto(f.A, f.accA)).body.data.batches[0].id;
+    const batch = (await importInto(f.A, f.accA)).batchId;
     ok(await f.A.post(url(`/imports/${batch}/revert`)));
   },
   'TXN-10/MEM': async () => {
-    const own = (await importInto(f.B, f.accB)).body.data.batches[0].id;
+    const own = (await importInto(f.B, f.accB)).batchId;
     ok(await f.B.post(url(`/imports/${own}/revert`)));
     // Not the importer, and only full access to the account.
-    const others = (await importInto(f.A, f.accA)).body.data.batches[0].id;
+    const others = (await importInto(f.A, f.accA)).batchId;
     refused(await f.B.post(url(`/imports/${others}/revert`)));
     // Not the importer, but an owner of the account.
     const joint = (
@@ -322,11 +330,11 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
         owners: [{ memberId: f.member.A }, { memberId: f.member.B }],
       })
     ).body.data.id;
-    const theirs = (await importInto(f.A, joint)).body.data.batches[0].id;
+    const theirs = (await importInto(f.A, joint)).batchId;
     ok(await f.B.post(url(`/imports/${theirs}/revert`)));
   },
   'TXN-10/VIEW': async () => {
-    const batch = (await importInto(f.A, f.accA)).body.data.batches[0].id;
+    const batch = (await importInto(f.A, f.accA)).batchId;
     refused(await f.V.post(url(`/imports/${batch}/revert`)));
   },
 

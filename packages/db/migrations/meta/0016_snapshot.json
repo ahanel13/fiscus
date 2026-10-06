@@ -1,5 +1,5 @@
 {
-  "id": "98ed7cab-9411-4e21-b034-d53a2d7b37e4",
+  "id": "6cdbff2c-e173-4e2c-bece-e30d16438e9d",
   "prevId": "3a12396a-61d2-46f3-af4c-b574a5a837db",
   "version": "7",
   "dialect": "postgresql",
@@ -1574,6 +1574,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "profile_id": {
           "name": "profile_id",
           "type": "uuid",
@@ -1611,6 +1617,19 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "closed_account": {
+          "name": "closed_account",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "mapping": {
+          "name": "mapping",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
         },
         "reverted_at": {
           "name": "reverted_at",
@@ -1666,6 +1685,27 @@
           "columns": [
             {
               "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "import_batches_household_id_run_id_index": {
+          "name": "import_batches_household_id_run_id_index",
+          "columns": [
+            {
+              "expression": "household_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

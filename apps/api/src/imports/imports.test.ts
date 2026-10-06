@@ -3,6 +3,7 @@ import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import { parseCsv, readMonarch } from '@fiscus/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { type ImportBody, runImport } from '../testing/imports.js';
 import { createTestApp, TestClient } from '../testing/test-app.js';
 
 /** File imports (docs/design/imports.md, #73, #75). */
@@ -36,15 +37,16 @@ describe('imports', () => {
   });
   const csv = (
     accountId: string,
-    transactions: unknown[],
-    extra: Record<string, unknown> = {},
-  ) => ({
+    transactions: ImportBody['transactions'],
+    extra: Partial<ImportBody> = {},
+  ): ImportBody => ({
     format: 'csv',
     filename: 'bank.csv',
     accounts: [{ key: 'file', accountId }],
     transactions,
     ...extra,
   });
+  const run = (body: ImportBody, partSize?: number) => runImport(A, url(), body, partSize);
 
   beforeAll(async () => {
     tdb = await startTestDatabase();
@@ -79,7 +81,7 @@ describe('imports', () => {
     await tdb?.stop();
   });
 
-  it('previews exactly what an import does, saving nothing', async () => {
+  it('previews what an import does, saving nothing, then imports it in parts', async () => {
     const acc = await account('Preview checking');
     const body = csv(acc, [
       row(2, '2026-03-01', -450, 'COFFEE'),
@@ -103,11 +105,13 @@ describe('imports', () => {
     expect(await list(acc)).toEqual([]);
     expect((await A.get(url('/imports'))).body.data).toEqual([]);
 
-    const done = await A.post(url('/imports'), body);
-    expect(done.status, JSON.stringify(done.body)).toBe(201);
-    const { batches, ...result } = done.body.data;
-    expect(result).toEqual(preview.body.data);
-    expect(batches).toMatchObject([{ accountId: acc, transactionCount: 2, canRevert: true }]);
+    const done = await run(body);
+    expect(done.res.status, JSON.stringify(done.res.body)).toBe(200);
+    expect(done.added).toBe(preview.body.data.totals.new);
+    expect(done.rows).toEqual(preview.body.data.rows);
+    expect((await A.get(url('/imports'))).body.data).toMatchObject([
+      { accountId: acc, runId: done.run!.runId, transactionCount: 2, canRevert: true },
+    ]);
     const rows = await list(acc);
     expect(rows.map((t) => [t.date, t.amountMinor, t.displayName, t.reviewStatus])).toEqual([
       ['2026-03-01', -450, 'COFFEE', 'needs_review'],
@@ -132,9 +136,10 @@ describe('imports', () => {
       row(2, '2026-04-01', -1000, 'GROCER'),
       row(3, '2026-04-03', -2000, 'LUNCH SPOT'),
     ];
-    const r1 = await A.post(url('/imports'), csv(acc, first));
-    expect(r1.body.data.totals).toMatchObject({ new: 1, overlaps: 1 });
-    expect(r1.body.data.rows).toEqual([
+    const r1 = await run(csv(acc, first));
+    expect(r1.preview.totals).toMatchObject({ new: 1, overlaps: 1 });
+    expect(r1.added).toBe(1);
+    expect(r1.rows).toEqual([
       { line: 3, status: 'overlap', matchId: manual, message: 'May already be in this account' },
     ]);
 
@@ -145,8 +150,9 @@ describe('imports', () => {
       row(3, '2026-04-03', -2000, 'LUNCH SPOT'),
       row(4, '2026-04-05', -300, 'BUS'),
     ];
-    const r2 = await A.post(url('/imports'), csv(acc, again, { includeOverlaps: [3] }));
-    expect(r2.body.data.totals).toMatchObject({ new: 2, duplicates: 1, overlaps: 0 });
+    const r2 = await run(csv(acc, again, { includeOverlaps: [3] }));
+    expect(r2.preview.totals).toMatchObject({ new: 2, duplicates: 1, overlaps: 0 });
+    expect(r2.added).toBe(2);
     expect((await list(acc)).map((t) => t.amountMinor).sort((a, b) => a - b)).toEqual([
       -2000, -2000, -1000, -300,
     ]);
@@ -155,7 +161,7 @@ describe('imports', () => {
   it('undoes an import, and the same file can be imported again', async () => {
     const acc = await account('Undo checking');
     const body = csv(acc, [row(2, '2026-05-01', -700, 'BOOKS')]);
-    const batch = (await A.post(url('/imports'), body)).body.data.batches[0].id;
+    const batch = (await run(body)).run!.batches[0]!.batchId;
     expect((await A.post(url(`/imports/${batch}/revert`))).status).toBe(204);
     expect(await list(acc)).toEqual([]);
     expect((await A.post(url(`/imports/${batch}/revert`))).status).toBe(409);
@@ -163,8 +169,8 @@ describe('imports', () => {
       (b: { id: string }) => b.id === batch,
     );
     expect(listed).toMatchObject({ canRevert: false, revertedAt: expect.any(String) });
-    const again = await A.post(url('/imports'), body);
-    expect(again.body.data.totals.new).toBe(1);
+    expect((await A.post(url(`/imports/${batch}/rows`), { transactions: [] })).status).toBe(409);
+    expect((await run(body)).added).toBe(1);
   });
 
   it('rejects files that don’t say where each account goes, and accounts you don’t own', async () => {
@@ -177,9 +183,16 @@ describe('imports', () => {
     expect(
       (await B.post(url('/imports/preview'), csv(acc, [row(2, '2026-01-01', -1, 'X')]))).status,
     ).toBe(403);
+    // Only the member who started a run adds rows to it.
+    const started = await run(csv(acc, []));
+    const batch = started.run!.batches[0]!.batchId;
+    const rows = {
+      transactions: [{ line: 2, date: '2026-01-01', amountMinor: -1, description: 'X' }],
+    };
+    expect((await B.post(url(`/imports/${batch}/rows`), rows)).status).toBe(403);
   });
 
-  it('accepts a large file', async () => {
+  it('accepts a large file, in parts that never split a day', async () => {
     const acc = await account('Big checking');
     const rows = Array.from({ length: 12_000 }, (_, i) =>
       row(
@@ -189,9 +202,14 @@ describe('imports', () => {
         `PURCHASE NUMBER ${i}`,
       ),
     );
-    const r = await A.post(url('/imports'), csv(acc, rows));
-    expect(r.status, JSON.stringify(r.body).slice(0, 300)).toBe(201);
-    expect(r.body.data.totals.new).toBe(12_000);
+    const preview = await A.post(url('/imports/preview'), csv(acc, rows));
+    expect(preview.status, JSON.stringify(preview.body).slice(0, 300)).toBe(200);
+    expect(preview.body.data.totals.new).toBe(12_000);
+    // Identical rows on one day, split across parts, would be miscounted; days aren't split.
+    const twins = [row(2, '2024-06-01', -450, 'COFFEE'), row(3, '2024-06-01', -450, 'COFFEE')];
+    const r = await run(csv(acc, [...rows, ...twins]), 1_000);
+    expect(r.res.status, JSON.stringify(r.res.body).slice(0, 300)).toBe(200);
+    expect(r.added).toBe(12_002);
   }, 120_000);
 
   describe('Monarch', () => {
@@ -239,7 +257,7 @@ describe('imports', () => {
         create: { name: a.key, type: a.suggestedType, balanceMode: a.suggestedMode },
         ...(a.closeOn ? { closeOn: a.closeOn } : {}),
       }));
-      const body = {
+      const body: ImportBody = {
         format: 'monarch',
         filename: 'Transactions.csv',
         accounts,
@@ -248,10 +266,12 @@ describe('imports', () => {
         balances: m.balances,
       };
       const worthBefore = await worthOn('2026-09-08');
-      const r = await A.post(url('/imports'), body);
-      expect(r.status, JSON.stringify(r.body)).toBe(201);
-      const data = r.body.data;
+      const r = await run(body);
+      expect(r.res.status, JSON.stringify(r.res.body)).toBe(200);
+      const data = r.preview;
       expect(data.totals).toEqual({ new: 6, duplicates: 0, overlaps: 0, skipped: 0, errors: 0 });
+      expect(r.added).toBe(6);
+      expect(r.balances).toBe(data.accounts.reduce((n, a) => n + a.balances, 0));
       expect(data.newCategories).toEqual([
         // Everyday spending goes in its own group; income and transfers join the existing ones.
         { name: 'Coffee Beans', kind: 'flexible', group: 'From Monarch' },
@@ -259,7 +279,7 @@ describe('imports', () => {
         { name: 'Credit Card Payment', kind: 'transfer', group: 'Transfers' },
       ]);
       expect(data.newTags).toEqual(['Work', 'Taxes']);
-      expect(data.batches).toHaveLength(4); // each account its own batch
+      expect(r.run!.batches).toHaveLength(4); // each account its own batch
 
       const all = (await A.get(url('/accounts?include=closed'))).body.data as {
         id: string;
@@ -326,7 +346,7 @@ describe('imports', () => {
         key: a.key,
         accountId: existing.find((e) => e.name === a.key)!.id,
       }));
-      const body = {
+      const body: ImportBody = {
         format: 'monarch',
         filename: 'Transactions-2.csv',
         accounts,
@@ -342,18 +362,19 @@ describe('imports', () => {
           },
         ],
       };
-      const r = await A.post(url('/imports'), body);
-      expect(r.body.data.totals).toMatchObject({ new: 1, duplicates: 6 });
+      const r = await run(body);
+      expect(r.preview.totals).toMatchObject({ new: 1, duplicates: 6 });
+      expect(r.added).toBe(1);
 
-      // Undoing the first import removes the accounts it created, unless something else is in them.
+      // Undoing the first import, all accounts at once, removes the accounts it created unless
+      // something else is in them, and reopens nothing it didn't close.
       const batches = (await A.get(url('/imports'))).body.data as {
-        id: string;
-        accountName: string;
+        runId: string;
         filename: string;
       }[];
-      for (const b of batches.filter((x) => x.filename === 'Transactions.csv')) {
-        expect((await A.post(url(`/imports/${b.id}/revert`))).status).toBe(204);
-      }
+      const first = batches.find((x) => x.filename === 'Transactions.csv')!.runId;
+      expect((await A.post(url(`/import-runs/${first}/revert`))).status).toBe(204);
+      expect((await A.post(url(`/import-runs/${first}/revert`))).status).toBe(409);
       const after = (await A.get(url('/accounts?include=closed'))).body.data.map(
         (a: { name: string }) => a.name,
       );
