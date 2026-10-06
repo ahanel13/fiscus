@@ -104,7 +104,6 @@ CREATE TABLE "transactions" (
 	CONSTRAINT "transactions_parent" CHECK ("transactions"."parent_id" IS NULL OR "transactions"."has_splits" = false)
 );
 --> statement-breakpoint
-ALTER TABLE "household_members" ADD COLUMN "history_from" date;--> statement-breakpoint
 ALTER TABLE "categories" ADD CONSTRAINT "categories_household_id_group_id_category_groups_household_id_id_fk" FOREIGN KEY ("household_id","group_id") REFERENCES "public"."category_groups"("household_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "category_groups" ADD CONSTRAINT "category_groups_household_id_households_id_fk" FOREIGN KEY ("household_id") REFERENCES "public"."households"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tags" ADD CONSTRAINT "tags_household_id_households_id_fk" FOREIGN KEY ("household_id") REFERENCES "public"."households"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

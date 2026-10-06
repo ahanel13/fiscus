@@ -1,5 +1,5 @@
 {
-  "id": "2752a66a-41a5-4410-96af-a1365a6d467c",
+  "id": "4e826ef6-90e0-4537-be69-0f5e291c60f3",
   "prevId": "d338223e-317b-4905-b11c-4c44bfc96092",
   "version": "7",
   "dialect": "postgresql",
@@ -573,12 +573,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "history_from": {
-          "name": "history_from",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
         },
         "left_at": {
           "name": "left_at",

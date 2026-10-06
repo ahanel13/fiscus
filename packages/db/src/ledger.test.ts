@@ -6,8 +6,8 @@ import { startTestDatabase, type TestDatabase } from './testing.js';
 
 /**
  * Transaction visibility enforced by the database alone (docs/design/transactions.md): account
- * levels, the attribution path (F1), the new-member history window (ADR 0012), private notes,
- * and the split and attribution invariants. Forged contexts, no application code.
+ * levels, the attribution path (F1), private notes, and the split and attribution invariants.
+ * Forged contexts, no application code.
  */
 
 type Actor = 'A' | 'B' | 'C' | 'V';
@@ -21,7 +21,7 @@ const people = Object.fromEntries(
   ]),
 ) as Record<Actor | 'Z', { user: string; member: string }>;
 const ROLES: Record<Actor, string> = { A: 'owner', B: 'member', C: 'member', V: 'viewer' };
-/** C joined in June, so shared history before then is outside C's window. */
+/** C joined in June; an account shared with C still shows its whole history (ADR 0012). */
 const JOINED: Record<Actor, string> = {
   A: '2025-01-01',
   B: '2025-01-01',
@@ -60,7 +60,7 @@ function visibleTo(actor: Actor, t: Txn): boolean {
   if (t.account.owners.includes(actor)) return true;
   if (t.attributedTo === actor) return true;
   const v = t.account.visibility;
-  return (v === 'full' || v === 'view_only') && t.date >= JOINED[actor];
+  return v === 'full' || v === 'view_only';
 }
 
 describe('transaction visibility (RLS)', () => {
@@ -203,7 +203,7 @@ describe('transaction visibility (RLS)', () => {
   describe.each(['A', 'B', 'C', 'V'] as const)('member %s', (actor) => {
     const expected = new Set(txns.filter((t) => visibleTo(actor, t)).map((t) => t.id));
 
-    it('sees exactly the transactions its access, history window, and attributions allow', async () => {
+    it('sees exactly the transactions its account access and attributions allow', async () => {
       await asMember(actor, async (q) => {
         const ids = async (sqlText: string) =>
           new Set((await q.query(sqlText)).rows.map((r) => r.id));
@@ -232,9 +232,7 @@ describe('transaction visibility (RLS)', () => {
           `UPDATE transactions SET review_status = 'reviewed' RETURNING id`,
         );
         const allowed = txns.filter(
-          (t) =>
-            t.account.owners.includes(actor) ||
-            (t.account.visibility === 'full' && t.date >= JOINED[actor]),
+          (t) => t.account.owners.includes(actor) || t.account.visibility === 'full',
         );
         expect(new Set(rows.map((r) => r.id))).toEqual(new Set(allowed.map((t) => t.id)));
       });
@@ -264,27 +262,6 @@ describe('transaction visibility (RLS)', () => {
       );
       expect(payers.rows).toEqual([{ transaction_id: forB.id, member_id: people.A.member }]);
     });
-  });
-
-  it('lets the household extend a member’s history window earlier', async () => {
-    await owner.query(`UPDATE household_members SET history_from = '2026-01-01' WHERE id = $1`, [
-      people.C.member,
-    ]);
-    try {
-      await asMember('C', async (q) => {
-        const visible = new Set(
-          (await q.query('SELECT id FROM transactions')).rows.map((r) => r.id),
-        );
-        const fullJan = txns.find(
-          (t) => t.account.visibility === 'full' && t.date === '2026-01-15',
-        )!;
-        expect(visible.has(fullJan.id)).toBe(true);
-      });
-    } finally {
-      await owner.query(`UPDATE household_members SET history_from = NULL WHERE id = $1`, [
-        people.C.member,
-      ]);
-    }
   });
 
   it('shows nothing to another household or without context', async () => {

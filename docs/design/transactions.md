@@ -1,7 +1,7 @@
 # Categories and transactions (M1 Phase 2)
 
 - Status: Accepted (#290). Database layer: migrations `0011_ledger`, `0012_ledger_rls`
-- Tickets: #37, #36, #54, #59, #38, #39, #281, the transaction half of #61, and #256
+- Tickets: #37, #36, #54, #59, #38, #39, #281, and the transaction half of #61
 - Builds on: [data model §3.5](data-model.md#35-transactions), [permissions](permissions.md) §3, §4.3–4.6, [ADR 0006](../adr/0006-shared-finances-yours-mine-ours.md) §3, §5, [accounts and visibility](accounts-and-visibility.md)
 
 The tables are already in the data model. This document decides the behavior they leave open:
@@ -121,11 +121,13 @@ and one activity event records the batch with the ids and fields changed.
 
 ## 6. New members and history (#256, ADR 0012)
 
-A member who joins later sees **shared** records only from their `history_from` date (default:
-when they joined), unless they're part of the record: they own the account, or it's attributed
-to them. Owners can move the date earlier, never later. This adds one condition to the
-transaction policy (`effective_date >= history_from`, through a definer function) and does not
-affect balances, which are visible by account level as before.
+**Sharing an account shares its history.** A member who joins later sees every transaction on
+the accounts shared with them, whatever the date, plus anything attributed to them (ADR 0012:
+"…or if someone shares an account with them").
+
+The new-member **history window** (`history_from`) limits *household-level* shared records:
+shared budgets, settle-up between other members, and household reports. Those arrive in M3 and
+M7, so the window is built with them; it doesn't apply to transactions.
 
 ## 7. API
 
@@ -164,9 +166,9 @@ All under `/api/v1/households/:householdId/`.
 - **Effective date** is a generated column: the date override, else the posted date, else the
   authorized date. The household "authorized date" basis (#69, Phase 3) adds a second generated
   column, since a stored column can't read the household's setting.
-- **Visibility** (migration 0012): the policy in §3 plus the history window (§6), through two
-  read-only definer functions, `fiscus_history_from()` and `fiscus_attributed_to_me()`. Owners
-  of the paying account see all of its history; `full` members categorize within their window.
+- **Visibility** (migration 0012): the policy in §3, with the attribution branch through the
+  read-only definer function `fiscus_attributed_to_me()`. `fiscus_attributed_payers()` names the
+  payers (as members) for "Paid by …" without revealing the account.
 - **Private notes** are visible only to their author, including to household owners and system jobs.
 - **Commit-time checks:** attribution shares sum to 10 000; attributed members are current
   members; splits are one level deep, on the parent's account and currency, with at least two

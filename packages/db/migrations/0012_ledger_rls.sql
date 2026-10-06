@@ -1,5 +1,5 @@
 -- Categories, tags, transactions, attribution, and notes: visibility, invariants, and defaults
--- (docs/design/transactions.md, ADR 0006 §3 F1, ADR 0012, permissions §3 and §4.3–4.6).
+-- (docs/design/transactions.md, ADR 0006 §3 F1, permissions §3 and §4.3–4.6).
 
 -- Text search over transaction names and descriptions (data model §7).
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -9,19 +9,6 @@ CREATE INDEX transactions_search ON transactions
 --> statement-breakpoint
 
 GRANT SELECT ON transactions, transaction_attributions TO fiscus_definer;
---> statement-breakpoint
-
--- The earliest date of shared records the context member sees (ADR 0012): their history_from,
--- else the day they joined, in the household's time zone. Null for system context.
-CREATE FUNCTION fiscus_history_from() RETURNS date
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
-  AS $$
-    SELECT coalesce(m.history_from, (m.joined_at AT TIME ZONE h.timezone)::date)
-    FROM household_members m JOIN households h ON h.id = m.household_id
-    WHERE m.id = fiscus_member() AND m.household_id = fiscus_household() AND m.left_at IS NULL
-  $$;
---> statement-breakpoint
-ALTER FUNCTION fiscus_history_from() OWNER TO fiscus_definer;
 --> statement-breakpoint
 
 -- Transactions attributed to the context member. Attribution shares a transaction with them
@@ -53,20 +40,18 @@ CREATE FUNCTION fiscus_attributed_payers()
 ALTER FUNCTION fiscus_attributed_payers() OWNER TO fiscus_definer;
 --> statement-breakpoint
 
--- transactions: owners of the paying account see all of it; full and view-only members see it
--- from their history window on (unless they're part of it); attribution shares it.
+-- transactions: visible to anyone who can see the paying account at view-only or above, whatever
+-- the date (ADR 0012: sharing an account shares its history), and to anyone it's attributed to.
+-- The new-member history window applies to household-level shared records (budgets, settle-up,
+-- reports) when those arrive (#256).
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE transactions FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE POLICY transactions_select ON transactions FOR SELECT USING (
   household_id = fiscus_household() AND (SELECT fiscus_context_valid()) AND (
-    account_id IN (SELECT account_id FROM fiscus_account_access() WHERE level = 'owner')
-    OR (
-      account_id IN (SELECT account_id FROM fiscus_account_access()
-                     WHERE level IN ('full', 'view_only'))
-      AND effective_date >= (SELECT fiscus_history_from())
-    )
+    account_id IN (SELECT account_id FROM fiscus_account_access()
+                   WHERE level IN ('owner', 'full', 'view_only'))
     OR id IN (SELECT fiscus_attributed_to_me())
   )
 );
@@ -80,13 +65,9 @@ CREATE POLICY transactions_insert ON transactions FOR INSERT WITH CHECK (
 --> statement-breakpoint
 CREATE POLICY transactions_update ON transactions FOR UPDATE
   USING (
-    household_id = fiscus_household() AND (SELECT fiscus_context_valid()) AND (
-      account_id IN (SELECT account_id FROM fiscus_account_access() WHERE level = 'owner')
-      OR (
-        account_id IN (SELECT account_id FROM fiscus_account_access() WHERE level = 'full')
-        AND effective_date >= (SELECT fiscus_history_from())
-      )
-    )
+    household_id = fiscus_household() AND (SELECT fiscus_context_valid())
+    AND account_id IN (SELECT account_id FROM fiscus_account_access()
+                       WHERE level IN ('owner', 'full'))
   )
   WITH CHECK (
     household_id = fiscus_household()
