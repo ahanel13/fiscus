@@ -11,7 +11,7 @@ makes checking them quick; transfers between your own accounts stop counting as 
 ## 1. How a file comes in
 
 ```
-pick file → parse in the browser → map columns (or a saved profile) → preview → import → undo if needed
+source → columns (CSV) → accounts → categories → review → done (undo available)
 ```
 
 - **Files are parsed in the browser.** The server receives rows as JSON, never the file, and
@@ -23,6 +23,26 @@ pick file → parse in the browser → map columns (or a saved profile) → prev
 - **Undo:** reverting a batch soft-deletes its transactions (TXN-10: the member who imported it or
   an owner of the account). Balances recompute.
 - Limits: 50 000 rows and 20 MB per import; larger files are split by date.
+
+### The wizard
+
+Importing is a **step-by-step wizard** (Settings → Import, and "Import" on an account's menu).
+Nothing is written until the last step; Back never loses choices; a step with nothing to decide
+is skipped and shown as done.
+
+| Step | What you do | Shown for |
+|---|---|---|
+| 1. **Source** | Pick where it's from: *Monarch*, or *A bank or card statement (CSV)*. Drop the file(s); a short "how to export from Monarch" guide sits beside the drop zone | Always |
+| 2. **Columns** | Match columns, with the first rows shown live as you choose. A saved profile is picked automatically and the step collapses to "Using *Chase checking*. Change" | CSV only |
+| 3. **Accounts** | Each account in the file → *new* or *an existing one*, with type, owners, and visibility. Closed accounts listed with their close date. Monarch Owner names → members | Monarch, or a CSV with an Account column; otherwise one picker in step 1 |
+| 4. **Categories** | Each category in the file → matched, or *new in "From Monarch"*; change any to an existing category | When the file has categories |
+| 5. **Review** | Totals in plain words ("1 204 new transactions, 38 already imported, 3 possible duplicates"), then a table filtered by status: new, already imported, possible duplicate (tick to include), skipped, error. Transfers to be linked and rules that will apply are shown here | Always |
+| 6. **Done** | Progress, then a summary with **Undo this import**, "Review 7 transactions", and "Go to transactions" | Always |
+
+- A step indicator shows where you are; focus moves to each step's heading (a11y).
+- Errors explain the fix ("Row 214: the date `31/02/2026` doesn't exist") and only block
+  the rows they're on: you can import the rest and fix those later.
+- Files stay in the browser's memory only; leaving the wizard asks before discarding.
 
 ### Column mapping (#73)
 | Field | From | Notes |
