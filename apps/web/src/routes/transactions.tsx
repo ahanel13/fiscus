@@ -56,6 +56,8 @@ import {
 } from '../components/ui.js';
 import { categoryIndex, byDay, forLabel, paidByLabel } from '../lib/transactions.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
+import { rangeParams } from '../lib/ranges.js';
+import { useRange } from '../lib/use-range.js';
 
 type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
@@ -249,6 +251,7 @@ export function TransactionsPage() {
   const showLens = lensVisible(household, members.length);
   const lens = showLens ? parseLens(search.lens) : 'all';
   const invalidate = useInvalidateLedger(householdId);
+  const range = useRange(household, 'transactions', 'all_time');
 
   const [text, setText] = useState('');
   const [q, setQ] = useState('');
@@ -260,6 +263,7 @@ export function TransactionsPage() {
   const [review, setReview] = useState(false);
   const filters: TransactionFilters = {
     lens,
+    range: rangeParams(range.selection).toString(),
     ...(q ? { q } : {}),
     ...(account !== ALL ? { accounts: [account] } : {}),
     ...(review ? { review: 'needs_review' as const } : {}),
@@ -288,7 +292,7 @@ export function TransactionsPage() {
     <>
       <PageHeader
         title="Transactions"
-        showRange={false}
+        range={range}
         showLens={showLens}
         members={members}
         action={

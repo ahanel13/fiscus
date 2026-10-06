@@ -27,7 +27,8 @@ const STYLES = [
 ] as const;
 
 const COMMON_CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'MXN', 'INR'];
-const TIME_ZONES = Intl.supportedValuesOf('timeZone');
+// The browser's list leaves out plain "UTC", which is a valid household time zone.
+const TIME_ZONES = ['UTC', ...Intl.supportedValuesOf('timeZone').filter((z) => z !== 'UTC')];
 const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export function WelcomePage() {
