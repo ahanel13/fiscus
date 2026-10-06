@@ -63,6 +63,8 @@ export interface AccountChoice {
   balances: number;
   firstDate: string | null;
   lastDate: string | null;
+  /** Its last balance in the file (negative: owed, on a card or loan). */
+  lastBalance: number | null;
   /** The whole history in the file, transactions and balances: what combining can't overlap. */
   from: string | null;
   to: string | null;
@@ -83,7 +85,10 @@ export type CheckReason =
   | 'duplicate'
   /** Another account picks up where it stops: probably one account, re-added. */
   | 'continued'
-  /** Its history stops early with money still in it: closed, or just stopped syncing? */
+  /**
+   * Its history stops early with money in it, or still owed on it (a card or loan): closed, or
+   * did it just stop syncing?
+   */
   | 'closed_with_money'
   /** The name doesn't say what type it is, and its balances suggest a card or a loan. */
   | 'type_unsure';
@@ -123,6 +128,7 @@ export function suggestAccounts(found: MonarchAccount[], existing: Account[]): A
       firstDate: a.firstDate,
       lastDate: a.lastDate ?? a.lastBalanceDate,
       ...span(a),
+      lastBalance: a.lastBalanceMinor,
       duplicateOf: a.duplicateOf,
       continuedBy: a.continuedBy,
       check: match

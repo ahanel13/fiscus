@@ -297,6 +297,7 @@ export function ImportPage() {
           choices={accountChoices}
           onChange={setAccountChoices}
           accounts={accounts.filter((a) => a.yourAccess === 'owner')}
+          currency={household.baseCurrency}
           people={memberChoices}
           onPeople={setMemberChoices}
           members={members}
@@ -790,12 +791,15 @@ function ColumnsStep({
 
 // ── 3. Accounts ────────────────────────────────────────────────────────────────────────────
 
-const CHECK_LABELS: Record<CheckReason, string> = {
-  duplicate: 'Possible copy',
-  continued: 'Continues in another account',
-  closed_with_money: 'Closed with money in it?',
-  type_unsure: 'Check the type',
-};
+/** Why an account is in "Check these". A leftover balance on a card or loan is owed, not held. */
+const checkLabel = (reason: CheckReason, c: AccountChoice): string =>
+  ({
+    duplicate: 'Possible copy',
+    continued: 'Continues in another account',
+    closed_with_money:
+      (c.lastBalance ?? 0) < 0 ? 'Closed with a balance owed?' : 'Closed with money in it?',
+    type_unsure: 'Check the type',
+  })[reason];
 
 type ExistingAccount = { id: string; name: string; closedAt: string | null };
 
@@ -803,6 +807,7 @@ function AccountsStep({
   choices,
   onChange,
   accounts,
+  currency,
   people,
   onPeople,
   members,
@@ -813,6 +818,7 @@ function AccountsStep({
   choices: AccountChoice[];
   onChange: (c: AccountChoice[]) => void;
   accounts: ExistingAccount[];
+  currency: string;
   people: { name: string; memberId: string | null }[];
   onPeople: (p: { name: string; memberId: string | null }[]) => void;
   members: { id: string; displayName: string }[];
@@ -846,6 +852,7 @@ function AccountsStep({
       choice={c}
       choices={choices}
       accounts={accounts}
+      currency={currency}
       selected={selected.has(c.key)}
       onSelect={(on) => select(c.key, on)}
       onUpdate={(patch) => update(c.key, patch)}
@@ -1005,6 +1012,7 @@ function AccountRow({
   choice: c,
   choices,
   accounts,
+  currency,
   selected,
   onSelect,
   onUpdate,
@@ -1012,6 +1020,7 @@ function AccountRow({
   choice: AccountChoice;
   choices: AccountChoice[];
   accounts: ExistingAccount[];
+  currency: string;
   selected: boolean;
   onSelect: (on: boolean) => void;
   onUpdate: (patch: Partial<AccountChoice>) => void;
@@ -1028,7 +1037,7 @@ function AccountRow({
           <span className="truncate font-medium">{c.key}</span>
           {c.check.map((r) => (
             <Badge key={r} tone="warning">
-              {CHECK_LABELS[r]}
+              {checkLabel(r, c)}
             </Badge>
           ))}
         </p>
@@ -1079,6 +1088,12 @@ function AccountRow({
           <Checkbox className="mt-1" isSelected={c.close} onChange={(close) => onUpdate({ close })}>
             <span>
               Closed from <DateText value={c.closeOn} />
+              {c.lastBalance ? (
+                <span className="text-muted">
+                  {' '}
+                  · last balance <Amount minor={c.lastBalance} currency={currency} kind="balance" />
+                </span>
+              ) : null}
             </span>
           </Checkbox>
         ) : null}

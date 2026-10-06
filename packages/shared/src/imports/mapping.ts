@@ -2,6 +2,7 @@
 import type { AccountType } from '../api/accounts.js';
 import type { CsvMapping, ImportTransaction } from '../api/imports.js';
 import type { CategoryKind } from '../api/ledger.js';
+import { typeFromName } from './account-names.js';
 import type { CsvTable } from './csv.js';
 import { detectDateFormat, detectDecimalSeparator, parseAmount, parseDate } from './values.js';
 
@@ -171,27 +172,6 @@ export function inferCategoryKind(name: string, amounts: number[]): CategoryKind
   return 'flexible';
 }
 
-const TYPE_HINTS: [AccountType, RegExp][] = [
-  ['loan', /\b(loan|mortgage|heloc|student)\b/i],
-  [
-    'investment',
-    /\b(ira|roth|401\s?k|403\s?b|brokerage|invest(ing|ment)?s?|hsa|stocks?|fidelity|vanguard|schwab|robinhood|529)\b/i,
-  ],
-  ['crypto', /\b(crypto|bitcoin|btc|eth|coinbase)\b/i],
-  ['vehicle', /\b(car|truck|vehicle|auto|tacoma|toyota|honda|ford|tesla|subaru|motorcycle)\b/i],
-  ['property', /\b(house|home|property|condo|zillow|residence)\b/i],
-  // A street address: "123 Main St".
-  [
-    'property',
-    /^\d+ .*\b(st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|way|blvd|pl|place|cir|circle)\b/i,
-  ],
-  [
-    'credit',
-    /\b(credit|card|visa|mastercard|amex|american express|discover|sapphire|freedom|preferred|rewards|signature|quicksilver|venture|savor|platinum)\b|®/i,
-  ],
-  ['depository', /\b(checking|savings|cd|money market|cash|bank)\b/i],
-];
-
 /**
  * A first guess at an account's type from its name and balances, for the wizard to show and you to
  * change. A name that says "loan" wins over "auto"; mostly-negative balances suggest a card, or a
@@ -207,7 +187,8 @@ export function explainAccountType(
   balances: number[] = [],
   exponent = 2,
 ): { type: AccountType; fromName: boolean } {
-  for (const [type, re] of TYPE_HINTS) if (re.test(name)) return { type, fromName: true };
+  const named = typeFromName(name);
+  if (named) return { type: named, fromName: true };
   return { type: typeFromBalances(balances, exponent), fromName: false };
 }
 
