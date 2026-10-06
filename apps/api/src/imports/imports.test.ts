@@ -212,6 +212,44 @@ describe('imports', () => {
     expect(r.added).toBe(12_002);
   }, 120_000);
 
+  it('combines an account that another continues into one', async () => {
+    const r = await run({
+      format: 'monarch',
+      filename: 'Balances.csv',
+      accounts: [
+        { key: 'Truck', create: { name: 'Truck', type: 'vehicle' } },
+        { key: 'Old truck', sameAs: 'Truck', closeOn: '2024-09-09' },
+      ],
+      balances: [
+        { account: 'Old truck', date: '2024-09-07', balanceMinor: 3901000 },
+        { account: 'Old truck', date: '2024-09-08', balanceMinor: 3901000 },
+        { account: 'Truck', date: '2024-09-09', balanceMinor: 3879797 },
+      ],
+    });
+    expect(r.res.status, JSON.stringify(r.res.body)).toBe(200);
+    const all = (await A.get(url('/accounts?include=closed'))).body.data as {
+      id: string;
+      name: string;
+      closedAt: string | null;
+    }[];
+    const trucks = all.filter((a) => a.name === 'Truck');
+    expect(trucks).toHaveLength(1);
+    expect(trucks[0]!.closedAt).toBeNull(); // the old one's close date is ignored
+    const balances = (await A.get(url(`/accounts/${trucks[0]!.id}/balances?range=all_time`))).body
+      .data as { asOf: string; amountMinor: number }[];
+    expect(balances.map((b) => [b.asOf, b.amountMinor])).toEqual([
+      ['2024-09-07', 3901000],
+      ['2024-09-09', 3879797],
+    ]);
+    // Undoing the run removes the one account.
+    expect((await A.post(url(`/import-runs/${r.run!.runId}/revert`))).status).toBe(204);
+    expect(
+      ((await A.get(url('/accounts?include=closed'))).body.data as { name: string }[]).filter(
+        (a) => a.name === 'Truck',
+      ),
+    ).toHaveLength(0);
+  });
+
   describe('Monarch', () => {
     const worthOn = async (day: string) =>
       (

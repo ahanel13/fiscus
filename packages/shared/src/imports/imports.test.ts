@@ -223,6 +223,30 @@ describe('Monarch export', () => {
     ]);
   });
 
+  it('spots an account that another picks up from the next day, under a similar name', () => {
+    const m = readMonarch(
+      {
+        balances: parseCsv(
+          [
+            'Date,Balance,Account',
+            '2024-09-07,39010.00,Toyota Tacoma TRD Pro',
+            '2024-09-08,39010.00,Toyota Tacoma TRD Pro',
+            '2024-09-09,38797.97,2021 Toyota Tacoma TRD Pro',
+            '2024-09-10,38797.97,2021 Toyota Tacoma TRD Pro',
+            '2024-09-09,500.00,Other',
+            '2024-09-10,500.00,Other',
+          ].join('\n'),
+        ),
+      },
+      2,
+    );
+    expect(m.accounts.map((a) => [a.key, a.continuedBy])).toEqual([
+      ['2021 Toyota Tacoma TRD Pro', null],
+      ['Other', null],
+      ['Toyota Tacoma TRD Pro', '2021 Toyota Tacoma TRD Pro'],
+    ]);
+  });
+
   it('summarizes accounts from both files and infers closed ones', () => {
     const m = readMonarch({ transactions, balances }, 2);
     expect(

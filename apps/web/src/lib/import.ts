@@ -47,8 +47,10 @@ export const classifyFile = (table: CsvTable): FileKind =>
 /** Where one account in the file goes. */
 export interface AccountChoice {
   key: string;
-  mode: 'new' | 'existing' | 'skip';
+  /** `combine`: into the same account as `sameAs`, another account in the file. */
+  mode: 'new' | 'existing' | 'skip' | 'combine';
   accountId: string | null;
+  sameAs: string | null;
   name: string;
   type: AccountType;
   balanceMode: BalanceMode;
@@ -62,6 +64,8 @@ export interface AccountChoice {
   lastDate: string | null;
   /** The account this one seems to duplicate (connected twice in Monarch). */
   duplicateOf: string | null;
+  /** The account that picks up where this one stops (re-added in Monarch). */
+  continuedBy: string | null;
 }
 
 const lower = (s: string) => s.trim().toLowerCase();
@@ -77,19 +81,22 @@ export function suggestAccounts(found: MonarchAccount[], existing: Account[]): A
     const match = owned.find((e) => lower(e.name) === lower(a.key));
     return {
       key: a.key,
-      // A second copy of another account is left out unless you choose otherwise.
-      mode: match ? 'existing' : a.duplicateOf ? 'skip' : 'new',
+      // A second copy of another account is left out, and one another account continues is
+      // combined with it, unless you choose otherwise.
+      mode: match ? 'existing' : a.duplicateOf ? 'skip' : a.continuedBy ? 'combine' : 'new',
       accountId: match?.id ?? null,
+      sameAs: !match && !a.duplicateOf ? a.continuedBy : null,
       name: a.key,
       type: a.suggestedType,
       balanceMode: a.suggestedMode,
-      close: !match?.closedAt && a.closeOn !== null && a.closedAtZero,
+      close: !match?.closedAt && !a.continuedBy && a.closeOn !== null && a.closedAtZero,
       closeOn: match?.closedAt ? null : a.closeOn,
       transactions: a.transactions,
       balances: a.balances,
       firstDate: a.firstDate,
       lastDate: a.lastDate ?? a.lastBalanceDate,
       duplicateOf: a.duplicateOf,
+      continuedBy: a.continuedBy,
     };
   });
 }
@@ -193,6 +200,7 @@ export function readCsvFile(file: LoadedFile, mapping: CsvMapping, exponent: num
       closeOn: null,
       closedAtZero: false,
       duplicateOf: null,
+      continuedBy: null,
     };
   });
   return { transactions, balances: [], problems, monarchAccounts, owners: [] };
@@ -211,15 +219,21 @@ const accountMapping = (choices: AccountChoice[]) =>
   choices.map((a) =>
     a.mode === 'skip'
       ? { key: a.key, skip: true }
-      : {
-          key: a.key,
-          ...(a.mode === 'existing'
-            ? { accountId: a.accountId! }
-            : {
-                create: { name: a.name.trim() || a.key, type: a.type, balanceMode: a.balanceMode },
-              }),
-          ...(a.close && a.closeOn ? { closeOn: a.closeOn } : {}),
-        },
+      : a.mode === 'combine'
+        ? { key: a.key, sameAs: a.sameAs! }
+        : {
+            key: a.key,
+            ...(a.mode === 'existing'
+              ? { accountId: a.accountId! }
+              : {
+                  create: {
+                    name: a.name.trim() || a.key,
+                    type: a.type,
+                    balanceMode: a.balanceMode,
+                  },
+                }),
+            ...(a.close && a.closeOn ? { closeOn: a.closeOn } : {}),
+          },
   );
 
 const categoryMapping = (choices: CategoryChoice[]) =>
@@ -380,4 +394,21 @@ export function summarize(totals: ImportPreview['totals']): string {
     totals.errors ? `${n(totals.errors)} with problems` : '',
   ].filter(Boolean);
   return parts.join(', ');
+}
+
+/**
+ * Applies one account's new choice. Accounts combined with it go back to "new" if it no longer
+ * stands on its own (skipped, or combined itself).
+ */
+export function chooseAccount(
+  choices: AccountChoice[],
+  key: string,
+  patch: Partial<AccountChoice>,
+): AccountChoice[] {
+  const next = choices.map((c) => (c.key === key ? { ...c, ...patch } : c));
+  const self = next.find((c) => c.key === key)!;
+  if (self.mode === 'new' || self.mode === 'existing') return next;
+  return next.map((c) =>
+    c.mode === 'combine' && c.sameAs === key ? { ...c, mode: 'new', sameAs: null } : c,
+  );
 }

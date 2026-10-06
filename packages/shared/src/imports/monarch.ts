@@ -50,6 +50,12 @@ export interface MonarchAccount {
    * Monarch. The wizard leaves it out unless you choose otherwise.
    */
   duplicateOf: string | null;
+  /**
+   * An account with a similar name whose history starts within a week after this one's ends:
+   * the same thing re-added in Monarch (a vehicle switched to automatic valuation, say). The
+   * wizard suggests combining them into one account.
+   */
+  continuedBy: string | null;
 }
 
 export interface MonarchImport {
@@ -95,6 +101,7 @@ export function readMonarch(
         closeOn: null,
         closedAtZero: false,
         duplicateOf: null,
+        continuedBy: null,
       };
       stats.set(key, a);
     }
@@ -201,6 +208,7 @@ export function readMonarch(
     }
   }
   findDuplicates([...stats.values()], byDay);
+  findContinuations([...stats.values()], byDay);
   return {
     transactions,
     balances,
@@ -242,5 +250,37 @@ function findDuplicates(accounts: MonarchAccount[], byDay: Map<string, Map<strin
         break;
       }
     }
+  }
+}
+
+/** "2021 Toyota Tacoma TRD Pro (...1234)" → "toyota tacoma trd pro": names compared loosely. */
+const looseName = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/\(\.{3}\d+\)/g, '')
+    .replace(/\b(19|20)\d{2}\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+/** Marks accounts another one picks up from (see `continuedBy`). */
+function findContinuations(accounts: MonarchAccount[], byDay: Map<string, Map<string, number>>) {
+  const span = (key: string) => {
+    const days = [...(byDay.get(key)?.keys() ?? [])].sort();
+    return days.length ? { first: days[0]!, last: days.at(-1)! } : null;
+  };
+  for (const a of accounts) {
+    const mine = span(a.key);
+    if (!mine || a.duplicateOf || !a.closeOn) continue;
+    const name = looseName(a.key);
+    if (name.length < 4) continue;
+    const next = accounts.find((b) => {
+      const theirs = span(b.key);
+      if (b === a || !theirs || b.duplicateOf || b.continuedBy) return false;
+      const other = looseName(b.key);
+      const similar = other.includes(name) || name.includes(other);
+      const gap = (Date.parse(theirs.first) - Date.parse(mine.last)) / 86_400_000;
+      return similar && other.length >= 4 && gap >= 1 && gap <= 7;
+    });
+    if (next) a.continuedBy = next.key;
   }
 }

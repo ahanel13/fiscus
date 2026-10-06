@@ -84,10 +84,18 @@ export const importAccountSchema = z
     closeOn: isoDateSchema.optional(),
     /** Leave this account's rows out. */
     skip: z.boolean().optional(),
+    /**
+     * Goes into the same account as another account in the file (the key of that entry): one
+     * account that Monarch replaced with another, such as a vehicle re-added with automatic
+     * valuation. Its close date is ignored.
+     */
+    sameAs: z.string().min(1).max(200).optional(),
   })
   .refine(
-    (a) => a.skip === true || (a.accountId === undefined) !== (a.create === undefined),
-    'Choose an existing account or create one',
+    (a) =>
+      a.skip === true ||
+      [a.accountId, a.create, a.sameAs].filter((x) => x !== undefined).length === 1,
+    'Choose an existing account, create one, or combine it with another',
   );
 export type ImportAccount = z.infer<typeof importAccountSchema>;
 

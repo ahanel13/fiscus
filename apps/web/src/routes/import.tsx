@@ -53,6 +53,7 @@ import {
 import {
   type AccountChoice,
   type CategoryChoice,
+  chooseAccount,
   classifyFile,
   type FileRows,
   type ImportState,
@@ -806,7 +807,9 @@ function AccountsStep({
   onNext: () => void;
 }) {
   const update = (key: string, patch: Partial<AccountChoice>) =>
-    onChange(choices.map((c) => (c.key === key ? { ...c, ...patch } : c)));
+    onChange(chooseAccount(choices, key, patch));
+  // Accounts others can be combined with: ones imported on their own.
+  const standalone = choices.filter((c) => c.mode === 'new' || c.mode === 'existing');
   const taken = (except: string) =>
     new Set(
       choices.filter((c) => c.key !== except && c.mode === 'existing').map((c) => c.accountId),
@@ -817,8 +820,9 @@ function AccountsStep({
     <Card className="space-y-5">
       <StepHeading>Where does each account go?</StepHeading>
       <p className="text-sm text-muted">
-        Each account in the file becomes a new account, goes into one you already have, or is left
-        out. Accounts whose history stops early are offered as closed from the day after.
+        Each account in the file becomes a new account, goes into one you already have, is combined
+        with another account in the file, or is left out. Accounts whose history stops early are
+        offered as closed from the day after.
       </p>
       {problems ? (
         <Alert tone="warning">
@@ -851,7 +855,13 @@ function AccountsStep({
                   transactions of its own.
                 </p>
               ) : null}
-              {c.closeOn && c.mode !== 'skip' ? (
+              {c.continuedBy ? (
+                <p className="mt-1 text-muted">
+                  {c.continuedBy} picks up the day after this one stops: combining them keeps one
+                  account with the whole history.
+                </p>
+              ) : null}
+              {c.closeOn && c.mode !== 'skip' && c.mode !== 'combine' ? (
                 <Checkbox
                   className="mt-1"
                   isSelected={c.close}
@@ -865,12 +875,24 @@ function AccountsStep({
             </div>
             <Select
               aria-label={`Where ${c.key} goes`}
-              value={c.mode === 'existing' ? c.accountId : c.mode}
+              value={
+                c.mode === 'existing'
+                  ? c.accountId
+                  : c.mode === 'combine'
+                    ? `combine:${c.sameAs}`
+                    : c.mode
+              }
               onChange={(v) => {
                 const value = String(v);
                 if (value === 'new' || value === 'skip')
-                  update(c.key, { mode: value, accountId: null });
-                else update(c.key, { mode: 'existing', accountId: value });
+                  update(c.key, { mode: value, accountId: null, sameAs: null });
+                else if (value.startsWith('combine:'))
+                  update(c.key, {
+                    mode: 'combine',
+                    accountId: null,
+                    sameAs: value.slice('combine:'.length),
+                  });
+                else update(c.key, { mode: 'existing', accountId: value, sameAs: null });
               }}
             >
               <SelectItem id="new">New account</SelectItem>
@@ -883,6 +905,17 @@ function AccountsStep({
                       <SelectItem key={a.id} id={a.id}>
                         {a.name}
                         {a.closedAt ? ' (closed)' : ''}
+                      </SelectItem>
+                    ))}
+                </SelectSection>
+              ) : null}
+              {standalone.some((o) => o.key !== c.key) ? (
+                <SelectSection title="Combine with">
+                  {standalone
+                    .filter((o) => o.key !== c.key)
+                    .map((o) => (
+                      <SelectItem key={`combine:${o.key}`} id={`combine:${o.key}`}>
+                        {o.key}
                       </SelectItem>
                     ))}
                 </SelectSection>

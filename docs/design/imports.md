@@ -120,6 +120,11 @@ transactions in the export).
   mapping step lists every account found in either, and confirming it creates the new accounts,
   then imports transactions, then balances, then links transfers, in one database transaction.
   Nothing has to be set up in Fiscus first; accounts you already created can be picked instead.
+- **Accounts Monarch has twice.** An account with no transactions whose balance matches another
+  account's on every shared day (30 or more) is the same account connected twice: the wizard
+  leaves it out, with a note. An account that a similarly named one picks up from within a week
+  (a vehicle re-added with automatic valuation) is offered **combined** with it: one account, the
+  whole history, no close date.
 - Transfers: Monarch categorizes both legs but doesn't link them. After import, rows in a
   transfer category run through transfer detection (§5), so most pairs link on their own.
 - Ownership and visibility of new accounts follow the household's finance style; you can change

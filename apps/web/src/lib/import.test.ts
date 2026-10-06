@@ -3,6 +3,7 @@ import type { Account, CategoryGroup, MonarchAccount } from '@fiscus/shared';
 import { parseCsv } from '@fiscus/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  chooseAccount,
   classifyFile,
   previewRequest,
   readCsvFile,
@@ -24,6 +25,7 @@ const found = (key: string, extra: Partial<MonarchAccount> = {}): MonarchAccount
   closeOn: null,
   closedAtZero: false,
   duplicateOf: null,
+  continuedBy: null,
   ...extra,
 });
 const account = (id: string, name: string, extra: Partial<Account> = {}) =>
@@ -46,6 +48,7 @@ describe('import wizard logic', () => {
         found('Truck', { closeOn: '2024-09-09', closedAtZero: false, suggestedType: 'vehicle' }),
         found('Partner card'),
         found('SAVINGS', { transactions: 0, duplicateOf: 'SAVINGS (...2124)' }),
+        found('Old truck', { closeOn: '2024-09-09', closedAtZero: true, continuedBy: 'Truck' }),
       ],
       [account('a1', 'sofi checking'), account('a2', 'Partner card', { yourAccess: 'full' })],
     );
@@ -57,7 +60,25 @@ describe('import wizard logic', () => {
       ['Partner card', 'new', null, false, null],
       // A second copy of another account is left out.
       ['SAVINGS', 'skip', null, false, null],
+      // One another account continues is combined with it, not closed.
+      ['Old truck', 'combine', null, false, '2024-09-09'],
     ]);
+  });
+
+  it('un-combines accounts whose target stops standing on its own', () => {
+    const choices = suggestAccounts(
+      [found('Truck'), found('Old truck', { closeOn: '2024-09-09', continuedBy: 'Truck' })],
+      [],
+    );
+    expect(choices[1]).toMatchObject({ mode: 'combine', sameAs: 'Truck' });
+    const next = chooseAccount(choices, 'Truck', { mode: 'skip' });
+    expect(next[1]).toMatchObject({ mode: 'new', sameAs: null });
+    expect(
+      previewRequest(
+        { format: 'monarch', filename: 'x', accounts: choices, categories: [], members: [] },
+        { transactions: [], balances: [], problems: [], monarchAccounts: [], owners: [] },
+      ).accounts[1],
+    ).toEqual({ key: 'Old truck', sameAs: 'Truck' });
   });
 
   it('matches categories by name or system category, most used first', () => {
