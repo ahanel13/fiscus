@@ -33,6 +33,7 @@ const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 export function WelcomePage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [who, setWho] = useState<'solo' | 'shared'>('solo');
   const [style, setStyle] = useState<string>('hybrid');
   const create = useMutation({
     mutationFn: (body: Record<string, string>) =>
@@ -47,7 +48,9 @@ export function WelcomePage() {
     e.preventDefault();
     create.mutate({
       ...(Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>),
-      financeStyle: style,
+      // One person has no finance style to choose (ADR 0006 §8): the sharing screens stay hidden
+      // until someone joins, and the style can be set then in household settings.
+      financeStyle: who === 'solo' ? 'hybrid' : style,
     });
   };
 
@@ -90,15 +93,34 @@ export function WelcomePage() {
           </ComboBox>
         </div>
         <RadioGroup
-          label="How do you handle money?"
-          value={style}
-          onChange={setStyle}
+          label="Who’s this household for?"
+          value={who}
+          onChange={(v) => setWho(v as 'solo' | 'shared')}
           className="gap-2"
         >
-          {STYLES.map(([value, label, description]) => (
-            <RadioCard key={value} value={value} title={label} description={description} />
-          ))}
+          <RadioCard
+            value="solo"
+            title="Just me"
+            description="Track your own money. You can invite others later."
+          />
+          <RadioCard
+            value="shared"
+            title="Me and others"
+            description="A partner, family, or roommates."
+          />
         </RadioGroup>
+        {who === 'shared' ? (
+          <RadioGroup
+            label="How do you handle money together?"
+            value={style}
+            onChange={setStyle}
+            className="gap-2"
+          >
+            {STYLES.map(([value, label, description]) => (
+              <RadioCard key={value} value={value} title={label} description={description} />
+            ))}
+          </RadioGroup>
+        ) : null}
         <Button type="submit" className="w-full" isPending={create.isPending}>
           Create household
         </Button>
