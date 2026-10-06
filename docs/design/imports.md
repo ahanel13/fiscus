@@ -112,7 +112,11 @@ transactions in the export).
   from reports", and **goals**. Accounts that backed a Monarch goal import as ordinary accounts
   with their full history; the goal itself is recreated in Fiscus once goals exist (M5, #132)
   and pointed at that account.
-- Size: a 1 MB, 9 000-row export is well within the limits; daily balances are inserted in bulk.
+- Size: a 1 MB, 9 000-row export is well within the limits. Of the daily balances, only days
+  where the balance **changed** are stored (and the first day): balances carry forward between
+  stored days (ADR 0011), so every day reads the same as in Monarch with far fewer rows, and the
+  account's "entered balances" list isn't flooded with identical days. Imported balances are
+  labelled as from Monarch there.
 
 ## 3. Rules (#41)
 
