@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   chooseAccount,
   classifyFile,
+  combinedInto,
+  combineTargets,
   previewRequest,
   readCsvFile,
   suggestAccounts,
@@ -18,6 +20,7 @@ const found = (key: string, extra: Partial<MonarchAccount> = {}): MonarchAccount
   firstDate: '2026-01-01',
   lastDate: '2026-02-01',
   balances: 0,
+  firstBalanceDate: null,
   lastBalanceDate: null,
   lastBalanceMinor: null,
   suggestedType: 'depository',
@@ -79,6 +82,34 @@ describe('import wizard logic', () => {
         { transactions: [], balances: [], problems: [], monarchAccounts: [], owners: [] },
       ).accounts[1],
     ).toEqual({ key: 'Old truck', sameAs: 'Truck' });
+  });
+
+  it('offers to combine only with accounts whose history doesn’t overlap, similar names first', () => {
+    const choices = suggestAccounts(
+      [
+        found('2021 Truck', {
+          firstDate: null,
+          lastDate: null,
+          firstBalanceDate: '2024-09-09',
+          lastBalanceDate: '2026-10-06',
+        }),
+        found('Truck', {
+          firstDate: null,
+          lastDate: null,
+          firstBalanceDate: '2023-12-04',
+          lastBalanceDate: '2024-09-08',
+          closeOn: '2024-09-09',
+          continuedBy: '2021 Truck',
+        }),
+        found('Auto loan', { firstDate: '2023-12-04', lastDate: '2024-05-19' }),
+        found('Checking', { firstDate: '2022-01-01', lastDate: '2026-10-01' }),
+      ],
+      [],
+    );
+    // Truck is combined into 2021 Truck already, Checking overlaps, Auto loan doesn't.
+    expect(combineTargets(choices, '2021 Truck').map((c) => c.key)).toEqual(['Auto loan']);
+    expect(combinedInto(choices, '2021 Truck').map((c) => c.key)).toEqual(['Truck']);
+    expect(combineTargets(choices, 'Truck').map((c) => c.key)).toEqual(['2021 Truck']); // the loan overlaps it
   });
 
   it('matches categories by name or system category, most used first', () => {

@@ -32,6 +32,7 @@ export interface MonarchAccount {
   firstDate: string | null;
   lastDate: string | null;
   balances: number;
+  firstBalanceDate: string | null;
   lastBalanceDate: string | null;
   lastBalanceMinor: number | null;
   suggestedType: AccountType;
@@ -94,6 +95,7 @@ export function readMonarch(
         firstDate: null,
         lastDate: null,
         balances: 0,
+        firstBalanceDate: null,
         lastBalanceDate: null,
         lastBalanceMinor: null,
         suggestedType: 'depository',
@@ -188,6 +190,7 @@ export function readMonarch(
       const a = account(key);
       a.balances++;
       amounts.set(key, [...(amounts.get(key) ?? []), balanceMinor]);
+      if (!a.firstBalanceDate || date < a.firstBalanceDate) a.firstBalanceDate = date;
       if (!a.lastBalanceDate || date > a.lastBalanceDate) {
         a.lastBalanceDate = date;
         a.lastBalanceMinor = balanceMinor;
@@ -254,7 +257,7 @@ function findDuplicates(accounts: MonarchAccount[], byDay: Map<string, Map<strin
 }
 
 /** "2021 Toyota Tacoma TRD Pro (...1234)" → "toyota tacoma trd pro": names compared loosely. */
-const looseName = (name: string) =>
+export const looseName = (name: string) =>
   name
     .toLowerCase()
     .replace(/\(\.{3}\d+\)/g, '')

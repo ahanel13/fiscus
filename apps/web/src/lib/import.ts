@@ -20,6 +20,7 @@ import {
   inferCategoryKind,
   isMonarchBalances,
   isMonarchTransactions,
+  looseName,
   type MonarchAccount,
   readMonarch,
   type RowProblem,
@@ -62,6 +63,9 @@ export interface AccountChoice {
   balances: number;
   firstDate: string | null;
   lastDate: string | null;
+  /** The whole history in the file, transactions and balances: what combining can't overlap. */
+  from: string | null;
+  to: string | null;
   /** The account this one seems to duplicate (connected twice in Monarch). */
   duplicateOf: string | null;
   /** The account that picks up where this one stops (re-added in Monarch). */
@@ -69,6 +73,13 @@ export interface AccountChoice {
 }
 
 const lower = (s: string) => s.trim().toLowerCase();
+
+const span = (a: MonarchAccount) => {
+  const days = [a.firstDate, a.lastDate, a.firstBalanceDate, a.lastBalanceDate]
+    .filter((d): d is string => !!d)
+    .sort();
+  return { from: days[0] ?? null, to: days.at(-1) ?? null };
+};
 
 /**
  * First choices for the Accounts step: an existing account with the same name if there is one
@@ -95,6 +106,7 @@ export function suggestAccounts(found: MonarchAccount[], existing: Account[]): A
       balances: a.balances,
       firstDate: a.firstDate,
       lastDate: a.lastDate ?? a.lastBalanceDate,
+      ...span(a),
       duplicateOf: a.duplicateOf,
       continuedBy: a.continuedBy,
     };
@@ -193,6 +205,7 @@ export function readCsvFile(file: LoadedFile, mapping: CsvMapping, exponent: num
       firstDate: dates[0] ?? null,
       lastDate: dates.at(-1) ?? null,
       balances: 0,
+      firstBalanceDate: null,
       lastBalanceDate: null,
       lastBalanceMinor: null,
       suggestedType: 'depository',
@@ -412,3 +425,25 @@ export function chooseAccount(
     c.mode === 'combine' && c.sameAs === key ? { ...c, mode: 'new', sameAs: null } : c,
   );
 }
+
+/**
+ * Accounts `key` can be combined with: imported on their own, and with a history that doesn't
+ * overlap it (two balances for one day can't both be right). Similar names first.
+ */
+export function combineTargets(choices: AccountChoice[], key: string): AccountChoice[] {
+  const self = choices.find((c) => c.key === key)!;
+  const overlaps = (o: AccountChoice) =>
+    !!self.from && !!self.to && !!o.from && !!o.to && self.from <= o.to && o.from <= self.to;
+  const name = looseName(self.key);
+  const similar = (o: AccountChoice) => {
+    const other = looseName(o.key);
+    return other.includes(name) || name.includes(other);
+  };
+  return choices
+    .filter((o) => o.key !== key && (o.mode === 'new' || o.mode === 'existing') && !overlaps(o))
+    .sort((a, b) => Number(similar(b)) - Number(similar(a)) || a.key.localeCompare(b.key));
+}
+
+/** Accounts combined into `key`. */
+export const combinedInto = (choices: AccountChoice[], key: string) =>
+  choices.filter((c) => c.mode === 'combine' && c.sameAs === key);

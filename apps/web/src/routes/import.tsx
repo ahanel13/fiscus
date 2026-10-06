@@ -55,6 +55,8 @@ import {
   type CategoryChoice,
   chooseAccount,
   classifyFile,
+  combinedInto,
+  combineTargets,
   type FileRows,
   type ImportState,
   type LoadedFile,
@@ -808,8 +810,7 @@ function AccountsStep({
 }) {
   const update = (key: string, patch: Partial<AccountChoice>) =>
     onChange(chooseAccount(choices, key, patch));
-  // Accounts others can be combined with: ones imported on their own.
-  const standalone = choices.filter((c) => c.mode === 'new' || c.mode === 'existing');
+
   const taken = (except: string) =>
     new Set(
       choices.filter((c) => c.key !== except && c.mode === 'existing').map((c) => c.accountId),
@@ -855,6 +856,18 @@ function AccountsStep({
                   transactions of its own.
                 </p>
               ) : null}
+              {combinedInto(choices, c.key).map((o) => (
+                <p key={o.key} className="mt-1 text-muted">
+                  Also includes {o.key}
+                  {o.from && o.to ? (
+                    <>
+                      {' '}
+                      (<DateText value={o.from} /> – <DateText value={o.to} />)
+                    </>
+                  ) : null}
+                  .
+                </p>
+              ))}
               {c.continuedBy ? (
                 <p className="mt-1 text-muted">
                   {c.continuedBy} picks up the day after this one stops: combining them keeps one
@@ -909,15 +922,13 @@ function AccountsStep({
                     ))}
                 </SelectSection>
               ) : null}
-              {standalone.some((o) => o.key !== c.key) ? (
+              {combineTargets(choices, c.key).length ? (
                 <SelectSection title="Combine with">
-                  {standalone
-                    .filter((o) => o.key !== c.key)
-                    .map((o) => (
-                      <SelectItem key={`combine:${o.key}`} id={`combine:${o.key}`}>
-                        {o.key}
-                      </SelectItem>
-                    ))}
+                  {combineTargets(choices, c.key).map((o) => (
+                    <SelectItem key={`combine:${o.key}`} id={`combine:${o.key}`}>
+                      {o.key}
+                    </SelectItem>
+                  ))}
                 </SelectSection>
               ) : null}
             </Select>
