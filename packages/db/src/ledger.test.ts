@@ -258,6 +258,11 @@ describe('transaction visibility (RLS)', () => {
           )
         ).rows,
       ).toEqual([{ member_id: people.B.member }]);
+      // "Paid by A": payers of attributed purchases, as people, never as an account.
+      const payers = await q.query(
+        'SELECT transaction_id, member_id FROM fiscus_attributed_payers()',
+      );
+      expect(payers.rows).toEqual([{ transaction_id: forB.id, member_id: people.A.member }]);
     });
   });
 
