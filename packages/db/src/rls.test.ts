@@ -23,6 +23,7 @@ describe('row-level security', () => {
     'balance_snapshots',
     'categories',
     'category_groups',
+    'member_preferences',
     'tags',
     'transaction_attributions',
     'transaction_notes',

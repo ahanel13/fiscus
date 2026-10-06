@@ -14,7 +14,7 @@ const SECRET_NAME = 'Bob household (secret)';
 const SECRET_ACCOUNT = 'Bob savings (secret)';
 const SECRET_TAG = 'Bob tag (secret)';
 /** Path parameters that aren't ids: the same value in every household. */
-const FIXED: Record<string, string> = { date: '2026-01-01', kind: 'shared' };
+const FIXED: Record<string, string> = { date: '2026-01-01', kind: 'shared', key: 'range:reports' };
 
 describe('cross-tenant isolation (generated from routes)', () => {
   let tdb: TestDatabase;

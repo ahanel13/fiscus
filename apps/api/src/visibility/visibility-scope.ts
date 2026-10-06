@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { accountOwners, type Executor, householdMembers } from '@fiscus/db';
+import { accountOwners, type Executor, householdMembers, transactions } from '@fiscus/db';
 import type { AccessLevel, Lens } from '@fiscus/shared';
 import { and, eq, isNull } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { Problem } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 
@@ -85,4 +85,30 @@ export async function moneyScope(
     }
   }
   return scoped;
+}
+
+/**
+ * Spending views (transactions, cash flow, budgets) follow attribution (ADR 0006 §5): explicit
+ * attribution, else the paying account's owners. `me` / `member:<id>` = attributed to that member
+ * alone; `shared` = attributed to two or more; `all` = everything visible.
+ */
+export async function spendingLensFilter(
+  tx: Executor,
+  ctx: HouseholdContext,
+  lens: Lens,
+): Promise<SQL | undefined> {
+  if (lens === 'all') return undefined;
+  const members = sql`coalesce(
+    (SELECT array_agg(ta.member_id) FROM transaction_attributions ta WHERE ta.transaction_id = ${transactions.id}),
+    (SELECT array_agg(o.member_id) FROM account_owners o WHERE o.account_id = ${transactions.accountId}))`;
+  if (lens === 'shared') return sql`coalesce(array_length(${members}, 1), 0) >= 2`;
+  const member = lens === 'me' ? ctx.memberId : lens.slice('member:'.length);
+  if (lens !== 'me') {
+    const [active] = await tx
+      .select({ id: householdMembers.id })
+      .from(householdMembers)
+      .where(and(eq(householdMembers.id, member), isNull(householdMembers.leftAt)));
+    if (!active) throw invalidLens();
+  }
+  return sql`${members} = ARRAY[${member}::uuid]`;
 }

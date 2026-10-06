@@ -3,6 +3,8 @@ import { etagFor, parseIfMatch } from '@fiscus/domain';
 import {
   type BulkUpdateResult,
   bulkUpdateTransactionsSchema,
+  type CashFlow,
+  cashFlowQuerySchema,
   type Category,
   type CategoryGroup,
   createCategoryGroupSchema,
@@ -14,6 +16,7 @@ import {
   setAttributionSchema,
   setSplitsSchema,
   type Tag,
+  type RangeMeta,
   type Transaction,
   transactionsQuerySchema,
   updateCategoryGroupSchema,
@@ -47,6 +50,7 @@ import {
   HouseholdGuard,
   HouseholdRoles,
 } from '../households/household-context.js';
+import { CashFlowService } from './cash-flow.service.js';
 import { CategoriesService } from './categories.service.js';
 import { TransactionsService } from './transactions.service.js';
 
@@ -186,10 +190,10 @@ export class TransactionsController {
     @Query(new ZodPipe(transactionsQuerySchema)) query: z.infer<typeof transactionsQuerySchema>,
   ): Promise<{
     data: Transaction[];
-    meta: { nextCursor: string | null; scope: 'visible_to_you' };
+    meta: { nextCursor: string | null; scope: 'visible_to_you'; range: RangeMeta | null };
   }> {
-    const { data, nextCursor } = await this.transactions.list(ctx, query);
-    return { data, meta: { nextCursor, scope: 'visible_to_you' } };
+    const { data, nextCursor, range } = await this.transactions.list(ctx, query);
+    return { data, meta: { nextCursor, scope: 'visible_to_you', range } };
   }
 
   @Post()
@@ -293,5 +297,20 @@ export class TransactionsController {
     @Param('kind', new ZodPipe(noteKind)) kind: 'shared' | 'mine',
   ): Promise<void> {
     await this.transactions.setNote(ctx, id, kind, null);
+  }
+}
+
+/** Income, spending, and net per period (ADR 0011): the numbers behind cash-flow views. */
+@Controller('api/v1/households/:householdId/cash-flow')
+@UseGuards(HouseholdGuard)
+export class CashFlowController {
+  constructor(private readonly cashFlow: CashFlowService) {}
+
+  @Get()
+  async get(
+    @Household() ctx: HouseholdContext,
+    @Query(new ZodPipe(cashFlowQuerySchema)) query: z.infer<typeof cashFlowQuerySchema>,
+  ): Promise<{ data: CashFlow; meta: { scope: 'visible_to_you' } }> {
+    return { data: await this.cashFlow.get(ctx, query), meta: { scope: 'visible_to_you' } };
   }
 }

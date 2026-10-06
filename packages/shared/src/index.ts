@@ -6,3 +6,4 @@ export * from './api/auth.js';
 export * from './api/households.js';
 export * from './api/ledger.js';
 export { MEMBER_COLORS } from './design.js';
+export * from './ranges.js';

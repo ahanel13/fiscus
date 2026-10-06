@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
+import { optionalRangeFields, type RangeMeta } from '../ranges.js';
 import { currencyCodeSchema } from './households.js';
 
 // Accounts, ownership, visibility, balances, and net worth
@@ -126,8 +127,10 @@ export const dateWindowSchema = z
   .refine((w) => !w.from || !w.to || w.from <= w.to, '"from" must not be after "to"');
 
 export const netWorthQuerySchema = z
-  .object({ lens: lensSchema.default('all') })
+  .object({ lens: lensSchema.default('all'), ...optionalRangeFields })
   .and(dateWindowSchema);
+
+export const balancesQuerySchema = z.object({ ...optionalRangeFields }).and(dateWindowSchema);
 
 export interface AccountOwner {
   memberId: string;
@@ -165,14 +168,29 @@ export interface BalancePoint {
   source: 'provider' | 'computed' | 'manual';
 }
 
+export interface NetWorthPoint {
+  /** The bucket's last day: the value is the net worth at its end. */
+  date: string;
+  start: string;
+  netWorthMinor: number;
+  /** The period isn't over yet (ADR 0011 §3). */
+  partial: boolean;
+}
+
 export interface NetWorth {
   /** Household base currency. */
   currency: string;
   assetsMinor: number;
   liabilitiesMinor: number;
   netWorthMinor: number;
-  /** One point per day, carrying each account's last balance forward (ADR 0011). */
-  series: { date: string; netWorthMinor: number }[];
+  /**
+   * One point per bucket (a day, unless a range and granularity say otherwise), each the last
+   * balance on or before the bucket's end, carried forward (ADR 0011 §3).
+   */
+  series: NetWorthPoint[];
+  /** The same for the comparison period, when `compare` is set. */
+  comparisonSeries?: NetWorthPoint[];
+  range: RangeMeta;
   /**
    * Visible accounts left out because they're in another currency. Conversion arrives with
    * multi-currency support (#43).

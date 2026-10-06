@@ -15,7 +15,6 @@ const NOT_BUILT: Record<string, string> = {
   'HH-07': 'Deleting a household (grace period, crypto-shred)',
   'HH-08': 'Household Plaid keys (M2)',
   'HH-09': 'Household AI settings (M10)',
-  'HH-10': 'Server-side member preferences (#68)',
   'HH-11': 'Owner audit log, separate from the activity feed',
   'HH-13': 'Data export (M11, #254)',
   'HH-14': 'History window for household-level records (#256, with budgets and settle-up)',

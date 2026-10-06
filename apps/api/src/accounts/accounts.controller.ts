@@ -5,7 +5,7 @@ import {
   accountsQuerySchema,
   type BalancePoint,
   createAccountSchema,
-  dateWindowSchema,
+  balancesQuerySchema,
   isoDateSchema,
   type NetWorth,
   netWorthQuerySchema,
@@ -142,7 +142,7 @@ export class AccountsController {
   async balances(
     @Household() ctx: HouseholdContext,
     @Param('accountId', UuidPipe) accountId: string,
-    @Query(new ZodPipe(dateWindowSchema)) window: z.infer<typeof dateWindowSchema>,
+    @Query(new ZodPipe(balancesQuerySchema)) window: z.infer<typeof balancesQuerySchema>,
   ): Promise<{ data: BalancePoint[] }> {
     return { data: await this.accounts.balances(ctx, accountId, window) };
   }

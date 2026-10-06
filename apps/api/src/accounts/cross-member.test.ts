@@ -218,8 +218,8 @@ describe('cross-member visibility (generated)', () => {
         expect(res.body.data.netWorthMinor).toBe(expected);
         expect(res.body.data.assetsMinor).toBe(expected);
         const [before, onDay, ...rest] = res.body.data.series;
-        expect(before).toEqual({ date: '2025-12-31', netWorthMinor: 0 });
-        expect(onDay).toEqual({ date: '2026-01-01', netWorthMinor: expected });
+        expect(before).toMatchObject({ date: '2025-12-31', netWorthMinor: 0 });
+        expect(onDay).toMatchObject({ date: '2026-01-01', netWorthMinor: expected });
         expect(rest.at(-1)?.netWorthMinor ?? expected).toBe(expected); // carried forward to today
       },
     );

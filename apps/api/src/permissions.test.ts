@@ -108,6 +108,20 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     refused(await f.B.request('PATCH', url(`/members/${f.member.B}`), { role: 'viewer' })),
   'HH-06/VIEW': async () =>
     refused(await f.V.request('PATCH', url(`/members/${f.member.B}`), { role: 'viewer' })),
+  // Your own preferences: anyone sets theirs, and nobody sees anyone else's.
+  'HH-10/OWN': async () => {
+    ok(await f.A.request('PUT', url('/preferences/range:reports'), { value: 'last_6m' }));
+    expect((await f.A.get(url('/preferences'))).body.data['range:reports']).toBe('last_6m');
+  },
+  'HH-10/MEM': async () => {
+    await f.A.request('PUT', url('/preferences/range:reports'), { value: 'last_6m' });
+    ok(await f.B.request('PUT', url('/preferences/range:transactions'), { value: 'ytd' }));
+    expect((await f.B.get(url('/preferences'))).body.data).toEqual({ 'range:transactions': 'ytd' });
+  },
+  'HH-10/VIEW': async () => {
+    ok(await f.V.request('PUT', url('/preferences/density'), { value: 'compact' }));
+    expect((await f.V.get(url('/preferences'))).body.data).toEqual({ density: 'compact' });
+  },
   'HH-12/OWN': async () => {
     const r = await f.A.get(url('/activity?limit=200'));
     ok(r);

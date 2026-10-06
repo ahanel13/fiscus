@@ -20,6 +20,7 @@ import type {
   bulkUpdateTransactionsSchema,
   createTransactionSchema,
   setSplitsSchema,
+  RangeMeta,
   Transaction,
   transactionsQuerySchema,
   updateTransactionSchema,
@@ -45,7 +46,13 @@ import { recomputeBalances } from '../accounts/balances.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
-import { accessLevels } from '../visibility/visibility-scope.js';
+import {
+  type HouseholdRanges,
+  householdRanges,
+  resolveParams,
+  transactionDate,
+} from '../ranges/household-ranges.js';
+import { accessLevels, spendingLensFilter } from '../visibility/visibility-scope.js';
 
 type Row = typeof transactions.$inferSelect;
 type Query = z.infer<typeof transactionsQuerySchema>;
@@ -58,6 +65,9 @@ type SplitsInput = z.infer<typeof setSplitsSchema>;
 interface Access {
   /** Viewers may read only (permissions §2). */
   viewer: boolean;
+  /** Which date transactions count on (#69), and the household's range settings. */
+  dateBasis: 'posted' | 'authorized';
+  ranges: HouseholdRanges;
   levels: Map<string, AccessLevel>;
   /** transaction id → payers, for purchases attributed to the caller (F1). */
   attributedPayers: Map<string, string[]>;
@@ -85,8 +95,8 @@ function equalShares(count: number): number[] {
   return Array.from({ length: count }, (_, i) => (i === 0 ? 10000 - base * (count - 1) : base));
 }
 
-const encodeCursor = (r: Pick<Row, 'effectiveDate' | 'id'>) =>
-  Buffer.from(JSON.stringify([r.effectiveDate, r.id])).toString('base64url');
+const encodeCursor = (date: string, id: string) =>
+  Buffer.from(JSON.stringify([date, id])).toString('base64url');
 
 function decodeCursor(cursor: string): [string, string] {
   try {
@@ -118,9 +128,14 @@ export class TransactionsService {
   async list(
     ctx: HouseholdContext,
     q: Query,
-  ): Promise<{ data: Transaction[]; nextCursor: string | null }> {
+  ): Promise<{ data: Transaction[]; nextCursor: string | null; range: RangeMeta | null }> {
     return this.scope.run(ctx, async (tx) => {
       const access = await this.#access(tx, ctx);
+      const dateColumn = transactionDate(access.dateBasis);
+      const earliest = q.range === 'all_time' ? await this.#earliest(tx, dateColumn) : undefined;
+      const resolved = resolveParams(q, access.ranges, earliest);
+      const from = resolved?.range.from ?? q.from;
+      const to = resolved?.range.to ?? q.to;
       const where: (SQL | undefined)[] = [
         eq(transactions.householdId, ctx.householdId),
         isNull(transactions.deletedAt),
@@ -132,8 +147,8 @@ export class TransactionsService {
           ? sql`EXISTS (SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = ${transactions.id}
                         AND tt.tag_id = ANY(${sql.param(q.tags)}::uuid[]))`
           : undefined,
-        q.from ? gte(transactions.effectiveDate, q.from) : undefined,
-        q.to ? lte(transactions.effectiveDate, q.to) : undefined,
+        from ? gte(dateColumn, from) : undefined,
+        to ? lte(dateColumn, to) : undefined,
         q.q
           ? or(
               ilike(transactions.displayName, `%${likeEscape(q.q)}%`),
@@ -144,24 +159,31 @@ export class TransactionsService {
         q.maxAmount !== undefined ? lte(transactions.amountMinor, q.maxAmount) : undefined,
         q.review ? eq(transactions.reviewStatus, q.review) : undefined,
         q.includeExcluded === 'false' ? eq(transactions.excluded, false) : undefined,
-        await this.#lensFilter(tx, ctx, q.lens),
+        await spendingLensFilter(tx, ctx, q.lens),
       ];
       if (q.cursor) {
         const [date, id] = decodeCursor(q.cursor);
-        where.push(
-          sql`(${transactions.effectiveDate}, ${transactions.id}) < (${date}::date, ${id}::uuid)`,
-        );
+        where.push(sql`(${dateColumn}, ${transactions.id}) < (${date}::date, ${id}::uuid)`);
       }
       const rows = await tx
         .select()
         .from(transactions)
         .where(and(...where))
-        .orderBy(desc(transactions.effectiveDate), desc(transactions.id))
+        .orderBy(desc(dateColumn), desc(transactions.id))
         .limit(q.limit + 1);
       const page = rows.slice(0, q.limit);
       return {
         data: await this.#present(tx, ctx, access, page),
-        nextCursor: rows.length > q.limit ? encodeCursor(page.at(-1)!) : null,
+        nextCursor:
+          rows.length > q.limit
+            ? encodeCursor(
+                access.dateBasis === 'authorized'
+                  ? page.at(-1)!.effectiveAuthorizedDate
+                  : page.at(-1)!.effectiveDate,
+                page.at(-1)!.id,
+              )
+            : null,
+        range: resolved?.meta ?? null,
       };
     });
   }
@@ -659,8 +681,11 @@ export class TransactionsService {
         p.member_id,
       ]);
     }
+    const ranges = await householdRanges(tx, ctx.householdId);
     return {
       viewer: ctx.role === 'viewer',
+      dateBasis: ranges.dateBasis,
+      ranges,
       levels,
       attributedPayers,
     };
@@ -680,6 +705,14 @@ export class TransactionsService {
     };
   }
 
+  async #earliest(tx: Executor, column: ReturnType<typeof transactionDate>) {
+    const [row] = await tx
+      .select({ d: sql<string | null>`min(${column})::text` })
+      .from(transactions)
+      .where(isNull(transactions.deletedAt));
+    return row?.d ?? undefined;
+  }
+
   /** The transaction if the caller can see it (row-level security), else 404. */
   async #visible(tx: Executor, id: string, forUpdate = false): Promise<Row> {
     const where = and(eq(transactions.id, id), isNull(transactions.deletedAt));
@@ -691,35 +724,6 @@ export class TransactionsService {
     const [locked] = await tx.select().from(transactions).where(where).for('update');
     if (!locked) throw forbidden('You can view this transaction but not change it.');
     return locked;
-  }
-
-  async #lensFilter(
-    tx: Executor,
-    ctx: HouseholdContext,
-    lens: Query['lens'],
-  ): Promise<SQL | undefined> {
-    if (lens === 'all') return undefined;
-    // Spending follows attribution (ADR 0006 §5): explicit rows, else the paying account's owners.
-    const members = sql`coalesce(
-      (SELECT array_agg(ta.member_id) FROM transaction_attributions ta WHERE ta.transaction_id = ${transactions.id}),
-      (SELECT array_agg(o.member_id) FROM account_owners o WHERE o.account_id = ${transactions.accountId}))`;
-    if (lens === 'shared') return sql`coalesce(array_length(${members}, 1), 0) >= 2`;
-    const member = lens === 'me' ? ctx.memberId : lens.slice('member:'.length);
-    if (lens !== 'me') {
-      const [active] = await tx
-        .select({ id: householdMembers.id })
-        .from(householdMembers)
-        .where(and(eq(householdMembers.id, member), isNull(householdMembers.leftAt)));
-      if (!active) {
-        throw new Problem(
-          422,
-          'invalid_lens',
-          'Unknown lens',
-          'Use all, me, shared, or member:<member id>.',
-        );
-      }
-    }
-    return sql`${members} = ARRAY[${member}::uuid]`;
   }
 
   async #checkCategory(tx: Executor, categoryId: string | null): Promise<void> {
@@ -860,7 +864,7 @@ export class TransactionsService {
           : ZERO_PERMISSIONS;
       return {
         id: r.id,
-        date: r.effectiveDate,
+        date: access.dateBasis === 'authorized' ? r.effectiveAuthorizedDate : r.effectiveDate,
         reportedDate: r.postedDate ?? r.authorizedDate,
         dateEdited: r.dateOverride !== null,
         amountMinor: r.amountMinor,
