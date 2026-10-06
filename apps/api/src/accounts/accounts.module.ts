@@ -8,5 +8,6 @@ import { AccountsService } from './accounts.service.js';
   imports: [HouseholdsModule],
   controllers: [AccountsController],
   providers: [AccountsService],
+  exports: [AccountsService],
 })
 export class AccountsModule {}

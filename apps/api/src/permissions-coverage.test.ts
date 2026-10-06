@@ -27,8 +27,6 @@ const NOT_BUILT: Record<string, string> = {
   'ACC-10': 'Full account numbers (M2)',
   'TXN-07': 'Assigning reviewers (#45)',
   'TXN-08': 'Transfer linking (#40)',
-  'TXN-09': 'File import (#73)',
-  'TXN-10': 'Reverting imports (#73)',
   'TXN-11': 'Per-transaction edit history (#46)',
   'ATT-03': 'Flagging attribution changes (M3)',
   'ATT-04': 'Resolving flags (M3)',

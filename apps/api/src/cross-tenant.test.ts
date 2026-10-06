@@ -80,7 +80,37 @@ describe('cross-tenant isolation (generated from routes)', () => {
         })
       ).body.data;
       const t = (await c.post(`${base}/tags`, { name: tag, color: '#2f6fdb' })).body.data;
-      return { transactionId: txn.id, categoryId: custom.id, groupId: groups[0].id, tagId: t.id };
+      const imported = (
+        await c.post(`${base}/imports`, {
+          format: 'csv',
+          filename: 'bank.csv',
+          accounts: [{ key: 'file', accountId }],
+          transactions: [
+            { line: 2, account: 'file', date: '2026-01-03', amountMinor: -1, description: tag },
+          ],
+        })
+      ).body.data;
+      const profile = (
+        await c.post(`${base}/import-profiles`, {
+          name: tag,
+          headers: ['date', 'amount', 'memo'],
+          mapping: {
+            date: 'date',
+            dateFormat: 'ymd',
+            amount: { kind: 'signed', column: 'amount', negate: false },
+            decimal: '.',
+            description: 'memo',
+          },
+        })
+      ).body.data;
+      return {
+        transactionId: txn.id,
+        categoryId: custom.id,
+        groupId: groups[0].id,
+        tagId: t.id,
+        batchId: imported.batches[0].id,
+        profileId: profile.id,
+      };
     };
     Object.assign(ids.a, await ledger(alice, a.id, ids.a.accountId, 'A tag'));
     Object.assign(ids.b, await ledger(bob, b.id, ids.b.accountId, SECRET_TAG));

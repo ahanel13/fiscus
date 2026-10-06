@@ -20,8 +20,11 @@ source → columns (CSV) → accounts → categories → review → done (undo a
 - **Preview, then import.** `POST imports/preview` dry-runs the whole import (dedupe, rules,
   transfer matches, errors) and changes nothing. `POST imports` repeats the same steps in one
   transaction and records an **import batch**.
-- **Undo:** reverting a batch soft-deletes its transactions (TXN-10: the member who imported it or
-  an owner of the account). Balances recompute.
+- **Undo:** reverting a batch soft-deletes its transactions and removes its balances (TXN-10: the
+  member who imported it or an owner of the account). Balances recompute. An account the import
+  created is removed too, unless something else has been added to it since.
+- **Speed:** a 9 000-transaction Monarch export with 23 000 balance rows takes about 15 seconds,
+  for the preview and again for the import. The wizard shows progress and what it's doing.
 - Limits: 50 000 rows and 20 MB per import; larger files are split by date.
 
 ### The wizard
@@ -93,7 +96,7 @@ transactions in the export).
 | Id | The **dedupe key**. Monarch's id is stable, so importing a newer export later adds only what's new. Rows that are otherwise identical (85 in the sample: same day, account, amount, and description) stay distinct |
 | Merchant | Name (`display_name`) |
 | Original Statement | Original description; the merchant when it's empty |
-| Category | Matched by name to your categories; **unmatched ones are created** in a "From Monarch" group, and you can move them later. Kind: `transfer` for Transfer, Credit Card Payment, and Balance Adjustments; `income` when every transaction in it is money in; otherwise `flexible`. "Uncategorized" and "Transfer" map to the system categories |
+| Category | Matched by name to your categories; **unmatched ones are created**, and you can move them later: everyday spending in a "From Monarch" group, income and transfer categories in your existing Income and Transfers groups. Kind: `transfer` for Transfer, Credit Card Payment, and Balance Adjustments; `income` when every transaction in it is money in; otherwise `flexible`. "Uncategorized" and "Transfer" map to the system categories |
 | Tags | Comma-separated in one field; matched or created |
 | Notes | The **shared note**, encrypted |
 | Reviewed | `Needs Review` stays **needs review**; `Reviewed` and blank (most rows: Monarch leaves it blank unless you used its review flow) import as **reviewed** |
@@ -112,8 +115,8 @@ transactions in the export).
   from reports", and **goals**. Accounts that backed a Monarch goal import as ordinary accounts
   with their full history; the goal itself is recreated in Fiscus once goals exist (M5, #132)
   and pointed at that account.
-- Size: a 1 MB, 9 000-row export is well within the limits. Of the daily balances, only days
-  where the balance **changed** are stored (and the first day): balances carry forward between
+- Size: a 1 MB, 9 000-row export is well within the limits. Of the daily balances, only the first
+  day, days where the balance **changed**, and days with transactions are stored: balances carry forward between
   stored days (ADR 0011), so every day reads the same as in Monarch with far fewer rows, and the
   account's "entered balances" list isn't flooded with identical days. Imported balances are
   labelled as from Monarch there.

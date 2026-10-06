@@ -61,6 +61,23 @@ const txn = async (c: TestClient, accountId: string, amountMinor = -1500) =>
 const account = async (c: TestClient, visibility = 'full') =>
   (await c.post(url('/accounts'), { name: 'Extra', type: 'depository', visibility })).body.data
     .id as string;
+let imported = 0;
+/** A one-row CSV import into an account; each call imports a new row. */
+const importInto = (c: TestClient, accountId: string) =>
+  c.post(url('/imports'), {
+    format: 'csv',
+    filename: 'perm.csv',
+    accounts: [{ key: 'file', accountId }],
+    transactions: [
+      {
+        line: 2,
+        account: 'file',
+        date: '2026-02-01',
+        amountMinor: -++imported,
+        description: `Imported ${imported}`,
+      },
+    ],
+  });
 const attribute = (c: TestClient, id: string, members: string[]) =>
   c.request('PUT', url(`/transactions/${id}/attribution`), {
     attribution: members.map((memberId) => ({ memberId })),
@@ -279,6 +296,39 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
         parts: [{ amountMinor: -1 }, { amountMinor: -1 }],
       }),
     ),
+  // Importing needs ownership of the account (acct-own); undoing, the importer or an owner.
+  'TXN-09/OWN': async () => ok(await importInto(f.A, f.accA)),
+  'TXN-09/MEM': async () => {
+    ok(await importInto(f.B, f.accB));
+    refused(await importInto(f.B, f.accA));
+    refused(await importInto(f.B, f.accAprivate), 404);
+  },
+  'TXN-09/VIEW': async () => refused(await importInto(f.V, f.accA)),
+  'TXN-10/OWN': async () => {
+    const batch = (await importInto(f.A, f.accA)).body.data.batches[0].id;
+    ok(await f.A.post(url(`/imports/${batch}/revert`)));
+  },
+  'TXN-10/MEM': async () => {
+    const own = (await importInto(f.B, f.accB)).body.data.batches[0].id;
+    ok(await f.B.post(url(`/imports/${own}/revert`)));
+    // Not the importer, and only full access to the account.
+    const others = (await importInto(f.A, f.accA)).body.data.batches[0].id;
+    refused(await f.B.post(url(`/imports/${others}/revert`)));
+    // Not the importer, but an owner of the account.
+    const joint = (
+      await f.A.post(url('/accounts'), {
+        name: 'Joint',
+        type: 'depository',
+        owners: [{ memberId: f.member.A }, { memberId: f.member.B }],
+      })
+    ).body.data.id;
+    const theirs = (await importInto(f.A, joint)).body.data.batches[0].id;
+    ok(await f.B.post(url(`/imports/${theirs}/revert`)));
+  },
+  'TXN-10/VIEW': async () => {
+    const batch = (await importInto(f.A, f.accA)).body.data.batches[0].id;
+    refused(await f.V.post(url(`/imports/${batch}/revert`)));
+  },
 
   // ── 4.4 Attribution ──
   'ATT-01/OWN': async () => ok(await attribute(f.A, f.tA, [f.member.A, f.member.B])),

@@ -89,6 +89,18 @@ const ZERO_PERMISSIONS: Permissions = {
 
 const forbidden = (detail: string) => problems.forbidden(detail);
 
+/** How a note is bound for encryption: to its household, row, and author (also used by imports). */
+export const transactionNoteContext = (
+  householdId: string,
+  transactionId: string,
+  author: string | null,
+) => ({
+  householdId,
+  table: 'transaction_notes',
+  column: 'body_enc',
+  rowId: `${transactionId}:${author ?? 'shared'}`,
+});
+
 /** Equal shares in basis points; the first member takes the remainder. */
 function equalShares(count: number): number[] {
   const base = Math.floor(10000 / count);
@@ -641,7 +653,10 @@ export class TransactionsService {
         if (!existing) return;
         await tx.delete(transactionNotes).where(match);
       } else {
-        const bodyEnc = await this.crypto.encrypt(this.#noteContext(ctx, id, author), body);
+        const bodyEnc = await this.crypto.encrypt(
+          transactionNoteContext(ctx.householdId, id, author),
+          body,
+        );
         if (existing) {
           await tx
             .update(transactionNotes)
@@ -782,15 +797,6 @@ export class TransactionsService {
     return out;
   }
 
-  #noteContext(ctx: HouseholdContext, transactionId: string, author: string | null) {
-    return {
-      householdId: ctx.householdId,
-      table: 'transaction_notes',
-      column: 'body_enc',
-      rowId: `${transactionId}:${author ?? 'shared'}`,
-    };
-  }
-
   /**
    * Serializes transactions for the caller. When a transaction is visible only because it's
    * attributed to them, the account is omitted and only the payers (people) are named (F1).
@@ -842,7 +848,7 @@ export class TransactionsService {
       .from(transactionNotes)
       .where(inArray(transactionNotes.transactionId, ids))) {
       const body = await this.crypto.decrypt(
-        this.#noteContext(ctx, n.transactionId, n.authorMemberId),
+        transactionNoteContext(ctx.householdId, n.transactionId, n.authorMemberId),
         n.bodyEnc,
       );
       const entry = notes.get(n.transactionId) ?? { shared: null, mine: null };

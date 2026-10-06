@@ -31,7 +31,7 @@ import type { z } from 'zod';
 import { addDays, daysBetween, todayIn } from '../common/dates.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
-import { HouseholdScope } from '../households/household-scope.js';
+import { type HouseholdActivity, HouseholdScope } from '../households/household-scope.js';
 import { accessLevels, moneyScope } from '../visibility/visibility-scope.js';
 import { householdRanges, type RangeParams, resolveParams } from '../ranges/household-ranges.js';
 import { recomputeBalances } from './balances.js';
@@ -138,70 +138,81 @@ export class AccountsService {
   }
 
   async create(ctx: HouseholdContext, input: CreateInput): Promise<Account> {
-    const id = uuidv7();
     return this.scope.run(ctx, async (tx, activity) => {
-      const hh = await this.#household(tx, ctx);
-      const owners = this.#resolveOwners(
-        input.owners ??
-          (hh.financeStyle === 'combined'
-            ? [...hh.owners].map((memberId) => ({ memberId }))
-            : [{ memberId: ctx.memberId }]),
-        hh,
-      );
-      if (!owners.some((o) => o.memberId === ctx.memberId)) {
-        throw new Problem(
-          422,
-          'must_own',
-          'You can only add accounts you own or co-own',
-          'Include yourself as an owner.',
-        );
-      }
-      const visibility = input.visibility ?? STYLE_VISIBILITY[hh.financeStyle] ?? 'full';
-      if (visibility === 'private' && owners.length >= 2 && hh.activeMembers === 2) {
-        throw privateJointDisallowed();
-      }
-      const today = todayIn(hh.timezone);
-      if (input.openingBalance?.asOf && input.openingBalance.asOf > today) throw futureDate();
-
-      // No RETURNING: the account isn't visible until its owners exist (RLS, migration 0010).
-      await tx.insert(accounts).values({
-        id,
-        householdId: ctx.householdId,
-        name: input.name,
-        type: input.type,
-        subtype: input.subtype ?? null,
-        currency: input.currency ?? hh.baseCurrency,
-        maskLast4: input.mask ?? null,
-        visibility,
-        balanceMode: input.balanceMode ?? DEFAULT_BALANCE_MODE[input.type],
-        includeInNetWorth: input.includeInNetWorth ?? true,
-        isBusiness: input.isBusiness ?? false,
-        notesEnc: input.notes ? await this.#encryptNotes(ctx, id, input.notes) : null,
-      });
-      await tx
-        .insert(accountOwners)
-        .values(owners.map((o) => ({ accountId: id, householdId: ctx.householdId, ...o })));
-      if (input.openingBalance) {
-        await tx.insert(balanceSnapshots).values({
-          accountId: id,
-          householdId: ctx.householdId,
-          asOf: input.openingBalance.asOf ?? today,
-          balanceMinor: input.openingBalance.amountMinor,
-          source: 'manual',
-        });
-      }
-      await activity.record({
-        action: 'account.created',
-        targetType: 'account',
-        targetId: id,
-        accountId: id,
-        metadata: { type: input.type, visibility, owners: owners.map((o) => o.memberId) },
-        changes: { after: { name: input.name } },
-      });
+      const id = await this.createWithin(tx, activity, ctx, input);
       const levels = await accessLevels(tx);
       const rows = await tx.select().from(accounts).where(eq(accounts.id, id));
       return (await this.#present(tx, ctx, rows, levels))[0]!;
     });
+  }
+
+  /** Adds an account inside the caller's transaction (also used by imports). Returns its id. */
+  async createWithin(
+    tx: Executor,
+    activity: HouseholdActivity,
+    ctx: HouseholdContext,
+    input: CreateInput,
+  ): Promise<string> {
+    const id = uuidv7();
+    const hh = await this.#household(tx, ctx);
+    const owners = this.#resolveOwners(
+      input.owners ??
+        (hh.financeStyle === 'combined'
+          ? [...hh.owners].map((memberId) => ({ memberId }))
+          : [{ memberId: ctx.memberId }]),
+      hh,
+    );
+    if (!owners.some((o) => o.memberId === ctx.memberId)) {
+      throw new Problem(
+        422,
+        'must_own',
+        'You can only add accounts you own or co-own',
+        'Include yourself as an owner.',
+      );
+    }
+    const visibility = input.visibility ?? STYLE_VISIBILITY[hh.financeStyle] ?? 'full';
+    if (visibility === 'private' && owners.length >= 2 && hh.activeMembers === 2) {
+      throw privateJointDisallowed();
+    }
+    const today = todayIn(hh.timezone);
+    if (input.openingBalance?.asOf && input.openingBalance.asOf > today) throw futureDate();
+
+    // No RETURNING: the account isn't visible until its owners exist (RLS, migration 0010).
+    await tx.insert(accounts).values({
+      id,
+      householdId: ctx.householdId,
+      name: input.name,
+      type: input.type,
+      subtype: input.subtype ?? null,
+      currency: input.currency ?? hh.baseCurrency,
+      maskLast4: input.mask ?? null,
+      visibility,
+      balanceMode: input.balanceMode ?? DEFAULT_BALANCE_MODE[input.type],
+      includeInNetWorth: input.includeInNetWorth ?? true,
+      isBusiness: input.isBusiness ?? false,
+      notesEnc: input.notes ? await this.#encryptNotes(ctx, id, input.notes) : null,
+    });
+    await tx
+      .insert(accountOwners)
+      .values(owners.map((o) => ({ accountId: id, householdId: ctx.householdId, ...o })));
+    if (input.openingBalance) {
+      await tx.insert(balanceSnapshots).values({
+        accountId: id,
+        householdId: ctx.householdId,
+        asOf: input.openingBalance.asOf ?? today,
+        balanceMinor: input.openingBalance.amountMinor,
+        source: 'manual',
+      });
+    }
+    await activity.record({
+      action: 'account.created',
+      targetType: 'account',
+      targetId: id,
+      accountId: id,
+      metadata: { type: input.type, visibility, owners: owners.map((o) => o.memberId) },
+      changes: { after: { name: input.name } },
+    });
+    return id;
   }
 
   /** ACC-06/07/11: owners edit, field-level first save wins (API conventions §8). */
