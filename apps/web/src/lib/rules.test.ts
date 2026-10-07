@@ -90,6 +90,14 @@ describe('rule suggestions', () => {
     });
   });
 
+  it('suggests adding the tags you added', () => {
+    expect(suggestRule(t, { addedTagIds: ['sub'] }, [], [], 'unc')?.actions).toEqual({
+      addTagIds: ['sub'],
+    });
+    const tagged = { ...rule({}), actions: { addTagIds: ['sub'] } } as Rule;
+    expect(suggestRule(t, { addedTagIds: ['sub'] }, [tagged], [], 'unc')).toBeNull();
+  });
+
   it('stays quiet when there’s nothing to learn, a rule already does it, or it’s muted', () => {
     expect(suggestRule(t, { categoryId: 'unc' }, [], [], 'unc')).toBeNull();
     expect(

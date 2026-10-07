@@ -112,12 +112,12 @@ export interface SuggestedRule {
 }
 
 /**
- * After you rename or recategorize a transaction: a rule that would do the same for others with
- * that description, unless one already does or you muted the description.
+ * After you rename, recategorize, or tag a transaction: a rule that would do the same for others
+ * with that description, unless one already does or you muted the description.
  */
 export function suggestRule(
   t: { originalDescription: string; accountId: string | null; amountMinor: number },
-  change: { displayName?: string; categoryId?: string | null },
+  change: { displayName?: string; categoryId?: string | null; addedTagIds?: string[] },
   rules: Rule[],
   muted: string[],
   uncategorizedId: string | null,
@@ -131,6 +131,7 @@ export function suggestRule(
   if (change.categoryId && change.categoryId !== uncategorizedId) {
     actions.categoryId = change.categoryId;
   }
+  if (change.addedTagIds?.length) actions.addTagIds = change.addedTagIds;
   if (Object.keys(actions).length === 0) return null;
   // An enabled rule that matches this transaction and already does all of it: nothing to add.
   const subject = {
@@ -145,7 +146,8 @@ export function suggestRule(
       r.enabled &&
       ruleMatches(r.conditions, subject, uncategorizedId) &&
       (!actions.rename || r.actions.rename === actions.rename) &&
-      (!actions.categoryId || r.actions.categoryId === actions.categoryId),
+      (!actions.categoryId || r.actions.categoryId === actions.categoryId) &&
+      (actions.addTagIds ?? []).every((id) => r.actions.addTagIds?.includes(id)),
   );
   if (covered) return null;
   return {

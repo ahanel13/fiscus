@@ -701,7 +701,12 @@ function TransactionDetails({
             accountId: t.account?.id ?? null,
             amountMinor: t.amountMinor,
           },
-          body as { displayName?: string; categoryId?: string | null },
+          {
+            ...(body as { displayName?: string; categoryId?: string | null }),
+            addedTagIds: Array.isArray(body.tagIds)
+              ? (body.tagIds as string[]).filter((id) => !t.tagIds.includes(id))
+              : [],
+          },
           rules,
           muted,
           categoryIndex(groups).uncategorized ?? null,
