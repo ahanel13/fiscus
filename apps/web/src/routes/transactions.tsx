@@ -61,7 +61,8 @@ import {
 import { categoryIndex, byDay, forLabel, paidByLabel } from '../lib/transactions.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
 import { rangeParams } from '../lib/ranges.js';
-import { RuleEditor, suggestMatchText } from './rules.js';
+import { RuleEditor, RuleSuggestion, suggestMatchText, useRuleSuggestionContext } from './rules.js';
+import { type SuggestedRule, suggestRule } from '../lib/rules.js';
 import { useRange } from '../lib/use-range.js';
 
 type Data<T> = { data: T };
@@ -284,15 +285,47 @@ export function TransactionsPage() {
       api<Data<BulkUpdateResult>>('PATCH', `${base(householdId)}/transactions`, {
         body: { ids: [...selected], changes },
       }),
-    onSuccess: async (r) => {
+    onSuccess: async (r, changes) => {
       setSelected(new Set());
       await invalidate();
       const { updated, refused } = r.data;
       toast(`${updated.length} updated.`, {
         ...(refused.length ? { description: `${refused.length} couldn’t be changed by you.` } : {}),
       });
+      // Categorized several from one merchant: offer a rule for the rest and for next time.
+      if (typeof changes.categoryId === 'string' && updated.length) {
+        const rows = await Promise.all(
+          updated
+            .slice(0, 20)
+            .map(
+              async (id) =>
+                (await api<Data<Transaction>>('GET', `${base(householdId)}/transactions/${id}`))
+                  .data,
+            ),
+        );
+        const texts = new Set(
+          rows.map((t) => suggestMatchText(t.originalDescription).toLowerCase()),
+        );
+        if (texts.size === 1 && rows[0]?.can.categorize) {
+          setSuggestion(
+            suggestRule(
+              {
+                originalDescription: rows[0].originalDescription,
+                accountId: rows[0].account?.id ?? null,
+                amountMinor: rows[0].amountMinor,
+              },
+              { categoryId: changes.categoryId },
+              ruleContext.rules,
+              ruleContext.muted,
+              categoryIndex(groups).uncategorized ?? null,
+            ),
+          );
+        }
+      }
     },
   });
+  const ruleContext = useRuleSuggestionContext(householdId);
+  const [suggestion, setSuggestion] = useState<SuggestedRule | null>(null);
 
   return (
     <>
@@ -361,6 +394,15 @@ export function TransactionsPage() {
               </Switch>
             </div>
 
+            {suggestion ? (
+              <RuleSuggestion
+                householdId={householdId}
+                suggestion={suggestion}
+                groups={groups}
+                members={members}
+                onDone={() => setSuggestion(null)}
+              />
+            ) : null}
             {selected.size > 0 ? (
               <div
                 role="toolbar"
@@ -557,6 +599,8 @@ export function TransactionDrawer({
 }) {
   const query = useQuery(transactionQuery(householdId, transactionId));
   const t = query.data;
+  // Kept here: the details remount after each save (keyed on the version).
+  const [suggestion, setSuggestion] = useState<SuggestedRule | null>(null);
   return (
     <Dialog
       title={t?.displayName ?? 'Transaction'}
@@ -564,6 +608,17 @@ export function TransactionDrawer({
       isOpen
       onOpenChange={(open) => !open && onClose()}
     >
+      {t && suggestion && t.can.categorize ? (
+        <div className="mb-4">
+          <RuleSuggestion
+            householdId={householdId}
+            suggestion={suggestion}
+            groups={groups}
+            members={members}
+            onDone={() => setSuggestion(null)}
+          />
+        </div>
+      ) : null}
       {t ? (
         <TransactionDetails
           key={`${t.id}:${t.version}`}
@@ -572,6 +627,7 @@ export function TransactionDrawer({
           members={members}
           groups={groups}
           onDeleted={onClose}
+          onSuggest={setSuggestion}
         />
       ) : (
         <LoadingRegion label="Loading transaction">
@@ -588,12 +644,14 @@ function TransactionDetails({
   members,
   groups,
   onDeleted,
+  onSuggest,
 }: {
   householdId: string;
   t: Transaction;
   members: HouseholdMember[];
   groups: CategoryGroup[];
   onDeleted: () => void;
+  onSuggest: (s: SuggestedRule | null) => void;
 }) {
   const invalidate = useInvalidateLedger(householdId);
   const queryClient = useQueryClient();
@@ -628,12 +686,27 @@ function TransactionDetails({
     });
     await invalidate();
   };
+  const { rules, muted } = useRuleSuggestionContext(householdId);
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api<Data<Transaction>>('PATCH', url, { body, headers: { 'if-match': `"v${t.version}"` } }),
-    onSuccess: async () => {
+    onSuccess: async (_r, body) => {
       await invalidate();
       toast('Saved.');
+      // Renamed or recategorized: offer to do the same for the others, next time too.
+      onSuggest(
+        suggestRule(
+          {
+            originalDescription: t.originalDescription,
+            accountId: t.account?.id ?? null,
+            amountMinor: t.amountMinor,
+          },
+          body as { displayName?: string; categoryId?: string | null },
+          rules,
+          muted,
+          categoryIndex(groups).uncategorized ?? null,
+        ),
+      );
     },
     onError,
   });

@@ -19,6 +19,7 @@ import {
   categoriesQuery,
   householdQuery,
   membersQuery,
+  preferencesQuery,
   tagsQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
@@ -43,7 +44,15 @@ import {
   TextField,
   toast,
 } from '../components/ui.js';
-import { categoryNames, describeActions, describeConditions } from '../lib/rules.js';
+import {
+  categoryNames,
+  describeActions,
+  describeConditions,
+  MUTED_KEY,
+  type SuggestedRule,
+} from '../lib/rules.js';
+
+export { suggestMatchText } from '../lib/rules.js';
 
 // Rules (docs/design/imports.md §3, #41): conditions → actions on transactions as they arrive,
 // and on existing ones on request.
@@ -287,17 +296,6 @@ function fromDraft(d: Draft): { conditions: RuleConditions; actions: RuleActions
   if (d.markReviewed) actions.markReviewed = true;
   if (d.exclude) actions.exclude = true;
   return { conditions, actions };
-}
-
-/** "TRADER JOE S #123 SALT LAKE" → "TRADER JOE S": the words before store numbers. */
-export function suggestMatchText(description: string): string {
-  const words = description.trim().split(/\s+/);
-  const kept: string[] = [];
-  for (const w of words) {
-    if (/[\d#*]/.test(w)) break;
-    kept.push(w);
-  }
-  return (kept.length ? kept : words.slice(0, 2)).join(' ');
 }
 
 export function RuleEditor({
@@ -697,5 +695,139 @@ function ApplyDialog({
         </DialogActions>
       </div>
     </Dialog>
+  );
+}
+
+// ── Suggestions ────────────────────────────────────────────────────────────────────────────
+
+/** Rules and the descriptions you muted, for deciding whether to suggest one. */
+export function useRuleSuggestionContext(householdId: string) {
+  const rules = useQuery(rulesQuery(householdId)).data ?? [];
+  const prefs = useQuery(preferencesQuery(householdId)).data ?? {};
+  const muted = Array.isArray(prefs[MUTED_KEY]) ? (prefs[MUTED_KEY] as string[]) : [];
+  return { rules, muted };
+}
+
+/**
+ * "Make this a rule?" after you rename or recategorize: create it (and apply it to the others it
+ * matches), edit it first, or stop suggesting it for that description.
+ */
+export function RuleSuggestion({
+  householdId,
+  suggestion,
+  groups,
+  members,
+  onDone,
+}: {
+  householdId: string;
+  suggestion: SuggestedRule;
+  groups: CategoryGroup[];
+  members: HouseholdMember[];
+  onDone: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const household = useQuery(householdQuery(householdId)).data;
+  const tags = useQuery(tagsQuery(householdId)).data ?? [];
+  const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
+  const { muted } = useRuleSuggestionContext(householdId);
+  const [applyToOthers, setApplyToOthers] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const body = { conditions: suggestion.conditions, actions: suggestion.actions };
+  const preview = useQuery({
+    queryKey: ['households', householdId, 'rules', 'preview', JSON.stringify(body)],
+    queryFn: async () =>
+      (await api<Data<RulePreview>>('POST', `${base(householdId)}/rules/preview`, { body })).data,
+  });
+  const others = preview.data?.total ?? 0;
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['households', householdId] });
+  const create = useMutation({
+    mutationFn: async () => {
+      const r = await api<Data<Rule>>('POST', `${base(householdId)}/rules`, { body });
+      if (!applyToOthers || others === 0) return 0;
+      return (
+        await api<Data<{ changed: number }>>(
+          'POST',
+          `${base(householdId)}/rules/${r.data.id}/apply`,
+        )
+      ).data.changed;
+    },
+    onSuccess: async (changed) => {
+      await refresh();
+      toast('Rule created.', {
+        ...(changed
+          ? { description: `${changed.toLocaleString('en-US')} other transactions changed too.` }
+          : {}),
+      });
+      onDone();
+    },
+    onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
+  });
+  const mute = useMutation({
+    mutationFn: () =>
+      api('PUT', `${base(householdId)}/preferences/${MUTED_KEY}`, {
+        body: { value: [...muted, suggestion.matchText].slice(-50) },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: preferencesQuery(householdId).queryKey });
+      onDone();
+    },
+  });
+  const names = {
+    categories: categoryNames(groups),
+    tags: new Map(tags.map((t) => [t.id, t.name])),
+    members: new Map(members.map((m) => [m.id, m.displayName])),
+  };
+
+  return (
+    <div
+      role="region"
+      aria-label="Rule suggestion"
+      className="space-y-3 rounded-lg border border-accent/40 bg-accent-soft p-3 text-sm"
+    >
+      <p className="flex items-start gap-2">
+        <Wand2 aria-hidden className="mt-0.5 size-4 shrink-0 text-accent-text" />
+        <span>
+          <span className="font-medium">Make this a rule?</span> When the description contains “
+          {suggestion.matchText}”: {describeActions(suggestion.actions, names)}.
+        </span>
+      </p>
+      {others > 0 ? (
+        <Checkbox isSelected={applyToOthers} onChange={setApplyToOthers}>
+          Also change the {others.toLocaleString('en-US')} other{' '}
+          {others === 1 ? 'transaction' : 'transactions'} it matches
+        </Checkbox>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" isPending={create.isPending} onPress={() => create.mutate()}>
+          Create rule
+        </Button>
+        <Button size="sm" variant="secondary" onPress={() => setEditing(true)}>
+          Edit first
+        </Button>
+        <Button size="sm" variant="ghost" onPress={onDone}>
+          Not now
+        </Button>
+        <Button size="sm" variant="ghost" isPending={mute.isPending} onPress={() => mute.mutate()}>
+          Don’t suggest for “{suggestion.matchText}”
+        </Button>
+      </div>
+      {editing ? (
+        <RuleEditor
+          householdId={householdId}
+          rule={null}
+          initial={body}
+          groups={groups}
+          tags={tags}
+          members={members}
+          accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+          currency={household?.baseCurrency ?? 'USD'}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            void refresh();
+            onDone();
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
