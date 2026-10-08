@@ -1563,7 +1563,17 @@ function DoneStep({
     if (ran.current) return;
     ran.current = true;
     startImport(householdId, choices, rows)
-      .then((run) => send({ run, done: new Set(), added: 0, balances: 0, rows: [], failed: null }))
+      .then((run) =>
+        send({
+          run,
+          done: new Set(),
+          added: 0,
+          balances: 0,
+          transfers: 0,
+          rows: [],
+          failed: null,
+        }),
+      )
       .catch((err: unknown) => {
         setError(
           err instanceof ApiError
@@ -1647,6 +1657,13 @@ function DoneStep({
             {n(state.added)} transactions and {n(state.balances)} balances imported into{' '}
             {n(state.done.size)} {state.done.size === 1 ? 'account' : 'accounts'} in {elapsed}s.
           </p>
+          {state.transfers ? (
+            <p className="text-sm text-muted">
+              {n(state.transfers)} {state.transfers === 1 ? 'transfer' : 'transfers'} between your
+              accounts linked, so {state.transfers === 1 ? 'it doesn’t' : 'they don’t'} count as
+              spending or income.
+            </p>
+          ) : null}
           {state.failed ? (
             <Alert>
               {keyName(state.failed.key)} didn’t finish: {state.failed.message}. The accounts before
@@ -1664,11 +1681,7 @@ function DoneStep({
             ) : (
               <>
                 {review ? (
-                  <ButtonLink
-                    to="/h/$householdId/transactions"
-                    params={{ householdId }}
-                    search={{ review: 'needs_review' }}
-                  >
+                  <ButtonLink to="/h/$householdId/review" params={{ householdId }}>
                     Review {n(review)} {review === 1 ? 'transaction' : 'transactions'}
                   </ButtonLink>
                 ) : null}

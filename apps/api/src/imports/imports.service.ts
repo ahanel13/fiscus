@@ -43,6 +43,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { AccountsService } from '../accounts/accounts.service.js';
 import { recomputeBalances } from '../accounts/balances.js';
+import { detectTransfers, unlinkTransfers } from '../ledger/transfers.js';
 import { activeRules, runRules } from '../rules/engine.js';
 import { addDays, todayIn } from '../common/dates.js';
 import { violatedConstraint } from '../common/db-errors.js';
@@ -351,6 +352,8 @@ export class ImportsService {
             true,
           )
         : [];
+      // Then transfers between your accounts (§5): unambiguous pairs only, both accounts yours.
+      const transfersLinked = await detectTransfers(tx, activity, inserted, await accessLevels(tx));
 
       const txnDays = new Set(await this.#transactionDays(tx, batch.accountId));
       const balances = this.#balancesToStore(input.balances, txnDays, today);
@@ -377,6 +380,7 @@ export class ImportsService {
           transactions: accepted.length,
           balances: balances.length,
           changedByRules: ruled.length,
+          transfersLinked,
         },
       });
       results.sort((x, y) => x.line - y.line);
@@ -384,6 +388,7 @@ export class ImportsService {
         added: accepted.length,
         balances: balances.length,
         changedByRules: ruled.length,
+        transfersLinked,
         rows: results,
       };
     });
@@ -1078,7 +1083,18 @@ export class ImportsService {
       .update(transactions)
       .set({ deletedAt: now, dedupeKey: null })
       .where(and(eq(transactions.importBatchId, batch.id), isNull(transactions.deletedAt)))
-      .returning({ id: transactions.id, accountId: transactions.accountId });
+      .returning({
+        id: transactions.id,
+        accountId: transactions.accountId,
+        transferGroupId: transactions.transferGroupId,
+      });
+    // Transfers it linked: the other legs stand alone again.
+    await unlinkTransfers(
+      tx,
+      activity,
+      [...new Set(reverted.flatMap((r) => (r.transferGroupId ? [r.transferGroupId] : [])))],
+      'reverted',
+    );
     // Rows moved to another account since (TXN-12): that account's balance changes too.
     for (const r of reverted) if (r.accountId !== batch.accountId) moved.add(r.accountId);
     for (const ids of chunks(reverted.map((r) => r.id))) {

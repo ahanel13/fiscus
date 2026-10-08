@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { api } from '../api/client.js';
-import { householdQuery, meQuery, membersQuery } from '../api/queries.js';
+import { householdQuery, meQuery, membersQuery, reviewCountQuery } from '../api/queries.js';
 import { rememberHousehold } from '../lib/last-household.js';
 import { GROUP_LABELS, phoneTabs, type Section, sectionPath, visibleSections } from '../lib/nav.js';
 import { useShortcuts } from '../lib/shortcuts.js';
@@ -25,6 +25,7 @@ import { applyTheme } from '../lib/theme.js';
 import { CommandPalette } from './CommandPalette.js';
 import {
   Avatar,
+  Badge,
   Button,
   Dialog,
   Kbd,
@@ -47,6 +48,17 @@ export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // What waits in the review queue (#44), shown on Transactions. Viewers can't review.
+  const toReview =
+    useQuery({ ...reviewCountQuery(householdId), enabled: household.you.role !== 'viewer' }).data ??
+    0;
+  const reviewBadge = (s: Section, className?: string) =>
+    s.id === 'transactions' && toReview > 0 ? (
+      <Badge tone="accent" className={className}>
+        {toReview > 99 ? '99+' : toReview}
+        <span className="sr-only"> to review</span>
+      </Badge>
+    ) : null;
 
   rememberHousehold(householdId);
   const sections = visibleSections(household, members.length);
@@ -140,6 +152,7 @@ export function AppShell() {
                         )}
                       >
                         <s.icon aria-hidden className="size-4" /> {s.label}
+                        {reviewBadge(s, 'ml-auto')}
                       </Link>
                     </li>
                   ))}
@@ -199,7 +212,11 @@ export function AppShell() {
                 isActive(s) ? 'text-accent' : 'text-muted',
               )}
             >
-              <s.icon aria-hidden className="size-5" /> {s.label.split(' ')[0]}
+              <span className="relative">
+                <s.icon aria-hidden className="size-5" />
+                {reviewBadge(s, 'absolute -top-2 left-3 px-1.5 py-0 text-[10px]')}
+              </span>
+              {s.label.split(' ')[0]}
             </Link>
           ))}
           <Button

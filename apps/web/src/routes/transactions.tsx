@@ -16,14 +16,25 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { useParams, useSearch } from '@tanstack/react-router';
-import { ArrowLeftRight, Plus, Search, SplitSquareHorizontal, Upload, Wand2 } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowLeftRight,
+  ClipboardCheck,
+  Link2,
+  Plus,
+  Search,
+  SplitSquareHorizontal,
+  Unlink,
+  Upload,
+  Wand2,
+} from 'lucide-react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
   accountsQuery,
   categoriesQuery,
   householdQuery,
   membersQuery,
+  reviewCountQuery,
   tagsQuery,
   type TransactionFilters,
   transactionQuery,
@@ -47,6 +58,8 @@ import {
   DialogTrigger,
   Form,
   LoadingRegion,
+  Radio,
+  RadioGroup,
   SegmentedControl,
   Select,
   SelectItem,
@@ -69,7 +82,7 @@ type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
 const ALL = '__all__';
 
-function useInvalidateLedger(householdId: string) {
+export function useInvalidateLedger(householdId: string) {
   const queryClient = useQueryClient();
   return () =>
     Promise.all(
@@ -80,7 +93,7 @@ function useInvalidateLedger(householdId: string) {
 }
 
 /** A category picker grouped like the household's categories. */
-function CategorySelect({
+export function CategorySelect({
   groups,
   value,
   onChange,
@@ -215,6 +228,7 @@ export function TransactionList({
                       {t.reviewStatus === 'needs_review' ? (
                         <Badge tone="accent">Review</Badge>
                       ) : null}
+                      {t.transfer ? <Badge>{transferLabel(t, members)}</Badge> : null}
                       {t.excluded ? <Badge>Excluded</Badge> : null}
                       {t.dateEdited ? <Badge>Date moved</Badge> : null}
                     </span>
@@ -266,7 +280,7 @@ export function TransactionsPage() {
     return () => clearTimeout(t);
   }, [text]);
   const [account, setAccount] = useState<string>(ALL);
-  // ?review=needs_review opens the list on what needs review (the import's "Review" link).
+  // ?review=needs_review opens the list on what needs review.
   const [review, setReview] = useState(search.review === 'needs_review');
   const filters: TransactionFilters = {
     lens,
@@ -279,6 +293,9 @@ export function TransactionsPage() {
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const ownsAny = accounts.some((a) => a.yourAccess === 'owner');
+  const toReview =
+    useQuery({ ...reviewCountQuery(householdId), enabled: household.you.role !== 'viewer' }).data ??
+    0;
 
   const bulk = useMutation({
     mutationFn: (changes: Record<string, unknown>) =>
@@ -336,7 +353,11 @@ export function TransactionsPage() {
         members={members}
         action={
           household.you.role !== 'viewer' ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <ButtonLink variant="ghost" to="/h/$householdId/review" params={{ householdId }}>
+                <ClipboardCheck aria-hidden className="size-4" /> Review
+                {toReview ? <Badge tone="accent">{toReview}</Badge> : null}
+              </ButtonLink>
               <ButtonLink variant="ghost" to="/h/$householdId/rules" params={{ householdId }}>
                 <Wand2 aria-hidden className="size-4" /> Rules
               </ButtonLink>
@@ -638,7 +659,7 @@ export function TransactionDrawer({
   );
 }
 
-function TransactionDetails({
+export function TransactionDetails({
   householdId,
   t,
   members,
@@ -745,8 +766,15 @@ function TransactionDetails({
   });
 
   const forIds = t.attribution.map((a) => a.memberId);
+  // These details remount after every save (keyed on the version), taking the control you used
+  // with them. Keep focus here rather than letting it fall to the page, where Escape and the
+  // keyboard stop reaching the drawer.
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!document.activeElement || document.activeElement === document.body) root.current?.focus();
+  }, []);
   return (
-    <div className="space-y-5">
+    <div ref={root} tabIndex={-1} className="space-y-5 outline-none">
       <div>
         <Amount
           minor={t.amountMinor}
@@ -782,6 +810,8 @@ function TransactionDetails({
           />
         ) : null}
       </div>
+
+      <TransferSection householdId={householdId} t={t} members={members} />
 
       <Form
         onSubmit={(e) => {
@@ -1254,6 +1284,159 @@ const MOVE_REFUSALS: Record<BulkUpdateResult['refused'][number]['code'], string>
   different_currency: 'in another currency',
   already_there: 'already imported into that account',
 };
+
+/** "Transfer to Savings", or "Transfer from Bea" when you can't see the account (F1). */
+export function transferLabel(t: Transaction, members: HouseholdMember[]): string {
+  const other =
+    t.transfer?.account?.name ??
+    (t.transfer?.ownerIds ?? [])
+      .map((id) => {
+        const m = members.find((x) => x.id === id);
+        return m?.isYou ? 'you' : (m?.displayName ?? 'someone');
+      })
+      .join(' and ');
+  return `Transfer ${t.amountMinor < 0 ? 'to' : 'from'} ${other || 'another account'}`;
+}
+
+/**
+ * The transfer this transaction is one side of, with Unlink; or "Link as a transfer", choosing the
+ * other side among transactions of the opposite amount in your other accounts (TXN-08).
+ */
+function TransferSection({
+  householdId,
+  t,
+  members,
+}: {
+  householdId: string;
+  t: Transaction;
+  members: HouseholdMember[];
+}) {
+  const invalidate = useInvalidateLedger(householdId);
+  const [open, setOpen] = useState(false);
+  const [choice, setChoice] = useState<string | null>(null);
+  const url = `${base(householdId)}/transactions/${t.id}`;
+  const candidates = useQuery({
+    queryKey: ['households', householdId, 'transactions', 'transfer-candidates', t.id],
+    queryFn: async () => (await api<Data<Transaction[]>>('GET', `${url}/transfer-candidates`)).data,
+    enabled: open,
+  });
+  const link = useMutation({
+    mutationFn: (transactionId: string) =>
+      api('POST', `${url}/transfer`, { body: { transactionId } }),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Linked as a transfer.', {
+        description: 'Both sides are in Transfers now, so they don’t count as spending or income.',
+      });
+    },
+    onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
+  });
+  const unlink = useMutation({
+    mutationFn: () => api('DELETE', `${url}/transfer`),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Transfer unlinked.', { description: 'Each side has its earlier category back.' });
+    },
+    onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
+  });
+
+  if (t.transfer) {
+    return (
+      <section className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-2 px-3 py-2">
+        <ArrowLeftRight aria-hidden className="size-4 text-muted" />
+        <p className="mr-auto text-sm">
+          {transferLabel(t, members)}
+          {t.transfer.account?.mask ? (
+            <span className="text-muted"> ··{t.transfer.account.mask}</span>
+          ) : null}
+        </p>
+        {t.can.transfer && t.transfer.account ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={() => unlink.mutate()}
+            isPending={unlink.isPending}
+          >
+            <Unlink aria-hidden className="size-4" /> Unlink
+          </Button>
+        ) : null}
+      </section>
+    );
+  }
+  if (!t.can.transfer || t.hasSplits || t.parentId || t.pending) return null;
+  const list = candidates.data ?? [];
+  // Inline rather than a nested dialog: the toggle stays put, so focus has somewhere to stay.
+  return (
+    <div className="space-y-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-ml-2.5"
+        aria-expanded={open}
+        onPress={() => setOpen(!open)}
+      >
+        <Link2 aria-hidden className="size-4" /> Link as a transfer
+      </Button>
+      {open ? (
+        <section
+          aria-label="Link as a transfer"
+          className="space-y-3 rounded-lg border border-border p-3"
+        >
+          <p className="text-sm text-muted">
+            Money moved between your own accounts isn’t spending or income. Pick the other side:
+          </p>
+          {candidates.isPending ? (
+            <LoadingRegion label="Finding the other side">
+              <Skeleton className="h-24" />
+            </LoadingRegion>
+          ) : list.length === 0 ? (
+            <Alert tone="info">
+              Nothing matches. The other side is the same amount{' '}
+              {t.amountMinor < 0 ? 'coming into' : 'going out of'} another account you own, within
+              about a week.
+            </Alert>
+          ) : (
+            <RadioGroup
+              aria-label="The other side"
+              value={choice}
+              onChange={setChoice}
+              className="gap-0 divide-y divide-border rounded-lg border border-border"
+            >
+              {list.map((c) => (
+                <Radio key={c.id} value={c.id} className="px-3 py-2">
+                  <span className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {c.account?.name ?? c.displayName}
+                      </span>
+                      <span className="block truncate text-xs text-muted">
+                        <DateText value={c.date} /> · {c.displayName}
+                      </span>
+                    </span>
+                    <Amount minor={c.amountMinor} currency={c.currency} className="text-sm" />
+                  </span>
+                </Radio>
+              ))}
+            </RadioGroup>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" size="sm" onPress={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              isDisabled={!choice || !list.some((c) => c.id === choice)}
+              isPending={link.isPending}
+              onPress={() => choice && link.mutate(choice)}
+            >
+              Link
+            </Button>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
 
 /** "Make a rule" from a transaction: a new rule matching its description, doing what it has. */
 function MakeRule({

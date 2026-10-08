@@ -173,10 +173,11 @@ A rule is **conditions → actions**, run on transactions as they arrive (import
 
 ## 4. Review queue (#44)
 
-- A **Review** view: transactions that need review, oldest first, one at a time with the
-  drawer open, or as a list with bulk "Mark reviewed".
+- A **Review** page (Transactions → Review): transactions that need review **and that you can
+  categorize**, oldest first, one at a time with its details beside the list, or several at once
+  with "Mark reviewed".
 - Keyboard: `j`/`k` next and previous, `c` category, `r` mark reviewed and go to the next,
-  `e` exclude.
+  `e` exclude. Keys work while the page has focus, not while typing or in a menu or dialog.
 - A **count badge** on Transactions in the navigation when something needs review.
 - Reviewer assignment and reminders are #45 (M1.5).
 
@@ -187,10 +188,18 @@ linked by `transfer_group_id`, both in the **Transfer** category (left out of ca
 
 - **Detection** runs on import and on manual entry: the other leg is a transaction of the
   **opposite amount**, in the same currency, on **another account**, within **3 days**, not
-  already linked.
-- **Auto-link only when it's unambiguous and private-safe:** exactly one candidate, and the
-  person importing can see both accounts. Otherwise nothing changes automatically.
-- **Manual link and unlink** from the drawer. Linking needs ownership of both legs (TXN-08).
+  already linked. Both legs must be **uncategorized or in a transfer category**: a purchase filed
+  under Groceries isn't a transfer just because a refund of the same amount landed elsewhere.
+- **Auto-link only when it's unambiguous and private-safe:** exactly one candidate, from both
+  sides (two $500 deposits for one $500 withdrawal links neither), and the person importing
+  **owns both accounts**, as linking by hand needs (TXN-08). Otherwise nothing changes
+  automatically.
+- **Manual link and unlink** from the drawer ("Link as a transfer" suggests transactions of the
+  opposite amount in your other accounts, within 9 days). Both need ownership of both legs (TXN-08).
+- Linking moves each leg to **Transfer**, unless it's in a transfer category already (Credit Card
+  Payment stays), and remembers the category it had. Rules leave a linked leg's category alone.
+- Deleting one leg, undoing its import, or moving it into the other leg's account unlinks the
+  pair. A linked leg can't be split until it's unlinked.
 - **Across privacy lines** (your checking to a partner's private savings): you see the other
   side as the person, "Transfer to Bea", never the account (F1). Suggesting a link that the
   other owner confirms needs notifications (M4); until then, such pairs stay unlinked.
@@ -207,7 +216,9 @@ linked by `transfer_group_id`, both in the **Transfer** category (left out of ca
 | `GET`/`POST`/`PATCH`/`DELETE import-profiles` | OWN, MEM | Saved mappings, household-wide |
 | `GET`/`POST`/`PATCH`/`DELETE rules`, `PUT rules/order` | RULE-01/03 | |
 | `POST rules/:id/preview`, `POST rules/:id/apply` | RULE-06 | Apply to existing, visible rows only |
+| `GET transactions/:id/transfer-candidates` | Owner of the transaction's account | Possible other legs in your accounts, closest date first |
 | `POST transactions/:id/transfer`, `DELETE …/transfer` | TXN-08 | Link to a given transaction, or unlink |
+| `GET transactions/review-count`, `GET transactions?order=oldest` | Any member | The review badge; the queue's order |
 
 ## 7. Decisions to confirm in review
 1. **Parse files in the browser** and keep no raw files on the server (§1).

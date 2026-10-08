@@ -141,7 +141,13 @@ export const transactions = pgTable(
     categoryId: uuid(),
     reviewStatus: reviewStatus().notNull().default('needs_review'),
     excluded: boolean().notNull().default(false),
+    /** Links both legs of a transfer between accounts (#40, imports.md §5). */
     transferGroupId: uuid(),
+    /**
+     * The category a leg had before it was linked, put back when it's unlinked. No foreign key:
+     * checked when it's restored (a category may be gone by then).
+     */
+    transferPreviousCategoryId: uuid(),
     isSettlement: boolean().notNull().default(false),
     /** Null = inherit from the account. */
     isBusiness: boolean(),
@@ -189,6 +195,13 @@ export const transactions = pgTable(
     index().on(t.accountId, t.effectiveDate.desc()),
     index().on(t.householdId, t.categoryId, t.effectiveDate),
     index().on(t.parentId),
+    // Finding the other leg of a transfer: the opposite amount, a few days either side.
+    index('transactions_transfer_match')
+      .on(t.householdId, t.amountMinor, t.effectiveDate)
+      .where(sql`${t.transferGroupId} IS NULL AND ${t.deletedAt} IS NULL`),
+    index('transactions_transfer_group')
+      .on(t.transferGroupId)
+      .where(sql`${t.transferGroupId} IS NOT NULL`),
     index('transactions_review_queue')
       .on(t.householdId)
       .where(sql`${t.reviewStatus} = 'needs_review' AND ${t.deletedAt} IS NULL`),

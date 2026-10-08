@@ -168,6 +168,8 @@ export const transactionsQuerySchema = z.object({
   maxAmount: z.coerce.number().int().optional(),
   review: z.enum(['needs_review', 'reviewed']).optional(),
   includeExcluded: z.enum(['true', 'false']).default('true'),
+  /** Newest first, or oldest first (the review queue). */
+  order: z.enum(['newest', 'oldest']).default('newest'),
   cursor: z.string().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -205,14 +207,38 @@ export interface Transaction {
   myNote: string | null;
   parentId: string | null;
   hasSplits: boolean;
-  /** What you may do with it (permissions §4.3–4.5). */
+  /** The other side, when this is one leg of a transfer between accounts (#40). */
+  transfer: TransferCounterpart | null;
+  /** What you may do with it (permissions §4.3–4.5, TXN-08). */
   can: {
     categorize: boolean;
     edit: boolean;
     attribute: boolean;
     writeSharedNote: boolean;
+    /** Link it to its other leg, or unlink it: you own this leg's account. */
+    transfer: boolean;
   };
   version: number;
+}
+
+/**
+ * The other leg of a transfer. Its account is named only when you can see it; otherwise only the
+ * people who own it are ("Transfer to Bea", F1).
+ */
+export interface TransferCounterpart {
+  /** The other transaction, when you can see its account. */
+  transactionId: string | null;
+  account: { id: string; name: string; mask: string | null } | null;
+  /** Owners of the other leg's account. */
+  ownerIds: string[];
+}
+
+/** Link a transaction to the other leg of a transfer (TXN-08). */
+export const linkTransferSchema = z.object({ transactionId: z.uuid() });
+
+/** Transactions waiting for you in the review queue (#44): ones you can categorize. */
+export interface ReviewCount {
+  count: number;
 }
 
 export interface BulkUpdateResult {

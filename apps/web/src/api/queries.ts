@@ -13,6 +13,7 @@ import type {
   Lens,
   Me,
   NetWorth,
+  ReviewCount,
   SessionSummary,
   Tag,
   Transaction,
@@ -111,6 +112,8 @@ export interface TransactionFilters {
   categories?: string[];
   q?: string;
   review?: 'needs_review' | 'reviewed';
+  /** Newest first unless `oldest` (the review queue). */
+  order?: 'newest' | 'oldest';
 }
 
 /** Pages of transactions, newest first, by cursor. */
@@ -126,6 +129,7 @@ export const transactionsQuery = (id: string, filters: TransactionFilters) =>
       if (filters.categories?.length) params.set('categories', filters.categories.join(','));
       if (filters.q) params.set('q', filters.q);
       if (filters.review) params.set('review', filters.review);
+      if (filters.order) params.set('order', filters.order);
       if (pageParam) params.set('cursor', pageParam);
       return api<{ data: Transaction[]; meta: { nextCursor: string | null } }>(
         'GET',
@@ -133,6 +137,15 @@ export const transactionsQuery = (id: string, filters: TransactionFilters) =>
       );
     },
     getNextPageParam: (last) => last.meta.nextCursor ?? undefined,
+  });
+
+/** How many transactions wait for you in the review queue (#44): the badge on Transactions. */
+export const reviewCountQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'transactions', 'review-count'],
+    queryFn: async () =>
+      (await api<Data<ReviewCount>>('GET', `${hh(id)}/transactions/review-count`)).data.count,
+    staleTime: 30_000,
   });
 
 export const transactionQuery = (id: string, transactionId: string) =>

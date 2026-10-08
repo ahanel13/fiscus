@@ -340,6 +340,31 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     expect(JSON.stringify(r.body)).not.toContain(f.tPriv);
   },
   'RULE-06/VIEW': async () => refused(await f.V.post(url('/rules/preview'), PREVIEW())),
+  // Linking a transfer needs ownership of both legs' accounts (acct-own, both legs visible).
+  'TXN-08/OWN': async () => {
+    const out = await txn(f.A, f.accA, -7777);
+    const into = await txn(f.A, f.accAview, 7777);
+    // Entered a day apart is still within detection's window, so it may be linked already.
+    if ((await f.A.get(url(`/transactions/${out}`))).body.data.transfer === null) {
+      ok(await f.A.post(url(`/transactions/${out}/transfer`), { transactionId: into }));
+    }
+    ok(await f.A.request('DELETE', url(`/transactions/${out}/transfer`)));
+    ok(await f.A.post(url(`/transactions/${out}/transfer`), { transactionId: into }));
+  },
+  'TXN-08/MEM': async () => {
+    const out = await txn(f.B, f.accB, -8888);
+    const extra = await account(f.B);
+    const into = await txn(f.B, extra, 8888);
+    ok(await f.B.request('DELETE', url(`/transactions/${out}/transfer`)));
+    ok(await f.B.post(url(`/transactions/${out}/transfer`), { transactionId: into }));
+    // One leg in an account they only see (full access): refused.
+    const theirs = await txn(f.A, f.accA, 9999);
+    const mine = await txn(f.B, f.accB, -9999);
+    refused(await f.B.post(url(`/transactions/${mine}/transfer`), { transactionId: theirs }));
+    refused(await f.B.post(url(`/transactions/${f.tPriv}/transfer`), { transactionId: mine }), 404);
+  },
+  'TXN-08/VIEW': async () =>
+    refused(await f.V.post(url(`/transactions/${f.tA}/transfer`), { transactionId: f.tB })),
   // Moving needs ownership of both accounts (acct-own).
   'TXN-12/OWN': async () => {
     const t = await txn(f.A, f.accA);
