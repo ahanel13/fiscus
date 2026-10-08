@@ -48,26 +48,46 @@ const detectable = (r: Row, cats: TransferCategories) =>
     r.categoryId === cats.uncategorized ||
     cats.transferKind.has(r.categoryId));
 
-type Leg = Pick<Row, 'id' | 'accountId' | 'amountMinor' | 'currency' | 'effectiveDate'>;
+/** One side of a possible transfer: a transaction, or a file row not imported yet (preview). */
+export type Leg = Pick<Row, 'id' | 'accountId' | 'amountMinor' | 'currency' | 'effectiveDate'>;
 
 const DAY_MS = 86_400_000;
 const shiftDays = (date: string, days: number) =>
   new Date(Date.parse(date) + days * DAY_MS).toISOString().slice(0, 10);
 
+/** The opposite amount, the same currency, another account, within the window. */
+const legsMatch = (a: Leg, b: Leg) =>
+  a.id !== b.id &&
+  a.amountMinor === -b.amountMinor &&
+  a.currency === b.currency &&
+  a.accountId !== b.accountId &&
+  Math.abs(Date.parse(a.effectiveDate) - Date.parse(b.effectiveDate)) <=
+    TRANSFER_WINDOW_DAYS * DAY_MS;
+
+/** Pairs of legs matching each other, from two lists, grouped by amount to stay linear. */
+function pairsBetween(from: Leg[], to: Leg[]): [string, string][] {
+  const byAmount = Map.groupBy(to, (o) => o.amountMinor);
+  return from.flatMap((n) =>
+    (byAmount.get(-n.amountMinor) ?? [])
+      .filter((o) => legsMatch(n, o))
+      .map((o): [string, string] => [n.id, o.id]),
+  );
+}
+
 /**
- * Pairs of (leg in `legs`, possible other leg) the caller can see: the opposite amount, the same
- * currency, another account, within the window, not linked, uncategorized or a transfer. One
- * query by amount, then paired here: a self-join in SQL grows with the whole ledger.
+ * Transactions the caller can see that could be the other leg of any of `legs`: the opposite
+ * amount within the window, not linked, uncategorized or a transfer. One query by amount, paired
+ * in code: a self-join in SQL grows with the whole ledger.
  */
-async function matches(
+async function ledgerCandidates(
   tx: Executor,
   legs: Leg[],
   cats: TransferCategories,
-): Promise<{ pairs: [string, string][]; others: Leg[] }> {
-  if (legs.length === 0) return { pairs: [], others: [] };
+): Promise<Leg[]> {
+  if (legs.length === 0) return [];
   const eligible = [...cats.transferKind, ...(cats.uncategorized ? [cats.uncategorized] : [])];
   const dates = legs.map((l) => l.effectiveDate).sort();
-  const others = await tx
+  return tx
     .select({
       id: transactions.id,
       accountId: transactions.accountId,
@@ -89,27 +109,52 @@ async function matches(
         or(isNull(transactions.categoryId), inArray(transactions.categoryId, eligible)),
       ),
     );
-  const byAmount = Map.groupBy(others, (o) => o.amountMinor);
-  const pairs: [string, string][] = [];
-  for (const n of legs) {
-    for (const o of byAmount.get(-n.amountMinor) ?? []) {
-      if (
-        o.currency === n.currency &&
-        o.accountId !== n.accountId &&
-        Math.abs(Date.parse(o.effectiveDate) - Date.parse(n.effectiveDate)) <=
-          TRANSFER_WINDOW_DAYS * DAY_MS
-      ) {
-        pairs.push([n.id, o.id]);
-      }
-    }
-  }
-  return { pairs, others };
 }
 
 /**
- * Links the transfers among `ids` that are unambiguous: each leg has exactly one possible other
- * leg, and the caller owns both accounts (TXN-08). Anything else is left as it is. Runs on import
- * and on manual entry. Returns how many pairs it linked.
+ * The unambiguous transfers for `legs` (already eligible: unlinked, uncategorized or a transfer):
+ * each side has exactly one possible other side, among `legs` and the ledger, and the caller owns
+ * both accounts (TXN-08). `legs` may be transactions or, for a preview, file rows not stored yet.
+ * Returns the pairs, each with a leg from `legs` first, and the ledger legs involved.
+ */
+export async function findTransfers(
+  tx: Executor,
+  legs: Leg[],
+  cats: TransferCategories,
+  owns: (accountId: string) => boolean,
+): Promise<{ pairs: [Leg, Leg][]; ledger: Leg[] }> {
+  const mine = new Set(legs.map((l) => l.id));
+  const fromLedger = (await ledgerCandidates(tx, legs, cats)).filter((o) => !mine.has(o.id));
+  const first = [...pairsBetween(legs, legs), ...pairsBetween(legs, fromLedger)];
+  if (first.length === 0) return { pairs: [], ledger: [] };
+  // Every possible leg of every ledger leg involved, so "exactly one" holds from both sides.
+  const paired = new Set(first.map(([, b]) => b));
+  const ledger = fromLedger.filter((o) => paired.has(o.id));
+  const second = pairsBetween(ledger, await ledgerCandidates(tx, ledger, cats));
+  const candidates = new Map<string, Set<string>>();
+  const add = (a: string, b: string) => candidates.set(a, (candidates.get(a) ?? new Set()).add(b));
+  for (const [a, b] of [...first, ...second]) {
+    add(a, b);
+    add(b, a);
+  }
+  const byId = new Map<string, Leg>([...ledger, ...legs].map((l) => [l.id, l]));
+  const pairs: [Leg, Leg][] = [];
+  const taken = new Set<string>();
+  for (const a of legs) {
+    const options = candidates.get(a.id);
+    if (options?.size !== 1) continue;
+    const b = byId.get([...options][0]!);
+    if (!b || candidates.get(b.id)?.size !== 1 || taken.has(a.id) || taken.has(b.id)) continue;
+    if (!owns(a.accountId) || !owns(b.accountId)) continue;
+    taken.add(a.id).add(b.id);
+    pairs.push([a, b]);
+  }
+  return { pairs, ledger };
+}
+
+/**
+ * Links the transfers among `ids` that are unambiguous (findTransfers). Anything else is left as
+ * it is. Runs on import and on manual entry. Returns how many pairs it linked.
  */
 export async function detectTransfers(
   tx: Executor,
@@ -125,30 +170,12 @@ export async function detectTransfers(
       .from(transactions)
       .where(and(inArray(transactions.id, ids), isNull(transactions.deletedAt)))
   ).filter((r) => detectable(r, cats));
-  const first = await matches(tx, rows, cats);
-  if (first.pairs.length === 0) return 0;
-  // Every possible leg of every possible other leg, so "exactly one" holds from both sides.
-  const paired = new Set(first.pairs.map(([, b]) => b));
-  const others = first.others.filter((o) => paired.has(o.id));
-  const candidates = new Map<string, Set<string>>();
-  const add = (a: string, b: string) => candidates.set(a, (candidates.get(a) ?? new Set()).add(b));
-  for (const [a, b] of [...first.pairs, ...(await matches(tx, others, cats)).pairs]) {
-    add(a, b);
-    add(b, a);
-  }
-  const byId = new Map<string, Leg>(others.map((o) => [o.id, o]));
-  for (const r of rows) byId.set(r.id, r);
-  const pairs: [Leg, Leg][] = [];
-  const taken = new Set<string>();
-  for (const a of rows) {
-    const mine = candidates.get(a.id);
-    if (mine?.size !== 1) continue;
-    const b = byId.get([...mine][0]!);
-    if (!b || candidates.get(b.id)?.size !== 1 || taken.has(a.id) || taken.has(b.id)) continue;
-    if (levels.get(a.accountId) !== 'owner' || levels.get(b.accountId) !== 'owner') continue;
-    taken.add(a.id).add(b.id);
-    pairs.push([a, b]);
-  }
+  const { pairs } = await findTransfers(
+    tx,
+    rows,
+    cats,
+    (accountId) => levels.get(accountId) === 'owner',
+  );
   await linkTransfers(tx, activity, pairs, cats, true);
   return pairs.length;
 }

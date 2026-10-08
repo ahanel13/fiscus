@@ -223,7 +223,31 @@ export interface ImportPreview {
   newTags: string[];
   /** Rows that aren't simply new (duplicates, overlaps, skipped, errors). */
   rows: ImportRowResult[];
-  totals: { new: number; duplicates: number; overlaps: number; skipped: number; errors: number };
+  /**
+   * Transfers between your accounts the import will link (#40, #318). Your rules run first, and
+   * can still file a row elsewhere; the import's summary has the final count.
+   */
+  transfers: ImportTransferPreview[];
+  totals: {
+    new: number;
+    duplicates: number;
+    overlaps: number;
+    skipped: number;
+    errors: number;
+    transfers: number;
+  };
+}
+
+/** One transfer an import will link: a file row and its other side. */
+export interface ImportTransferPreview {
+  /** The file row: for a pair within the file, the money-out side. */
+  line: number;
+  /** The file's account key. */
+  account: string;
+  date: string;
+  amountMinor: number;
+  /** Another row in this file, or a transaction already in Fiscus (line null). */
+  other: { line: number | null; accountName: string; date: string };
 }
 
 export interface ImportBatch {

@@ -28,6 +28,7 @@ import {
   type importRequestSchema,
   type ImportRow,
   type ImportRowResult,
+  type ImportTransferPreview,
   type importRowsSchema,
   type ImportRowsResult,
   type ImportRun,
@@ -43,7 +44,13 @@ import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { AccountsService } from '../accounts/accounts.service.js';
 import { recomputeBalances } from '../accounts/balances.js';
-import { detectTransfers, unlinkTransfers } from '../ledger/transfers.js';
+import {
+  detectTransfers,
+  findTransfers,
+  type Leg,
+  transferCategories,
+  unlinkTransfers,
+} from '../ledger/transfers.js';
 import { activeRules, runRules } from '../rules/engine.js';
 import { addDays, todayIn } from '../common/dates.js';
 import { violatedConstraint } from '../common/db-errors.js';
@@ -178,13 +185,16 @@ export class ImportsService {
       const resolved = await this.#categories(tx, null, ctx, input, names, amounts);
       const tagNames = all.flatMap((p) => p.row.tags ?? []);
       const tagIds = await this.#tags(tx, null, ctx, tagNames);
+      const transfers = await this.#transfers(tx, ctx, input, accepted, summaries, resolved);
       results.sort((x, y) => x.line - y.line);
       return {
         accounts: summaries,
         newCategories: resolved.created,
         newTags: tagIds.created,
         rows: results,
+        transfers,
         totals: {
+          transfers: transfers.length,
           new: all.length,
           duplicates: results.filter((r) => r.status === 'duplicate').length,
           overlaps: results.filter((r) => r.status === 'overlap').length,
@@ -193,6 +203,108 @@ export class ImportsService {
         },
       };
     });
+  }
+
+  /**
+   * The transfers the import would link (§5), for the wizard's review step: detection run over the
+   * file's new rows and your ledger, as rowsAdded will. Rows going to a new account are yours: the
+   * importer always owns the accounts it creates. Reads only.
+   */
+  async #transfers(
+    tx: Executor,
+    ctx: HouseholdContext,
+    input: PreviewInput,
+    accepted: Map<string, Planned[]>,
+    summaries: ImportAccountSummary[],
+    resolved: Resolved,
+  ): Promise<ImportTransferPreview[]> {
+    const cats = await transferCategories(tx);
+    const created = new Map(resolved.created.map((c) => [lower(c.name), c.kind]));
+    const eligible = (category: string | undefined) => {
+      const key = category?.trim() ? lower(category.trim()) : null;
+      if (!key) return true;
+      const id = resolved.ids.get(key);
+      return id
+        ? id === cats.uncategorized || cats.transferKind.has(id)
+        : created.get(key) === 'transfer';
+    };
+    const existing = summaries.flatMap((s) => (s.accountId ? [s.accountId] : []));
+    const currencies = new Map(
+      (existing.length
+        ? await tx
+            .select({ id: accounts.id, currency: accounts.currency })
+            .from(accounts)
+            .where(inArray(accounts.id, existing))
+        : []
+      ).map((a) => [a.id, a.currency]),
+    );
+    const [hh] = await tx
+      .select({ currency: households.baseCurrency })
+      .from(households)
+      .where(eq(households.id, ctx.householdId));
+    const summaryOf = new Map(summaries.map((s) => [s.key, s]));
+    const fileLegs = new Map<string, { leg: Leg; line: number; key: string }>();
+    for (const a of input.accounts) {
+      if (a.skip) continue;
+      // Combined accounts are one account: rows of both can't be a transfer between them.
+      const target = summaryOf.get(a.sameAs ?? a.key)!;
+      const accountId = target.accountId ?? `file:${target.key}`;
+      const currency = (target.accountId && currencies.get(target.accountId)) || hh!.currency;
+      for (const p of accepted.get(a.key) ?? []) {
+        if (!eligible(p.row.category)) continue;
+        const id = `line:${p.row.line}`;
+        fileLegs.set(id, {
+          leg: {
+            id,
+            accountId,
+            amountMinor: p.row.amountMinor,
+            currency,
+            effectiveDate: p.row.date,
+          },
+          line: p.row.line,
+          key: a.key,
+        });
+      }
+    }
+    if (fileLegs.size === 0) return [];
+    const levels = await accessLevels(tx);
+    const { pairs, ledger } = await findTransfers(
+      tx,
+      [...fileLegs.values()].map((f) => f.leg),
+      cats,
+      (accountId) => accountId.startsWith('file:') || levels.get(accountId) === 'owner',
+    );
+    const ledgerAccounts = [...new Set(ledger.map((l) => l.accountId))];
+    const names = new Map(
+      (ledgerAccounts.length
+        ? await tx
+            .select({ id: accounts.id, name: accounts.name })
+            .from(accounts)
+            .where(inArray(accounts.id, ledgerAccounts))
+        : []
+      ).map((a) => [a.id, a.name]),
+    );
+    return pairs
+      .map(([a, b]) => {
+        // Within the file, show the pair once, from the money-out side.
+        const [from, to] = fileLegs.has(b.id) && a.amountMinor > 0 ? [b, a] : [a, b];
+        const row = fileLegs.get(from.id)!;
+        const other = fileLegs.get(to.id);
+        return {
+          line: row.line,
+          account: row.key,
+          date: from.effectiveDate,
+          amountMinor: from.amountMinor,
+          other: {
+            line: other?.line ?? null,
+            accountName: other
+              ? summaryOf.get(other.key)!.name
+              : (names.get(to.accountId) ?? 'another account'),
+            date: to.effectiveDate,
+          },
+        };
+      })
+      .sort((x, y) => x.line - y.line);
   }
 
   // ── Import ───────────────────────────────────────────────────────────────────────────────

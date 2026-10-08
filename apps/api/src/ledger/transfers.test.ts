@@ -179,6 +179,34 @@ describe('transfers and the review queue', () => {
     const card = await account(A, 'Card');
     const checking = await account(A, 'Import checking');
     const payment = await txn(A, card, 30000, `${m}-14`);
+    // The preview names the transfer it will link, reading only.
+    const preview = await A.post(url('/imports/preview'), {
+      format: 'csv',
+      filename: 'checking.csv',
+      accounts: [{ key: 'file', accountId: checking }],
+      transactions: [
+        {
+          line: 2,
+          account: 'file',
+          date: `${m}-13`,
+          amountMinor: -30000,
+          description: 'CARD PAYMENT',
+        },
+        { line: 3, account: 'file', date: `${m}-13`, amountMinor: -1234, description: 'COFFEE' },
+      ],
+    });
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    expect(preview.body.data.transfers).toEqual([
+      {
+        line: 2,
+        account: 'file',
+        date: `${m}-13`,
+        amountMinor: -30000,
+        other: { line: null, accountName: 'Card', date: `${m}-14` },
+      },
+    ]);
+    expect(preview.body.data.totals.transfers).toBe(1);
+    expect((await get(A, payment)).transfer).toBeNull();
     const start = await A.post(url('/imports'), {
       format: 'csv',
       filename: 'checking.csv',
@@ -197,6 +225,63 @@ describe('transfers and the review queue', () => {
 
     await A.post(url(`/imports/${batchId}/revert`));
     expect((await get(A, payment)).transfer).toBeNull();
+  });
+
+  it('previews transfers within a file between two new accounts, from the money-out side', async () => {
+    const m = month();
+    const r = await A.post(url('/imports/preview'), {
+      format: 'monarch',
+      filename: 'Transactions.csv',
+      accounts: [
+        { key: 'Joint', create: { name: 'Joint', type: 'depository' } },
+        { key: 'Vacation fund', create: { name: 'Vacation fund', type: 'depository' } },
+      ],
+      transactions: [
+        {
+          line: 2,
+          account: 'Vacation fund',
+          date: `${m}-02`,
+          amountMinor: 20000,
+          description: 'From joint',
+          category: 'Transfer',
+        },
+        {
+          line: 3,
+          account: 'Joint',
+          date: `${m}-01`,
+          amountMinor: -20000,
+          description: 'To vacation',
+          category: 'Transfer',
+        },
+        // Groceries and a refund of the same amount: not a transfer.
+        {
+          line: 4,
+          account: 'Joint',
+          date: `${m}-05`,
+          amountMinor: -4000,
+          description: 'Store',
+          category: 'Groceries',
+        },
+        {
+          line: 5,
+          account: 'Vacation fund',
+          date: `${m}-05`,
+          amountMinor: 4000,
+          description: 'Refund',
+          category: 'Groceries',
+        },
+      ],
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.data.transfers).toEqual([
+      {
+        line: 3,
+        account: 'Joint',
+        date: `${m}-01`,
+        amountMinor: -20000,
+        other: { line: 2, accountName: 'Vacation fund', date: `${m}-02` },
+      },
+    ]);
   });
 
   it('shows the other side of a transfer into a private account as its owner, not the account (F1)', async () => {
