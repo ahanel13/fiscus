@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-30
-- Amended by: [ADR 0014](0014-verifiable-confidentiality.md) (more encryption, a verifiable hosted mode, what we tell users)
+- Amended by: [ADR 0014](0014-verifiable-confidentiality.md) (encrypted volumes and backups, a verifiable hosted mode, what we tell users)
 
 ## Context
 One instance should be able to host several unrelated households (friends and family on the

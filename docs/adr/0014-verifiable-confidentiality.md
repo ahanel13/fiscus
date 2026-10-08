@@ -13,6 +13,9 @@ and we say so. That is honest, and fine for a family running its own server. It 
 to offer Fiscus to people who don't run the server themselves. They need reasons to trust it
 that don't come down to "trust us".
 
+A constraint shapes everything below: **no features are given up for it.** Search, reports,
+rules, sync, prices, and notifications must work exactly as they do for a self-hosted household.
+
 The feature that matters most here is **notifications**: email and, later, push alerts such as
 "Costco charged $412 on the joint card" or "checking dropped below $500". Like scheduled bank
 sync, investment prices, rules on arrival, and net-worth snapshots, they need the server to
@@ -44,11 +47,11 @@ Three limits hold whatever we choose:
 | Who | Example | Protected by |
 |---|---|---|
 | Thief of disks, backups, or database dumps | A leaked backup bucket | Tier 1 |
-| Database or backup administrator | Someone with `psql` access | Tier 1 (fields encrypted), Tier 2 (database inside the VM) |
+| Database or backup administrator | Someone with `psql` access | Tier 2 (the database runs inside the VM; no console) |
 | Host, hypervisor, or cloud provider staff | Root on the machine, a memory dump | Tier 2 |
 | The instance operator | Whoever deploys and runs the hosted service | Tier 2 (they start it but never hold the key) |
 | Whoever signs releases or sets the key policy | A malicious or coerced maintainer | Made **visible** by Tier 2: public release log, two-person signing, separate key policy |
-| Anyone with a seized server while nobody is signed in | A subpoena, a stolen server | Tier 3 (optional) |
+| Anyone who takes a running server, or one while nobody is signed in | A subpoena, a seizure | Tier 2 against the host; otherwise **not protected**, by choice (see "Considered, not planned") |
 | Other household members | A partner reading a private account | Already: row-level security (ADR 0005/0006) |
 | Plaid, banks, email providers | | Not protectable; disclosed |
 
@@ -56,22 +59,21 @@ Three limits hold whatever we choose:
 
 ### 1. The server keeps computing; we limit who can read and make it verifiable
 We keep server-side processing, so background sync, rules, prices, and notifications work for
-every household. Instead of blinding the server, we (a) encrypt more of what it stores, (b) make
-sure only verified code ever holds the keys in hosted deployments, and (c) let users check
-those claims for themselves. We say plainly what remains trusted.
+every household, and **no feature is weakened** for confidentiality. Instead of blinding the
+server, we (a) protect everything it stores at rest, (b) make sure only verified code ever holds
+the keys in hosted deployments, and (c) let users check those claims for themselves. We say
+plainly what remains trusted.
 
 ### 2. Tier 1: foundations, every deployment (self-hosted too)
-1. **Encrypt the text that identifies spending.** In addition to ADR 0005 §3, encrypt
-   transaction descriptions and names (`original_description`, `display_name`), merchant names,
-   and import file names with the household key. Amounts, dates, and category and account ids
-   stay plaintext so totals, ranges, and budgets stay in SQL.
-   - Search and rule matching on that text move from SQL into the app, over a household's
-     decrypted rows. That is fast enough at household scale (tens of thousands of rows); a
-     benchmark gates it.
-   - Exact matching that must stay in SQL (import dedupe keys) uses keyed hashes (HMAC with a
-     per-household key).
+1. **Everything at rest is encrypted, without changing how data is queried.** Database volumes
+   are encrypted, and backups are encrypted before they leave the server, with keys kept apart
+   from both. Field-level encryption stays as in ADR 0005 §3 (notes, account numbers, bank
+   tokens): it costs no features. Descriptions, names, and merchants are **not** field-encrypted,
+   because that would move search, rule matching, and merchant reports out of SQL; inside a
+   confidential VM (Tier 2) nobody outside the published code can read them anyway.
 2. **Keys stay out of the database and the image.** `KeyProvider` (ADR 0005 §3) gains a file or
-   secret backend for self-hosting and a KMS backend.
+   secret backend for self-hosting and a KMS backend, used for the master key, the volume key, and
+   the backup key.
 3. **No financial data in logs, errors, or metrics.** Enforced by a test that runs the suite with
    seeded values and fails if any appear in captured output.
 4. **Verifiable releases.** Reproducible images (base images pinned by digest, frozen lockfile,
@@ -110,41 +112,41 @@ those claims for themselves. We say plainly what remains trusted.
 9. **Independently audited** before launch, with the report published. A public status page, and
    a commitment to publish an incident report for any security incident.
 
-### 4. Tier 3: optional, for the most cautious users
-1. **Sealed household** (ADR 0005 §6, now designed): the household key is wrapped by each member's
-   passkey or password and unlocked only while someone is signed in. New bank data is encrypted
-   with the household's **public** key, which can lock data but not unlock it, so sync continues
-   unattended. Processing and detailed alerts wait for the next sign-in. A recovery kit is
-   required: without it, a forgotten password loses the data.
+### 4. Considered, not planned: protection while nobody is signed in
+Two designs would protect data even from a server that is taken while nobody is signed in. Both
+cost features, so neither is planned; they are recorded here so they can be revisited.
+
+1. **Sealed household** (ADR 0005 §6): the household key is wrapped by each member's passkey or
+   password and unlocked only while someone is signed in. New bank data is encrypted with the
+   household's **public** key (which can lock data but not unlock it), so sync continues, but
+   rules, balances, and detailed alerts wait for the next sign-in, and a forgotten password
+   without a recovery kit loses the data.
 2. **On-device notifications** in a native app: the server sends a content-free "something
-   changed" push; the app wakes, decrypts with a key only it holds, evaluates alert rules, and
-   shows the detailed notification itself.
+   changed" push; the app decrypts with a key only it holds, evaluates alerts, and shows the
+   detail itself. It needs an installed app and fails when the phone defers background work.
 
 ### 5. Notifications are designed for this from the start (M4)
-- **Per-person detail level:** *full* ("$412.18 at Costco on Joint Visa"), *summary* ("3 new
-  transactions, 1 over budget"), or *minimal* ("You have new activity in Fiscus").
-- **Email defaults to summary or minimal**, because email is readable along the way. Push
-  notifications can be full.
-- Alert evaluation and payloads are written so that they can run on the server today and on a
-  device (Tier 3) later.
+- Notifications are built on the server, with full detail by default.
+- **Per-person detail level**, for those who want it: *full* ("$412.18 at Costco on Joint
+  Visa"), *summary* ("3 new transactions, 1 over budget"), or *minimal* ("You have new activity
+  in Fiscus"). The setting explains that email is readable by email providers along the way.
 
 ### 6. What we tell users (amends ADR 0005 §5)
 We only claim what the deployment actually does:
 
 | Deployment | Claim |
 |---|---|
-| Self-hosted | "You run the server, so only you can read your data. Backups and disks are encrypted with keys kept separately." |
-| Hosted, Tier 1 only | "Your data is encrypted at rest. The service's operators can technically access it while it's running." (ADR 0005's wording) |
+| Self-hosted | "You run the server, so only you can read your data. Disks and backups are encrypted with keys kept separately." |
+| Hosted, Tier 1 only | "Your data is encrypted at rest and in backups. The service's operators can technically access it while it's running." (ADR 0005's wording) |
 | Hosted, Tier 2 | "Your data is only ever read by the published, independently verifiable Fiscus code, on hardware that encrypts it from the host. Our staff and our cloud provider can't read it. Releases are signed by two people and publicly logged; verify the server yourself." |
-| Tier 3 household | "While nobody in your household is signed in, nobody can read your data, including us. New transactions wait, encrypted, until you sign in." |
 
 Every claim lists its exceptions: Plaid and banks, email contents, and metadata.
 
 ### 7. Development impact
-Little changes in day-to-day development. About a tenth of the work is code (key providers, the
-locked confidential mode, the log check, the verify endpoint); half is the build and release
-pipeline; the rest is operating practice (debugging without shells, from scrubbed logs and local
-reproductions) and documentation. Local development, tests, and self-hosting run as they do today.
+Little changes in day-to-day development, and no feature is designed differently. About a tenth
+of the work is code (key providers, the locked confidential mode, the log check, the verify
+endpoint); half is the build and release pipeline; the rest is operating practice (debugging
+without shells, from scrubbed logs and local reproductions) and documentation. Local development, tests, and self-hosting run as they do today.
 Confidential mode needs supported AMD EPYC or Intel Xeon hardware, so a CI or staging job on a
 cloud confidential VM checks key release and startup on real hardware.
 
@@ -158,37 +160,39 @@ cloud confidential VM checks key release and startup on real hardware.
 - **Local-first, end-to-end encrypted** (Actual Budget's model): it would move rules, reports,
   alerts, and bank sync into the client, which is a rewrite, and it still trusts whoever serves
   the web app's code. ADR 0005's reasons still apply.
+- **Field-level encryption of descriptions, names, and merchants:** protects data from a database
+  reader, but moves search, rule matching, and merchant reports out of SQL. Volume and backup
+  encryption cover thieves at no cost, and Tier 2 covers database readers in hosted deployments.
 - **Doing nothing beyond ADR 0005:** honest, but not enough to host anyone else's finances.
 
 ## Consequences
 - Background features, including notifications, keep working for every household.
-- Self-hosters gain encrypted text, keys outside the database, clean logs, and verifiable builds.
+- No feature is weakened: search, reports, rules, sync, prices, and notifications work the same in
+  every deployment.
+- Self-hosters gain encrypted volumes and backups, keys outside the database, clean logs, and
+  verifiable builds.
 - A hosted service can make a strong, checkable claim, but needs confidential-VM hardware, a key
   service, two release signers, and an audit before launch. That is a launch gate, not a
   prerequisite for M2–M10.
-- Moving search and rule matching out of SQL costs some speed on large households; the benchmark
-  in Tier 1 decides whether it needs work (for example, a per-household in-memory index).
 - Operators lose shells and consoles in hosted production. Debugging relies on scrubbed logs,
   metrics, traces, and local reproductions.
-- The sealed household trades convenience (alerts wait for a sign-in) and recoverability (a
-  recovery kit is required) for protection while away. That is why it's opt-in.
+- Data on a server that is taken (rather than stolen as disks or backups) is readable by whoever
+  then runs it outside a confidential VM. Accepted, and disclosed, to keep every feature.
 
 ## Follow-up work
 To be filed as an epic, with tickets in these milestones:
 
 | Work | Milestone |
 |---|---|
-| Encrypt descriptions, names, merchants; app-side search and rule matching; HMAC dedupe keys; benchmark | M1.5 |
+| Encrypted volumes and encrypted backups, with keys kept apart (install docs and backup job) | M2 |
 | `KeyProvider` file/secret and KMS backends | M2 |
 | No financial data in logs (test) | M2 |
 | Reproducible builds, cosign signing, SBOM, Sigstore, digest in release notes | M2 |
 | Security page, threat model, data-flow diagram, `security.txt` | M2 |
-| Notification detail levels; email defaults (with notifications) | M4 |
+| Notification detail levels (with notifications) | M4 |
 | Data export (#254), crypto-shred household deletion (HH-07) | existing tickets |
 | Confidential mode: attested key release, locked configuration, TLS inside, no shells | M11 |
 | "Verify this server" endpoint, page, and verification guide | M11 |
 | Two-person release signing; separate key policy; customer-managed keys | M11 |
 | Operator actions in household activity; consent-based support access | M11 |
 | Independent security audit; status page; incident disclosure policy | M11 |
-| Sealed household with public-key ingest and recovery kit | After v1.0 |
-| On-device notifications in a native app | After v1.0 |
