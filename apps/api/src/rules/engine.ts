@@ -176,6 +176,8 @@ export async function runRules(
         a.categoryId &&
         categorize &&
         liveCategories.has(a.categoryId) &&
+        // A linked transfer keeps its Transfer category; unlink it to recategorize (#40).
+        !row.transferGroupId &&
         // An "Uncategorized" from a file isn't a decision: rules may fill it in.
         (!personSet.has('categoryId') || row.categoryId === uncategorized?.id)
       ) {

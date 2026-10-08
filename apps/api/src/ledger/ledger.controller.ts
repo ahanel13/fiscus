@@ -12,12 +12,14 @@ import {
   createTagSchema,
   createTransactionSchema,
   deleteCategoryQuerySchema,
+  linkTransferSchema,
   moveTransactionsSchema,
   noteSchema,
   setAttributionSchema,
   setSplitsSchema,
   type Tag,
   type RangeMeta,
+  type ReviewCount,
   type Transaction,
   transactionsQuerySchema,
   updateCategoryGroupSchema,
@@ -228,6 +230,12 @@ export class TransactionsController {
     return { data: await this.transactions.move(ctx, body) };
   }
 
+  /** The review queue's size (#44), for the badge on Transactions. */
+  @Get('review-count')
+  async reviewCount(@Household() ctx: HouseholdContext): Promise<{ data: ReviewCount }> {
+    return { data: await this.transactions.reviewCount(ctx) };
+  }
+
   @Get(':transactionId')
   async get(
     @Household() ctx: HouseholdContext,
@@ -259,6 +267,34 @@ export class TransactionsController {
     @Param('transactionId', UuidPipe) id: string,
   ): Promise<void> {
     await this.transactions.remove(ctx, id);
+  }
+
+  /** Possible other legs to link it to as a transfer, closest date first (TXN-08). */
+  @Get(':transactionId/transfer-candidates')
+  async transferCandidates(
+    @Household() ctx: HouseholdContext,
+    @Param('transactionId', UuidPipe) id: string,
+  ): Promise<{ data: Transaction[] }> {
+    return { data: await this.transactions.transferCandidates(ctx, id) };
+  }
+
+  @Post(':transactionId/transfer')
+  @HttpCode(200)
+  async linkTransfer(
+    @Household() ctx: HouseholdContext,
+    @Param('transactionId', UuidPipe) id: string,
+    @Body(new ZodPipe(linkTransferSchema)) body: z.infer<typeof linkTransferSchema>,
+  ): Promise<{ data: Transaction }> {
+    return { data: await this.transactions.linkTransfer(ctx, id, body) };
+  }
+
+  @Delete(':transactionId/transfer')
+  @HttpCode(204)
+  async unlinkTransfer(
+    @Household() ctx: HouseholdContext,
+    @Param('transactionId', UuidPipe) id: string,
+  ): Promise<void> {
+    await this.transactions.unlinkTransfer(ctx, id);
   }
 
   @Put(':transactionId/attribution')

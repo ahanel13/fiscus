@@ -177,6 +177,8 @@ export interface ImportRowsResult {
   balances: number;
   /** Of those added, how many your rules changed (renamed, categorized, …). */
   changedByRules: number;
+  /** Transfers between your accounts found among them and linked (#40). */
+  transfersLinked: number;
   /** Rows that aren't simply new. */
   rows: ImportRowResult[];
 }

@@ -148,6 +148,20 @@
       "when": 1791327558885,
       "tag": "0020_rules_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791436276959,
+      "tag": "0021_transfers",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791436277679,
+      "tag": "0022_transfers_rls",
+      "breakpoints": true
     }
   ]
 }

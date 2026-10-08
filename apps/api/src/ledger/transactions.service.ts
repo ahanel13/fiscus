@@ -19,10 +19,13 @@ import type {
   BulkUpdateResult,
   bulkUpdateTransactionsSchema,
   createTransactionSchema,
+  linkTransferSchema,
   moveTransactionsSchema,
   setSplitsSchema,
   RangeMeta,
+  ReviewCount,
   Transaction,
+  TransferCounterpart,
   transactionsQuerySchema,
   updateTransactionSchema,
 } from '@fiscus/shared';
@@ -54,6 +57,14 @@ import {
   transactionDate,
 } from '../ranges/household-ranges.js';
 import { accessLevels, spendingLensFilter } from '../visibility/visibility-scope.js';
+import {
+  detectTransfers,
+  linkable,
+  linkTransfers,
+  TRANSFER_WINDOW_DAYS,
+  transferCategories,
+  unlinkTransfers,
+} from './transfers.js';
 
 type Row = typeof transactions.$inferSelect;
 type Query = z.infer<typeof transactionsQuerySchema>;
@@ -62,6 +73,7 @@ type UpdateInput = z.infer<typeof updateTransactionSchema>;
 type BulkInput = z.infer<typeof bulkUpdateTransactionsSchema>;
 type MoveInput = z.infer<typeof moveTransactionsSchema>;
 type SplitsInput = z.infer<typeof setSplitsSchema>;
+type LinkInput = z.infer<typeof linkTransferSchema>;
 
 /** What the caller may see and do, computed once per request. */
 interface Access {
@@ -80,6 +92,7 @@ interface Permissions {
   edit: boolean;
   attribute: boolean;
   writeSharedNote: boolean;
+  transfer: boolean;
 }
 
 const ZERO_PERMISSIONS: Permissions = {
@@ -87,6 +100,7 @@ const ZERO_PERMISSIONS: Permissions = {
   edit: false,
   attribute: false,
   writeSharedNote: false,
+  transfer: false,
 };
 
 const forbidden = (detail: string) => problems.forbidden(detail);
@@ -185,15 +199,21 @@ export class TransactionsService {
         q.includeExcluded === 'false' ? eq(transactions.excluded, false) : undefined,
         await spendingLensFilter(tx, ctx, q.lens),
       ];
+      const oldest = q.order === 'oldest';
       if (q.cursor) {
         const [date, id] = decodeCursor(q.cursor);
-        where.push(sql`(${dateColumn}, ${transactions.id}) < (${date}::date, ${id}::uuid)`);
+        where.push(
+          oldest
+            ? sql`(${dateColumn}, ${transactions.id}) > (${date}::date, ${id}::uuid)`
+            : sql`(${dateColumn}, ${transactions.id}) < (${date}::date, ${id}::uuid)`,
+        );
       }
+      const direction = oldest ? asc : desc;
       const rows = await tx
         .select()
         .from(transactions)
         .where(and(...where))
-        .orderBy(desc(dateColumn), desc(transactions.id))
+        .orderBy(direction(dateColumn), direction(transactions.id))
         .limit(q.limit + 1);
       const page = rows.slice(0, q.limit);
       return {
@@ -209,6 +229,73 @@ export class TransactionsService {
             : null,
         range: resolved?.meta ?? null,
       };
+    });
+  }
+
+  /**
+   * How many transactions wait in your review queue (#44): needing review, in accounts where you
+   * can categorize. The navigation shows it as a badge.
+   */
+  async reviewCount(ctx: HouseholdContext): Promise<ReviewCount> {
+    return this.scope.run(ctx, async (tx) => {
+      if (ctx.role === 'viewer') return { count: 0 };
+      const levels = await accessLevels(tx);
+      const accountIds = [...levels]
+        .filter(([, l]) => l === 'owner' || l === 'full')
+        .map(([id]) => id);
+      if (accountIds.length === 0) return { count: 0 };
+      const [row] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.reviewStatus, 'needs_review'),
+            isNull(transactions.deletedAt),
+            eq(transactions.hasSplits, false),
+            inArray(transactions.accountId, accountIds),
+          ),
+        );
+      return { count: row?.count ?? 0 };
+    });
+  }
+
+  /**
+   * Possible other legs for linking a transfer by hand: the opposite amount in another account
+   * you own, closest date first. Wider than detection's window, since a person is choosing.
+   */
+  async transferCandidates(ctx: HouseholdContext, id: string): Promise<Transaction[]> {
+    return this.scope.run(ctx, async (tx) => {
+      const access = await this.#access(tx, ctx);
+      const row = await this.#visible(tx, id);
+      if (!this.#permissions(row, access).transfer || !linkable(row)) return [];
+      const owned = [...access.levels]
+        .filter(([accountId, l]) => l === 'owner' && accountId !== row.accountId)
+        .map(([accountId]) => accountId);
+      if (owned.length === 0) return [];
+      const days = 3 * TRANSFER_WINDOW_DAYS;
+      const rows = await tx
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            inArray(transactions.accountId, owned),
+            eq(transactions.amountMinor, -row.amountMinor),
+            eq(transactions.currency, row.currency),
+            isNull(transactions.transferGroupId),
+            isNull(transactions.deletedAt),
+            isNull(transactions.parentId),
+            eq(transactions.hasSplits, false),
+            eq(transactions.pending, false),
+            sql`${transactions.effectiveDate} BETWEEN ${row.effectiveDate}::date - ${days}::int
+                AND ${row.effectiveDate}::date + ${days}::int`,
+          ),
+        )
+        .orderBy(
+          sql`abs(${transactions.effectiveDate} - ${row.effectiveDate}::date)`,
+          asc(transactions.id),
+        )
+        .limit(10);
+      return this.#present(tx, ctx, access, rows);
     });
   }
 
@@ -275,6 +362,8 @@ export class TransactionsService {
         await this.#writeAttribution(tx, ctx, id, input.attribution);
       }
       await recomputeBalances(tx, input.accountId);
+      // A transfer you entered by hand finds its other leg as an import's would (#40).
+      await detectTransfers(tx, activity, [id], access.levels);
       await activity.record({
         action: 'transaction.created',
         targetType: 'transaction',
@@ -427,6 +516,10 @@ export class TransactionsService {
         .update(transactions)
         .set({ deletedAt: now, version: row.version + 1 })
         .where(or(eq(transactions.id, id), eq(transactions.parentId, id)));
+      // The other leg of a transfer stands alone again.
+      if (row.transferGroupId) {
+        await unlinkTransfers(tx, activity, [row.transferGroupId], 'deleted');
+      }
       await recomputeBalances(tx, row.accountId);
       await activity.record({
         action: 'transaction.deleted',
@@ -617,6 +710,30 @@ export class TransactionsService {
             inArray(transactions.parentId, result.updated),
           ),
         );
+      // A transfer whose legs now share an account isn't one any more.
+      const groups = rows
+        .filter((r) => r.transferGroupId && result.updated.includes(r.id))
+        .map((r) => r.transferGroupId!);
+      if (groups.length) {
+        const sameAccount = await tx
+          .select({ group: transactions.transferGroupId })
+          .from(transactions)
+          .where(
+            and(
+              inArray(transactions.transferGroupId, groups),
+              isNull(transactions.deletedAt),
+              eq(transactions.accountId, input.accountId),
+            ),
+          )
+          .groupBy(transactions.transferGroupId)
+          .having(sql`count(*) > 1`);
+        await unlinkTransfers(
+          tx,
+          activity,
+          sameAccount.map((g) => g.group!),
+          'moved',
+        );
+      }
       for (const [accountId, ids] of from) {
         await recomputeBalances(tx, accountId);
         // One event per account, so each is visible only to members who can see that account.
@@ -639,6 +756,73 @@ export class TransactionsService {
         changes: { after: { ids: result.updated } },
       });
       return result;
+    });
+  }
+
+  /**
+   * TXN-08: links a transaction to the other leg of a transfer. Needs ownership of both legs, in
+   * different accounts, for opposite amounts in the same currency.
+   */
+  async linkTransfer(ctx: HouseholdContext, id: string, input: LinkInput): Promise<Transaction> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const access = await this.#access(tx, ctx);
+      const a = await this.#visible(tx, id, true);
+      const b = await this.#visible(tx, input.transactionId, true);
+      if (!this.#permissions(a, access).transfer || !this.#permissions(b, access).transfer) {
+        throw forbidden('Linking a transfer needs ownership of both accounts.');
+      }
+      if (a.transferGroupId || b.transferGroupId) {
+        throw new Problem(
+          409,
+          'already_linked',
+          'Already part of a transfer',
+          'Unlink it first, then link it again.',
+        );
+      }
+      if (!linkable(a) || !linkable(b)) {
+        throw new Problem(
+          422,
+          'not_editable',
+          'Split or pending transactions can’t be linked',
+          'Remove the split first.',
+        );
+      }
+      if (a.accountId === b.accountId) {
+        throw new Problem(422, 'same_account', 'A transfer goes between two accounts');
+      }
+      if (a.currency !== b.currency || a.amountMinor !== -b.amountMinor) {
+        throw new Problem(
+          422,
+          'not_opposite',
+          'The two sides don’t match',
+          'A transfer is money out of one account and the same amount into another.',
+        );
+      }
+      await linkTransfers(tx, activity, [[a, b]], await transferCategories(tx), false);
+      return (await this.#present(tx, ctx, access, [await this.#visible(tx, id)]))[0]!;
+    });
+  }
+
+  /** TXN-08: unlinks a transfer; each leg goes back to the category it had. */
+  async unlinkTransfer(ctx: HouseholdContext, id: string): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const access = await this.#access(tx, ctx);
+      const row = await this.#visible(tx, id, true);
+      if (!row.transferGroupId) return;
+      const legs = await tx
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.transferGroupId, row.transferGroupId),
+            isNull(transactions.deletedAt),
+          ),
+        );
+      // Both legs: one you can't see or don't own refuses, as linking would have.
+      if (legs.length < 2 || legs.some((l) => !this.#permissions(l, access).transfer)) {
+        throw forbidden('Unlinking a transfer needs ownership of both accounts.');
+      }
+      await unlinkTransfers(tx, activity, [row.transferGroupId], 'unlinked');
     });
   }
 
@@ -687,6 +871,9 @@ export class TransactionsService {
       if (!this.#permissions(row, access).edit)
         throw forbidden('Only the account’s owners can split it.');
       if (row.parentId) throw new Problem(409, 'split_part', 'A part can’t be split again');
+      if (row.transferGroupId) {
+        throw new Problem(409, 'transfer', 'Unlink the transfer before splitting it');
+      }
       const total = input.parts.reduce((sum, p) => sum + BigInt(p.amountMinor), 0n);
       if (total !== BigInt(row.amountMinor)) {
         throw new Problem(
@@ -864,6 +1051,7 @@ export class TransactionsService {
       edit: owner,
       attribute: owner,
       writeSharedNote: categorize || access.attributedPayers.has(row.id),
+      transfer: owner,
     };
   }
 
@@ -945,6 +1133,58 @@ export class TransactionsService {
   }
 
   /**
+   * The other leg of each linked transfer among `rows`. Its account is named only when the caller
+   * sees it at view-only or above; otherwise only its owners are (F1), from a function that
+   * reveals people and nothing else.
+   */
+  async #transfers(
+    tx: Executor,
+    access: Access,
+    rows: Row[],
+  ): Promise<Map<string, TransferCounterpart>> {
+    const out = new Map<string, TransferCounterpart>();
+    const linked = rows.filter((r) => r.transferGroupId);
+    if (linked.length === 0) return out;
+    const { rows: owners } = await tx.execute<{ transaction_id: string; member_id: string }>(
+      sql`SELECT transaction_id, member_id FROM fiscus_transfer_counterparts(${sql.param(
+        linked.map((r) => r.id),
+      )}::uuid[])`,
+    );
+    const others = await tx
+      .select({
+        id: transactions.id,
+        group: transactions.transferGroupId,
+        accountId: transactions.accountId,
+        name: accounts.name,
+        mask: accounts.maskLast4,
+      })
+      .from(transactions)
+      .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+      .where(
+        and(
+          inArray(
+            transactions.transferGroupId,
+            linked.map((r) => r.transferGroupId!),
+          ),
+          isNull(transactions.deletedAt),
+        ),
+      );
+    for (const r of linked) {
+      const ownerIds = owners.filter((o) => o.transaction_id === r.id).map((o) => o.member_id);
+      const other = others.find((o) => o.group === r.transferGroupId && o.id !== r.id);
+      const level = other ? access.levels.get(other.accountId) : undefined;
+      const shown = level === 'owner' || level === 'full' || level === 'view_only';
+      if (!ownerIds.length && !shown) continue; // the other leg is gone
+      out.set(r.id, {
+        transactionId: shown ? other!.id : null,
+        account: shown ? { id: other!.accountId, name: other!.name, mask: other!.mask } : null,
+        ownerIds: [...new Set(ownerIds)],
+      });
+    }
+    return out;
+  }
+
+  /**
    * Serializes transactions for the caller. When a transaction is visible only because it's
    * attributed to them, the account is omitted and only the payers (people) are named (F1).
    */
@@ -989,6 +1229,7 @@ export class TransactionsService {
       ]);
     }
     const tagIds = await this.#tagIds(tx, ids);
+    const transfers = await this.#transfers(tx, access, rows);
     const notes = new Map<string, { shared: string | null; mine: string | null }>();
     for (const n of await tx
       .select()
@@ -1041,6 +1282,7 @@ export class TransactionsService {
         myNote: notes.get(r.id)?.mine ?? null,
         parentId: r.parentId,
         hasSplits: r.hasSplits,
+        transfer: transfers.get(r.id) ?? null,
         can,
         version: r.version,
       };
