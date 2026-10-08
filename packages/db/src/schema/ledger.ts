@@ -150,6 +150,12 @@ export const transactions = pgTable(
     transferPreviousCategoryId: uuid(),
     /** A transfer whose other side is in an account outside Fiscus: the review stops asking. */
     transferExternal: boolean().notNull().default(false),
+    /**
+     * A rule said this is a transfer to that account, and its other side hasn't arrived: one that
+     * lands there within `transferExpectedDays` links to it (transfers.md §3).
+     */
+    transferExpectedAccountId: uuid(),
+    transferExpectedDays: integer(),
     isSettlement: boolean().notNull().default(false),
     /** Null = inherit from the account. */
     isBusiness: boolean(),
@@ -201,6 +207,9 @@ export const transactions = pgTable(
     index('transactions_transfer_match')
       .on(t.householdId, t.amountMinor, t.effectiveDate)
       .where(sql`${t.transferGroupId} IS NULL AND ${t.deletedAt} IS NULL`),
+    index('transactions_transfer_expected')
+      .on(t.transferExpectedAccountId)
+      .where(sql`${t.transferExpectedAccountId} IS NOT NULL AND ${t.transferGroupId} IS NULL`),
     index('transactions_transfer_group')
       .on(t.transferGroupId)
       .where(sql`${t.transferGroupId} IS NOT NULL`),

@@ -461,7 +461,7 @@ export class ImportsService {
             await tx.select().from(transactions).where(inArray(transactions.id, inserted)),
             await activeRules(tx),
             null,
-            true,
+            activity,
           )
         : [];
       // Then transfers between your accounts (§5): unambiguous pairs only, both accounts yours.

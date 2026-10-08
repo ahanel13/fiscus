@@ -472,6 +472,28 @@ test('links a transfer between accounts, and works through the review queue by k
   await expect(nav.getByRole('link', { name: /Transactions/ })).not.toContainText('to review');
 });
 
+test('a rule can treat payments as transfers to another account, recording the other side', async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/rules`);
+  await page.getByRole('button', { name: 'New rule' }).click();
+  const editor = page.getByRole('dialog', { name: 'New rule' });
+  await editor.getByRole('textbox', { name: 'Text' }).fill('payment to pocket');
+  await editor.getByRole('button', { name: /Transfer to/ }).click();
+  await page.getByRole('option', { name: 'Pocket' }).click();
+  await editor.getByRole('button', { name: /Look for the other side within/ }).click();
+  await page.getByRole('option', { name: '10 days' }).click();
+  await editor.getByText('If it isn’t there, record it in Pocket').click();
+  await expect(editor.getByText(/up to 10 days before or after/)).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await editor.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page.getByText('Rule created.')).toBeVisible();
+  await expect(
+    page.getByText('Transfer to Pocket within 10 days, recorded there if missing').first(),
+  ).toBeVisible();
+});
+
 test('dark mode, sign out, and back', async ({ page }) => {
   await signIn(page);
   await page.goto('/settings');

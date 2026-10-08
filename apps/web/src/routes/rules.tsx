@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
+  Account,
   CategoryGroup,
   HouseholdMember,
   Rule,
@@ -8,7 +9,7 @@ import type {
   RulePreview,
   Tag,
 } from '@fiscus/shared';
-import { MEMBER_COLORS } from '@fiscus/shared';
+import { MEMBER_COLORS, TRANSFER_RULE_DEFAULT_DAYS } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { ArrowDown, ArrowUp, Wand2 } from 'lucide-react';
@@ -197,7 +198,7 @@ export function RulesPage() {
           groups={groups}
           tags={tags}
           members={members}
-          accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+          accounts={accounts}
           currency={household.baseCurrency}
           onClose={() => setEditing(null)}
           onSaved={refresh}
@@ -247,9 +248,13 @@ interface Draft {
   forMembers: string[];
   markReviewed: boolean;
   exclude: boolean;
+  transferTo: string; // '' | account id
+  withinDays: number;
+  recordIfMissing: boolean;
 }
 
 const ANY = 'any';
+const NONE = 'none';
 
 function toDraft(r: {
   name?: string | null;
@@ -273,6 +278,9 @@ function toDraft(r: {
     forMembers: a.attribution?.map((x) => x.memberId) ?? [],
     markReviewed: a.markReviewed ?? false,
     exclude: a.exclude ?? false,
+    transferTo: a.transferTo?.accountId ?? '',
+    withinDays: a.transferTo?.withinDays ?? TRANSFER_RULE_DEFAULT_DAYS,
+    recordIfMissing: a.transferTo?.recordIfMissing ?? false,
   };
 }
 
@@ -295,6 +303,13 @@ function fromDraft(d: Draft): { conditions: RuleConditions; actions: RuleActions
   if (d.forMembers.length) actions.attribution = d.forMembers.map((memberId) => ({ memberId }));
   if (d.markReviewed) actions.markReviewed = true;
   if (d.exclude) actions.exclude = true;
+  if (d.transferTo) {
+    actions.transferTo = {
+      accountId: d.transferTo,
+      withinDays: d.withinDays,
+      recordIfMissing: d.recordIfMissing,
+    };
+  }
   return { conditions, actions };
 }
 
@@ -317,7 +332,7 @@ export function RuleEditor({
   groups: CategoryGroup[];
   tags: Tag[];
   members: HouseholdMember[];
-  accounts: { id: string; name: string }[];
+  accounts: Pick<Account, 'id' | 'name' | 'yourAccess' | 'balanceMode' | 'closedAt'>[];
   currency: string;
   onClose: () => void;
   onSaved: () => void;
@@ -530,6 +545,7 @@ export function RuleEditor({
               </p>
             </fieldset>
           ) : null}
+          <TransferAction d={d} set={set} accounts={accounts} />
           <div className="flex flex-wrap gap-x-6 gap-y-2">
             <Switch isSelected={d.markReviewed} onChange={(markReviewed) => set({ markReviewed })}>
               Mark reviewed
@@ -586,6 +602,90 @@ export function RuleEditor({
   );
 }
 
+const WITHIN_DAYS = [3, 5, 7, 10, 14, 21, 30];
+
+/**
+ * "Transfer to an account" (transfers.md §3): link to the other side there within some days,
+ * wait for it meanwhile, or record it when it's a manual account that follows its transactions.
+ */
+function TransferAction({
+  d,
+  set,
+  accounts,
+}: {
+  d: Draft;
+  set: (patch: Partial<Draft>) => void;
+  accounts: Pick<Account, 'id' | 'name' | 'yourAccess' | 'balanceMode' | 'closedAt'>[];
+}) {
+  const owned = accounts.filter(
+    (a) => a.yourAccess === 'owner' && (!a.closedAt || a.id === d.transferTo),
+  );
+  const target = owned.find((a) => a.id === d.transferTo);
+  const canRecord = target?.balanceMode === 'transactions';
+  if (owned.length < 2 && !target) return null;
+  return (
+    <fieldset className="space-y-3">
+      <legend className="mb-1 text-sm font-medium">Transfer</legend>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Select
+          label="Transfer to"
+          value={d.transferTo || NONE}
+          onChange={(v) => {
+            const id = v && v !== NONE ? String(v) : '';
+            const next = owned.find((a) => a.id === id);
+            set({
+              transferTo: id,
+              recordIfMissing: d.recordIfMissing && next?.balanceMode === 'transactions',
+            });
+          }}
+        >
+          <SelectItem id={NONE}>Not a transfer</SelectItem>
+          {owned.map((a) => (
+            <SelectItem key={a.id} id={a.id}>
+              {a.name}
+            </SelectItem>
+          ))}
+        </Select>
+        {target ? (
+          <Select
+            label="Look for the other side within"
+            value={String(d.withinDays)}
+            onChange={(v) => v && set({ withinDays: Number(v) })}
+          >
+            {[...new Set([...WITHIN_DAYS, d.withinDays])]
+              .sort((x, y) => x - y)
+              .map((n) => (
+                <SelectItem key={n} id={String(n)}>
+                  {n} days
+                </SelectItem>
+              ))}
+          </Select>
+        ) : null}
+      </div>
+      {target ? (
+        <>
+          <p className="text-xs text-muted">
+            Links it to the same amount arriving in {target.name} up to {d.withinDays} days before
+            or after. Until that arrives it waits, counted as a transfer, not spending.
+          </p>
+          <Checkbox
+            isSelected={d.recordIfMissing}
+            isDisabled={!canRecord}
+            onChange={(recordIfMissing) => set({ recordIfMissing })}
+          >
+            If it isn’t there, record it in {target.name}
+          </Checkbox>
+          <p className="text-xs text-muted">
+            {canRecord
+              ? 'For an account your bank feed doesn’t cover: its balance follows. Only for transactions as they arrive, not when applying to existing ones.'
+              : `${target.name}’s balance is entered by hand, so a transaction recorded there wouldn’t change it.`}
+          </p>
+        </>
+      ) : null}
+    </fieldset>
+  );
+}
+
 // ── Apply to existing ──────────────────────────────────────────────────────────────────────
 
 const FIELD_LABELS: Record<string, string> = {
@@ -596,6 +696,12 @@ const FIELD_LABELS: Record<string, string> = {
   reviewStatus: 'reviewed',
   excluded: 'excluded',
 };
+
+const TRANSFER_OUTCOMES = {
+  link: 'linked to its other side',
+  record: 'other side recorded',
+  wait: 'waits for its other side',
+} as const;
 
 function ApplyDialog({
   householdId,
@@ -667,7 +773,9 @@ function ApplyDialog({
                           ? `category → ${names.categories.get(c.changes.categoryId[1]) ?? '…'}`
                           : f === 'displayName' && c.changes.displayName
                             ? `name → “${c.changes.displayName[1]}”`
-                            : FIELD_LABELS[f],
+                            : f === 'transfer' && c.changes.transfer
+                              ? TRANSFER_OUTCOMES[c.changes.transfer[1].outcome]
+                              : FIELD_LABELS[f],
                       )
                       .join(' · ')}
                   </span>
@@ -819,7 +927,7 @@ export function RuleSuggestion({
           groups={groups}
           tags={tags}
           members={members}
-          accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+          accounts={accounts}
           currency={household?.baseCurrency ?? 'USD'}
           onClose={() => setEditing(false)}
           onSaved={() => {

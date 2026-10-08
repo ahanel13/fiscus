@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { householdMembers, rules, transactions } from '@fiscus/db';
+import { accounts, type Executor, householdMembers, rules, transactions } from '@fiscus/db';
 import type {
   createRuleSchema,
   reorderRulesSchema,
@@ -12,7 +12,7 @@ import type {
 import { Injectable } from '@nestjs/common';
 import { and, asc, eq, isNull, max } from 'drizzle-orm';
 import type { z } from 'zod';
-import { problems } from '../common/problem.js';
+import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
 import { accessLevels } from '../visibility/visibility-scope.js';
@@ -43,6 +43,7 @@ export class RulesService {
 
   async create(ctx: HouseholdContext, input: CreateInput): Promise<Rule> {
     return this.scope.run(ctx, async (tx, activity) => {
+      await this.#checkActions(tx, input.actions);
       const [{ last }] = (await tx.select({ last: max(rules.position) }).from(rules)) as [
         { last: number | null },
       ];
@@ -75,6 +76,8 @@ export class RulesService {
     return this.scope.run(ctx, async (tx, activity) => {
       const [before] = await tx.select().from(rules).where(eq(rules.id, id));
       if (!before) throw problems.notFound();
+      // You become its author, so its transfer account must be one you own.
+      await this.#checkActions(tx, patch.actions ?? (before.actions as RuleActions));
       const [row] = await tx
         .update(rules)
         .set({
@@ -141,7 +144,7 @@ export class RulesService {
         await this.#visibleRows(tx),
         [{ id: 'draft', ...draft, authorMemberId: ctx.memberId }],
         ctx.role === 'viewer' ? new Map() : await accessLevels(tx),
-        false,
+        null,
       );
       return { total: changes.length, changes: changes.slice(0, 200) };
     });
@@ -169,7 +172,7 @@ export class RulesService {
         await this.#visibleRows(tx),
         [rule],
         await accessLevels(tx),
-        true,
+        activity,
       );
       if (changes.length) {
         await activity.record({
@@ -181,6 +184,31 @@ export class RulesService {
       }
       return { changed: changes.length };
     });
+  }
+
+  /**
+   * A transfer goes to an account you own (TXN-08), and recording its other side needs a manual
+   * account that follows its transactions (transfers.md §3). Checked again whenever it runs.
+   */
+  async #checkActions(tx: Executor, actions: RuleActions) {
+    const t = actions.transferTo;
+    if (!t) return;
+    if ((await accessLevels(tx)).get(t.accountId) !== 'owner') {
+      throw new Problem(422, 'invalid_account', 'Choose an account you own for the transfer');
+    }
+    if (!t.recordIfMissing) return;
+    const [target] = await tx
+      .select({ connectionId: accounts.connectionId, balanceMode: accounts.balanceMode })
+      .from(accounts)
+      .where(eq(accounts.id, t.accountId));
+    if (target!.connectionId !== null || target!.balanceMode !== 'transactions') {
+      throw new Problem(
+        422,
+        'cannot_record',
+        'Only a manual account that follows its transactions can have the other side recorded',
+        'Turn off “record it if it isn’t there”, or choose another account.',
+      );
+    }
   }
 
   /** Every transaction the caller can see (row-level security), not deleted. */
