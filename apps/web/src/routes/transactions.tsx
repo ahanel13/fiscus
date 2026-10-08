@@ -294,8 +294,8 @@ export function TransactionsPage() {
   const [adding, setAdding] = useState(false);
   const ownsAny = accounts.some((a) => a.yourAccess === 'owner');
   const toReview =
-    useQuery({ ...reviewCountQuery(householdId), enabled: household.you.role !== 'viewer' }).data ??
-    0;
+    useQuery({ ...reviewCountQuery(householdId), enabled: household.you.role !== 'viewer' }).data
+      ?.count ?? 0;
 
   const bulk = useMutation({
     mutationFn: (changes: Record<string, unknown>) =>
@@ -1331,6 +1331,15 @@ function TransferSection({
     },
     onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
   });
+  const external = useMutation({
+    mutationFn: (transferExternal: boolean) =>
+      api('PATCH', url, {
+        body: { transferExternal },
+        headers: { 'if-match': `"v${t.version}"` },
+      }),
+    onSuccess: () => invalidate(),
+    onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
+  });
   const unlink = useMutation({
     mutationFn: () => api('DELETE', `${url}/transfer`),
     onSuccess: async () => {
@@ -1358,6 +1367,24 @@ function TransferSection({
             isPending={unlink.isPending}
           >
             <Unlink aria-hidden className="size-4" /> Unlink
+          </Button>
+        ) : null}
+      </section>
+    );
+  }
+  if (t.transferExternal) {
+    return (
+      <section className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-2 px-3 py-2">
+        <ArrowLeftRight aria-hidden className="size-4 text-muted" />
+        <p className="mr-auto text-sm">Transfer with an account outside Fiscus</p>
+        {t.can.categorize ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={() => external.mutate(false)}
+            isPending={external.isPending}
+          >
+            It isn’t
           </Button>
         ) : null}
       </section>

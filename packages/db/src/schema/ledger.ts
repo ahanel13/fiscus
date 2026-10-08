@@ -148,6 +148,8 @@ export const transactions = pgTable(
      * checked when it's restored (a category may be gone by then).
      */
     transferPreviousCategoryId: uuid(),
+    /** A transfer whose other side is in an account outside Fiscus: the review stops asking. */
+    transferExternal: boolean().notNull().default(false),
     isSettlement: boolean().notNull().default(false),
     /** Null = inherit from the account. */
     isBusiness: boolean(),
