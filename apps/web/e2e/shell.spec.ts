@@ -248,7 +248,7 @@ test('imports a Monarch export with the wizard, then undoes it', async ({ page }
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Review 1 transaction' })).toHaveAttribute(
     'href',
-    /review=needs_review/,
+    /\/review$/,
   );
 
   // Undo removes everything, including the accounts it created.
@@ -384,6 +384,67 @@ test('the dashboard shows cash flow by period, and ranges are remembered', async
   // Remembered for this member: a fresh visit without the URL opens on it.
   await page.goto(householdUrl);
   await expect(page.getByRole('button', { name: /Time range/ })).toContainText('This month');
+});
+
+test('links a transfer between accounts, and works through the review queue by keyboard', async ({
+  page,
+}) => {
+  await signIn(page);
+  // The bank CSV's two rows still need review: the badge on Transactions says so.
+  const nav = page.getByRole('navigation', { name: 'Main' }).first();
+  await expect(nav.getByRole('link', { name: /Transactions/ })).toContainText('2');
+
+  // Money out of checking and into the wallet, entered by hand: linked as a transfer.
+  await page.goto(`${householdUrl}/transactions`);
+  for (const [account, direction, name] of [
+    ['Everyday checking', 'Money out', 'To wallet'],
+    ['Wallet', 'Money in', 'From checking'],
+  ] as const) {
+    await page.getByRole('button', { name: 'Add transaction' }).click();
+    const add = page.getByRole('dialog', { name: 'Add transaction' });
+    await add.getByRole('button', { name: /Account/ }).click();
+    await page.getByRole('option', { name: account }).click();
+    await add.getByLabel('Description').fill(name);
+    await add.getByText(direction, { exact: true }).click();
+    await add.getByLabel('Amount').fill('250');
+    await add.getByRole('button', { name: 'Add transaction' }).click();
+    await expect(add).toHaveCount(0);
+  }
+  await expect(page.getByRole('button', { name: /^To wallet/ })).toContainText(
+    'Transfer to Wallet',
+  );
+
+  // Unlink, then link it again by hand.
+  await page.getByRole('button', { name: /^To wallet/ }).click();
+  const drawer = page.getByRole('dialog', { name: 'To wallet' });
+  await expect(drawer.getByText('Transfer to Wallet')).toBeVisible();
+  await drawer.getByRole('button', { name: 'Unlink' }).click();
+  await expect(page.getByText('Transfer unlinked.')).toBeVisible();
+  await drawer.getByRole('button', { name: 'Link as a transfer' }).click();
+  const link = drawer.getByRole('region', { name: 'Link as a transfer' });
+  await link.locator('label', { hasText: 'Wallet' }).click();
+  expect(await axeViolations(page)).toEqual([]);
+  await link.getByRole('button', { name: 'Link', exact: true }).click();
+  await expect(page.getByText('Linked as a transfer.')).toBeVisible();
+  await expect(drawer.getByText('Transfer to Wallet')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+
+  // The review queue: oldest first, r marks reviewed and moves on.
+  await page.getByRole('link', { name: /Review/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Review' })).toBeVisible();
+  await expect(page.getByText('2 to review, oldest first.')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Reviewing Coffee' })).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  // c opens the category list; choosing one closes it, and the keys work again.
+  await page.keyboard.press('c');
+  await page.getByRole('option', { name: 'Coffee', exact: true }).click();
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  await page.keyboard.press('r');
+  await expect(page.getByRole('region', { name: 'Reviewing REFUND' })).toBeVisible();
+  await page.keyboard.press('r');
+  await expect(page.getByText('All caught up')).toBeVisible();
+  await expect(nav.getByRole('link', { name: /Transactions/ })).not.toContainText('to review');
 });
 
 test('dark mode, sign out, and back', async ({ page }) => {

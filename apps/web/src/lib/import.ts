@@ -327,6 +327,8 @@ export interface ImportState {
   done: Set<string>;
   added: number;
   balances: number;
+  /** Transfers between your accounts linked along the way (#40). */
+  transfers: number;
   rows: ImportRowResult[];
   /** Set when a part failed: the account and why. Retrying sends the rest again. */
   failed: { key: string; message: string } | null;
@@ -402,6 +404,7 @@ export async function sendRows(
           { body: part },
         );
         next.added += r.data.added;
+        next.transfers += r.data.transfersLinked;
         next.balances += r.data.balances;
         next.rows.push(...r.data.rows.filter((x) => x.status !== 'duplicate'));
         rowsDone += part.transactions?.length ?? 0;
