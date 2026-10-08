@@ -70,7 +70,7 @@ export interface Tag {
   color: string;
 }
 
-const attributionSchema = z
+export const attributionSchema = z
   .array(z.object({ memberId: z.uuid(), shareBps: z.number().int().min(1).max(10000).optional() }))
   .max(20)
   .refine((a) => new Set(a.map((x) => x.memberId)).size === a.length, 'Each member once')

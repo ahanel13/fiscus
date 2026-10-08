@@ -11,6 +11,7 @@ import { HealthController } from './health/health.controller.js';
 import { HouseholdsModule } from './households/households.module.js';
 import { ImportsModule } from './imports/imports.module.js';
 import { LedgerModule } from './ledger/ledger.module.js';
+import { RulesModule } from './rules/rules.module.js';
 import { MeController } from './me/me.controller.js';
 
 @Global()
@@ -39,6 +40,7 @@ export class AppModule {
         AccountsModule,
         LedgerModule,
         ImportsModule,
+        RulesModule,
       ],
       controllers: [HealthController, MeController],
       providers: [{ provide: APP_FILTER, useClass: ProblemFilter }],

@@ -158,9 +158,16 @@ A rule is **conditions → actions**, run on transactions as they arrive (import
   checked at run time: categorize, rename, and tag on accounts they own or have full access to;
   attribution and exclusion only on accounts they own. A rule never reaches further than its
   author.
-- **Manual edits win:** rules run when transactions arrive; they never overwrite a change a
-  person made. "Apply to existing transactions" is explicit, with a preview of what would change
-  (RULE-06), limited to rows the caller can see.
+- **Manual edits win:** rules never change a field a person set: by hand, in bulk, or by entering
+  the transaction. A file's own values count too (Monarch's merchant names and categories, a CSV's
+  category column), except "Uncategorized", which rules may fill in. Transactions record this in
+  `field_versions`, which is also what makes the first save win when two people edit one field.
+- **Run on arrival and on request:** rules run on imported rows (bank sync in M2). "Apply to
+  existing" runs one rule over the transactions you can see, with a preview first (RULE-06); it
+  reaches only where both the rule's author and you could act by hand.
+- **Editing a rule makes you its author,** so its reach becomes yours: nobody can borrow another
+  member's access by editing their rule. A rule whose author left doesn't run until someone edits
+  it (RULE-07).
 - **Create from a transaction:** "Always categorize Trader Joe's as Groceries" in the drawer
   creates a rule pre-filled from it.
 

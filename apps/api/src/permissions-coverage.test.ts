@@ -30,13 +30,8 @@ const NOT_BUILT: Record<string, string> = {
   'TXN-11': 'Per-transaction edit history (#46)',
   'ATT-03': 'Flagging attribution changes (M3)',
   'ATT-04': 'Resolving flags (M3)',
-  'RULE-01': 'Rules engine (#41)',
   'RULE-02': 'Member-scoped rules (#58)',
-  'RULE-03': 'Rules engine (#41)',
   'RULE-04': 'Member-scoped rules (#58)',
-  'RULE-05': 'Rules engine (#41)',
-  'RULE-06': 'Rules engine (#41)',
-  'RULE-07': 'Rules engine (#41)',
   'TOK-01': 'Personal access tokens (M10)',
   'TOK-02': 'Personal access tokens (M10)',
   'TOK-03': 'Personal access tokens (M10)',
@@ -62,7 +57,6 @@ const NOT_BUILT: Record<string, string> = {
   'EDGE-04': 'Personal access tokens (M10)',
   'EDGE-07': 'Instance admin console',
   'EDGE-09': 'Settle-up (M3)',
-  'EDGE-10': 'Rules engine (#41)',
   'EDGE-12': 'Members without logins (#223)',
   'EDGE-13': 'Departure flow (#62)',
 };
@@ -77,7 +71,13 @@ function rules(): Map<string, string[]> {
   for (const line of readFileSync(join(ROOT, 'docs/design/permissions.md'), 'utf8').split('\n')) {
     if (line.startsWith('| ID |')) actorColumns = /\| OWN \| MEM \| VIEW \|/.test(line);
     const id = line.match(new RegExp(`^\\| (${ID.source}) \\|`))?.[1];
-    if (id) out.set(id, actorColumns ? ['OWN', 'MEM', 'VIEW'] : ['']);
+    // A row with "—" for every actor is about the rule itself (RULE-05): one test covers it.
+    const cells = line
+      .split('|')
+      .slice(3, 6)
+      .map((c) => c.trim());
+    const perActor = actorColumns && !cells.every((c) => c === '—');
+    if (id) out.set(id, perActor ? ['OWN', 'MEM', 'VIEW'] : ['']);
   }
   return out;
 }

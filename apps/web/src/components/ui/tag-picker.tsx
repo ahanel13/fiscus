@@ -105,7 +105,7 @@ export function TagPicker({
                 <>
                   <span
                     aria-hidden
-                    className="size-2 rounded-full"
+                    className="size-2.5 shrink-0 rounded-full"
                     style={{ background: tag.color }}
                   />
                   {tag.name}
@@ -159,7 +159,14 @@ export function TagPicker({
               {[
                 ...options.map((t) => (
                   <SelectItem key={t.id} id={t.id} textValue={t.name}>
-                    {t.name}
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{ background: t.color }}
+                      />
+                      {t.name}
+                    </span>
                   </SelectItem>
                 )),
                 ...(canCreate

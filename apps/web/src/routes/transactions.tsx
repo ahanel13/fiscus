@@ -16,7 +16,7 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { useParams, useSearch } from '@tanstack/react-router';
-import { ArrowLeftRight, Plus, Search, SplitSquareHorizontal, Upload } from 'lucide-react';
+import { ArrowLeftRight, Plus, Search, SplitSquareHorizontal, Upload, Wand2 } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -61,6 +61,8 @@ import {
 import { categoryIndex, byDay, forLabel, paidByLabel } from '../lib/transactions.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
 import { rangeParams } from '../lib/ranges.js';
+import { RuleEditor, RuleSuggestion, suggestMatchText, useRuleSuggestionContext } from './rules.js';
+import { type SuggestedRule, suggestRule } from '../lib/rules.js';
 import { useRange } from '../lib/use-range.js';
 
 type Data<T> = { data: T };
@@ -283,15 +285,47 @@ export function TransactionsPage() {
       api<Data<BulkUpdateResult>>('PATCH', `${base(householdId)}/transactions`, {
         body: { ids: [...selected], changes },
       }),
-    onSuccess: async (r) => {
+    onSuccess: async (r, changes) => {
       setSelected(new Set());
       await invalidate();
       const { updated, refused } = r.data;
       toast(`${updated.length} updated.`, {
         ...(refused.length ? { description: `${refused.length} couldn’t be changed by you.` } : {}),
       });
+      // Categorized several from one merchant: offer a rule for the rest and for next time.
+      if (typeof changes.categoryId === 'string' && updated.length) {
+        const rows = await Promise.all(
+          updated
+            .slice(0, 20)
+            .map(
+              async (id) =>
+                (await api<Data<Transaction>>('GET', `${base(householdId)}/transactions/${id}`))
+                  .data,
+            ),
+        );
+        const texts = new Set(
+          rows.map((t) => suggestMatchText(t.originalDescription).toLowerCase()),
+        );
+        if (texts.size === 1 && rows[0]?.can.categorize) {
+          setSuggestion(
+            suggestRule(
+              {
+                originalDescription: rows[0].originalDescription,
+                accountId: rows[0].account?.id ?? null,
+                amountMinor: rows[0].amountMinor,
+              },
+              { categoryId: changes.categoryId },
+              ruleContext.rules,
+              ruleContext.muted,
+              categoryIndex(groups).uncategorized ?? null,
+            ),
+          );
+        }
+      }
     },
   });
+  const ruleContext = useRuleSuggestionContext(householdId);
+  const [suggestion, setSuggestion] = useState<SuggestedRule | null>(null);
 
   return (
     <>
@@ -303,6 +337,9 @@ export function TransactionsPage() {
         action={
           household.you.role !== 'viewer' ? (
             <div className="flex gap-2">
+              <ButtonLink variant="ghost" to="/h/$householdId/rules" params={{ householdId }}>
+                <Wand2 aria-hidden className="size-4" /> Rules
+              </ButtonLink>
               <ButtonLink variant="secondary" to="/h/$householdId/import" params={{ householdId }}>
                 <Upload aria-hidden className="size-4" /> Import
               </ButtonLink>
@@ -357,6 +394,15 @@ export function TransactionsPage() {
               </Switch>
             </div>
 
+            {suggestion ? (
+              <RuleSuggestion
+                householdId={householdId}
+                suggestion={suggestion}
+                groups={groups}
+                members={members}
+                onDone={() => setSuggestion(null)}
+              />
+            ) : null}
             {selected.size > 0 ? (
               <div
                 role="toolbar"
@@ -553,6 +599,8 @@ export function TransactionDrawer({
 }) {
   const query = useQuery(transactionQuery(householdId, transactionId));
   const t = query.data;
+  // Kept here: the details remount after each save (keyed on the version).
+  const [suggestion, setSuggestion] = useState<SuggestedRule | null>(null);
   return (
     <Dialog
       title={t?.displayName ?? 'Transaction'}
@@ -560,6 +608,17 @@ export function TransactionDrawer({
       isOpen
       onOpenChange={(open) => !open && onClose()}
     >
+      {t && suggestion && t.can.categorize ? (
+        <div className="mb-4">
+          <RuleSuggestion
+            householdId={householdId}
+            suggestion={suggestion}
+            groups={groups}
+            members={members}
+            onDone={() => setSuggestion(null)}
+          />
+        </div>
+      ) : null}
       {t ? (
         <TransactionDetails
           key={`${t.id}:${t.version}`}
@@ -568,6 +627,7 @@ export function TransactionDrawer({
           members={members}
           groups={groups}
           onDeleted={onClose}
+          onSuggest={setSuggestion}
         />
       ) : (
         <LoadingRegion label="Loading transaction">
@@ -584,12 +644,14 @@ function TransactionDetails({
   members,
   groups,
   onDeleted,
+  onSuggest,
 }: {
   householdId: string;
   t: Transaction;
   members: HouseholdMember[];
   groups: CategoryGroup[];
   onDeleted: () => void;
+  onSuggest: (s: SuggestedRule | null) => void;
 }) {
   const invalidate = useInvalidateLedger(householdId);
   const queryClient = useQueryClient();
@@ -624,12 +686,32 @@ function TransactionDetails({
     });
     await invalidate();
   };
+  const { rules, muted } = useRuleSuggestionContext(householdId);
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api<Data<Transaction>>('PATCH', url, { body, headers: { 'if-match': `"v${t.version}"` } }),
-    onSuccess: async () => {
+    onSuccess: async (_r, body) => {
       await invalidate();
       toast('Saved.');
+      // Renamed or recategorized: offer to do the same for the others, next time too.
+      onSuggest(
+        suggestRule(
+          {
+            originalDescription: t.originalDescription,
+            accountId: t.account?.id ?? null,
+            amountMinor: t.amountMinor,
+          },
+          {
+            ...(body as { displayName?: string; categoryId?: string | null }),
+            addedTagIds: Array.isArray(body.tagIds)
+              ? (body.tagIds as string[]).filter((id) => !t.tagIds.includes(id))
+              : [],
+          },
+          rules,
+          muted,
+          categoryIndex(groups).uncategorized ?? null,
+        ),
+      );
     },
     onError,
   });
@@ -684,6 +766,9 @@ function TransactionDetails({
         </p>
         {t.originalDescription !== t.displayName ? (
           <p className="mt-1 text-xs text-muted">Original: {t.originalDescription}</p>
+        ) : null}
+        {t.can.categorize && !t.parentId ? (
+          <MakeRule householdId={householdId} t={t} groups={groups} members={members} />
         ) : null}
         {t.account && t.can.edit && t.source !== 'provider' ? (
           // A part of a split moves with its whole purchase.
@@ -1169,3 +1254,57 @@ const MOVE_REFUSALS: Record<BulkUpdateResult['refused'][number]['code'], string>
   different_currency: 'in another currency',
   already_there: 'already imported into that account',
 };
+
+/** "Make a rule" from a transaction: a new rule matching its description, doing what it has. */
+function MakeRule({
+  householdId,
+  t,
+  groups,
+  members,
+}: {
+  householdId: string;
+  t: Transaction;
+  groups: CategoryGroup[];
+  members: HouseholdMember[];
+}) {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const tags = useQuery(tagsQuery(householdId)).data ?? [];
+  const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
+  const household = useQuery(householdQuery(householdId)).data;
+  const { uncategorized } = categoryIndex(groups);
+  return (
+    <>
+      <Button variant="ghost" size="sm" className="-ml-2.5 mt-1" onPress={() => setOpen(true)}>
+        <Wand2 aria-hidden className="size-4" /> Make a rule
+      </Button>
+      {open ? (
+        <RuleEditor
+          householdId={householdId}
+          rule={null}
+          initial={{
+            conditions: {
+              description: { op: 'contains', value: suggestMatchText(t.originalDescription) },
+            },
+            actions: {
+              ...(t.displayName !== t.originalDescription ? { rename: t.displayName } : {}),
+              ...(t.categoryId && t.categoryId !== uncategorized
+                ? { categoryId: t.categoryId }
+                : {}),
+              ...(t.tagIds.length ? { addTagIds: t.tagIds } : {}),
+            },
+          }}
+          groups={groups}
+          tags={tags}
+          members={members}
+          accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+          currency={household?.baseCurrency ?? t.currency}
+          onClose={() => setOpen(false)}
+          onSaved={() =>
+            void queryClient.invalidateQueries({ queryKey: ['households', householdId] })
+          }
+        />
+      ) : null}
+    </>
+  );
+}
