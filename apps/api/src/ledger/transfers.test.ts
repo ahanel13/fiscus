@@ -111,12 +111,105 @@ describe('transfers and the review queue', () => {
     await txn(A, a1, -800, `${m}-10`);
     const refund = await txn(A, a2, 800, `${m}-10`, { categoryId: groceries });
     expect((await get(A, refund)).transfer).toBeNull();
-    // Four days apart: outside the window.
+    // A week apart: outside the window, which is 3 business days.
     await txn(A, a1, -900, `${m}-15`);
-    expect((await get(A, await txn(A, a2, 900, `${m}-19`))).transfer).toBeNull();
+    expect((await get(A, await txn(A, a2, 900, `${m}-22`))).transfer).toBeNull();
     // The same account.
     await txn(A, a1, -1000, `${m}-20`);
     expect((await get(A, await txn(A, a1, 1000, `${m}-20`))).transfer).toBeNull();
+  });
+
+  it('counts business days: Friday to Wednesday links, a week apart doesn’t', async () => {
+    const m = month();
+    const friday = [...Array(7).keys()]
+      .map((d) => `${m}-${String(d + 1).padStart(2, '0')}`)
+      .find((d) => new Date(`${d}T00:00:00Z`).getUTCDay() === 5)!;
+    const plus = (days: number) =>
+      new Date(Date.parse(friday) + days * 86_400_000).toISOString().slice(0, 10);
+    const a1 = await account(A, 'Bank one');
+    const a2 = await account(A, 'Bank two');
+    const out = await txn(A, a1, -6100, friday);
+    const into = await txn(A, a2, 6100, plus(5)); // Wednesday
+    expect((await get(A, out)).transfer?.transactionId).toBe(into);
+    await txn(A, a1, -6200, friday);
+    expect((await get(A, await txn(A, a2, 6200, plus(6)))).transfer).toBeNull(); // Thursday
+  });
+
+  it('reviews transfers: suggested pairs, link all, and ones with no other side', async () => {
+    // A household of its own: the review covers all of its history.
+    const home = (
+      await A.post('/api/v1/households', { name: 'Review', baseCurrency: 'USD', timezone: 'UTC' })
+    ).body.data.id as string;
+    const base = `/api/v1/households/${home}`;
+    const acct = async (name: string) =>
+      (await A.post(`${base}/accounts`, { name, type: 'depository' })).body.data.id as string;
+    const groups = (await A.get(`${base}/categories`)).body.data as CategoryGroup[];
+    const transfer = groups
+      .flatMap((g) => g.categories)
+      .find((c) => c.systemKey === 'transfer')!.id;
+    const add = async (accountId: string, amountMinor: number, date: string, transferCat = false) =>
+      (
+        await A.post(`${base}/transactions`, {
+          accountId,
+          amountMinor,
+          date,
+          displayName: 'Move',
+          ...(transferCat ? { categoryId: transfer } : {}),
+        })
+      ).body.data.id as string;
+    const day = (offset: number) =>
+      new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const checking = await acct('Checking');
+    const savings = await acct('Savings');
+    const card = await acct('Card');
+
+    // Two possible other sides: suggested, not unique. (Ins first, so entry doesn't link them.)
+    const s1 = await add(savings, 50000, day(-40));
+    const c1 = await add(card, 50000, day(-40));
+    const out1 = await add(checking, -50000, day(-41), true);
+    // Eight days apart: past auto-linking, suggested and unique.
+    const s2 = await add(savings, 70000, day(-22));
+    const out2 = await add(checking, -70000, day(-30), true);
+    // Nothing on the other side, a month old: unmatched. Two days old: maybe in transit.
+    const lonely = await add(checking, -90000, day(-30), true);
+    await add(checking, -95000, day(-2), true);
+
+    const review = (await A.get(`${base}/transactions/transfer-review`)).body.data as {
+      suggested: { transaction: Transaction; candidates: Transaction[]; unique: boolean }[];
+      unmatched: Transaction[];
+      counts: Record<string, number>;
+    };
+    expect(
+      review.suggested.map((x) => [
+        x.transaction.id,
+        x.candidates.map((c) => c.id).sort(),
+        x.unique,
+      ]),
+    ).toEqual([
+      [out2, [s2], true],
+      [out1, [s1, c1].sort(), false],
+    ]);
+    expect(review.unmatched.map((t) => t.id)).toEqual([lonely]);
+    expect((await A.get(`${base}/transactions/review-count`)).body.data.transfers).toBe(3);
+
+    const linked = await A.post(`${base}/transactions/transfer-review/link-all`);
+    expect(linked.body.data).toEqual({ linked: 1 });
+    expect(
+      ((await A.get(`${base}/transactions/${out2}`)).body.data as Transaction).transfer
+        ?.transactionId,
+    ).toBe(s2);
+
+    // "The other account isn't in Fiscus": not asked again.
+    const v = (await A.get(`${base}/transactions/${lonely}`)).body.data.version as number;
+    await A.request(
+      'PATCH',
+      `${base}/transactions/${lonely}`,
+      { transferExternal: true },
+      { headers: { 'if-match': `"v${v}"` } },
+    );
+    const after = (await A.get(`${base}/transactions/transfer-review`)).body.data;
+    expect(after.unmatched).toEqual([]);
+    expect(after.counts).toEqual({ suggested: 1, unmatched: 0, unique: 0 });
   });
 
   it('links by hand, refuses what isn’t a transfer, and unlinking restores categories', async () => {
@@ -331,6 +424,8 @@ describe('transfers and the review queue', () => {
     });
     expect((await reviewer.get(`${base}/transactions/review-count`)).body.data).toEqual({
       count: 3,
+      transactions: 3,
+      transfers: 0,
     });
     const page = await reviewer.get(
       `${base}/transactions?review=needs_review&order=oldest&limit=2`,

@@ -50,8 +50,8 @@ export function AppShell() {
   const [moreOpen, setMoreOpen] = useState(false);
   // What waits in the review queue (#44), shown on Transactions. Viewers can't review.
   const toReview =
-    useQuery({ ...reviewCountQuery(householdId), enabled: household.you.role !== 'viewer' }).data ??
-    0;
+    useQuery({ ...reviewCountQuery(householdId), enabled: household.you.role !== 'viewer' }).data
+      ?.count ?? 0;
   const reviewBadge = (s: Section, className?: string) =>
     s.id === 'transactions' && toReview > 0 ? (
       <Badge tone="accent" className={className}>

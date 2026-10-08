@@ -24,6 +24,7 @@ import {
   DateText,
   Kbd,
   LoadingRegion,
+  SegmentedControl,
   Skeleton,
   toast,
 } from '../components/ui.js';
@@ -31,6 +32,7 @@ import { type SuggestedRule } from '../lib/rules.js';
 import { typing } from '../lib/shortcuts.js';
 import { categoryIndex } from '../lib/transactions.js';
 import { RuleSuggestion } from './rules.js';
+import { TransferReviewList } from './transfer-review.js';
 import {
   CategorySelect,
   TransactionDetails,
@@ -58,7 +60,8 @@ export function ReviewPage() {
   const household = useSuspenseQuery(householdQuery(householdId)).data;
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
-  const total = useQuery(reviewCountQuery(householdId)).data;
+  const counts = useQuery(reviewCountQuery(householdId)).data;
+  const [view, setView] = useState<'transactions' | 'transfers'>('transactions');
   const invalidate = useInvalidateLedger(householdId);
   const query = useInfiniteQuery(
     transactionsQuery(householdId, { lens: 'all', review: 'needs_review', order: 'oldest' }),
@@ -135,9 +138,9 @@ export function ReviewPage() {
   // box (those render outside <main>). Toasts don't take focus, so they don't get in the way.
   // Caught before the page's controls see them: a focused category select would otherwise take
   // "r" as type-to-select ("Restaurants").
-  const keys = useRef({ move, markReviewed, toggleExcluded, current });
+  const keys = useRef({ move, markReviewed, toggleExcluded, current, view });
   useEffect(() => {
-    keys.current = { move, markReviewed, toggleExcluded, current };
+    keys.current = { move, markReviewed, toggleExcluded, current, view };
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -147,6 +150,7 @@ export function ReviewPage() {
         (e.target instanceof Node && document.getElementById('main')?.contains(e.target));
       if (!onPage) return;
       const k = keys.current;
+      if (k.view !== 'transactions') return;
       const t = k.current;
       if (e.key === 'j') k.move(1);
       else if (e.key === 'k') k.move(-1);
@@ -182,6 +186,11 @@ export function ReviewPage() {
         Nothing needs review. New transactions from imports land here, so you can check their
         category before they count.
       </p>
+      {counts?.transfers ? (
+        <Button variant="secondary" onPress={() => setView('transfers')}>
+          Check {counts.transfers} {counts.transfers === 1 ? 'transfer' : 'transfers'}
+        </Button>
+      ) : null}
     </EmptyState>
   ) : (
     <div className="grid gap-6 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
@@ -335,9 +344,23 @@ export function ReviewPage() {
           </EmptyState>
         ) : (
           <>
-            {items.length ? (
+            <SegmentedControl
+              aria-label="What to review"
+              options={[
+                { value: 'transactions', label: `Transactions (${counts?.transactions ?? 0})` },
+                { value: 'transfers', label: `Transfers (${counts?.transfers ?? 0})` },
+              ]}
+              value={view}
+              onChange={setView}
+            />
+            {view === 'transfers' ? (
+              <TransferReviewList householdId={householdId} members={members} groups={groups} />
+            ) : null}
+            {view === 'transactions' && items.length ? (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
-                <span className="mr-auto">{total ?? items.length} to review, oldest first.</span>
+                <span className="mr-auto">
+                  {counts?.transactions ?? items.length} to review, oldest first.
+                </span>
                 <span aria-hidden className="hidden flex-wrap gap-x-3 md:flex">
                   {KEYS.map(([key, label]) => (
                     <span key={key}>
@@ -347,7 +370,7 @@ export function ReviewPage() {
                 </span>
               </div>
             ) : null}
-            {body}
+            {view === 'transactions' ? body : null}
           </>
         )}
         <p role="status" className="sr-only">

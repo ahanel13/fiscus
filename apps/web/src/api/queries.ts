@@ -17,6 +17,7 @@ import type {
   SessionSummary,
   Tag,
   Transaction,
+  TransferReview,
 } from '@fiscus/shared';
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { api } from './client.js';
@@ -139,13 +140,21 @@ export const transactionsQuery = (id: string, filters: TransactionFilters) =>
     getNextPageParam: (last) => last.meta.nextCursor ?? undefined,
   });
 
-/** How many transactions wait for you in the review queue (#44): the badge on Transactions. */
+/** What waits for you in the review queue (#44): the badge on Transactions. */
 export const reviewCountQuery = (id: string) =>
   queryOptions({
     queryKey: ['households', id, 'transactions', 'review-count'],
     queryFn: async () =>
-      (await api<Data<ReviewCount>>('GET', `${hh(id)}/transactions/review-count`)).data.count,
+      (await api<Data<ReviewCount>>('GET', `${hh(id)}/transactions/review-count`)).data,
     staleTime: 30_000,
+  });
+
+/** Suggested transfer pairs, and transfers with no other side (transfers.md §2). */
+export const transferReviewQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'transactions', 'transfer-review'],
+    queryFn: async () =>
+      (await api<Data<TransferReview>>('GET', `${hh(id)}/transactions/transfer-review`)).data,
   });
 
 export const transactionQuery = (id: string, transactionId: string) =>

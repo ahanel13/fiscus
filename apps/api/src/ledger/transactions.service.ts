@@ -26,6 +26,7 @@ import type {
   ReviewCount,
   Transaction,
   TransferCounterpart,
+  TransferReview,
   transactionsQuerySchema,
   updateTransactionSchema,
 } from '@fiscus/shared';
@@ -61,8 +62,10 @@ import {
   detectTransfers,
   linkable,
   linkTransfers,
-  TRANSFER_WINDOW_DAYS,
+  SUGGEST_WINDOW_DAYS,
   transferCategories,
+  transferReview,
+  type TransferReviewIds,
   unlinkTransfers,
 } from './transfers.js';
 
@@ -238,12 +241,13 @@ export class TransactionsService {
    */
   async reviewCount(ctx: HouseholdContext): Promise<ReviewCount> {
     return this.scope.run(ctx, async (tx) => {
-      if (ctx.role === 'viewer') return { count: 0 };
-      const levels = await accessLevels(tx);
-      const accountIds = [...levels]
+      const none = { count: 0, transactions: 0, transfers: 0 };
+      if (ctx.role === 'viewer') return none;
+      const access = await this.#access(tx, ctx);
+      const accountIds = [...access.levels]
         .filter(([, l]) => l === 'owner' || l === 'full')
         .map(([id]) => id);
-      if (accountIds.length === 0) return { count: 0 };
+      if (accountIds.length === 0) return none;
       const [row] = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(transactions)
@@ -255,7 +259,53 @@ export class TransactionsService {
             inArray(transactions.accountId, accountIds),
           ),
         );
-      return { count: row?.count ?? 0 };
+      const review = await this.#transferReview(tx, access);
+      const transfers = review.suggested.size + review.unmatched.length;
+      const count = row?.count ?? 0;
+      return { count: count + transfers, transactions: count, transfers };
+    });
+  }
+
+  /**
+   * The transfer review (transfers.md §2): suggested pairs to link, and transfers with no other
+   * side, in accounts you own. Worked out on request.
+   */
+  async transferReview(ctx: HouseholdContext): Promise<TransferReview> {
+    return this.scope.run(ctx, async (tx) => {
+      const access = await this.#access(tx, ctx);
+      const review = await this.#transferReview(tx, access);
+      const suggested = [...review.suggested].slice(0, 100);
+      const unmatched = review.unmatched.slice(0, 200);
+      const ids = [...new Set([...suggested.flat(2), ...unmatched])];
+      const rows = ids.length
+        ? await tx.select().from(transactions).where(inArray(transactions.id, ids))
+        : [];
+      const shown = new Map((await this.#present(tx, ctx, access, rows)).map((t) => [t.id, t]));
+      const unique = new Set(review.unique.map(([out]) => out.id));
+      return {
+        suggested: suggested.map(([out, intos]) => ({
+          transaction: shown.get(out)!,
+          candidates: intos.map((id) => shown.get(id)!),
+          unique: unique.has(out),
+        })),
+        unmatched: unmatched.map((id) => shown.get(id)!),
+        counts: {
+          suggested: review.suggested.size,
+          unmatched: review.unmatched.length,
+          unique: review.unique.length,
+        },
+      };
+    });
+  }
+
+  /** "Link all": every suggested pair with exactly one candidate either way (TXN-08). */
+  async linkAllTransfers(ctx: HouseholdContext): Promise<{ linked: number }> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const access = await this.#access(tx, ctx);
+      if (access.viewer) throw forbidden('Viewers can’t link transfers.');
+      const review = await this.#transferReview(tx, access);
+      await linkTransfers(tx, activity, review.unique, await transferCategories(tx), false);
+      return { linked: review.unique.length };
     });
   }
 
@@ -272,7 +322,7 @@ export class TransactionsService {
         .filter(([accountId, l]) => l === 'owner' && accountId !== row.accountId)
         .map(([accountId]) => accountId);
       if (owned.length === 0) return [];
-      const days = 3 * TRANSFER_WINDOW_DAYS;
+      const days = SUGGEST_WINDOW_DAYS;
       const rows = await tx
         .select()
         .from(transactions)
@@ -397,9 +447,13 @@ export class TransactionsService {
       const row = await this.#visible(tx, id, true);
       const can = this.#permissions(row, access);
       const needsEdit = ['amountMinor', 'date', 'excluded', 'isBusiness'].some((f) => f in patch);
-      const needsCategorize = ['displayName', 'categoryId', 'reviewStatus', 'tagIds'].some(
-        (f) => f in patch,
-      );
+      const needsCategorize = [
+        'displayName',
+        'categoryId',
+        'reviewStatus',
+        'tagIds',
+        'transferExternal',
+      ].some((f) => f in patch);
       if ((needsEdit && !can.edit) || (needsCategorize && !can.categorize)) {
         throw forbidden(
           needsEdit
@@ -430,6 +484,7 @@ export class TransactionsService {
         excluded: row.excluded,
         isBusiness: row.isBusiness,
         tagIds: tagKey(currentTags.get(id) ?? []),
+        transferExternal: row.transferExternal,
       };
       const { tagIds, ...rest } = patch;
       const plan = planVersionedPatch(
@@ -569,6 +624,9 @@ export class TransactionsService {
         ...(changes.categoryId !== undefined ? { categoryId: changes.categoryId } : {}),
         ...(changes.reviewStatus ? { reviewStatus: changes.reviewStatus } : {}),
         ...(changes.excluded !== undefined ? { excluded: changes.excluded } : {}),
+        ...(changes.transferExternal !== undefined
+          ? { transferExternal: changes.transferExternal }
+          : {}),
       };
       if (Object.keys(columns).length) {
         await tx
@@ -1040,6 +1098,12 @@ export class TransactionsService {
     };
   }
 
+  async #transferReview(tx: Executor, access: Access): Promise<TransferReviewIds> {
+    if (access.viewer) return { suggested: new Map(), unique: [], unmatched: [] };
+    const owned = new Set([...access.levels].filter(([, l]) => l === 'owner').map(([id]) => id));
+    return transferReview(tx, await transferCategories(tx), owned, access.ranges.today);
+  }
+
   #permissions(row: Row, access: Access): Permissions {
     // Viewers are read-only (permissions §2), whatever an account's visibility allows.
     if (access.viewer) return ZERO_PERMISSIONS;
@@ -1283,6 +1347,7 @@ export class TransactionsService {
         parentId: r.parentId,
         hasSplits: r.hasSplits,
         transfer: transfers.get(r.id) ?? null,
+        transferExternal: r.transferExternal,
         can,
         version: r.version,
       };

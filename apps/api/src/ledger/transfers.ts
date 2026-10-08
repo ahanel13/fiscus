@@ -11,8 +11,15 @@ import type { HouseholdActivity } from '../households/household-scope.js';
 
 type Row = typeof transactions.$inferSelect;
 
-/** How far apart the two legs' dates may be for detection to pair them. */
-export const TRANSFER_WINDOW_DAYS = 3;
+/**
+ * How far apart two legs may be for detection to link them: business days, since a Friday ACH
+ * between banks can land the next Wednesday (docs/design/transfers.md §1). Holidays aren't known.
+ */
+export const TRANSFER_WINDOW_BUSINESS_DAYS = 3;
+/** How far apart a suggested pair may be, in calendar days (the review, linking by hand). */
+export const SUGGEST_WINDOW_DAYS = 10;
+/** A transfer with no other side is asked about once it's this old: younger may be in transit. */
+export const UNMATCHED_AFTER_DAYS = 7;
 
 export interface TransferCategories {
   /** The system Transfer category: what a linked leg gets unless it's in a transfer kind already. */
@@ -44,6 +51,7 @@ export const linkable = (r: Row) =>
 
 const detectable = (r: Row, cats: TransferCategories) =>
   linkable(r) &&
+  !r.transferExternal &&
   (r.categoryId === null ||
     r.categoryId === cats.uncategorized ||
     cats.transferKind.has(r.categoryId));
@@ -54,22 +62,50 @@ export type Leg = Pick<Row, 'id' | 'accountId' | 'amountMinor' | 'currency' | 'e
 const DAY_MS = 86_400_000;
 const shiftDays = (date: string, days: number) =>
   new Date(Date.parse(date) + days * DAY_MS).toISOString().slice(0, 10);
+const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY_MS;
+
+/** Weekdays after the earlier date up to and including the later one: Friday → Wednesday is 3. */
+export function businessDaysApart(a: string, b: string): number {
+  const [from, to] = a <= b ? [a, b] : [b, a];
+  const total = daysApart(from, to);
+  if (total > 31) return total; // far apart either way; don't walk the calendar
+  let count = 0;
+  for (let d = 1; d <= total; d++) {
+    const day = new Date(Date.parse(from) + d * DAY_MS).getUTCDay();
+    if (day !== 0 && day !== 6) count++;
+  }
+  return count;
+}
+
+/** How close two legs' dates must be, and how many calendar days that can span at most. */
+interface Window {
+  calendarDays: number;
+  within: (a: string, b: string) => boolean;
+}
+const DETECT: Window = {
+  // 3 business days span at most 5 calendar days (Friday → Wednesday).
+  calendarDays: TRANSFER_WINDOW_BUSINESS_DAYS + 2,
+  within: (a, b) => businessDaysApart(a, b) <= TRANSFER_WINDOW_BUSINESS_DAYS,
+};
+const SUGGEST: Window = {
+  calendarDays: SUGGEST_WINDOW_DAYS,
+  within: (a, b) => daysApart(a, b) <= SUGGEST_WINDOW_DAYS,
+};
 
 /** The opposite amount, the same currency, another account, within the window. */
-const legsMatch = (a: Leg, b: Leg) =>
+const legsMatch = (a: Leg, b: Leg, window: Window) =>
   a.id !== b.id &&
   a.amountMinor === -b.amountMinor &&
   a.currency === b.currency &&
   a.accountId !== b.accountId &&
-  Math.abs(Date.parse(a.effectiveDate) - Date.parse(b.effectiveDate)) <=
-    TRANSFER_WINDOW_DAYS * DAY_MS;
+  window.within(a.effectiveDate, b.effectiveDate);
 
 /** Pairs of legs matching each other, from two lists, grouped by amount to stay linear. */
-function pairsBetween(from: Leg[], to: Leg[]): [string, string][] {
+function pairsBetween(from: Leg[], to: Leg[], window: Window = DETECT): [string, string][] {
   const byAmount = Map.groupBy(to, (o) => o.amountMinor);
   return from.flatMap((n) =>
     (byAmount.get(-n.amountMinor) ?? [])
-      .filter((o) => legsMatch(n, o))
+      .filter((o) => legsMatch(n, o, window))
       .map((o): [string, string] => [n.id, o.id]),
   );
 }
@@ -83,6 +119,7 @@ async function ledgerCandidates(
   tx: Executor,
   legs: Leg[],
   cats: TransferCategories,
+  window: Window = DETECT,
 ): Promise<Leg[]> {
   if (legs.length === 0) return [];
   const eligible = [...cats.transferKind, ...(cats.uncategorized ? [cats.uncategorized] : [])];
@@ -99,9 +136,10 @@ async function ledgerCandidates(
     .where(
       and(
         inArray(transactions.amountMinor, [...new Set(legs.map((l) => -l.amountMinor))]),
-        gte(transactions.effectiveDate, shiftDays(dates[0]!, -TRANSFER_WINDOW_DAYS)),
-        lte(transactions.effectiveDate, shiftDays(dates.at(-1)!, TRANSFER_WINDOW_DAYS)),
+        gte(transactions.effectiveDate, shiftDays(dates[0]!, -window.calendarDays)),
+        lte(transactions.effectiveDate, shiftDays(dates.at(-1)!, window.calendarDays)),
         isNull(transactions.transferGroupId),
+        eq(transactions.transferExternal, false),
         isNull(transactions.deletedAt),
         isNull(transactions.parentId),
         eq(transactions.hasSplits, false),
@@ -180,6 +218,107 @@ export async function detectTransfers(
   return pairs.length;
 }
 
+/** What the transfer review shows (docs/design/transfers.md §2), as transaction ids. */
+export interface TransferReviewIds {
+  /** Money-out leg → its possible other sides, newest first. */
+  suggested: Map<string, string[]>;
+  /** Suggested pairs with exactly one candidate on each side: what "Link all" links. */
+  unique: [Leg, Leg][];
+  /** Transfers older than UNMATCHED_AFTER_DAYS with no possible other side, newest first. */
+  unmatched: string[];
+}
+
+/**
+ * The transfer review for accounts in `owned`: unlinked transfer-category rows and their possible
+ * other sides within SUGGEST_WINDOW_DAYS (uncategorized or a transfer, in another owned account),
+ * and the ones with none at all. Worked out on request; it reads only.
+ */
+export async function transferReview(
+  tx: Executor,
+  cats: TransferCategories,
+  owned: Set<string>,
+  today: string,
+): Promise<TransferReviewIds> {
+  const empty: TransferReviewIds = { suggested: new Map(), unique: [], unmatched: [] };
+  if (owned.size === 0 || cats.transferKind.size === 0) return empty;
+  const sources = await tx
+    .select({
+      id: transactions.id,
+      accountId: transactions.accountId,
+      amountMinor: transactions.amountMinor,
+      currency: transactions.currency,
+      effectiveDate: transactions.effectiveDate,
+    })
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.accountId, [...owned]),
+        inArray(transactions.categoryId, [...cats.transferKind]),
+        isNull(transactions.transferGroupId),
+        eq(transactions.transferExternal, false),
+        isNull(transactions.deletedAt),
+        isNull(transactions.parentId),
+        eq(transactions.hasSplits, false),
+        eq(transactions.pending, false),
+      ),
+    );
+  if (sources.length === 0) return empty;
+  const mine = (legs: Leg[]) => legs.filter((l) => owned.has(l.accountId));
+  const candidates = mine(await ledgerCandidates(tx, sources, cats, SUGGEST));
+  const first = pairsBetween(sources, candidates, SUGGEST);
+  const byId = new Map<string, Leg>(sources.map((l) => [l.id, l]));
+  const others = candidates.filter((o) => !byId.has(o.id));
+  for (const o of others) byId.set(o.id, o);
+  // Every possible side of every candidate, so "exactly one" holds from both sides.
+  const paired = others.filter((o) => first.some(([, b]) => b === o.id));
+  const second = pairsBetween(
+    paired,
+    mine(await ledgerCandidates(tx, paired, cats, SUGGEST)),
+    SUGGEST,
+  );
+  const edges = new Map<string, Set<string>>();
+  const add = (a: string, b: string) => edges.set(a, (edges.get(a) ?? new Set()).add(b));
+  for (const [a, b] of [...first, ...second]) {
+    add(a, b);
+    add(b, a);
+  }
+
+  const newest = (a: Leg, b: Leg) =>
+    b.effectiveDate.localeCompare(a.effectiveDate) || b.id.localeCompare(a.id);
+  const suggested = new Map<string, string[]>();
+  const unique: [Leg, Leg][] = [];
+  const seen = new Set<string>();
+  for (const [a, b] of first) {
+    const [out, into] = byId.get(a)!.amountMinor < 0 ? [a, b] : [b, a];
+    if (seen.has(`${out}|${into}`)) continue;
+    seen.add(`${out}|${into}`);
+    suggested.set(out, [...(suggested.get(out) ?? []), into]);
+  }
+  for (const [out, intos] of suggested) {
+    if (intos.length === 1 && edges.get(out)?.size === 1 && edges.get(intos[0]!)?.size === 1) {
+      unique.push([byId.get(out)!, byId.get(intos[0]!)!]);
+    }
+  }
+  const cutoff = shiftDays(today, -UNMATCHED_AFTER_DAYS);
+  const unmatched = sources
+    .filter((s) => !edges.has(s.id) && s.effectiveDate <= cutoff)
+    .sort(newest)
+    .map((s) => s.id);
+  const ordered = new Map(
+    [...suggested]
+      .sort(([a], [b]) => newest(byId.get(a)!, byId.get(b)!))
+      .map(([out, intos]) => [
+        out,
+        intos.sort(
+          (x, y) =>
+            daysApart(byId.get(out)!.effectiveDate, byId.get(x)!.effectiveDate) -
+            daysApart(byId.get(out)!.effectiveDate, byId.get(y)!.effectiveDate),
+        ),
+      ]),
+  );
+  return { suggested: ordered, unique, unmatched };
+}
+
 /**
  * Links pairs of transactions as transfers. Each leg remembers its category and moves to Transfer,
  * unless it's in a transfer category already (Credit Card Payment stays Credit Card Payment).
@@ -207,6 +346,7 @@ export async function linkTransfers(
           transfer_previous_category_id = t.category_id,
           category_id = CASE WHEN t.category_id = ANY(${sql.param([...cats.transferKind])}::uuid[])
                              THEN t.category_id ELSE ${cats.transfer}::uuid END,
+          transfer_external = false,
           version = t.version + 1
       FROM unnest(${sql.param(part.map((l) => l.row.id))}::uuid[],
                   ${sql.param(part.map((l) => l.group))}::uuid[]) AS v(id, g)

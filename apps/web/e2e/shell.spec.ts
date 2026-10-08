@@ -413,6 +413,20 @@ test('links a transfer between accounts, and works through the review queue by k
     await add.getByRole('button', { name: 'Add transaction' }).click();
     await expect(add).toHaveCount(0);
   }
+  // Filed as a transfer in January, with nothing on the other side: the review will ask.
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const venmo = page.getByRole('dialog', { name: 'Add transaction' });
+  await venmo.getByRole('button', { name: /Account/ }).click();
+  await page.getByRole('option', { name: 'Everyday checking' }).click();
+  await venmo.getByLabel('Description').fill('Venmo Sam');
+  await venmo.getByLabel('Amount').fill('80');
+  await venmo.getByRole('spinbutton', { name: /month/ }).click();
+  await page.keyboard.type('01022026');
+  await venmo.getByRole('button', { name: /Category/ }).click();
+  await page.getByRole('option', { name: 'Transfer', exact: true }).click();
+  await venmo.getByRole('button', { name: 'Add transaction' }).click();
+  await expect(venmo).toHaveCount(0);
+
   await expect(page.getByRole('button', { name: /^To wallet/ })).toContainText(
     'Transfer to Wallet',
   );
@@ -447,6 +461,14 @@ test('links a transfer between accounts, and works through the review queue by k
   await expect(page.getByRole('region', { name: 'Reviewing REFUND' })).toBeVisible();
   await page.keyboard.press('r');
   await expect(page.getByText('All caught up')).toBeVisible();
+
+  // Transfers: the Venmo has no other side. It goes to someone outside Fiscus.
+  await page.getByRole('button', { name: 'Check 1 transfer' }).click();
+  const unmatched = page.getByRole('region', { name: 'No other side (1)' });
+  await expect(unmatched).toContainText('Venmo Sam');
+  expect(await axeViolations(page)).toEqual([]);
+  await unmatched.getByRole('button', { name: 'Outside Fiscus' }).click();
+  await expect(page.getByText('Transfers add up')).toBeVisible();
   await expect(nav.getByRole('link', { name: /Transactions/ })).not.toContainText('to review');
 });
 

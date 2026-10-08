@@ -114,6 +114,8 @@ export const updateTransactionSchema = z
     excluded: z.boolean(),
     isBusiness: z.boolean().nullable(),
     tagIds: z.array(z.uuid()).max(20),
+    /** A transfer whose other side is in an account outside Fiscus (transfers.md §2). */
+    transferExternal: z.boolean(),
   })
   .partial()
   .strict();
@@ -125,6 +127,7 @@ export const bulkUpdateTransactionsSchema = z.object({
       categoryId: z.uuid().nullable(),
       reviewStatus: z.enum(['needs_review', 'reviewed']),
       excluded: z.boolean(),
+      transferExternal: z.boolean(),
       addTagIds: z.array(z.uuid()).max(20),
       removeTagIds: z.array(z.uuid()).max(20),
     })
@@ -209,6 +212,8 @@ export interface Transaction {
   hasSplits: boolean;
   /** The other side, when this is one leg of a transfer between accounts (#40). */
   transfer: TransferCounterpart | null;
+  /** A transfer whose other side is in an account outside Fiscus: the review doesn't ask. */
+  transferExternal: boolean;
   /** What you may do with it (permissions §4.3–4.5, TXN-08). */
   can: {
     categorize: boolean;
@@ -236,9 +241,29 @@ export interface TransferCounterpart {
 /** Link a transaction to the other leg of a transfer (TXN-08). */
 export const linkTransferSchema = z.object({ transactionId: z.uuid() });
 
-/** Transactions waiting for you in the review queue (#44): ones you can categorize. */
+/** What waits for you in the review queue (#44, transfers.md §2). */
 export interface ReviewCount {
+  /** Both together: the badge. */
   count: number;
+  /** Needing review, in accounts you can categorize. */
+  transactions: number;
+  /** Suggested transfer pairs and transfers with no other side, in accounts you own. */
+  transfers: number;
+}
+
+/** The transfer review (docs/design/transfers.md §2). */
+export interface TransferReview {
+  /** Money out of one of your accounts, and the money coming into another that may be its other side. */
+  suggested: {
+    transaction: Transaction;
+    candidates: Transaction[];
+    /** Exactly one candidate either way: "Link all" links it. */
+    unique: boolean;
+  }[];
+  /** In a transfer category, over a week old, and nothing that could be its other side. */
+  unmatched: Transaction[];
+  /** The full counts: the lists stop at 100 and 200. */
+  counts: { suggested: number; unmatched: number; unique: number };
 }
 
 export interface BulkUpdateResult {

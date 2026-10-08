@@ -21,6 +21,7 @@ import {
   type RangeMeta,
   type ReviewCount,
   type Transaction,
+  type TransferReview,
   transactionsQuerySchema,
   updateCategoryGroupSchema,
   updateCategorySchema,
@@ -234,6 +235,20 @@ export class TransactionsController {
   @Get('review-count')
   async reviewCount(@Household() ctx: HouseholdContext): Promise<{ data: ReviewCount }> {
     return { data: await this.transactions.reviewCount(ctx) };
+  }
+
+  /** Suggested transfer pairs, and transfers with no other side (transfers.md §2). */
+  @Get('transfer-review')
+  async transferReview(@Household() ctx: HouseholdContext): Promise<{ data: TransferReview }> {
+    return { data: await this.transactions.transferReview(ctx) };
+  }
+
+  @Post('transfer-review/link-all')
+  @HttpCode(200)
+  async linkAllTransfers(
+    @Household() ctx: HouseholdContext,
+  ): Promise<{ data: { linked: number } }> {
+    return { data: await this.transactions.linkAllTransfers(ctx) };
   }
 
   @Get(':transactionId')
