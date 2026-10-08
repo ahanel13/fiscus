@@ -97,6 +97,7 @@ describe('imports', () => {
       overlaps: 0,
       skipped: 1,
       errors: 1,
+      transfers: 0,
     });
     expect(preview.body.data.rows).toEqual([
       { line: 4, status: 'skipped', message: 'Amount is $0' },
@@ -307,7 +308,21 @@ describe('imports', () => {
       const r = await run(body);
       expect(r.res.status, JSON.stringify(r.res.body)).toBe(200);
       const data = r.preview;
-      expect(data.totals).toEqual({ new: 6, duplicates: 0, overlaps: 0, skipped: 0, errors: 0 });
+      expect(data.totals).toEqual({
+        new: 6,
+        duplicates: 0,
+        overlaps: 0,
+        skipped: 0,
+        errors: 0,
+        transfers: 1,
+      });
+      // The card payment, both sides in the file: linked as a transfer on import.
+      expect(data.transfers).toEqual([
+        expect.objectContaining({
+          amountMinor: -19510,
+          other: expect.objectContaining({ accountName: expect.stringContaining('Blue Cash') }),
+        }),
+      ]);
       expect(r.added).toBe(6);
       expect(r.balances).toBe(data.accounts.reduce((n, a) => n + a.balances, 0));
       expect(data.newCategories).toEqual([

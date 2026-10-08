@@ -239,6 +239,9 @@ test('imports a Monarch export with the wizard, then undoes it', async ({ page }
   await page.getByRole('button', { name: 'Continue' }).click();
 
   await expect(page.getByText('4 new transactions.')).toBeVisible();
+  // The card payment is both sides of one transfer: it will be linked.
+  const transfers = page.getByRole('region', { name: 'Transfers between your accounts (1)' });
+  await expect(transfers).toContainText('Imported Checking → Blue Cash Preferred®');
   expect(await axeViolations(page)).toEqual([]);
   await page.getByRole('button', { name: 'Import 4 transactions' }).click();
 

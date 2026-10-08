@@ -198,6 +198,10 @@ linked by `transfer_group_id`, both in the **Transfer** category (left out of ca
   opposite amount in your other accounts, within 9 days). Both need ownership of both legs (TXN-08).
 - Linking moves each leg to **Transfer**, unless it's in a transfer category already (Credit Card
   Payment stays), and remembers the category it had. Rules leave a linked leg's category alone.
+- The import wizard's **Review step lists the transfers it will link** ("Imported Checking →
+  Blue Cash Preferred®, $97.55"), within the file and to transactions already here. Rules run
+  before detection on import, so one can still file a row elsewhere; the Done step has the final
+  count.
 - Deleting one leg, undoing its import, or moving it into the other leg's account unlinks the
   pair. A linked leg can't be split until it's unlinked.
 - **Across privacy lines** (your checking to a partner's private savings): you see the other

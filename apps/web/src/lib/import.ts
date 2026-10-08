@@ -435,7 +435,7 @@ export const previewImport = async (householdId: string, body: ImportRequest) =>
   ).data;
 
 /** "1 204 new transactions, 38 already imported, 3 possible duplicates": only what's there. */
-export function summarize(totals: ImportPreview['totals']): string {
+export function summarize(totals: Omit<ImportPreview['totals'], 'transfers'>): string {
   const n = (x: number) => x.toLocaleString('en-US');
   const parts = [
     `${n(totals.new)} new ${totals.new === 1 ? 'transaction' : 'transactions'}`,

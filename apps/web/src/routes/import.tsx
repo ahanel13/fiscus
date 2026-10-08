@@ -1409,6 +1409,15 @@ function ReviewStep({
         </div>
       ) : null}
 
+      {preview.transfers.length ? (
+        <TransferList
+          transfers={preview.transfers}
+          names={new Map(preview.accounts.map((a) => [a.key, a.name]))}
+          byLine={byLine}
+          currency={currency}
+        />
+      ) : null}
+
       {preview.rows.length ? (
         <div className="space-y-3">
           <SegmentedControl
@@ -1510,6 +1519,63 @@ function RowList({
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * The transfers between your accounts the import will link (§5): money out of one account and
+ * into another, which then doesn't count as spending or income.
+ */
+function TransferList({
+  transfers,
+  names,
+  byLine,
+  currency,
+}: {
+  transfers: ImportPreview['transfers'];
+  names: Map<string, string>;
+  byLine: Map<number, FileRows['transactions'][number]>;
+  currency: string;
+}) {
+  const [all, setAll] = useState(false);
+  const shown = all ? transfers : transfers.slice(0, 10);
+  return (
+    <section aria-labelledby="import-transfers" className="space-y-2">
+      <h3 id="import-transfers" className="text-sm font-medium">
+        Transfers between your accounts ({n(transfers.length)})
+      </h3>
+      <p className="text-sm text-muted">
+        Linked when they’re imported, so they don’t count as spending or income. Your rules run
+        first and can still file a row elsewhere; you can unlink any of them later.
+      </p>
+      <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+        {shown.map((t) => {
+          const row = byLine.get(t.line);
+          const out = t.amountMinor < 0;
+          const here = names.get(t.account) ?? t.account;
+          return (
+            <li key={t.line} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+              <span className="min-w-0 flex-1">
+                <span className="font-medium">
+                  {out ? here : t.other.accountName} → {out ? t.other.accountName : here}
+                </span>
+                <span className="block text-muted">
+                  <DateText value={t.date} />
+                  {row ? <> · {row.name ?? row.description}</> : null}
+                  {t.other.line === null ? ' · matches a transaction already here' : null}
+                </span>
+              </span>
+              <Amount minor={Math.abs(t.amountMinor)} currency={currency} kind="balance" />
+            </li>
+          );
+        })}
+      </ul>
+      {transfers.length > shown.length ? (
+        <Button variant="ghost" size="sm" onPress={() => setAll(true)}>
+          Show all {n(transfers.length)}
+        </Button>
+      ) : null}
+    </section>
   );
 }
 
