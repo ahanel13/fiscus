@@ -1,6 +1,6 @@
 # ADR 0014: Earning users' trust: verifiable confidentiality
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-07
 - Amends: [ADR 0005](0005-tenancy-and-trust-model.md) §3 (what is encrypted), §5 (what we tell
   users), and §6 (the sealed household)
