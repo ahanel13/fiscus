@@ -23,9 +23,24 @@ if [ -n "${API_UPSTREAM:-}" ]; then
     echo "API_UPSTREAM must look like http://host:port (got an invalid value)" >&2
     exit 1
   fi
+  # Resolve the API's name per request (cached 10 s), not once at start: nginx otherwise keeps the
+  # address it found then, and every request fails (502) after the api container is recreated
+  # with a new one. The resolver is the container's own DNS server (Docker's, on compose).
+  resolver=$(awk '/^nameserver/ { print $2; exit }' /etc/resolv.conf 2>/dev/null || true)
+  case "$resolver" in *:*) resolver="[$resolver]" ;; esac
+  if [ -n "$resolver" ]; then
+    resolve="resolver $resolver valid=10s;
+  set \$fiscus_api $API_UPSTREAM;"
+    # shellcheck disable=SC2016 # an nginx variable, not a shell one
+    target='$fiscus_api'
+  else
+    resolve=''
+    target="$API_UPSTREAM"
+  fi
   cat > /tmp/fiscus-proxy.conf <<CONF
 location /api/ {
-  proxy_pass $API_UPSTREAM;
+  $resolve
+  proxy_pass $target;
   proxy_http_version 1.1;
   proxy_set_header Host \$host;
   proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
