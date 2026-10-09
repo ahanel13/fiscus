@@ -25,12 +25,19 @@ import {
 // The shared range controls (ADR 0011 §2): the same on every page, so numbers line up.
 
 /** Preset dropdown with a custom range, showing the resolved dates under the label. */
-export function RangeSelect({ state }: { state: RangeState }) {
+export function RangeSelect({
+  state,
+  align = 'end',
+}: {
+  state: RangeState;
+  /** `start` in a form (a filters sheet); `end` in a page header. */
+  align?: 'start' | 'end';
+}) {
   const [custom, setCustom] = useState(false);
   const { selection, resolved } = state;
   const [draft, setDraft] = useState<IsoRange | null>({ start: resolved.from, end: resolved.to });
   return (
-    <div className="flex flex-col items-end">
+    <div className={align === 'start' ? 'flex flex-col items-start' : 'flex flex-col items-end'}>
       <Select
         aria-label="Time range"
         value={selection.range}
