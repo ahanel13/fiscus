@@ -59,6 +59,62 @@ export class MembersService {
     }));
   }
 
+  /**
+   * HH-18: your own name and color in this household. Colors tell people apart in shared views,
+   * so two current members can't share one.
+   */
+  async updateMe(
+    access: HouseholdContext,
+    patch: { displayName?: string | undefined; color?: string | undefined },
+  ): Promise<void> {
+    await this.scope.run(access, async (tx, activity) => {
+      // This household's row only: your rows in other households are visible to you too.
+      const [me] = await tx
+        .select()
+        .from(householdMembers)
+        .where(
+          and(
+            eq(householdMembers.id, access.memberId),
+            eq(householdMembers.householdId, access.householdId),
+          ),
+        )
+        .for('update');
+      if (!me) throw problems.notFound();
+      if (patch.color && patch.color !== me.color) {
+        const [taken] = await tx
+          .select({ id: householdMembers.id })
+          .from(householdMembers)
+          .where(
+            and(
+              eq(householdMembers.householdId, access.householdId),
+              eq(householdMembers.color, patch.color),
+              isNull(householdMembers.leftAt),
+            ),
+          );
+        if (taken) {
+          throw new Problem(409, 'color_taken', 'Someone in the household already has that color');
+        }
+      }
+      const changes = Object.fromEntries(
+        Object.entries(patch).filter(([k, v]) => v !== undefined && v !== me[k as keyof typeof me]),
+      );
+      if (Object.keys(changes).length === 0) return;
+      await tx.update(householdMembers).set(changes).where(eq(householdMembers.id, me.id));
+      await activity.record({
+        action: 'member.profile_changed',
+        targetType: 'household_member',
+        targetId: me.id,
+        metadata: { fields: Object.keys(changes) },
+        changes: {
+          before: Object.fromEntries(
+            Object.keys(changes).map((k) => [k, me[k as keyof typeof me]]),
+          ),
+          after: changes,
+        },
+      });
+    });
+  }
+
   async changeRole(access: HouseholdContext, memberId: string, role: MemberRole) {
     await this.scope
       .run(access, async (tx, activity) => {

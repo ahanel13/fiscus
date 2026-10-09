@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
+import { MEMBER_COLORS } from '../design.js';
 import { type CurrentUser, displayNameSchema, emailSchema } from './auth.js';
 
 const currencies = new Set(Intl.supportedValuesOf('currency'));
@@ -48,6 +49,16 @@ export const createInviteSchema = z.object({
 });
 
 export const changeRoleSchema = z.object({ role: memberRoleSchema });
+
+/** HH-18: how you appear in this household. Colors come from the accessible member palette. */
+export const updateMeSchema = z
+  .object({
+    displayName: displayNameSchema,
+    color: z.enum(MEMBER_COLORS),
+  })
+  .partial()
+  .strict()
+  .refine((m) => Object.keys(m).length > 0, 'Nothing to change');
 
 export const inviteSignupSchema = z.object({
   password: z.string().min(12, 'Use at least 12 characters').max(256),

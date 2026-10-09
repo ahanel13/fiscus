@@ -534,3 +534,42 @@ test('the living style guide renders tokens and accessible contrast figures', as
   await expect(page.getByText(/NaN/)).toHaveCount(0);
   await expect(page.getByLabel('Received $2,410.00').first()).toHaveText('+$2,410.00');
 });
+
+test('you choose how you appear; a household that shares everything makes accounts joint', async ({
+  page,
+  browser,
+}) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/settings`);
+  await expect(page.getByRole('heading', { name: 'How you appear here' })).toBeVisible();
+  await page.getByLabel('Your name here').fill('Ada L.');
+  await page.getByRole('radiogroup', { name: 'Your color' }).getByText('Violet').click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Ada L. (you)')).toBeVisible();
+
+  // A partner joins from an invite link.
+  await page.getByLabel('Invite by email').fill('bea@e2e.test');
+  await page.getByRole('button', { name: 'Create invite link' }).click();
+  const link = await page.getByRole('textbox', { name: 'Invite link' }).inputValue();
+  const partner = await browser.newContext();
+  const bea = await partner.newPage();
+  await bea.goto(link);
+  await bea.getByLabel('Your name').fill('Bea');
+  await bea.getByLabel('Password').fill('e2e partner password');
+  await bea.getByRole('button', { name: 'Create account and join' }).click();
+  await expect(bea).toHaveURL(/\/h\/[0-9a-f-]{36}$/);
+  await partner.close();
+
+  // Switching to "it's all ours" offers to make your accounts joint.
+  await page.reload();
+  await page.getByRole('button', { name: /How you handle money together/ }).click();
+  await page.getByRole('option', { name: 'It’s all ours' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  const offer = page.getByRole('region', { name: 'Your household shares everything' });
+  await expect(offer).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await offer.getByRole('button', { name: /Make all \d+ joint/ }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Make joint' }).click();
+  await expect(page.getByText(/accounts are joint now/)).toBeVisible();
+  await expect(offer).toHaveCount(0);
+});

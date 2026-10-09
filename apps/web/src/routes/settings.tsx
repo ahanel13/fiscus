@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { InviteSummary } from '@fiscus/shared';
+import { type HouseholdMember, type InviteSummary, MEMBER_COLORS } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { Copy, Monitor } from 'lucide-react';
@@ -8,6 +8,7 @@ import { api, type ApiError } from '../api/client.js';
 import { SourceLinks } from '../components/About.js';
 import { CategoriesSettings } from './categories-settings.js';
 import { HouseholdGeneral } from './household-general.js';
+import { MakeJointOffer } from './make-joint.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
 import {
   Alert,
@@ -17,6 +18,8 @@ import {
   Card,
   DateText,
   Form,
+  Radio,
+  RadioGroup,
   SegmentedControl,
   Select,
   SelectItem,
@@ -28,6 +31,99 @@ import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
 
 const ROLE_LABELS = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
+
+const COLOR_NAMES: Record<string, string> = {
+  '#2f6fdb': 'Blue',
+  '#c2410c': 'Orange',
+  '#7c4dcc': 'Violet',
+  '#be3d86': 'Magenta',
+  '#0e7490': 'Cyan',
+  '#6b7d1f': 'Olive',
+  '#9a5b34': 'Brown',
+  '#5d6f8a': 'Slate',
+};
+
+/**
+ * How you appear in this household (#51, HH-18): your name and color, shown on everything you
+ * pay for or that's for you. Each member has their own color.
+ */
+function YouInHousehold({
+  householdId,
+  members,
+}: {
+  householdId: string;
+  members: HouseholdMember[];
+}) {
+  const me = members.find((m) => m.isYou)!;
+  const [name, setName] = useState(me.displayName);
+  const [color, setColor] = useState(me.color);
+  const queryClient = useQueryClient();
+  const changes = {
+    ...(name.trim() !== me.displayName ? { displayName: name.trim() } : {}),
+    ...(color !== me.color ? { color } : {}),
+  };
+  const save = useMutation({
+    mutationFn: () => api('PATCH', `/api/v1/households/${householdId}/me`, { body: changes }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['households', householdId] });
+      toast('Saved.');
+    },
+    onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
+  });
+  const takenBy = new Map(members.filter((m) => !m.isYou).map((m) => [m.color, m.displayName]));
+  return (
+    <Card>
+      <h2 className="mb-1 font-semibold">How you appear here</h2>
+      <p className="mb-4 text-sm text-muted">
+        Your name and color in this household, on what you pay for and what’s for you.
+      </p>
+      <Form
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <div className="flex items-end gap-3">
+          <Avatar name={name || me.displayName} color={color} />
+          <TextField
+            label="Your name here"
+            value={name}
+            onChange={setName}
+            isRequired
+            maxLength={80}
+            className="flex-1"
+          />
+        </div>
+        <RadioGroup
+          label="Your color"
+          value={color}
+          onChange={setColor}
+          orientation="horizontal"
+          className="flex-row flex-wrap gap-x-4"
+        >
+          {MEMBER_COLORS.map((c) => (
+            <Radio key={c} value={c} isDisabled={takenBy.has(c)}>
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden className="size-4 rounded-full" style={{ background: c }} />
+                {COLOR_NAMES[c] ?? c}
+                {takenBy.has(c) ? <span className="text-muted">({takenBy.get(c)})</span> : null}
+              </span>
+            </Radio>
+          ))}
+        </RadioGroup>
+        <div className="flex justify-end">
+          <Button
+            type="submit"
+            isPending={save.isPending}
+            isDisabled={Object.keys(changes).length === 0 || !name.trim()}
+          >
+            Save
+          </Button>
+        </div>
+      </Form>
+    </Card>
+  );
+}
 
 export function HouseholdSettingsPage() {
   const { householdId } = useParams({ strict: false }) as { householdId: string };
@@ -59,6 +155,14 @@ export function HouseholdSettingsPage() {
         memberCount={members.length}
       />
       <p className="-mt-3 px-1 text-sm text-muted">Your role: {ROLE_LABELS[household.you.role]}</p>
+      <MakeJointOffer householdId={householdId} />
+      {members.some((m) => m.isYou) ? (
+        <YouInHousehold
+          key={members.map((m) => `${m.id}:${m.displayName}:${m.color}`).join()}
+          householdId={householdId}
+          members={members}
+        />
+      ) : null}
       <Card>
         <h2 className="mb-3 font-semibold">Members</h2>
         <ul className="divide-y divide-border">

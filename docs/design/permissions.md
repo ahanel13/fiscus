@@ -92,6 +92,7 @@ caller can't see ("Transfer to Anthony").
 | HH-15 | Turn on departure protection | ✅ | ✅ | ❌ | Any adult member. Freezes shared history before the chosen date. Ends when the departing members leave or all affected adults agree |
 | HH-16 | Take a departure package (own accounts, read-only snapshot, final settle-up, export) | ✅ | ✅ | ✅ | Needs no approval. Live joint-account transfers still need co-owner approval |
 | HH-17 | Claim ownership when owners are unresponsive | ✅ (n/a) | ✅ | ❌ | All owners notified; any owner can reject within 30 days; then the claimant becomes an additional owner (ADR 0012) |
+| HH-18 | Change your own name and color in the household | own | own | own | Colors come from the member palette; two current members can't share one |
 
 ### 4.2 Connections and accounts
 | ID | Action | OWN | MEM | VIEW | Notes |

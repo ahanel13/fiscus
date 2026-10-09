@@ -106,6 +106,10 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'HH-01/OWN': async () => ok(await f.A.get(url())),
   'HH-01/MEM': async () => ok(await f.B.get(url())),
   'HH-01/VIEW': async () => ok(await f.V.get(url())),
+  // Your own name and color, nobody else's (there's no route to change another member's).
+  'HH-18/OWN': async () => ok(await f.A.request('PATCH', url('/me'), { displayName: 'Ada' })),
+  'HH-18/MEM': async () => ok(await f.B.request('PATCH', url('/me'), { displayName: 'Bea' })),
+  'HH-18/VIEW': async () => ok(await f.V.request('PATCH', url('/me'), { displayName: 'Vic' })),
   'HH-02/OWN': async () => ok(await patch(f.A, '', { name: 'Home' })),
   'HH-02/MEM': async () => refused(await patch(f.B, '', { name: 'Hijacked' })),
   'HH-02/VIEW': async () => refused(await patch(f.V, '', { name: 'Hijacked' })),

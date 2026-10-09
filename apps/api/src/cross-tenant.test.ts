@@ -239,6 +239,11 @@ describe('cross-tenant isolation (generated from routes)', () => {
               leaks.push(`${route.method} ${route.url} returned ${secret}`);
           }
         }
+        // Validation stops the empty bodies above; a real one must still change nothing (HH-18).
+        const me = await alice.request('PATCH', `/api/v1/households/${ids.b.householdId}/me`, {
+          displayName: 'Hijacked',
+        });
+        if (me.status < 300) leaks.push(`PATCH /me with a body succeeded (${me.status})`);
       } finally {
         access.require = realRequire;
       }
