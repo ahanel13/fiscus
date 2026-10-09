@@ -30,7 +30,9 @@ export function Checkbox({ className, children, ...props }: AriaCheckboxProps) {
     <AriaCheckbox
       {...props}
       className={cx(
-        'group flex min-h-11 items-center gap-2.5 text-sm sm:min-h-8 disabled:opacity-60',
+        // relative: React Aria's hidden input is absolutely positioned; without a positioned
+        // ancestor it's placed against the page, and long lists of these made the page scroll.
+        'group relative flex min-h-11 items-center gap-2.5 text-sm sm:min-h-8 disabled:opacity-60',
         className,
       )}
     >
@@ -105,7 +107,9 @@ export function Radio({ className, children, ...props }: RadioProps) {
     <AriaRadio
       {...props}
       className={cx(
-        'group flex min-h-11 items-center gap-2.5 text-sm sm:min-h-8 disabled:opacity-60',
+        // relative: React Aria's hidden input is absolutely positioned; without a positioned
+        // ancestor it's placed against the page, and long lists of these made the page scroll.
+        'group relative flex min-h-11 items-center gap-2.5 text-sm sm:min-h-8 disabled:opacity-60',
         className,
       )}
     >

@@ -191,7 +191,9 @@ export function AppShell() {
           </Button>
         </div>
 
-        <main id="main" className="flex-1 overflow-y-auto pb-20 md:pb-0">
+        {/* relative: the containing block for anything absolutely positioned inside, so it's
+            clipped by this scroll area instead of making the whole page scroll. */}
+        <main id="main" className="relative flex-1 overflow-y-auto pb-20 md:pb-0">
           <TimeZoneProvider timeZone={household.timezone}>
             <Outlet />
           </TimeZoneProvider>
