@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { defineEnv, logLevel } from '@fiscus/env';
+import { booleanFlag, defineEnv, logLevel } from '@fiscus/env';
 import { z } from 'zod';
 
 // The migrate and seed jobs connect as the schema owner, separately from the services'
@@ -21,6 +21,19 @@ export default defineEnv('migrate', {
     description:
       'If set, migrate enables login for the fiscus_maintenance (BYPASSRLS) role with this password.',
     secret: true,
+  },
+  MIGRATE_BACKUP: booleanFlag(
+    true,
+    'Before applying pending migrations, write a pg_dump to MIGRATE_BACKUP_DIR (docs/design/upgrades.md §5). ' +
+      'Turn off only if the database is backed up another way.',
+  ),
+  MIGRATE_BACKUP_DIR: {
+    schema: z.string().min(1).default('/backups'),
+    description: 'Where pre-migration dumps go (a volume in the compose stack).',
+  },
+  MIGRATE_BACKUP_KEEP: {
+    schema: z.coerce.number().int().min(1).max(100).default(5),
+    description: 'How many pre-migration dumps to keep; older ones are deleted.',
   },
   LOG_LEVEL: logLevel,
 });

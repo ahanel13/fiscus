@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
+import { backupDatabase, type BackupOptions, pendingMigrations } from './backup.js';
 
 export const MIGRATIONS_FOLDER = resolve(dirname(fileURLToPath(import.meta.url)), '../migrations');
 
@@ -14,6 +15,11 @@ export interface MigrateOptions {
   appPassword?: string | undefined;
   maintenancePassword?: string | undefined;
   log?: (message: string) => void;
+  /**
+   * Dump the database before applying pending migrations (upgrades.md §5). Skipped when nothing
+   * is pending, and on a fresh install. A failed backup stops the migration.
+   */
+  backup?: BackupOptions | undefined;
   /** Tests only: a folder holding the first N migrations, to stop partway. */
   migrationsFolder?: string;
 }
@@ -28,6 +34,7 @@ export async function runMigrations(
     appPassword,
     maintenancePassword,
     log = () => {},
+    backup,
     migrationsFolder = MIGRATIONS_FOLDER,
   }: MigrateOptions = {},
 ): Promise<void> {
@@ -35,6 +42,16 @@ export async function runMigrations(
   await client.connect();
   try {
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK]);
+    // Under the lock, so two jobs starting at once don't both dump.
+    if (backup) {
+      const pending = await pendingMigrations(client, migrationsFolder);
+      if (pending === null) log('New database: no backup needed');
+      else if (pending.length === 0) log('Nothing to apply: no backup needed');
+      else {
+        log(`${pending.length} migration(s) to apply; backing up first`);
+        log(`Backup written to ${await backupDatabase(url, pending[0]!, backup)}`);
+      }
+    }
     await migrate(drizzle(client), { migrationsFolder });
     log('Migrations applied');
 
