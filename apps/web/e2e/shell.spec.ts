@@ -87,10 +87,26 @@ test('navigates with the command palette, shortcuts, and the range control', asy
 
 test('creates an invite link from household settings', async ({ page }) => {
   await signIn(page);
-  await page.goto(`${householdUrl}/settings`);
-  await page.getByLabel('Invite by email').fill('partner@e2e.test');
-  await page.getByRole('button', { name: 'Create invite link' }).click();
-  await expect(page.getByRole('textbox', { name: 'Invite link' })).toHaveValue(/\/invite#token=/);
+  // From the household's menu, on any page.
+  await page.goto(householdUrl);
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .first()
+    .getByRole('button', { name: /E2E Home/ })
+    .click();
+  await page.getByRole('menuitem', { name: 'Invite someone' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Invite someone to E2E Home' });
+  await dialog.getByLabel('Their email').fill('partner@e2e.test');
+  expect(await axeViolations(page)).toEqual([]);
+  await dialog.getByRole('button', { name: 'Create invite link' }).click();
+  await expect(dialog.getByRole('textbox', { name: 'Invite link' })).toHaveValue(/\/invite#token=/);
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  // Waiting to join, until cancelled.
+  const waiting = page.getByRole('region', { name: 'Waiting to join' });
+  await expect(waiting).toContainText('partner@e2e.test');
+  await waiting.getByRole('button', { name: 'Cancel the invite for partner@e2e.test' }).click();
+  await expect(page.getByText('Invite cancelled.')).toBeVisible();
+  await expect(waiting).toHaveCount(0);
 });
 
 test('adds an account, updates its balance, and shows net worth', async ({ page }) => {
@@ -581,9 +597,12 @@ test('you choose how you appear; a household that shares everything makes accoun
   await expect(page.getByText('Ada L. (you)')).toBeVisible();
 
   // A partner joins from an invite link.
-  await page.getByLabel('Invite by email').fill('bea@e2e.test');
-  await page.getByRole('button', { name: 'Create invite link' }).click();
-  const link = await page.getByRole('textbox', { name: 'Invite link' }).inputValue();
+  await page.getByRole('button', { name: 'Invite someone' }).click();
+  const invite = page.getByRole('dialog', { name: /Invite someone/ });
+  await invite.getByLabel('Their email').fill('bea@e2e.test');
+  await invite.getByRole('button', { name: 'Create invite link' }).click();
+  const link = await invite.getByRole('textbox', { name: 'Invite link' }).inputValue();
+  await invite.getByRole('button', { name: 'Done' }).click();
   const partner = await browser.newContext();
   const bea = await partner.newPage();
   await bea.goto(link);
