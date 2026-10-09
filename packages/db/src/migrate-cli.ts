@@ -10,6 +10,9 @@ try {
   await runMigrations(env.MIGRATION_DATABASE_URL, {
     appPassword: env.APP_DATABASE_PASSWORD,
     maintenancePassword: env.MAINTENANCE_DATABASE_PASSWORD,
+    backup: env.MIGRATE_BACKUP
+      ? { dir: env.MIGRATE_BACKUP_DIR, keep: env.MIGRATE_BACKUP_KEEP }
+      : undefined,
     log: (message) => console.log(`[migrate] ${message}`),
   });
 } catch (err) {

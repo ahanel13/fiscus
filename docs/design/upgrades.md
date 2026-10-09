@@ -57,12 +57,34 @@ stopped using it, and must be labeled `migration:contract`.
   (tests fail otherwise).
 
 ## 5. Backups before upgrading
-- The `migrate` job takes a **`pg_dump` before applying any pending migration** (tracked in a
-  follow-up ticket), writing to a backup volume and keeping the last N (default 5). Opt out with
+- The `migrate` job takes a **`pg_dump` before applying any pending migration** (#277), into the
+  `db-backups` volume, as `fiscus-<UTC time>-before-<first migration>.dump` (pg_dump's custom
+  format). It keeps the newest `MIGRATE_BACKUP_KEEP` (default 5). Opt out with
   `MIGRATE_BACKUP=false`, e.g. when the operator already snapshots the volume.
-- If nothing is pending, no backup is taken, so routine restarts stay fast.
+- If nothing is pending, or the database is new, no backup is taken, so routine restarts stay fast.
+- **If the backup fails, nothing is migrated:** the job exits with pg_dump's error and the services
+  keep running the version they had. A dump is written under a temporary name and renamed when
+  complete, so a half-written one is never kept.
 - **The encryption key is not in the dump.** Back up `APP_ENCRYPTION_KEY` separately
   ([encryption](../security/encryption.md)); a dump without its key can't decrypt protected fields.
+
+### Restoring a pre-upgrade dump (compose)
+The dumps are in the `db-backups` volume, which the `migrate` service mounts at `/backups` (its
+image has `pg_restore`). To go back to one:
+
+```bash
+C="docker compose -f deploy/compose/docker-compose.yml"
+$C run --rm --no-deps --entrypoint ls migrate -l /backups      # pick the dump
+$C stop api worker web                                         # nothing writing meanwhile
+$C exec db dropdb -U fiscus_owner --force fiscus               # the upgraded database
+$C exec db createdb -U fiscus_owner fiscus
+$C run --rm --no-deps --entrypoint sh migrate -c \
+  'pg_restore --exit-on-error --dbname "$MIGRATION_DATABASE_URL" /backups/<file>.dump'
+FISCUS_VERSION=<previous tag> $C up -d                         # the release that matches the dump
+```
+
+The restore must go into an **empty** database: restoring over the upgraded one would leave the
+newer release's objects behind, and its migrations would fail when you upgrade again.
 
 ## 6. Rollback
 | Situation | What to do |

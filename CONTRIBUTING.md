@@ -79,6 +79,8 @@ APP_DATABASE_PASSWORD=fiscus-dev-app
 APP_ENCRYPTION_KEY=$(openssl rand -base64 32)
 NODE_ENV=development
 LOG_LEVEL=debug
+# Pre-migration pg_dump backups are for deployments (the compose stack has pg_dump).
+MIGRATE_BACKUP=false
 ENV
 pnpm db:migrate
 pnpm dev

@@ -50,7 +50,13 @@ services:
     environment:
       MIGRATION_DATABASE_URL: postgres://fiscus_owner:${POSTGRES_PASSWORD}@db:5432/fiscus
       APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?set APP_DATABASE_PASSWORD in .env}
+      # A pg_dump before each upgrade that has migrations to apply; the last 5 are kept.
+      MIGRATE_BACKUP: ${MIGRATE_BACKUP:-true}
+      MIGRATE_BACKUP_KEEP: ${MIGRATE_BACKUP_KEEP:-5}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # Only this service mounts it, so the volume takes the image's /backups ownership (node).
+      - db-backups:/backups
     depends_on:
       db:
         condition: service_healthy
@@ -116,4 +122,6 @@ services:
 
 volumes:
   db-data:
+  # Pre-upgrade database dumps (docs/design/upgrades.md §5). Back up APP_ENCRYPTION_KEY separately.
+  db-backups:
   # Receipt storage (local-disk driver) is added with M9.
