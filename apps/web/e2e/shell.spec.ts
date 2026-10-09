@@ -494,6 +494,25 @@ test('a rule can treat payments as transfers to another account, recording the o
   ).toBeVisible();
 });
 
+test('only the content scrolls: the page and sidebar stay put on a long list', async ({ page }) => {
+  // A short window, so the transactions list (with its checkboxes) runs past the bottom.
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await signIn(page);
+  await page.goto(`${householdUrl}/transactions?range=all_time`);
+  await expect(page.getByRole('button', { name: /^REFUND/ })).toBeVisible();
+  const sizes = await page.evaluate(() => ({
+    page: document.documentElement.scrollHeight,
+    window: window.innerHeight,
+    content: document.getElementById('main')!.scrollHeight,
+  }));
+  expect(sizes.content).toBeGreaterThan(sizes.window); // the list does overflow
+  expect(sizes.page).toBeLessThanOrEqual(sizes.window); // but only inside the content area
+  // Scrolling over the sidebar moves nothing.
+  await page.mouse.move(100, 300);
+  await page.mouse.wheel(0, 1500);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+});
+
 test('dark mode, sign out, and back', async ({ page }) => {
   await signIn(page);
   await page.goto('/settings');
