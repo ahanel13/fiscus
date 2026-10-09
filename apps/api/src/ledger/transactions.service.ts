@@ -59,6 +59,7 @@ import {
 } from '../ranges/household-ranges.js';
 import { accessLevels, spendingLensFilter } from '../visibility/visibility-scope.js';
 import {
+  detectAround,
   detectTransfers,
   linkable,
   linkTransfers,
@@ -278,7 +279,14 @@ export class TransactionsService {
       const review = await this.#transferReview(tx, access);
       const suggested = [...review.suggested].slice(0, 100);
       const unmatched = review.unmatched.slice(0, 200);
-      const ids = [...new Set([...suggested.flat(2), ...unmatched])];
+      const rivalsOf = (out: string) => review.rivals.get(out) ?? [];
+      const ids = [
+        ...new Set([
+          ...suggested.flat(2),
+          ...suggested.flatMap(([out]) => rivalsOf(out)),
+          ...unmatched,
+        ]),
+      ];
       const rows = ids.length
         ? await tx.select().from(transactions).where(inArray(transactions.id, ids))
         : [];
@@ -288,15 +296,18 @@ export class TransactionsService {
         suggested: suggested.map(([out, intos]) => {
           const transaction = shown.get(out)!;
           const candidates = intos.map((id) => shown.get(id)!);
+          const rivals = rivalsOf(out).map((id) => shown.get(id)!);
           const reason = review.identical.has(out)
             ? ('identical' as const)
             : candidates.length > 1
               ? ('several' as const)
-              : businessDaysApart(transaction.date, candidates[0]!.date) >
-                  TRANSFER_WINDOW_BUSINESS_DAYS
-                ? ('far_apart' as const)
-                : ('one_match' as const);
-          return { transaction, candidates, unique: unique.has(out), reason };
+              : rivals.length
+                ? ('rivals' as const)
+                : businessDaysApart(transaction.date, candidates[0]!.date) >
+                    TRANSFER_WINDOW_BUSINESS_DAYS
+                  ? ('far_apart' as const)
+                  : ('one_match' as const);
+          return { transaction, candidates, rivals, unique: unique.has(out), reason };
         }),
         unmatched: unmatched.map((id) => shown.get(id)!),
         counts: {
@@ -867,6 +878,7 @@ export class TransactionsService {
         );
       }
       await linkTransfers(tx, activity, [[a, b]], await transferCategories(tx), false);
+      await detectAround(tx, activity, [a, b], access.levels);
       return (await this.#present(tx, ctx, access, [await this.#visible(tx, id)]))[0]!;
     });
   }
@@ -1110,7 +1122,13 @@ export class TransactionsService {
 
   async #transferReview(tx: Executor, access: Access): Promise<TransferReviewIds> {
     if (access.viewer) {
-      return { suggested: new Map(), unique: [], identical: new Set(), unmatched: [] };
+      return {
+        suggested: new Map(),
+        unique: [],
+        identical: new Set(),
+        rivals: new Map(),
+        unmatched: [],
+      };
     }
     const owned = new Set([...access.levels].filter(([, l]) => l === 'owner').map(([id]) => id));
     return transferReview(tx, await transferCategories(tx), owned, access.ranges.today);

@@ -6,15 +6,16 @@ import type {
   Transaction,
   TransferReview,
 } from '@fiscus/shared';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CheckCheck, Info, Link2 } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { transferReviewQuery } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
 import {
   Alert,
+  Badge,
   Button,
   Checkbox,
   DateText,
@@ -22,6 +23,7 @@ import {
   Skeleton,
   toast,
 } from '../components/ui.js';
+import { likelyOtherSide, withoutTransactions } from '../lib/transfers.js';
 import { CategorySelect, TransactionDrawer, useInvalidateLedger } from './transactions.js';
 
 type Data<T> = { data: T };
@@ -65,19 +67,32 @@ const apart = (from: string, to: string) => {
 type SuggestionData = TransferReview['suggested'][number];
 
 /** Why a pair wasn't linked automatically, in words. */
-function reasonText({ reason, transaction: out, candidates }: SuggestionData): string {
+function reasonText(
+  { reason, transaction: out, candidates, rivals }: SuggestionData,
+  likely: boolean,
+): string {
   const first = candidates[0]!;
   switch (reason) {
     case 'identical':
       return `Identical transfers, like round-ups: any pairing is right, so “Link the clear pairs” takes them.`;
     case 'several':
-      return `${candidates.length} possible matches: link the one that’s really the other side.`;
+      return likely
+        ? `${candidates.length} possible matches, and the names point to the first. Linking one can settle others.`
+        : `${candidates.length} possible matches: link the one that’s really the other side. Linking one can settle others.`;
+    case 'rivals': {
+      const r = rivals[0]!;
+      const more = rivals.length > 1 ? ` and ${rivals.length - 1} more` : '';
+      return `The only match, but it could also be the other side of ${accountOf(r)}’s ${r.displayName} (${formatDay(r.date)})${more}.`;
+    }
     case 'far_apart':
       return `${Math.abs(daysBetween(out.date, first.date))} days apart, more than the 3 business days Fiscus links on its own.`;
     case 'one_match':
-      return 'One exact match. Usually it arrived before transfers were linked automatically.';
+      return 'The only match either way, so “Link the clear pairs” takes it.';
   }
 }
+
+const formatDay = (date: string) =>
+  new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 /**
  * Identical round-ups show once, with how many: same account, amount, day, and name going out,
@@ -99,10 +114,12 @@ function Side({
   t,
   label,
   note,
+  badge,
 }: {
   t: Transaction;
   label: 'From' | 'To';
   note?: string | undefined;
+  badge?: ReactNode;
 }) {
   return (
     <span className="min-w-0 flex-1">
@@ -115,6 +132,7 @@ function Side({
         {t.displayName} · <DateText value={t.date} />
         {note ? ` · ${note}` : ''}
       </span>
+      {badge ? <span className="mt-1 block">{badge}</span> : null}
     </span>
   );
 }
@@ -138,7 +156,11 @@ function Suggestion({
   const out = suggestion.transaction;
   const same = (c: Transaction) =>
     `${c.account?.id}|${c.date}|${c.amountMinor}|${c.displayName.toLowerCase()}`;
-  const groups = [...Map.groupBy(suggestion.candidates, same).values()];
+  const likely = likelyOtherSide(out, suggestion.candidates);
+  // The likely one first; the rest keep their order (nearest date first).
+  const groups = [...Map.groupBy(suggestion.candidates, same).values()].sort(
+    (a, b) => Number(b[0]!.id === likely?.id) - Number(a[0]!.id === likely?.id),
+  );
   return (
     <li className="space-y-2 rounded-xl border border-border bg-surface p-3">
       <div className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
@@ -157,11 +179,16 @@ function Suggestion({
                 t={c}
                 label="To"
                 note={`${apart(out.date, c.date)}${group.length > 1 ? ` · ×${group.length} identical` : ''}`}
+                badge={
+                  c.id === likely?.id ? (
+                    <Badge tone="accent">Likely: names {likely.named}</Badge>
+                  ) : undefined
+                }
               />
               <Button
                 size="sm"
                 variant="secondary"
-                aria-label={`Link ${accountOf(out)} ${out.date} to ${accountOf(c)} ${c.date}`}
+                aria-label={`Link ${accountOf(out)} ${out.displayName} ${out.date} to ${accountOf(c)} ${c.displayName} ${c.date}`}
                 onPress={() => onLink(c.id)}
                 isPending={linking === c.id}
               >
@@ -173,7 +200,7 @@ function Suggestion({
       </ul>
       <p className="flex gap-1.5 text-xs text-muted">
         <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-        {reasonText(suggestion)}
+        {reasonText(suggestion, likely !== null)}
       </p>
     </li>
   );
@@ -194,28 +221,39 @@ export function TransferReviewList({
   groups: CategoryGroup[];
 }) {
   const query = useQuery(transferReviewQuery(householdId));
-  const invalidate = useInvalidateLedger(householdId);
+  const queryClient = useQueryClient();
+  const invalidateLedger = useInvalidateLedger(householdId);
+  // Refetches in the background: the list has already changed (`drop`), and the refetch brings in
+  // anything the change settled or unblocked.
+  const invalidate = () => void invalidateLedger();
+  /** Takes transactions off the list at once, without waiting for the review to be worked out. */
+  const drop = async (ids: string[]) => {
+    const key = transferReviewQuery(householdId).queryKey;
+    await queryClient.cancelQueries({ queryKey: key });
+    queryClient.setQueryData(key, (r) => (r ? withoutTransactions(r, new Set(ids)) : r));
+  };
   const base = `/api/v1/households/${householdId}/transactions`;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<string | null>(null);
-  const onError = async (e: unknown) => {
+  const onError = (e: unknown) => {
     toast((e as ApiError).title, { tone: 'error' });
-    await invalidate();
+    invalidate();
   };
 
   const link = useMutation({
     mutationFn: ({ out, into }: { out: string; into: string }) =>
       api('POST', `${base}/${out}/transfer`, { body: { transactionId: into } }),
-    onSuccess: async () => {
-      await invalidate();
+    onMutate: ({ out, into }) => drop([out, into]),
+    onSuccess: () => {
+      invalidate();
       toast('Linked as a transfer.');
     },
     onError,
   });
   const linkAll = useMutation({
     mutationFn: () => api<Data<{ linked: number }>>('POST', `${base}/transfer-review/link-all`),
-    onSuccess: async (r) => {
-      await invalidate();
+    onSuccess: (r) => {
+      invalidate();
       toast(`${r.data.linked} ${r.data.linked === 1 ? 'transfer' : 'transfers'} linked.`);
     },
     onError,
@@ -223,7 +261,9 @@ export function TransferReviewList({
   const patch = useMutation({
     mutationFn: ({ t, body }: { t: Transaction; body: Record<string, unknown> }) =>
       api('PATCH', `${base}/${t.id}`, { body, headers: { 'if-match': `"v${t.version}"` } }),
-    onSuccess: () => invalidate(),
+    // Outside Fiscus takes it off the list; a new category may too, which the refetch shows.
+    onMutate: ({ t, body }) => (body.transferExternal ? drop([t.id]) : undefined),
+    onSuccess: invalidate,
     onError,
   });
   const external = useMutation({
@@ -231,9 +271,10 @@ export function TransferReviewList({
       api<Data<BulkUpdateResult>>('PATCH', base, {
         body: { ids, changes: { transferExternal: true } },
       }),
-    onSuccess: async (r) => {
+    onMutate: (ids) => drop(ids),
+    onSuccess: (r) => {
       setSelected(new Set());
-      await invalidate();
+      invalidate();
       toast(`${r.data.updated.length} marked as going outside Fiscus.`);
     },
     onError,

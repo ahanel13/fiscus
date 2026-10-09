@@ -423,6 +423,24 @@ describe('transfers and the review queue', () => {
     expect(i.categoryId).toBeNull(); // uncategorized, as before
   });
 
+  it('linking one of two possible pairs by hand links the other, now clear', async () => {
+    const m = month();
+    const checking = await account(A, 'Settle checking');
+    const travel = await account(A, 'Settle travel');
+    const house = await account(A, 'Settle house');
+    const t = { categoryId: transferCat };
+    // $500 into the house vault twice, one from each: either deposit could be either one's.
+    const fromTravel = await txn(A, travel, -50000, `${m}-03`, t);
+    const fromChecking = await txn(A, checking, -50000, `${m}-03`, t);
+    const in1 = await txn(A, house, 50000, `${m}-03`, t);
+    const in2 = await txn(A, house, 50000, `${m}-03`, t);
+    expect((await get(A, in1)).transfer).toBeNull();
+
+    const r = await A.post(url(`/transactions/${fromTravel}/transfer`), { transactionId: in1 });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect((await get(A, fromChecking)).transfer?.transactionId).toBe(in2);
+  });
+
   it('deleting one leg leaves the other a plain transaction again', async () => {
     const m = month();
     const a1 = await account(A, 'Del 1');

@@ -257,14 +257,17 @@ export interface TransferReview {
   suggested: {
     transaction: Transaction;
     candidates: Transaction[];
+    /** With one candidate: other transactions that could also be its other side. */
+    rivals: Transaction[];
     /** "Link all" links it: one candidate either way, or identical transfers in step. */
     unique: boolean;
     /**
      * Why it wasn't linked automatically: identical transfers in step (round-ups; any pairing is
-     * right), several different candidates, too far apart for automatic linking, or one exact
-     * match (typically imported before automatic linking existed).
+     * right), several different candidates, one candidate that could also pair with something
+     * else (`rivals`), too far apart for automatic linking, or the only match either way (from
+     * before automatic linking, or once linking another settled it).
      */
-    reason: 'identical' | 'several' | 'far_apart' | 'one_match';
+    reason: 'identical' | 'several' | 'rivals' | 'far_apart' | 'one_match';
   }[];
   /** In a transfer category, over a week old, and nothing that could be its other side. */
   unmatched: Transaction[];
