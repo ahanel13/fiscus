@@ -62,7 +62,9 @@ import {
   detectTransfers,
   linkable,
   linkTransfers,
+  businessDaysApart,
   SUGGEST_WINDOW_DAYS,
+  TRANSFER_WINDOW_BUSINESS_DAYS,
   transferCategories,
   transferReview,
   type TransferReviewIds,
@@ -283,11 +285,19 @@ export class TransactionsService {
       const shown = new Map((await this.#present(tx, ctx, access, rows)).map((t) => [t.id, t]));
       const unique = new Set(review.unique.map(([out]) => out.id));
       return {
-        suggested: suggested.map(([out, intos]) => ({
-          transaction: shown.get(out)!,
-          candidates: intos.map((id) => shown.get(id)!),
-          unique: unique.has(out),
-        })),
+        suggested: suggested.map(([out, intos]) => {
+          const transaction = shown.get(out)!;
+          const candidates = intos.map((id) => shown.get(id)!);
+          const reason = review.identical.has(out)
+            ? ('identical' as const)
+            : candidates.length > 1
+              ? ('several' as const)
+              : businessDaysApart(transaction.date, candidates[0]!.date) >
+                  TRANSFER_WINDOW_BUSINESS_DAYS
+                ? ('far_apart' as const)
+                : ('one_match' as const);
+          return { transaction, candidates, unique: unique.has(out), reason };
+        }),
         unmatched: unmatched.map((id) => shown.get(id)!),
         counts: {
           suggested: review.suggested.size,
@@ -1099,7 +1109,9 @@ export class TransactionsService {
   }
 
   async #transferReview(tx: Executor, access: Access): Promise<TransferReviewIds> {
-    if (access.viewer) return { suggested: new Map(), unique: [], unmatched: [] };
+    if (access.viewer) {
+      return { suggested: new Map(), unique: [], identical: new Set(), unmatched: [] };
+    }
     const owned = new Set([...access.levels].filter(([, l]) => l === 'owner').map(([id]) => id));
     return transferReview(tx, await transferCategories(tx), owned, access.ranges.today);
   }
