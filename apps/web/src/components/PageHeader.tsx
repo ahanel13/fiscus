@@ -33,34 +33,41 @@ export function PageHeader({
     });
   const options = lensOptions(members);
 
+  const controls = range || showLens;
+  // Phones: the title and its actions on one row, the range and "whose money" on the next.
+  // Wider screens: all on one row.
   return (
-    <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 md:px-8 md:py-5">
-      <h1 className="mr-auto text-xl font-semibold md:text-2xl">{title}</h1>
-      {range ? <RangeSelect state={range} /> : null}
-      {showLens ? (
-        options.length <= 4 ? (
-          <SegmentedControl
-            aria-label="Whose money"
-            options={options}
-            value={lens}
-            onChange={(v) => set({ lens: v })}
-          />
-        ) : (
-          <Select
-            aria-label="Whose money"
-            value={lens}
-            onChange={(v) => v && set({ lens: String(v) as Lens })}
-            triggerClassName="min-w-36"
-          >
-            {options.map((o) => (
-              <SelectItem key={o.value} id={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </Select>
-        )
+    <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 md:px-8 md:py-5">
+      <h1 className="mr-auto min-w-0 truncate text-xl font-semibold md:text-2xl">{title}</h1>
+      {controls ? (
+        <div className="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">
+          {range ? <RangeSelect state={range} /> : null}
+          {showLens ? (
+            options.length <= 4 ? (
+              <SegmentedControl
+                aria-label="Whose money"
+                options={options}
+                value={lens}
+                onChange={(v) => set({ lens: v })}
+              />
+            ) : (
+              <Select
+                aria-label="Whose money"
+                value={lens}
+                onChange={(v) => v && set({ lens: String(v) as Lens })}
+                triggerClassName="min-w-36"
+              >
+                {options.map((o) => (
+                  <SelectItem key={o.value} id={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </Select>
+            )
+          ) : null}
+        </div>
       ) : null}
-      {action}
+      {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
     </header>
   );
 }

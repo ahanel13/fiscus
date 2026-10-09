@@ -18,6 +18,19 @@ async function signIn(page: Page) {
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
+/** "Add account" asks how: by hand, or from a file. */
+async function addAccountByHand(page: Page) {
+  // The header's (an empty Accounts page repeats it in its empty state).
+  await page.getByRole('button', { name: 'Add account' }).first().click();
+  await page.getByRole('menuitem', { name: 'Enter it yourself' }).click();
+}
+
+/** Transactions' "Add" asks how: enter one, or import a file. */
+async function enterTransaction(page: Page) {
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Enter a transaction' }).click();
+}
+
 test('first run: setup creates the admin, then the first household', async ({ page }) => {
   const token = process.env.E2E_SETUP_TOKEN;
   test.skip(!token, 'E2E_SETUP_TOKEN not set');
@@ -100,7 +113,7 @@ test('adds an account, updates its balance, and shows net worth', async ({ page 
   await signIn(page);
   await page.goto(`${householdUrl}/accounts`);
   await expect(page.getByRole('heading', { name: 'No accounts yet' })).toBeVisible();
-  await page.getByRole('button', { name: 'Add account' }).first().click();
+  await addAccountByHand(page);
 
   const dialog = page.getByRole('dialog', { name: 'Add account' });
   await dialog.getByLabel('Name').fill('Everyday checking');
@@ -131,14 +144,14 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   await signIn(page);
   // A wallet with no balance entered: its balance is the running total of its transactions.
   await page.goto(`${householdUrl}/accounts`);
-  await page.getByRole('button', { name: 'Add account' }).first().click();
+  await addAccountByHand(page);
   const newAccount = page.getByRole('dialog', { name: 'Add account' });
   await newAccount.getByLabel('Name').fill('Wallet');
   await newAccount.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Wallet' })).toBeVisible();
 
   await page.goto(`${householdUrl}/transactions`);
-  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await enterTransaction(page);
   const add = page.getByRole('dialog', { name: 'Add transaction' });
   await add.getByRole('button', { name: /Account/ }).click();
   await page.getByRole('option', { name: 'Wallet' }).click();
@@ -177,7 +190,7 @@ test('tags a transaction from a search box, and moves a split purchase to anothe
 }) => {
   await signIn(page);
   await page.goto(`${householdUrl}/accounts`);
-  await page.getByRole('button', { name: 'Add account' }).first().click();
+  await addAccountByHand(page);
   const add = page.getByRole('dialog', { name: 'Add account' });
   await add.getByLabel('Name').fill('Pocket');
   await add.getByRole('button', { name: 'Add account' }).click();
@@ -212,7 +225,8 @@ test('tags a transaction from a search box, and moves a split purchase to anothe
 test('imports a Monarch export with the wizard, then undoes it', async ({ page }) => {
   await signIn(page);
   await page.goto(`${householdUrl}/accounts`);
-  await page.getByRole('link', { name: 'Import' }).click();
+  await page.getByRole('button', { name: 'Add account' }).first().click();
+  await page.getByRole('menuitem', { name: 'Import from Monarch or a bank file' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Import' })).toBeVisible();
 
   // Made-up rows in the format of a real Monarch export.
@@ -419,7 +433,7 @@ test('links a transfer between accounts, and works through the review queue by k
     ['Everyday checking', 'Money out', 'To wallet'],
     ['Wallet', 'Money in', 'From checking'],
   ] as const) {
-    await page.getByRole('button', { name: 'Add transaction' }).click();
+    await enterTransaction(page);
     const add = page.getByRole('dialog', { name: 'Add transaction' });
     await add.getByRole('button', { name: /Account/ }).click();
     await page.getByRole('option', { name: account }).click();
@@ -430,7 +444,7 @@ test('links a transfer between accounts, and works through the review queue by k
     await expect(add).toHaveCount(0);
   }
   // Filed as a transfer in January, with nothing on the other side: the review will ask.
-  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await enterTransaction(page);
   const venmo = page.getByRole('dialog', { name: 'Add transaction' });
   await venmo.getByRole('button', { name: /Account/ }).click();
   await page.getByRole('option', { name: 'Everyday checking' }).click();

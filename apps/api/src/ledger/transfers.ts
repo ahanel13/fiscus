@@ -150,6 +150,57 @@ async function ledgerCandidates(
 }
 
 /**
+ * Pairs for groups of interchangeable transfers: where the possible matches form a block with
+ * exactly one kind of transaction on each side (same account, amount, and day), as many on one
+ * side as the other, each matching every one opposite. Two $0.75 round-ups out of checking and two
+ * into a savings vault the same day: any pairing is the right one, so they're paired in order.
+ * Anything less clean (three and two, or a block with a different day in it) is left for a person.
+ */
+export function interchangeablePairs(
+  edges: Map<string, Set<string>>,
+  byId: Map<string, Leg>,
+  skip: Set<string>,
+): [Leg, Leg][][] {
+  const kind = (l: Leg) => `${l.accountId}|${l.currency}|${l.amountMinor}|${l.effectiveDate}`;
+  const seen = new Set<string>();
+  const out: [Leg, Leg][][] = [];
+  for (const start of edges.keys()) {
+    if (seen.has(start)) continue;
+    const block: string[] = [];
+    const queue = [start];
+    seen.add(start);
+    while (queue.length) {
+      const id = queue.pop()!;
+      block.push(id);
+      for (const next of edges.get(id) ?? []) {
+        if (!seen.has(next)) {
+          seen.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    if (block.length < 4 || block.some((id) => skip.has(id) || !byId.has(id))) continue;
+    const kinds = Map.groupBy(
+      block.map((id) => byId.get(id)!),
+      kind,
+    );
+    if (kinds.size !== 2) continue;
+    const [a, b] = [...kinds.values()] as [Leg[], Leg[]];
+    if (a.length !== b.length) continue;
+    // Each matches every one opposite, and nothing else.
+    const complete = (side: Leg[], other: Leg[]) =>
+      side.every((l) => edges.get(l.id)?.size === other.length);
+    if (!complete(a, b) || !complete(b, a)) continue;
+    const byIdOrder = (x: Leg, y: Leg) => x.id.localeCompare(y.id);
+    const [outs, ins] = a[0]!.amountMinor < 0 ? [a, b] : [b, a];
+    outs.sort(byIdOrder);
+    ins.sort(byIdOrder);
+    out.push(outs.map((o, i): [Leg, Leg] => [o, ins[i]!]));
+  }
+  return out;
+}
+
+/**
  * The unambiguous transfers for `legs` (already eligible: unlinked, uncategorized or a transfer):
  * each side has exactly one possible other side, among `legs` and the ledger, and the caller owns
  * both accounts (TXN-08). `legs` may be transactions or, for a preview, file rows not stored yet.
@@ -168,14 +219,15 @@ export async function findTransfers(
   // Every possible leg of every ledger leg involved, so "exactly one" holds from both sides.
   const paired = new Set(first.map(([, b]) => b));
   const ledger = fromLedger.filter((o) => paired.has(o.id));
-  const second = pairsBetween(ledger, await ledgerCandidates(tx, ledger, cats));
+  const further = await ledgerCandidates(tx, ledger, cats);
+  const second = pairsBetween(ledger, further);
   const candidates = new Map<string, Set<string>>();
   const add = (a: string, b: string) => candidates.set(a, (candidates.get(a) ?? new Set()).add(b));
   for (const [a, b] of [...first, ...second]) {
     add(a, b);
     add(b, a);
   }
-  const byId = new Map<string, Leg>([...ledger, ...legs].map((l) => [l.id, l]));
+  const byId = new Map<string, Leg>([...further, ...ledger, ...legs].map((l) => [l.id, l]));
   const pairs: [Leg, Leg][] = [];
   const taken = new Set<string>();
   for (const a of legs) {
@@ -186,6 +238,16 @@ export async function findTransfers(
     if (!owns(a.accountId) || !owns(b.accountId)) continue;
     taken.add(a.id).add(b.id);
     pairs.push([a, b]);
+  }
+  // Identical transfers in step (round-ups): any pairing is right.
+  for (const block of interchangeablePairs(candidates, byId, taken)) {
+    // Only blocks with something arriving now: older ones are the review's to suggest.
+    if (!block.some(([a, b]) => mine.has(a.id) || mine.has(b.id))) continue;
+    if (!block.every(([a, b]) => owns(a.accountId) && owns(b.accountId))) continue;
+    for (const [a, b] of block) {
+      taken.add(a.id).add(b.id);
+      pairs.push(mine.has(a.id) || !mine.has(b.id) ? [a, b] : [b, a]);
+    }
   }
   return { pairs, ledger };
 }
@@ -269,8 +331,10 @@ async function awaitedTransfers(
 export interface TransferReviewIds {
   /** Money-out leg → its possible other sides, newest first. */
   suggested: Map<string, string[]>;
-  /** Suggested pairs with exactly one candidate on each side: what "Link all" links. */
+  /** Pairs "Link all" links: one candidate either way, or identical transfers in step. */
   unique: [Leg, Leg][];
+  /** Money-out legs whose candidates are identical transfers in step (round-ups). */
+  identical: Set<string>;
   /** Transfers older than UNMATCHED_AFTER_DAYS with no possible other side, newest first. */
   unmatched: string[];
 }
@@ -286,7 +350,12 @@ export async function transferReview(
   owned: Set<string>,
   today: string,
 ): Promise<TransferReviewIds> {
-  const empty: TransferReviewIds = { suggested: new Map(), unique: [], unmatched: [] };
+  const empty: TransferReviewIds = {
+    suggested: new Map(),
+    unique: [],
+    identical: new Set(),
+    unmatched: [],
+  };
   if (owned.size === 0 || cats.transferKind.size === 0) return empty;
   const sources = await tx
     .select({
@@ -347,6 +416,14 @@ export async function transferReview(
       unique.push([byId.get(out)!, byId.get(intos[0]!)!]);
     }
   }
+  // Identical transfers in step (round-ups): any pairing is right, so "Link all" takes them too.
+  const done = new Set(unique.flat().map((l) => l.id));
+  const identical = new Set<string>();
+  for (const pair of interchangeablePairs(edges, byId, done).flat()) {
+    if (!suggested.has(pair[0].id)) continue;
+    unique.push(pair);
+    identical.add(pair[0].id);
+  }
   const cutoff = shiftDays(today, -UNMATCHED_AFTER_DAYS);
   // A rule waiting for the other side gives it the rule's days, if that's longer.
   const unmatched = sources
@@ -370,7 +447,7 @@ export async function transferReview(
         ),
       ]),
   );
-  return { suggested: ordered, unique, unmatched };
+  return { suggested: ordered, unique, identical, unmatched };
 }
 
 /**

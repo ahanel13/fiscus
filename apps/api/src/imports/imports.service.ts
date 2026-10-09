@@ -284,27 +284,32 @@ export class ImportsService {
         : []
       ).map((a) => [a.id, a.name]),
     );
-    return pairs
-      .map(([a, b]) => {
-        // Within the file, show the pair once, from the money-out side.
-        const [from, to] = fileLegs.has(b.id) && a.amountMinor > 0 ? [b, a] : [a, b];
-        const row = fileLegs.get(from.id)!;
-        const other = fileLegs.get(to.id);
-        return {
-          line: row.line,
-          account: row.key,
-          date: from.effectiveDate,
-          amountMinor: from.amountMinor,
-          other: {
-            line: other?.line ?? null,
-            accountName: other
-              ? summaryOf.get(other.key)!.name
-              : (names.get(to.accountId) ?? 'another account'),
-            date: to.effectiveDate,
-          },
-        };
-      })
-      .sort((x, y) => x.line - y.line);
+    return (
+      pairs
+        // A block of identical transfers can pair two older ones too: not this file's to show.
+        .filter(([a, b]) => fileLegs.has(a.id) || fileLegs.has(b.id))
+        .map(([a, b]) => {
+          // Within the file, show the pair once, from the money-out side.
+          const [from, to] =
+            !fileLegs.has(a.id) || (fileLegs.has(b.id) && a.amountMinor > 0) ? [b, a] : [a, b];
+          const row = fileLegs.get(from.id)!;
+          const other = fileLegs.get(to.id);
+          return {
+            line: row.line,
+            account: row.key,
+            date: from.effectiveDate,
+            amountMinor: from.amountMinor,
+            other: {
+              line: other?.line ?? null,
+              accountName: other
+                ? summaryOf.get(other.key)!.name
+                : (names.get(to.accountId) ?? 'another account'),
+              date: to.effectiveDate,
+            },
+          };
+        })
+        .sort((x, y) => x.line - y.line)
+    );
   }
 
   // ── Import ───────────────────────────────────────────────────────────────────────────────
