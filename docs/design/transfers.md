@@ -19,6 +19,11 @@ Detection runs on whichever side arrives second (an import now, each bank sync i
 transfer still links when it lands. What matters is the window: a Friday ACH between banks can post
 the next Tuesday or Wednesday.
 
+- **Identical transfers in step** (round-ups: two $0.75 out of checking and two into a vault the
+  same day) aren't ambiguous: any pairing is right. When the possible matches form a block with one
+  kind of transaction on each side, as many each way, each matching every one opposite, they're
+  paired in order, on arrival and by the review's "Link the clear pairs". Anything less clean
+  (three and two) is left for a person.
 - The window becomes **3 business days** (weekends don't count; holidays aren't known yet), so
   Friday → Wednesday matches. Auto-linking stays as strict as before otherwise: exactly one
   candidate from both sides, both accounts yours (imports §5).

@@ -312,6 +312,75 @@ describe('transfers and the review queue', () => {
     expect(refused.body.code).toBe('invalid_account');
   });
 
+  it('pairs identical transfers in step (round-ups), on arrival and in the review', async () => {
+    const home = (
+      await A.post('/api/v1/households', { name: 'Vaults', baseCurrency: 'USD', timezone: 'UTC' })
+    ).body.data.id as string;
+    const base = `/api/v1/households/${home}`;
+    const acct = async (name: string) =>
+      (await A.post(`${base}/accounts`, { name, type: 'depository' })).body.data.id as string;
+    const add = async (accountId: string, amountMinor: number, date: string) =>
+      (
+        await A.post(`${base}/transactions`, {
+          accountId,
+          amountMinor,
+          date,
+          displayName: 'Round Up Transfer',
+        })
+      ).body.data.id as string;
+    const one = async (id: string) =>
+      (await A.get(`${base}/transactions/${id}`)).body.data as Transaction;
+    const day = (offset: number) =>
+      new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const checking = await acct('Checking');
+    const vault = await acct('Wedding');
+
+    // Two round-ups out, then two in, the same day: once the second lands, both pairs link.
+    const outs = [await add(checking, -75, day(-30)), await add(checking, -75, day(-30))];
+    const firstIn = await add(vault, 75, day(-30));
+    expect((await one(firstIn)).transfer).toBeNull(); // one in, two out: not yet
+    const secondIn = await add(vault, 75, day(-30));
+    const linked = await Promise.all([...outs, firstIn, secondIn].map(one));
+    expect(linked.every((t) => t.transfer !== null)).toBe(true);
+    expect(new Set(linked.slice(0, 2).map((t) => t.transfer!.transactionId))).toEqual(
+      new Set([firstIn, secondIn]),
+    );
+
+    // Six days apart (past automatic linking): the review suggests them as identical, and
+    // "Link all" pairs them. Three out and two in stays for a person.
+    const lateOuts = [await add(checking, -40, day(-20)), await add(checking, -40, day(-20))];
+    await add(vault, 40, day(-14));
+    await add(vault, 40, day(-14));
+    const groups = (await A.get(`${base}/categories`)).body.data as CategoryGroup[];
+    const transferCat = groups
+      .flatMap((g) => g.categories)
+      .find((c) => c.systemKey === 'transfer')!;
+    for (const id of lateOuts) {
+      const v = (await one(id)).version;
+      await A.request(
+        'PATCH',
+        `${base}/transactions/${id}`,
+        { categoryId: transferCat.id },
+        { headers: { 'if-match': `"v${v}"` } },
+      );
+    }
+    const review = (await A.get(`${base}/transactions/transfer-review`)).body.data as {
+      suggested: { transaction: Transaction; reason: string; unique: boolean }[];
+    };
+    expect(
+      review.suggested
+        .filter((x) => lateOuts.includes(x.transaction.id))
+        .map((x) => [x.reason, x.unique]),
+    ).toEqual([
+      ['identical', true],
+      ['identical', true],
+    ]);
+    expect((await A.post(`${base}/transactions/transfer-review/link-all`)).body.data).toEqual({
+      linked: 2,
+    });
+    expect((await Promise.all(lateOuts.map(one))).every((t) => t.transfer !== null)).toBe(true);
+  });
+
   it('links by hand, refuses what isn’t a transfer, and unlinking restores categories', async () => {
     const m = month();
     const a1 = await account(A, 'Hand 1');

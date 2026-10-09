@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { BulkUpdateResult, CategoryGroup, HouseholdMember, Transaction } from '@fiscus/shared';
+import type {
+  BulkUpdateResult,
+  CategoryGroup,
+  HouseholdMember,
+  Transaction,
+  TransferReview,
+} from '@fiscus/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ArrowRight, CheckCheck } from 'lucide-react';
+import { ArrowRight, CheckCheck, Info, Link2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { transferReviewQuery } from '../api/queries.js';
@@ -25,25 +31,151 @@ const accountOf = (t: Transaction) => t.account?.name ?? 'another account';
 /** What this check is for: a reconciliation, so nothing falls through the cracks. */
 function WhyTransfers() {
   return (
-    <section
-      aria-labelledby="why-transfers"
-      className="space-y-1 rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm"
-    >
-      <h2 id="why-transfers" className="font-semibold">
+    <details className="group rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-sm">
+      <summary className="cursor-pointer font-medium marker:text-muted">
         Why check transfers?
-      </h2>
-      <p className="text-muted">
-        Money moving between your own accounts isn’t spending or income, so transfers are left out
-        of your totals. That only works when each one really is a transfer. This check reconciles
-        them: every transfer should have its other side, the same amount arriving in another of your
-        accounts, or go to an account you don’t track here.
+      </summary>
+      <div className="mt-2 space-y-1 text-muted">
+        <p>
+          Money moving between your own accounts isn’t spending or income, so transfers are left out
+          of your totals. That only works when each one really is a transfer: every transfer should
+          have its other side, the same amount arriving in another of your accounts, or go to an
+          account you don’t track here.
+        </p>
+        <p>
+          One with no other side is worth a look: the money may not have arrived, or it may be
+          spending filed as a transfer (a payment to a friend, someone else’s card), which quietly
+          drops out of what you spent.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+const DAY_MS = 86_400_000;
+const daysBetween = (from: string, to: string) =>
+  Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS);
+const apart = (from: string, to: string) => {
+  const d = daysBetween(from, to);
+  if (d === 0) return 'same day';
+  const n = Math.abs(d);
+  return `${n} ${n === 1 ? 'day' : 'days'} ${d > 0 ? 'later' : 'earlier'}`;
+};
+
+type SuggestionData = TransferReview['suggested'][number];
+
+/** Why a pair wasn't linked automatically, in words. */
+function reasonText({ reason, transaction: out, candidates }: SuggestionData): string {
+  const first = candidates[0]!;
+  switch (reason) {
+    case 'identical':
+      return `Identical transfers, like round-ups: any pairing is right, so “Link the clear pairs” takes them.`;
+    case 'several':
+      return `${candidates.length} possible matches: link the one that’s really the other side.`;
+    case 'far_apart':
+      return `${Math.abs(daysBetween(out.date, first.date))} days apart, more than the 3 business days Fiscus links on its own.`;
+    case 'one_match':
+      return 'One exact match. Usually it arrived before transfers were linked automatically.';
+  }
+}
+
+/**
+ * Identical round-ups show once, with how many: same account, amount, day, and name going out,
+ * and the same identical candidates. Linking one links one pair; "Link the clear pairs" takes all.
+ */
+function mergeIdentical(list: SuggestionData[]): { suggestion: SuggestionData; count: number }[] {
+  const key = (x: SuggestionData) =>
+    x.reason === 'identical'
+      ? `${x.transaction.account?.id}|${x.transaction.date}|${x.transaction.amountMinor}|${x.transaction.displayName.toLowerCase()}`
+      : x.transaction.id;
+  return [...Map.groupBy(list, key).values()].map((group) => ({
+    suggestion: group[0]!,
+    count: group.length,
+  }));
+}
+
+/** One side of a pair: which account, how much, and the transaction's name and date. */
+function Side({
+  t,
+  label,
+  note,
+}: {
+  t: Transaction;
+  label: 'From' | 'To';
+  note?: string | undefined;
+}) {
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="flex items-baseline gap-2">
+        <span className="text-xs text-muted">{label}</span>
+        <span className="truncate font-medium">{accountOf(t)}</span>
+        <Amount minor={t.amountMinor} currency={t.currency} className="ml-auto font-medium" />
+      </span>
+      <span className="block text-xs text-muted">
+        {t.displayName} · <DateText value={t.date} />
+        {note ? ` · ${note}` : ''}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * A suggested pair: the money going out, each possible other side (identical ones shown once,
+ * with how many), and why it wasn't linked automatically.
+ */
+function Suggestion({
+  suggestion,
+  count,
+  onLink,
+  linking,
+}: {
+  suggestion: SuggestionData;
+  /** Identical transfers out shown as this one. */
+  count: number;
+  onLink: (into: string) => void;
+  linking: string | null;
+}) {
+  const out = suggestion.transaction;
+  const same = (c: Transaction) =>
+    `${c.account?.id}|${c.date}|${c.amountMinor}|${c.displayName.toLowerCase()}`;
+  const groups = [...Map.groupBy(suggestion.candidates, same).values()];
+  return (
+    <li className="space-y-2 rounded-xl border border-border bg-surface p-3">
+      <div className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
+        <Side t={out} label="From" note={count > 1 ? `×${count} identical` : undefined} />
+      </div>
+      <ul aria-label={`Possible other sides of ${out.displayName}`} className="space-y-2">
+        {groups.map((group) => {
+          const c = group[0]!;
+          return (
+            <li
+              key={c.id}
+              className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm"
+            >
+              <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
+              <Side
+                t={c}
+                label="To"
+                note={`${apart(out.date, c.date)}${group.length > 1 ? ` · ×${group.length} identical` : ''}`}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                aria-label={`Link ${accountOf(out)} ${out.date} to ${accountOf(c)} ${c.date}`}
+                onPress={() => onLink(c.id)}
+                isPending={linking === c.id}
+              >
+                <Link2 aria-hidden className="size-4" /> Link
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="flex gap-1.5 text-xs text-muted">
+        <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+        {reasonText(suggestion)}
       </p>
-      <p className="text-muted">
-        One with no other side is worth a look: the money may not have arrived, or it may be
-        spending filed as a transfer (a payment to a friend, someone else’s card), which quietly
-        drops out of what you spent.
-      </p>
-    </section>
+    </li>
   );
 }
 
@@ -147,53 +279,23 @@ export function TransferReviewList({
                 onPress={() => linkAll.mutate()}
                 isPending={linkAll.isPending}
               >
-                Link all {counts.unique} with one match
+                Link the {counts.unique} clear {counts.unique === 1 ? 'pair' : 'pairs'}
               </Button>
             ) : null}
           </div>
           <p className="text-sm text-muted">
-            Money out of one account and the same amount into another, too far apart or with more
-            than one match to link on their own.
+            Money out of one account and the same amount into another that Fiscus didn’t link on its
+            own. Why is under each.
           </p>
-          <ul className="divide-y divide-border rounded-xl border border-border bg-surface">
-            {suggested.map(({ transaction: out, candidates }) => (
-              <li key={out.id} className="space-y-2 px-3 py-3">
-                <div className="flex flex-wrap items-center gap-x-3 text-sm">
-                  <span className="min-w-0 flex-1">
-                    <span className="font-medium">{out.displayName}</span>
-                    <span className="block text-xs text-muted">
-                      <DateText value={out.date} /> · {accountOf(out)}
-                    </span>
-                  </span>
-                  <Amount minor={out.amountMinor} currency={out.currency} />
-                </div>
-                <ul aria-label={`Possible other sides of ${out.displayName}`} className="space-y-1">
-                  {candidates.map((c) => (
-                    <li
-                      key={c.id}
-                      className="flex flex-wrap items-center gap-x-3 rounded-lg bg-surface-2 px-3 py-1.5 text-sm"
-                    >
-                      <ArrowRight aria-hidden className="size-4 text-muted" />
-                      <span className="min-w-0 flex-1">
-                        {accountOf(c)}
-                        <span className="text-muted">
-                          {' '}
-                          · <DateText value={c.date} /> · {c.displayName}
-                        </span>
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Link ${out.displayName} to ${accountOf(c)} on ${c.date}`}
-                        onPress={() => link.mutate({ out: out.id, into: c.id })}
-                        isPending={link.isPending && link.variables?.into === c.id}
-                      >
-                        Link
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </li>
+          <ul className="space-y-3">
+            {mergeIdentical(suggested).map(({ suggestion: s, count }) => (
+              <Suggestion
+                key={s.transaction.id}
+                suggestion={s}
+                count={count}
+                onLink={(into) => link.mutate({ out: s.transaction.id, into })}
+                linking={link.isPending ? (link.variables?.into ?? null) : null}
+              />
             ))}
           </ul>
           {counts.suggested > suggested.length ? (
