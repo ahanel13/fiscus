@@ -19,6 +19,7 @@ import { useParams, useSearch } from '@tanstack/react-router';
 import {
   ArrowLeftRight,
   ClipboardCheck,
+  Landmark,
   Link2,
   Plus,
   Search,
@@ -766,6 +767,7 @@ export function TransactionDetails({
   });
 
   const forIds = t.attribution.map((a) => a.memberId);
+  const [linking, setLinking] = useState(false);
   // These details remount after every save (keyed on the version), taking the control you used
   // with them. Keep focus here rather than letting it fall to the page, where Escape and the
   // keyboard stop reaching the drawer.
@@ -795,23 +797,42 @@ export function TransactionDetails({
         {t.originalDescription !== t.displayName ? (
           <p className="mt-1 text-xs text-muted">Original: {t.originalDescription}</p>
         ) : null}
-        {t.can.categorize && !t.parentId ? (
-          <MakeRule householdId={householdId} t={t} groups={groups} members={members} />
-        ) : null}
-        {t.account && t.can.edit && t.source !== 'provider' ? (
-          // A part of a split moves with its whole purchase.
-          <MoveToAccount
-            householdId={householdId}
-            ids={[t.parentId ?? t.id]}
-            from={t.account.id}
-            currency={t.currency}
-            trigger="button"
-            label={t.parentId ? 'Move this purchase to another account' : undefined}
-          />
-        ) : null}
+        <div role="group" aria-label="Actions" className="mt-3 flex flex-wrap gap-2">
+          {t.can.categorize && !t.parentId ? (
+            <MakeRule householdId={householdId} t={t} groups={groups} members={members} />
+          ) : null}
+          {t.account && t.can.edit && t.source !== 'provider' ? (
+            // A part of a split moves with its whole purchase.
+            <MoveToAccount
+              householdId={householdId}
+              ids={[t.parentId ?? t.id]}
+              from={t.account.id}
+              currency={t.currency}
+              trigger="button"
+              label={t.parentId ? 'Move this purchase to another account' : undefined}
+            />
+          ) : null}
+          {canLinkTransfer(t) ? (
+            // Toggles the picker below; it stays put, so focus has somewhere to stay.
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-expanded={linking}
+              onPress={() => setLinking(!linking)}
+            >
+              <Link2 aria-hidden className="size-4" /> Link as a transfer
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <TransferSection householdId={householdId} t={t} members={members} />
+      <TransferSection
+        householdId={householdId}
+        t={t}
+        members={members}
+        linking={linking}
+        onLinkingChange={setLinking}
+      />
 
       <Form
         onSubmit={(e) => {
@@ -1249,8 +1270,8 @@ function MoveToAccount({
   if (trigger === 'select') return picker;
   return (
     <DialogTrigger isOpen={open} onOpenChange={setOpen}>
-      <Button variant="ghost" size="sm" className="-ml-2.5 mt-1">
-        {label}
+      <Button variant="secondary" size="sm">
+        <Landmark aria-hidden className="size-4" /> {label}
       </Button>
       <Dialog title={label} size="sm">
         <div className="space-y-4">
@@ -1302,17 +1323,25 @@ export function transferLabel(t: Transaction, members: HouseholdMember[]): strin
  * The transfer this transaction is one side of, with Unlink; or "Link as a transfer", choosing the
  * other side among transactions of the opposite amount in your other accounts (TXN-08).
  */
+/** Whether "Link as a transfer" applies: you own it, it's whole, posted, and not linked. */
+const canLinkTransfer = (t: Transaction) =>
+  t.can.transfer && !t.transfer && !t.transferExternal && !t.hasSplits && !t.parentId && !t.pending;
+
 function TransferSection({
   householdId,
   t,
   members,
+  linking: open,
+  onLinkingChange: setOpen,
 }: {
   householdId: string;
   t: Transaction;
   members: HouseholdMember[];
+  /** The picker is open (its toggle is in the drawer's actions). */
+  linking: boolean;
+  onLinkingChange: (open: boolean) => void;
 }) {
   const invalidate = useInvalidateLedger(householdId);
-  const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<string | null>(null);
   const url = `${base(householdId)}/transactions/${t.id}`;
   const candidates = useQuery({
@@ -1390,20 +1419,11 @@ function TransferSection({
       </section>
     );
   }
-  if (!t.can.transfer || t.hasSplits || t.parentId || t.pending) return null;
+  if (!canLinkTransfer(t)) return null;
   const list = candidates.data ?? [];
-  // Inline rather than a nested dialog: the toggle stays put, so focus has somewhere to stay.
+  // Inline rather than a nested dialog, under the drawer's actions.
   return (
     <div className="space-y-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="-ml-2.5"
-        aria-expanded={open}
-        onPress={() => setOpen(!open)}
-      >
-        <Link2 aria-hidden className="size-4" /> Link as a transfer
-      </Button>
       {open ? (
         <section
           aria-label="Link as a transfer"
@@ -1485,7 +1505,7 @@ function MakeRule({
   const { uncategorized } = categoryIndex(groups);
   return (
     <>
-      <Button variant="ghost" size="sm" className="-ml-2.5 mt-1" onPress={() => setOpen(true)}>
+      <Button variant="secondary" size="sm" onPress={() => setOpen(true)}>
         <Wand2 aria-hidden className="size-4" /> Make a rule
       </Button>
       {open ? (
