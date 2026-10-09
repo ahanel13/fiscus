@@ -33,6 +33,9 @@ export const ruleConditionsSchema = z
   .refine((c) => Object.keys(c).length > 0, 'Add at least one condition');
 export type RuleConditions = z.infer<typeof ruleConditionsSchema>;
 
+/** How far apart the two sides of a rule's transfer may be, unless the rule says otherwise. */
+export const TRANSFER_RULE_DEFAULT_DAYS = 5;
+
 export const ruleActionsSchema = z
   .object({
     rename: z.string().trim().min(1).max(200).optional(),
@@ -43,6 +46,18 @@ export const ruleActionsSchema = z
     markReviewed: z.literal(true).optional(),
     /** Leave out of reports and budgets: needs the author to own the account. */
     exclude: z.literal(true).optional(),
+    /**
+     * A transfer to this account (transfers.md §3): links to its other side there, within
+     * `withinDays` either way, or waits that long for it. Needs the author to own both accounts.
+     */
+    transferTo: z
+      .object({
+        accountId: z.uuid(),
+        withinDays: z.number().int().min(1).max(31).default(TRANSFER_RULE_DEFAULT_DAYS),
+        /** No other side there yet: record it (manual accounts that follow their transactions). */
+        recordIfMissing: z.boolean().default(false),
+      })
+      .optional(),
   })
   .strict()
   .refine((a) => Object.keys(a).length > 0, 'Add at least one action');
@@ -97,6 +112,11 @@ export interface RuleChange {
     attribution: [string[], string[]];
     reviewStatus: [string, 'reviewed'];
     excluded: [boolean, true];
+    /**
+     * Linked to its other side in that account, its other side recorded there, or waiting for
+     * it to arrive.
+     */
+    transfer: [null, { accountId: string; outcome: 'link' | 'record' | 'wait' }];
   }>;
 }
 

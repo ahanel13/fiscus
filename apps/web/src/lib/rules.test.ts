@@ -46,6 +46,22 @@ describe('rules in words', () => {
       ),
     ).toBe('Rename to “Trader Joe’s” · Groceries · tag Food · for Bea · mark reviewed');
   });
+
+  it('describes a transfer to an account', () => {
+    const withAccounts = { ...names, accounts: new Map([['a2', 'Student loan']]) };
+    expect(
+      describeActions(
+        { transferTo: { accountId: 'a2', withinDays: 7, recordIfMissing: true } },
+        withAccounts,
+      ),
+    ).toBe('Transfer to Student loan within 7 days, recorded there if missing');
+    expect(
+      describeActions(
+        { transferTo: { accountId: 'a2', withinDays: 5, recordIfMissing: false } },
+        withAccounts,
+      ),
+    ).toBe('Transfer to Student loan within 5 days');
+  });
 });
 
 describe('rule suggestions', () => {

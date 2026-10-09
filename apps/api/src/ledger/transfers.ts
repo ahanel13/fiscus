@@ -202,20 +202,67 @@ export async function detectTransfers(
 ): Promise<number> {
   if (ids.length === 0) return 0;
   const cats = await transferCategories(tx);
-  const rows = (
+  const owns = (accountId: string) => levels.get(accountId) === 'owner';
+  const arrived = (
     await tx
       .select()
       .from(transactions)
       .where(and(inArray(transactions.id, ids), isNull(transactions.deletedAt)))
-  ).filter((r) => detectable(r, cats));
-  const { pairs } = await findTransfers(
-    tx,
-    rows,
-    cats,
-    (accountId) => levels.get(accountId) === 'owner',
-  );
-  await linkTransfers(tx, activity, pairs, cats, true);
-  return pairs.length;
+  ).filter((r) => linkable(r) && !r.transferExternal);
+  // First, transfers a rule is waiting for (transfers.md §3): whatever lands in that account, in
+  // any category, within the rule's days.
+  const awaited = await awaitedTransfers(tx, arrived, owns);
+  const done = new Set(awaited.flatMap(([a, b]) => [a.id, b.id]));
+  const rows = arrived.filter((r) => !done.has(r.id) && detectable(r, cats));
+  const { pairs } = await findTransfers(tx, rows, cats, owns);
+  await linkTransfers(tx, activity, [...awaited, ...pairs], cats, true);
+  return awaited.length + pairs.length;
+}
+
+/**
+ * Pairs of (a transaction a rule is waiting on, one of `arrived` in the account it waits for):
+ * the opposite amount, within the rule's days, the nearest first; both accounts yours.
+ */
+async function awaitedTransfers(
+  tx: Executor,
+  arrived: Row[],
+  owns: (accountId: string) => boolean,
+): Promise<[Leg, Leg][]> {
+  if (arrived.length === 0) return [];
+  const waiting = await tx
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.transferExpectedAccountId, [
+          ...new Set(arrived.map((r) => r.accountId)),
+        ]),
+        inArray(transactions.amountMinor, [...new Set(arrived.map((r) => -r.amountMinor))]),
+        isNull(transactions.transferGroupId),
+        isNull(transactions.deletedAt),
+      ),
+    );
+  const pairs: [Leg, Leg][] = [];
+  const taken = new Set<string>();
+  for (const w of waiting.sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))) {
+    const match = arrived
+      .filter(
+        (r) =>
+          !taken.has(r.id) &&
+          r.accountId === w.transferExpectedAccountId &&
+          r.amountMinor === -w.amountMinor &&
+          r.currency === w.currency &&
+          daysApart(r.effectiveDate, w.effectiveDate) <= (w.transferExpectedDays ?? 0),
+      )
+      .sort(
+        (x, y) =>
+          daysApart(x.effectiveDate, w.effectiveDate) - daysApart(y.effectiveDate, w.effectiveDate),
+      )[0];
+    if (!match || !owns(w.accountId) || !owns(match.accountId)) continue;
+    taken.add(match.id);
+    pairs.push([w, match]);
+  }
+  return pairs;
 }
 
 /** What the transfer review shows (docs/design/transfers.md §2), as transaction ids. */
@@ -248,6 +295,7 @@ export async function transferReview(
       amountMinor: transactions.amountMinor,
       currency: transactions.currency,
       effectiveDate: transactions.effectiveDate,
+      expectedDays: transactions.transferExpectedDays,
     })
     .from(transactions)
     .where(
@@ -300,8 +348,14 @@ export async function transferReview(
     }
   }
   const cutoff = shiftDays(today, -UNMATCHED_AFTER_DAYS);
+  // A rule waiting for the other side gives it the rule's days, if that's longer.
   const unmatched = sources
-    .filter((s) => !edges.has(s.id) && s.effectiveDate <= cutoff)
+    .filter(
+      (s) =>
+        !edges.has(s.id) &&
+        s.effectiveDate <= cutoff &&
+        shiftDays(s.effectiveDate, s.expectedDays ?? 0) < today,
+    )
     .sort(newest)
     .map((s) => s.id);
   const ordered = new Map(
@@ -347,6 +401,8 @@ export async function linkTransfers(
           category_id = CASE WHEN t.category_id = ANY(${sql.param([...cats.transferKind])}::uuid[])
                              THEN t.category_id ELSE ${cats.transfer}::uuid END,
           transfer_external = false,
+          transfer_expected_account_id = NULL,
+          transfer_expected_days = NULL,
           version = t.version + 1
       FROM unnest(${sql.param(part.map((l) => l.row.id))}::uuid[],
                   ${sql.param(part.map((l) => l.group))}::uuid[]) AS v(id, g)

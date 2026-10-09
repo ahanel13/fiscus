@@ -1507,7 +1507,7 @@ function MakeRule({
           groups={groups}
           tags={tags}
           members={members}
-          accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+          accounts={accounts}
           currency={household?.baseCurrency ?? t.currency}
           onClose={() => setOpen(false)}
           onSaved={() =>

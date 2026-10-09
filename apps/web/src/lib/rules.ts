@@ -50,6 +50,7 @@ export function describeActions(
     categories: Map<string, string>;
     tags: Map<string, string>;
     members: Map<string, string>;
+    accounts?: Map<string, string>;
   },
 ): string {
   const parts: string[] = [];
@@ -65,6 +66,13 @@ export function describeActions(
   }
   if (a.markReviewed) parts.push('mark reviewed');
   if (a.exclude) parts.push('exclude from reports');
+  if (a.transferTo) {
+    const to = names.accounts?.get(a.transferTo.accountId) ?? 'another account';
+    parts.push(
+      `transfer to ${to} within ${a.transferTo.withinDays} days` +
+        (a.transferTo.recordIfMissing ? ', recorded there if missing' : ''),
+    );
+  }
   const text = parts.join(' · ');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

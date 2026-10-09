@@ -38,35 +38,50 @@ A **Transfers** section on the Review page, worked out when you open it (no back
   in Fiscus" and recategorizing need categorize access (owner or full).
 - The count of both lists joins the review badge.
 
-## 3. "Record the other side" (a rule action)
+## 3. "Transfer to an account" (a rule action)
 
-For an account the bank feed doesn't cover, a rule creates the matching transaction in it when the
-transfer arrives in a connected (or imported) account:
+A rule can say a matching transaction is a transfer to one of your accounts, and how long its other
+side may take. It's an ordinary rule, so you choose the conditions, the account, and the window:
 
-> When the description contains "MOHELA" and money goes out → **record the other side in Student
-> loan**.
+> When the description contains "MOHELA" and money goes out → **transfer to Student loan, within
+> 7 days; if it isn't there, record it**.
 
-- **What it creates:** a transaction in the chosen account with the **opposite amount**, the same
-  date, the same name, in Transfer, **linked** to the arriving one as a transfer. Its balance
-  follows (a manual account that follows its transactions).
-- **Which accounts:** manual accounts only (no bank connection), in the same currency. An account
-  that's *valued* (balance entered by hand) is refused: its transactions don't move its balance.
-- **Reach (RULE-05):** the rule's author must own **both** accounts, checked when it runs, as for
-  linking by hand (TXN-08) and adding transactions (TXN-02).
-- **Once:** never for a row already linked as a transfer, so re-imports and re-runs don't duplicate.
-- **Undo:** created during an import, it belongs to that import: undoing the import removes it too.
-  Deleting either side unlinks the other, as for any transfer; the created one stays until you
-  delete it.
-- **On arrival only** (imports now, bank sync in M2). "Apply to existing" skips this action: it
-  would create history in an account that may already have its own (a Monarch export's balances).
-  The preview says so.
+When the rule matches a transaction as it arrives:
+
+1. **The other side is there** (the opposite amount in that account, up to N days before or after,
+   not linked): the nearest one is linked. Two equally near are left for you in the transfer review.
+2. **It isn't there, and "record it" is on:** a transaction is created in that account with the
+   opposite amount, the same date and name, and linked. For an account the bank feed doesn't cover
+   (a credit-union loan, a 401(k)): its balance follows. Only a manual account that follows its
+   transactions can take one; one whose balance is entered by hand is refused (its transactions
+   don't move its balance).
+3. **Otherwise it waits:** the transaction is marked as expecting its other side in that account
+   for N days, and moves to Transfer meanwhile (unless a person chose its category), so it isn't
+   counted as spending. Whatever lands in that account within the window, in any category, links
+   to it, whichever arrives first. The transfer review doesn't ask about it until the window has
+   passed.
+
+- **N** is 1–31 days (default 5), chosen in the rule. It replaces the usual 3 business days for the
+  transactions the rule matches.
+- **Reach (RULE-05):** the rule's author must own **both** accounts, checked when it's saved and
+  when it runs, as for linking by hand (TXN-08) and adding transactions (TXN-02). The person
+  importing must own both too, since linking writes both sides.
+- **Never twice:** a transaction already linked is left alone, so re-imports and re-runs don't
+  duplicate anything.
+- **Undo:** a transaction it records belongs to the import that brought the first side: undoing the
+  import removes both. Deleting either side unlinks the other, as for any transfer.
+- **"Apply to existing"** links and waits, but **never records**: it would create history in an
+  account that may already have its own (a Monarch export's balances). Its preview says what each
+  transaction would get.
 
 ## 4. Data
 
 - `transactions.transfer_external boolean` (default false): the other side is in an account outside
   Fiscus. Set from the review; a person's decision (recorded in `field_versions`).
-- Created transactions: `source = manual`, `import_batch_id` of the import that triggered them, so
-  undo includes them.
+- `transactions.transfer_expected_account_id`, `transfer_expected_days`: a rule is waiting for this
+  transaction's other side there (§3). Cleared when it's linked.
+- Recorded transactions: `source = manual`, in Transfer, reviewed, with the `import_batch_id` of the
+  import that brought the first side, so undo includes them.
 
 ## 5. API
 
@@ -76,12 +91,13 @@ transfer arrives in a connected (or imported) account:
 | `POST transactions/transfer-review/link-all` | Owners of both sides (TXN-08) | Links every suggested pair with exactly one candidate each, as shown |
 | `PATCH transactions/:id` `{ transferExternal }` | Categorize access (TXN-04) | "The other account isn't in Fiscus" |
 | `GET transactions/review-count` | Any member | Now `{ count, transactions, transfers }` |
-| Rules: action `recordOtherSide: { accountId }` | RULE-03, reach RULE-05 | Validated against the target when saved and when run |
+| Rules: action `transferTo: { accountId, withinDays, recordIfMissing }` | RULE-03, reach RULE-05 | Refused when saved for an account you don't own (`invalid_account`), or "record" into one that can't take it (`cannot_record`) |
 
 ## 6. Decisions to confirm in review
 
 1. **Business-day window** (3 business days) for auto-linking; suggestions up to 10 days (§1, §2).
 2. **"No other side" waits 7 days** before asking (§2).
 3. **The review is computed on the fly**, not a job; the badge counts it too (§2).
-4. **Record the other side** only into manual, transaction-following accounts in the same currency,
-   only on arrival, and the author must own both accounts (§3).
+4. **"Transfer to an account"** links within the rule's days (default 5), waits for the other side
+   meanwhile, and records it only on arrival, only into a manual account that follows its
+   transactions, in the same currency; the author must own both accounts (§3).

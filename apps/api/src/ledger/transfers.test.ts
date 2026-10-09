@@ -212,6 +212,106 @@ describe('transfers and the review queue', () => {
     expect(after.counts).toEqual({ suggested: 1, unmatched: 0, unique: 0 });
   });
 
+  it('a "transfer to" rule records the other side, links further apart, and waits for it', async () => {
+    const home = (
+      await A.post('/api/v1/households', { name: 'Rules', baseCurrency: 'USD', timezone: 'UTC' })
+    ).body.data.id as string;
+    const base = `/api/v1/households/${home}`;
+    const acct = async (name: string, extra: Record<string, unknown> = {}) =>
+      (await A.post(`${base}/accounts`, { name, type: 'depository', ...extra })).body.data
+        .id as string;
+    const day = (offset: number) =>
+      new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const one = async (id: string) =>
+      (await A.get(`${base}/transactions/${id}`)).body.data as Transaction;
+    const importRows = async (accountId: string, rows: Record<string, unknown>[]) => {
+      const start = await A.post(`${base}/imports`, {
+        format: 'csv',
+        filename: 'rules.csv',
+        accounts: [{ key: 'file', accountId }],
+      });
+      const batchId = start.body.data.batches[0].batchId as string;
+      const r = await A.post(`${base}/imports/${batchId}/rows`, {
+        transactions: rows.map((row, i) => ({ line: i + 2, ...row })),
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const list = (await A.get(`${base}/transactions?accounts=${accountId}&range=all_time`)).body
+        .data as Transaction[];
+      return { batchId, list };
+    };
+    const rule = (description: string, transferTo: Record<string, unknown>) =>
+      A.post(`${base}/rules`, {
+        conditions: { description: { op: 'contains', value: description }, direction: 'out' },
+        actions: { transferTo },
+      });
+    const checking = await acct('Checking');
+    const loan = await acct('Student loan', { type: 'loan' });
+    const savings = await acct('Savings');
+    const ally = await acct('Ally');
+
+    // Recorded in the manual loan account, linked, and undone with its import.
+    expect(
+      (await rule('mohela', { accountId: loan, withinDays: 5, recordIfMissing: true })).status,
+    ).toBe(201);
+    const mohela = await importRows(checking, [
+      { date: day(-20), amountMinor: -30000, description: 'MOHELA PAYMENT' },
+    ]);
+    const paid = mohela.list.find((t) => t.originalDescription === 'MOHELA PAYMENT')!;
+    expect(paid.transfer?.account?.name).toBe('Student loan');
+    const onLoan = await one(paid.transfer!.transactionId!);
+    expect([onLoan.amountMinor, onLoan.date, onLoan.account?.id]).toEqual([30000, day(-20), loan]);
+    await A.post(`${base}/imports/${mohela.batchId}/revert`);
+    expect((await A.get(`${base}/transactions/${onLoan.id}`)).status).toBe(404);
+
+    // Eight days apart, beyond the usual window: the rule's 10 days link it.
+    const arrived = await A.post(`${base}/transactions`, {
+      accountId: savings,
+      amountMinor: 5000,
+      date: day(-30),
+      displayName: 'Deposit',
+    });
+    expect((await rule('vanguard', { accountId: savings, withinDays: 10 })).status).toBe(201);
+    const vg = await importRows(checking, [
+      { date: day(-38), amountMinor: -5000, description: 'VANGUARD XFER' },
+    ]);
+    const out = vg.list.find((t) => t.originalDescription === 'VANGUARD XFER')!;
+    expect(out.transfer?.transactionId).toBe(arrived.body.data.id);
+
+    // Not there yet: it waits, out of spending, and links when the other side lands.
+    expect((await rule('ally', { accountId: ally, withinDays: 10 })).status).toBe(201);
+    const al = await importRows(checking, [
+      { date: day(-2), amountMinor: -6000, description: 'ALLY BANK XFER' },
+    ]);
+    const waiting = al.list.find((t) => t.originalDescription === 'ALLY BANK XFER')!;
+    expect(waiting.transfer).toBeNull();
+    const groups = (await A.get(`${base}/categories`)).body.data as CategoryGroup[];
+    const transferCat = groups
+      .flatMap((g) => g.categories)
+      .find((c) => c.systemKey === 'transfer')!;
+    expect(waiting.categoryId).toBe(transferCat.id);
+    const landed = await A.post(`${base}/transactions`, {
+      accountId: ally,
+      amountMinor: 6000,
+      date: day(0),
+      displayName: 'From checking',
+      categoryId: groups.flatMap((g) => g.categories).find((c) => c.name === 'Groceries')!.id,
+    });
+    expect((await one(waiting.id)).transfer?.transactionId).toBe(landed.body.data.id);
+
+    // A rule's transfer goes to an account you own, and records only into one that can take it.
+    const valued = await acct('House', { type: 'property', balanceMode: 'value' });
+    expect(
+      (await rule('x', { accountId: valued, withinDays: 5, recordIfMissing: true })).body.code,
+    ).toBe('cannot_record');
+    const beas = (await B.post(url('/accounts'), { name: 'Bea’s', type: 'depository' })).body.data
+      .id as string;
+    const refused = await A.post(url('/rules'), {
+      conditions: { direction: 'out' },
+      actions: { transferTo: { accountId: beas } },
+    });
+    expect(refused.body.code).toBe('invalid_account');
+  });
+
   it('links by hand, refuses what isn’t a transfer, and unlinking restores categories', async () => {
     const m = month();
     const a1 = await account(A, 'Hand 1');

@@ -19,7 +19,13 @@ import {
   ruleMatches,
 } from '@fiscus/shared';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
+import { recomputeBalances } from '../accounts/balances.js';
 import type { HouseholdContext } from '../households/household-context.js';
+import type { HouseholdActivity } from '../households/household-scope.js';
+import { linkTransfers, transferCategories } from '../ledger/transfers.js';
+import { householdRanges } from '../ranges/household-ranges.js';
+import { accessLevels } from '../visibility/visibility-scope.js';
 
 // The rules engine (docs/design/imports.md §3, permissions RULE-05). Given transactions and
 // rules, it works out what each rule may change and, when asked, changes it:
@@ -43,6 +49,17 @@ interface Plan {
   set: Partial<Pick<Row, 'displayName' | 'categoryId' | 'reviewStatus' | 'excluded'>>;
   addTags: Set<string>;
   attribution: { memberId: string; shareBps?: number | undefined }[] | null;
+  /** The last matching rule's "transfer to" (transfers.md §3). */
+  transfer: NonNullable<RuleActions['transferTo']> | null;
+}
+
+/** What a "transfer to" does for one transaction. */
+interface TransferPlan {
+  accountId: string;
+  withinDays: number;
+  outcome: 'link' | 'record' | 'wait';
+  /** The other side found there (link). */
+  partner?: { id: string; accountId: string };
 }
 
 /** What may be done to a transaction in an account at a level (permissions §4.3–4.4). */
@@ -72,9 +89,10 @@ export async function activeRules(tx: Executor): Promise<EngineRule[]> {
 }
 
 /**
- * Works out (and with `apply`, makes) the changes `ruleList` would make to `rows`. `caller` is the
- * access of whoever runs it: actions also need them to be allowed (null: an import, where the
- * importer owns the account anyway).
+ * Works out (and with `activity`, makes) the changes `ruleList` would make to `rows`. `caller` is
+ * the access of whoever runs it: actions also need them to be allowed (null: an import, where the
+ * importer owns the account anyway). Only an import (on arrival) records the other side of a
+ * transfer; applying to existing transactions links and waits but never creates.
  */
 export async function runRules(
   tx: Executor,
@@ -82,13 +100,16 @@ export async function runRules(
   rows: Row[],
   ruleList: EngineRule[],
   caller: Map<string, AccessLevel> | null,
-  apply: boolean,
+  activity: HouseholdActivity | null,
 ): Promise<RuleChange[]> {
   const candidates = rows.filter((r) => !r.deletedAt && !r.hasSplits && !r.parentId);
   if (candidates.length === 0 || ruleList.length === 0) return [];
 
   // The authors' access, from the accounts' owners and visibility (fiscus_account_access()).
-  const accountIds = [...new Set(candidates.map((r) => r.accountId))];
+  const targets = ruleList.flatMap((r) =>
+    r.actions.transferTo ? [r.actions.transferTo.accountId] : [],
+  );
+  const accountIds = [...new Set([...candidates.map((r) => r.accountId), ...targets])];
   const acctRows = await tx
     .select({ id: accounts.id, visibility: accounts.visibility })
     .from(accounts)
@@ -165,7 +186,7 @@ export async function runRules(
   const plans: Plan[] = [];
   for (const row of candidates) {
     const personSet = new Set(Object.keys(row.fieldVersions));
-    const plan: Plan = { row, set: {}, addTags: new Set(), attribution: null };
+    const plan: Plan = { row, set: {}, addTags: new Set(), attribution: null, transfer: null };
     for (const rule of ruleList) {
       if (!ruleMatches(rule.conditions, row, uncategorized?.id ?? null)) continue;
       const a = rule.actions;
@@ -190,6 +211,17 @@ export async function runRules(
         plan.set.reviewStatus = 'reviewed';
       }
       if (a.exclude && edit && !personSet.has('excluded')) plan.set.excluded = true;
+      // A transfer needs ownership of both sides, as linking by hand does (TXN-08).
+      if (
+        a.transferTo &&
+        edit &&
+        allowed(rule, a.transferTo.accountId, 'edit') &&
+        !row.transferGroupId &&
+        !row.transferExternal &&
+        !row.pending
+      ) {
+        plan.transfer = a.transferTo;
+      }
       if (
         a.attribution &&
         edit &&
@@ -201,6 +233,14 @@ export async function runRules(
     }
     plans.push(plan);
   }
+
+  const transfers = await resolveTransfers(
+    tx,
+    ctx,
+    plans.filter((p) => p.transfer),
+    caller ?? (await accessLevels(tx)),
+    caller === null,
+  );
 
   // Keep only real changes.
   const out: { plan: Plan; change: RuleChange }[] = [];
@@ -228,6 +268,10 @@ export async function runRules(
     if (after && [...before].sort().join() !== [...after].sort().join()) {
       changes.attribution = [before, after];
     } else plan.attribution = null;
+    const transfer = transfers.get(row.id);
+    if (transfer) {
+      changes.transfer = [null, { accountId: transfer.accountId, outcome: transfer.outcome }];
+    }
     if (Object.keys(changes).length === 0) continue;
     out.push({
       plan,
@@ -242,13 +286,181 @@ export async function runRules(
     });
   }
 
-  if (apply)
+  if (activity) {
     await write(
       tx,
       ctx,
       out.map((o) => o.plan),
     );
+    await writeTransfers(tx, activity, ctx, transfers, candidates, uncategorized?.id ?? null);
+  }
   return out.map((o) => o.change);
+}
+
+/**
+ * Decides what each "transfer to" does: link to the other side already in that account (the
+ * nearest within the rule's days; a tie is left for a person), record it there (on arrival, into a
+ * manual account that follows its transactions), or wait for it to arrive. The person running it
+ * must own both accounts too, since linking writes both sides. A transaction whose window has
+ * passed with nothing there gets nothing: the transfer review asks about it instead.
+ */
+async function resolveTransfers(
+  tx: Executor,
+  ctx: HouseholdContext,
+  plans: Plan[],
+  me: Map<string, AccessLevel>,
+  onArrival: boolean,
+): Promise<Map<string, TransferPlan>> {
+  const out = new Map<string, TransferPlan>();
+  if (plans.length === 0) return out;
+  const targetIds = [...new Set(plans.map((p) => p.transfer!.accountId))];
+  const targets = new Map(
+    (
+      await tx
+        .select({
+          id: accounts.id,
+          currency: accounts.currency,
+          connectionId: accounts.connectionId,
+          balanceMode: accounts.balanceMode,
+          closedAt: accounts.closedAt,
+        })
+        .from(accounts)
+        .where(inArray(accounts.id, targetIds))
+    ).map((a) => [a.id, a]),
+  );
+  const { today } = await householdRanges(tx, ctx.householdId);
+  const taken = new Set<string>();
+  for (const { row, transfer: t } of plans) {
+    const target = targets.get(t!.accountId);
+    if (
+      !target ||
+      target.id === row.accountId ||
+      target.currency !== row.currency ||
+      me.get(row.accountId) !== 'owner' ||
+      me.get(target.id) !== 'owner'
+    ) {
+      continue;
+    }
+    const plan = { accountId: target.id, withinDays: t!.withinDays };
+    const distance = sql<number>`abs(${transactions.effectiveDate} - ${row.effectiveDate}::date)`;
+    const found = (
+      await tx
+        .select({
+          id: transactions.id,
+          accountId: transactions.accountId,
+          distance,
+        })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.accountId, target.id),
+            eq(transactions.amountMinor, -row.amountMinor),
+            eq(transactions.currency, row.currency),
+            isNull(transactions.transferGroupId),
+            eq(transactions.transferExternal, false),
+            isNull(transactions.deletedAt),
+            isNull(transactions.parentId),
+            eq(transactions.hasSplits, false),
+            eq(transactions.pending, false),
+            sql`${distance} <= ${t!.withinDays}`,
+          ),
+        )
+        .orderBy(distance, asc(transactions.id))
+        .limit(5)
+    ).filter((f) => !taken.has(f.id));
+    const [nearest, next] = found;
+    if (nearest && next?.distance !== nearest.distance) {
+      taken.add(nearest.id);
+      out.set(row.id, { ...plan, outcome: 'link', partner: nearest });
+      continue;
+    }
+    const windowOpen =
+      new Date(Date.parse(row.effectiveDate) + t!.withinDays * 86_400_000)
+        .toISOString()
+        .slice(0, 10) >= today;
+    if (
+      !nearest &&
+      t!.recordIfMissing &&
+      onArrival &&
+      target.connectionId === null &&
+      target.balanceMode === 'transactions' &&
+      !target.closedAt
+    ) {
+      out.set(row.id, { ...plan, outcome: 'record' });
+    } else if (windowOpen && row.transferExpectedAccountId !== target.id) {
+      out.set(row.id, { ...plan, outcome: 'wait' });
+    }
+  }
+  return out;
+}
+
+/** Carries out resolveTransfers' decisions. */
+async function writeTransfers(
+  tx: Executor,
+  activity: HouseholdActivity,
+  ctx: HouseholdContext,
+  plans: Map<string, TransferPlan>,
+  rows: Row[],
+  uncategorized: string | null,
+) {
+  if (plans.size === 0) return;
+  const cats = await transferCategories(tx);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const pairs: [{ id: string; accountId: string }, { id: string; accountId: string }][] = [];
+  const recorded = new Set<string>();
+  for (const [rowId, plan] of plans) {
+    const row = byId.get(rowId)!;
+    if (plan.outcome === 'link') pairs.push([row, plan.partner!]);
+    if (plan.outcome === 'record') {
+      const id = uuidv7();
+      await tx.insert(transactions).values({
+        id,
+        householdId: ctx.householdId,
+        accountId: plan.accountId,
+        amountMinor: -row.amountMinor,
+        currency: row.currency,
+        authorizedDate: row.effectiveDate,
+        postedDate: row.effectiveDate,
+        originalDescription: row.originalDescription,
+        displayName: row.displayName,
+        categoryId: cats.transfer,
+        reviewStatus: 'reviewed',
+        source: 'manual',
+        // Undoing the import that brought the first side removes this one too.
+        importBatchId: row.importBatchId,
+      });
+      recorded.add(plan.accountId);
+      pairs.push([row, { id, accountId: plan.accountId }]);
+      await activity.record({
+        action: 'transaction.created',
+        targetType: 'transaction',
+        targetId: id,
+        accountId: plan.accountId,
+        metadata: { by: 'rule', otherSideOf: row.id },
+      });
+    }
+    if (plan.outcome === 'wait') {
+      // It's a transfer whether or not the other side has come: out of spending meanwhile.
+      const intoTransfer =
+        row.categoryId === null ||
+        row.categoryId === uncategorized ||
+        !Object.hasOwn(row.fieldVersions, 'categoryId');
+      await tx
+        .update(transactions)
+        .set({
+          transferExpectedAccountId: plan.accountId,
+          transferExpectedDays: plan.withinDays,
+          ...(intoTransfer && !cats.transferKind.has(row.categoryId ?? '')
+            ? { categoryId: cats.transfer }
+            : {}),
+          version: sql`${transactions.version} + 1`,
+        })
+        .where(eq(transactions.id, row.id));
+    }
+  }
+  // Rows written above may have changed since `rows` was read (write()); link from fresh ones.
+  if (pairs.length) await linkTransfers(tx, activity, pairs, cats, true);
+  for (const accountId of recorded) await recomputeBalances(tx, accountId);
 }
 
 /** Applies plans in as few statements as it can: rows with the same changes go together. */
