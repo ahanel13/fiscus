@@ -53,7 +53,24 @@ Every issue has: an `area:*` label, a `priority:*` label, a milestone, and **acc
 ## Releases
 
 SemVer tags `vX.Y.Z` on `main` trigger image builds to GHCR and a GitHub Release with
-generated notes. Pre-1.0, minor bumps may contain breaking changes (called out in notes).
+generated notes (`.github/workflows/release.yml`). Pre-1.0, minor bumps may contain breaking
+changes (called out in notes).
+
+To cut one, tag a commit on `main` and push the tag:
+
+```bash
+git checkout main && git pull
+git tag -a v0.2.0 -m "v0.2.0" && git push origin v0.2.0      # or v0.2.0-rc.1 for a pre-release
+```
+
+The workflow refuses tags that aren't on `main`. It then:
+- builds all four images for amd64 and arm64 and pushes them to `ghcr.io/<owner>/fiscus-<app>`,
+  tagged `0.2.0`, plus `0.2`, `latest`, and (from 1.0) `0`, except for pre-releases;
+- attaches build provenance and an SBOM to each;
+- publishes a GitHub Release, which opens with how to upgrade, the migrations since the last
+  release and whether rolling back needs a restore (`scripts/release-notes.sh`), and the image
+  digests, followed by GitHub's changelog. Edit the release afterwards to add operator actions
+  (new environment variables) per [upgrades §7](docs/design/upgrades.md#7-release-notes).
 
 ## Local development
 
