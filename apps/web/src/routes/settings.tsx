@@ -2,7 +2,7 @@
 import { type HouseholdMember, type InviteSummary, MEMBER_COLORS } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
-import { Copy, Monitor } from 'lucide-react';
+import { Copy, Monitor, Smartphone } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { SourceLinks } from '../components/About.js';
@@ -28,6 +28,7 @@ import {
   Tooltip,
 } from '../components/ui.js';
 import { applyDensity, type Density, storedDensity } from '../lib/density.js';
+import { describeDevice } from '../lib/device.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
 
 const ROLE_LABELS = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
@@ -272,11 +273,11 @@ export function PersonalSettingsPage() {
       <h1 className="text-2xl font-semibold">Personal settings</h1>
       <Card>
         <h2 className="mb-3 font-semibold">Profile</h2>
-        <dl className="grid grid-cols-[10rem_1fr] gap-y-2 text-sm">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">
           <dt className="text-muted">Name</dt>
           <dd>{me.displayName}</dd>
           <dt className="text-muted">Email</dt>
-          <dd>{me.email}</dd>
+          <dd className="break-all">{me.email}</dd>
           {me.isInstanceAdmin ? (
             <>
               <dt className="text-muted">Role</dt>
@@ -314,9 +315,15 @@ export function PersonalSettingsPage() {
         <ul className="divide-y divide-border">
           {(sessions.data ?? []).map((s) => (
             <li key={s.id} className="flex items-center gap-3 py-2 text-sm">
-              <Monitor aria-hidden className="size-4 text-muted" />
-              <span className="flex-1">
-                <span className="block truncate">{s.userAgent ?? 'Unknown device'}</span>
+              {/(Android|iOS)$/.test(describeDevice(s.userAgent)) ? (
+                <Smartphone aria-hidden className="size-4 shrink-0 text-muted" />
+              ) : (
+                <Monitor aria-hidden className="size-4 shrink-0 text-muted" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate" title={s.userAgent ?? undefined}>
+                  {describeDevice(s.userAgent)}
+                </span>
                 <span className="text-xs text-muted">
                   Last active <DateText value={s.lastSeenAt} format="datetime" />
                   {s.ip ? ` · ${s.ip}` : ''}

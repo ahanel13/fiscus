@@ -8,7 +8,7 @@ import type {
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight, Landmark, Plus, Upload } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Landmark, Pencil, Plus, Upload } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -30,7 +30,6 @@ import {
   Avatar,
   Badge,
   Button,
-  ButtonLink,
   Card,
   Cell,
   Checkbox,
@@ -43,6 +42,9 @@ import {
   DialogTrigger,
   Form,
   LoadingRegion,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   RadioCard,
   RadioGroup,
   Row,
@@ -108,15 +110,21 @@ export function AccountsPage() {
   const accounts = useQuery(accountsQuery(householdId, lens));
   const [adding, setAdding] = useState(false);
   const canAdd = household.you.role !== 'viewer';
+  // One way in, which asks how: by hand, or from a file (bank connections join it in M2).
   const add = canAdd ? (
-    <div className="flex gap-2">
-      <ButtonLink variant="secondary" to="/h/$householdId/import" params={{ householdId }}>
-        <Upload aria-hidden className="size-4" /> Import
-      </ButtonLink>
-      <Button onPress={() => setAdding(true)}>
+    <MenuTrigger>
+      <Button>
         <Plus aria-hidden className="size-4" /> Add account
       </Button>
-    </div>
+      <Menu placement="bottom end" aria-label="Add an account">
+        <MenuItem onAction={() => setAdding(true)}>
+          <Pencil aria-hidden /> Enter it yourself
+        </MenuItem>
+        <MenuItem href={`/h/${householdId}/import`}>
+          <Upload aria-hidden /> Import from Monarch or a bank file
+        </MenuItem>
+      </Menu>
+    </MenuTrigger>
   ) : undefined;
 
   return (
@@ -137,8 +145,8 @@ export function AccountsPage() {
           <EmptyState icon={Landmark} title="No accounts yet">
             <p>
               Add the accounts you want to track: checking, savings, credit cards, loans, and things
-              you own, like a home or a car. Bank connections arrive later; for now you enter
-              balances yourself.
+              you own, like a home or a car. Enter them yourself, or import them from a Monarch
+              export or a bank’s file. Bank connections arrive later.
             </p>
             {add}
           </EmptyState>

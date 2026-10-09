@@ -23,10 +23,12 @@ import {
   Link2,
   Plus,
   Search,
+  SlidersHorizontal,
   SplitSquareHorizontal,
   Unlink,
   Upload,
   Wand2,
+  X,
 } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
@@ -59,6 +61,9 @@ import {
   DialogTrigger,
   Form,
   LoadingRegion,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Radio,
   RadioGroup,
   SegmentedControl,
@@ -74,7 +79,8 @@ import {
 } from '../components/ui.js';
 import { categoryIndex, byDay, forLabel, paidByLabel } from '../lib/transactions.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
-import { rangeParams } from '../lib/ranges.js';
+import { RangeSelect } from '../components/RangeControls.js';
+import { rangeParams, selectionLabel } from '../lib/ranges.js';
 import { RuleEditor, RuleSuggestion, suggestMatchText, useRuleSuggestionContext } from './rules.js';
 import { type SuggestedRule, suggestRule } from '../lib/rules.js';
 import { useRange } from '../lib/use-range.js';
@@ -219,7 +225,9 @@ export function TransactionList({
                           : 'Uncategorized'}
                       </span>
                       <span aria-hidden>·</span>
-                      <span>{t.account ? t.account.name : paidByLabel(t, members)}</span>
+                      <span className="max-w-full truncate">
+                        {t.account ? t.account.name : paidByLabel(t, members)}
+                      </span>
                       {shared ? (
                         <>
                           <span aria-hidden>·</span>
@@ -229,7 +237,12 @@ export function TransactionList({
                       {t.reviewStatus === 'needs_review' ? (
                         <Badge tone="accent">Review</Badge>
                       ) : null}
-                      {t.transfer ? <Badge>{transferLabel(t, members)}</Badge> : null}
+                      {t.transfer ? (
+                        // Long account names ("MyLowe's® Rewards Credit Card (...6650)") truncate.
+                        <Badge className="max-w-full">
+                          <span className="min-w-0 truncate">{transferLabel(t, members)}</span>
+                        </Badge>
+                      ) : null}
                       {t.excluded ? <Badge>Excluded</Badge> : null}
                       {t.dateEdited ? <Badge>Date moved</Badge> : null}
                     </span>
@@ -290,6 +303,13 @@ export function TransactionsPage() {
     ...(account !== ALL ? { accounts: [account] } : {}),
     ...(review ? { review: 'needs_review' as const } : {}),
   };
+  const activeFilters =
+    Number(range.selection.range !== 'all_time') + Number(account !== ALL) + Number(review);
+  const clearFilters = () => {
+    range.setRange('all_time');
+    setAccount(ALL);
+    setReview(false);
+  };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -349,28 +369,53 @@ export function TransactionsPage() {
     <>
       <PageHeader
         title="Transactions"
-        range={range}
         showLens={showLens}
         members={members}
         action={
           household.you.role !== 'viewer' ? (
-            <div className="flex flex-wrap gap-2">
-              <ButtonLink variant="ghost" to="/h/$householdId/review" params={{ householdId }}>
-                <ClipboardCheck aria-hidden className="size-4" /> Review
-                {toReview ? <Badge tone="accent">{toReview}</Badge> : null}
+            // Icons on phones, labels from small screens up.
+            <>
+              <ButtonLink
+                variant="ghost"
+                to="/h/$householdId/review"
+                params={{ householdId }}
+                className="px-2.5 sm:px-3.5"
+              >
+                <ClipboardCheck aria-hidden className="size-4" />
+                <span className="sr-only sm:not-sr-only">Review</span>
+                {toReview ? (
+                  <Badge tone="accent">
+                    {toReview}
+                    <span className="sr-only"> to review</span>
+                  </Badge>
+                ) : null}
               </ButtonLink>
-              <ButtonLink variant="ghost" to="/h/$householdId/rules" params={{ householdId }}>
-                <Wand2 aria-hidden className="size-4" /> Rules
+              <ButtonLink
+                variant="ghost"
+                to="/h/$householdId/rules"
+                params={{ householdId }}
+                className="px-2.5 sm:px-3.5"
+              >
+                <Wand2 aria-hidden className="size-4" />
+                <span className="sr-only sm:not-sr-only">Rules</span>
               </ButtonLink>
-              <ButtonLink variant="secondary" to="/h/$householdId/import" params={{ householdId }}>
-                <Upload aria-hidden className="size-4" /> Import
-              </ButtonLink>
-              {ownsAny ? (
-                <Button onPress={() => setAdding(true)}>
-                  <Plus aria-hidden className="size-4" /> Add transaction
+              <MenuTrigger>
+                <Button className="px-2.5 sm:px-3.5">
+                  <Plus aria-hidden className="size-4" />
+                  <span className="sr-only sm:not-sr-only">Add</span>
                 </Button>
-              ) : null}
-            </div>
+                <Menu placement="bottom end" aria-label="Add transactions">
+                  {ownsAny ? (
+                    <MenuItem onAction={() => setAdding(true)}>
+                      <Plus aria-hidden /> Enter a transaction
+                    </MenuItem>
+                  ) : null}
+                  <MenuItem href={`/h/${householdId}/import`}>
+                    <Upload aria-hidden /> Import from Monarch or a bank file
+                  </MenuItem>
+                </Menu>
+              </MenuTrigger>
+            </>
           ) : undefined
         }
       />
@@ -384,36 +429,86 @@ export function TransactionsPage() {
           </EmptyState>
         ) : (
           <>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="relative min-w-56 flex-1">
-                <Search
-                  aria-hidden
-                  className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted"
-                />
-                <TextField
-                  aria-label="Search transactions"
-                  placeholder="Search"
-                  value={text}
-                  onChange={setText}
-                  inputClassName="pl-9"
-                />
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <Search
+                    aria-hidden
+                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted"
+                  />
+                  <TextField
+                    aria-label="Search transactions"
+                    placeholder="Search"
+                    value={text}
+                    onChange={setText}
+                    inputClassName="pl-9"
+                  />
+                </div>
+                <DialogTrigger>
+                  <Button variant="secondary" className="shrink-0 px-2.5 sm:px-3.5">
+                    <SlidersHorizontal aria-hidden className="size-4" />
+                    <span className="sr-only sm:not-sr-only">Filters</span>
+                    {activeFilters ? (
+                      <Badge tone="accent">
+                        {activeFilters}
+                        <span className="sr-only"> on</span>
+                      </Badge>
+                    ) : null}
+                  </Button>
+                  <Dialog title="Filters" size="sm">
+                    {(close) => (
+                      <div className="space-y-4">
+                        <div className="space-y-1">
+                          <span className="block text-sm font-medium">Time range</span>
+                          <RangeSelect state={range} align="start" />
+                        </div>
+                        <Select
+                          label="Account"
+                          value={account}
+                          onChange={(v) => v && setAccount(String(v))}
+                        >
+                          <SelectItem id={ALL}>All accounts</SelectItem>
+                          {accounts.map((a) => (
+                            <SelectItem key={a.id} id={a.id}>
+                              {a.name}
+                            </SelectItem>
+                          ))}
+                        </Select>
+                        <Switch isSelected={review} onChange={setReview}>
+                          Only what needs review
+                        </Switch>
+                        <DialogActions>
+                          {activeFilters ? (
+                            <Button variant="ghost" onPress={clearFilters}>
+                              Clear all
+                            </Button>
+                          ) : null}
+                          <Button onPress={close}>Done</Button>
+                        </DialogActions>
+                      </div>
+                    )}
+                  </Dialog>
+                </DialogTrigger>
               </div>
-              <Select
-                aria-label="Account"
-                value={account}
-                onChange={(v) => v && setAccount(String(v))}
-                triggerClassName="min-w-48"
-              >
-                <SelectItem id={ALL}>All accounts</SelectItem>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} id={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </Select>
-              <Switch isSelected={review} onChange={setReview}>
-                Needs review
-              </Switch>
+              {activeFilters ? (
+                <div role="group" aria-label="Filters on" className="flex flex-wrap gap-2">
+                  {range.selection.range !== 'all_time' ? (
+                    <FilterChip
+                      label={selectionLabel(range.selection)}
+                      onRemove={() => range.setRange('all_time')}
+                    />
+                  ) : null}
+                  {account !== ALL ? (
+                    <FilterChip
+                      label={accounts.find((a) => a.id === account)?.name ?? 'Account'}
+                      onRemove={() => setAccount(ALL)}
+                    />
+                  ) : null}
+                  {review ? (
+                    <FilterChip label="Needs review" onRemove={() => setReview(false)} />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {suggestion ? (
@@ -495,6 +590,24 @@ export function TransactionsPage() {
         />
       ) : null}
     </>
+  );
+}
+
+/** An active filter, with a button to turn it off. */
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface py-0.5 pr-0.5 pl-3 text-sm">
+      <span className="min-w-0 truncate">{label}</span>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Remove filter: ${label}`}
+        onPress={onRemove}
+        className="size-7 min-h-0 rounded-full"
+      >
+        <X aria-hidden className="size-3.5" />
+      </Button>
+    </span>
   );
 }
 
