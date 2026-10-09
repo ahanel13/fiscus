@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { type HouseholdMember, type InviteSummary, MEMBER_COLORS } from '@fiscus/shared';
+import { type HouseholdMember, MEMBER_COLORS } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { useParams } from '@tanstack/react-router';
-import { Copy, Monitor } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Monitor } from 'lucide-react';
+import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { SourceLinks } from '../components/About.js';
 import { CategoriesSettings } from './categories-settings.js';
 import { HouseholdGeneral } from './household-general.js';
+import { InviteButton, InviteDialog, PendingInvites } from './invites.js';
 import { MakeJointOffer } from './make-joint.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
 import {
-  Alert,
   Avatar,
   Badge,
   Button,
@@ -21,11 +21,8 @@ import {
   Radio,
   RadioGroup,
   SegmentedControl,
-  Select,
-  SelectItem,
   TextField,
   toast,
-  Tooltip,
 } from '../components/ui.js';
 import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
@@ -130,21 +127,10 @@ export function HouseholdSettingsPage() {
   const household = useSuspenseQuery(householdQuery(householdId)).data;
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const isOwner = household.you.role === 'owner';
-  const [link, setLink] = useState<string>();
-  const queryClient = useQueryClient();
-  const invite = useMutation({
-    mutationFn: (body: Record<string, string>) =>
-      api<{ data: { invite: InviteSummary; url: string } }>(
-        'POST',
-        `/api/v1/households/${householdId}/invites`,
-        { body },
-      ),
-    onSuccess: (r) => {
-      setLink(r.data.url);
-      void queryClient.invalidateQueries({ queryKey: ['households', householdId] });
-    },
-  });
-  const err = invite.error as ApiError | null;
+  const search = useSearch({ strict: false }) as { invite?: string };
+  const navigate = useNavigate();
+  // "Invite someone" in the household menu opens this page with ?invite=1.
+  const inviteOpen = search.invite === '1' && isOwner;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 md:px-8 md:py-10">
@@ -164,7 +150,22 @@ export function HouseholdSettingsPage() {
         />
       ) : null}
       <Card>
-        <h2 className="mb-3 font-semibold">Members</h2>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <h2 className="mr-auto font-semibold">Members</h2>
+          {isOwner ? (
+            <>
+              <InviteButton household={household} />
+              {/* From "Invite someone" in the household menu. */}
+              <InviteDialog
+                household={household}
+                isOpen={inviteOpen}
+                onOpenChange={(open) => {
+                  if (!open) void navigate({ to: '.', search: {}, replace: true });
+                }}
+              />
+            </>
+          ) : null}
+        </div>
         <ul className="divide-y divide-border">
           {members.map((m) => (
             <li key={m.id} className="flex items-center gap-3 py-2 text-sm">
@@ -180,73 +181,7 @@ export function HouseholdSettingsPage() {
             </li>
           ))}
         </ul>
-        {isOwner ? (
-          <Form
-            className="mt-4 grid gap-3 space-y-0 border-t border-border pt-4 md:grid-cols-[1fr_9rem_auto] md:items-start"
-            validationErrors={err?.fieldErrors()}
-            onSubmit={(e: FormEvent<HTMLFormElement>) => {
-              e.preventDefault();
-              invite.mutate(
-                Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>,
-              );
-            }}
-          >
-            <TextField
-              label="Invite by email"
-              name="email"
-              type="email"
-              isRequired
-              placeholder="partner@example.com"
-              {...(err?.formError ? { isInvalid: true, errorMessage: err.formError } : {})}
-            />
-            <Select
-              label="Role"
-              name="role"
-              defaultValue={
-                household.financeStyle === 'combined' || household.financeStyle === 'hybrid'
-                  ? 'owner'
-                  : 'member'
-              }
-            >
-              <SelectItem id="owner">Co-owner</SelectItem>
-              <SelectItem id="member">Member</SelectItem>
-              <SelectItem id="viewer">Viewer</SelectItem>
-            </Select>
-            <Button type="submit" isPending={invite.isPending} className="md:mt-6.5">
-              Create invite link
-            </Button>
-          </Form>
-        ) : null}
-        {link ? (
-          <div className="mt-3 space-y-2">
-            <Alert tone="success">
-              Invite created. Share this link with them; it works once and expires in 7 days.
-            </Alert>
-            <div className="flex gap-2">
-              <TextField
-                aria-label="Invite link"
-                value={link}
-                isReadOnly
-                className="flex-1"
-                onFocus={(e) => (e.target as HTMLInputElement).select()}
-              />
-              <Tooltip content="Copy link">
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  aria-label="Copy invite link"
-                  onPress={() =>
-                    void navigator.clipboard
-                      ?.writeText(link)
-                      .then(() => toast('Invite link copied.'))
-                  }
-                >
-                  <Copy aria-hidden className="size-4" />
-                </Button>
-              </Tooltip>
-            </div>
-          </div>
-        ) : null}
+        {isOwner ? <PendingInvites household={household} /> : null}
       </Card>
       <CategoriesSettings householdId={householdId} canEdit={household.you.role !== 'viewer'} />
     </div>

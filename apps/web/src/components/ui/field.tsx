@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import {
   FieldError as AriaFieldError,
   type FieldErrorProps,
@@ -42,7 +42,7 @@ export function FieldError({ className, ...props }: FieldErrorProps) {
   return <AriaFieldError {...props} className={cx('text-sm text-danger', className)} />;
 }
 
-export function Input({ className, ...props }: InputProps) {
+export function Input({ className, ...props }: InputProps & { ref?: Ref<HTMLInputElement> }) {
   return <AriaInput {...props} className={cx(controlStyles, className)} />;
 }
 
@@ -59,6 +59,8 @@ export type TextFieldProps = AriaTextFieldProps &
     inputClassName?: string;
     /** A multi-line text area, e.g. notes. */
     multiline?: boolean;
+    /** The input element, e.g. to select its text. */
+    inputRef?: Ref<HTMLInputElement>;
   };
 
 /** A labelled text input with an optional description and inline validation. */
@@ -70,6 +72,7 @@ export function TextField({
   inputClassName,
   multiline,
   className,
+  inputRef,
   ...props
 }: TextFieldProps) {
   return (
@@ -82,7 +85,7 @@ export function TextField({
           className={clsx(controlStyles, 'py-2', inputClassName)}
         />
       ) : (
-        <Input placeholder={placeholder} className={inputClassName} />
+        <Input ref={inputRef} placeholder={placeholder} className={inputClassName} />
       )}
       {description ? <Description>{description}</Description> : null}
       <FieldError>{errorMessage}</FieldError>

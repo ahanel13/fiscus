@@ -14,6 +14,7 @@ import {
   Search,
   Settings,
   User,
+  UserPlus,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { api } from '../api/client.js';
@@ -117,6 +118,7 @@ export function AppShell() {
           current={household.name}
           householdId={householdId}
           memberships={me.memberships}
+          isOwner={household.you.role === 'owner'}
         />
         <Button
           variant="secondary"
@@ -180,7 +182,13 @@ export function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Phone top bar */}
         <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
-          <span className="mr-auto truncate font-semibold">{household.name}</span>
+          <HouseholdSwitcher
+            current={household.name}
+            householdId={householdId}
+            memberships={me.memberships}
+            isOwner={household.you.role === 'owner'}
+            compact
+          />
           <Button
             variant="ghost"
             size="icon"
@@ -269,40 +277,72 @@ export function AppShell() {
   );
 }
 
+/**
+ * The household's name, as a menu: other households to switch to, inviting someone (owners), the
+ * household's settings, and creating another household. On phones it's in the top bar.
+ */
 function HouseholdSwitcher({
   current,
   householdId,
   memberships,
+  isOwner,
+  compact,
 }: {
   current: string;
   householdId: string;
   memberships: { householdId: string; householdName: string; role: string }[];
+  isOwner: boolean;
+  /** The phone top bar: no padding of its own. */
+  compact?: boolean;
 }) {
-  if (memberships.length <= 1) {
-    return (
-      <div className="px-6 pb-3 pt-5">
-        <p className="truncate text-base font-semibold">{current}</p>
-      </div>
-    );
-  }
+  const navigate = useNavigate();
   return (
-    <div className="px-3 pb-2 pt-4">
+    <div className={compact ? 'flex min-w-0 flex-1' : 'px-3 pb-2 pt-4'}>
       <MenuTrigger>
-        <Button variant="ghost" className="w-full justify-start text-left">
-          <span className="flex-1 truncate text-base font-semibold">{current}</span>
-          <ChevronsUpDown aria-hidden className="size-4 text-muted" />
+        <Button
+          variant="ghost"
+          className={clsx('justify-start text-left', compact ? '-ml-2.5 max-w-full' : 'w-full')}
+        >
+          <span className={clsx('truncate text-base font-semibold', !compact && 'flex-1')}>
+            {current}
+          </span>
+          <ChevronsUpDown aria-hidden className="size-4 shrink-0 text-muted" />
         </Button>
-        <ActionMenu placement="bottom start" aria-label="Switch household">
-          {memberships.map((m) => (
-            <MenuItem key={m.householdId} href={`/h/${m.householdId}`} textValue={m.householdName}>
-              <span className="flex-1 truncate">{m.householdName}</span>
-              <span className="text-xs text-muted capitalize">{m.role}</span>
-              {m.householdId === householdId ? (
-                <Check aria-label="Current household" className="text-accent-text" />
-              ) : null}
+        <ActionMenu placement="bottom start" aria-label="Household">
+          {memberships.length > 1 ? (
+            <>
+              {memberships.map((m) => (
+                <MenuItem
+                  key={m.householdId}
+                  href={`/h/${m.householdId}`}
+                  textValue={m.householdName}
+                >
+                  <span className="flex-1 truncate">{m.householdName}</span>
+                  <span className="text-xs text-muted capitalize">{m.role}</span>
+                  {m.householdId === householdId ? (
+                    <Check aria-label="Current household" className="text-accent-text" />
+                  ) : null}
+                </MenuItem>
+              ))}
+              <MenuSeparator />
+            </>
+          ) : null}
+          {isOwner ? (
+            <MenuItem
+              onAction={() =>
+                void navigate({
+                  to: '/h/$householdId/settings',
+                  params: { householdId },
+                  search: { invite: '1' },
+                })
+              }
+            >
+              <UserPlus aria-hidden /> Invite someone
             </MenuItem>
-          ))}
-          <MenuSeparator />
+          ) : null}
+          <MenuItem href={`/h/${householdId}/settings`}>
+            <Settings aria-hidden /> Household settings
+          </MenuItem>
           <MenuItem href="/welcome">
             <Plus aria-hidden /> Create household
           </MenuItem>
