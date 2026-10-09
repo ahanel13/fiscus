@@ -77,6 +77,7 @@ import { formatSpan, rangeParams } from '../lib/ranges.js';
 import { useRange } from '../lib/use-range.js';
 import { RangeChips } from '../components/RangeControls.js';
 import { TransactionDrawer, TransactionList } from './transactions.js';
+import { MakeJointOffer } from './make-joint.js';
 
 type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
@@ -122,6 +123,7 @@ export function AccountsPage() {
     <>
       <PageHeader title="Accounts" showLens={showLens} members={members} action={add} />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
+        <MakeJointOffer householdId={householdId} />
         {accounts.isPending ? (
           <LoadingRegion label="Loading accounts">
             <div className="space-y-3">

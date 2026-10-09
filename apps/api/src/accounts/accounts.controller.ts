@@ -119,6 +119,13 @@ export class AccountsController {
     await this.accounts.setOwners(ctx, accountId, body.owners);
   }
 
+  /** ACC-08: every account you own becomes joint for all members, with full visibility. */
+  @Post('accounts/make-joint')
+  @HttpCode(200)
+  async makeJoint(@Household() ctx: HouseholdContext): Promise<{ data: { changed: number } }> {
+    return { data: await this.accounts.makeJoint(ctx) };
+  }
+
   /** ACC-09: close or reopen (history is kept). */
   @Post('accounts/:accountId/close')
   @HttpCode(204)

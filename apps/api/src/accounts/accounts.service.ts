@@ -353,6 +353,73 @@ export class AccountsService {
     });
   }
 
+  /**
+   * "Make all accounts joint" (ADR 0006 §8, #225): every account you own becomes owned by every
+   * member who can own accounts, in equal shares, with full visibility. Only yours (ACC-08):
+   * others make theirs joint themselves. Accounts already like that are left alone.
+   */
+  async makeJoint(ctx: HouseholdContext): Promise<{ changed: number }> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      if (ctx.role === 'viewer') throw problems.forbidden('Viewers don’t own accounts.');
+      // First: a household you can't see is "not found", never "nothing to change".
+      const hh = await this.#household(tx, ctx);
+      const mine = [...(await accessLevels(tx))]
+        .filter(([, level]) => level === 'owner')
+        .map(([id]) => id);
+      if (mine.length === 0) return { changed: 0 };
+      const everyone = this.#resolveOwners(
+        [...hh.owners].map((memberId) => ({ memberId })),
+        hh,
+      );
+      const rows = await tx
+        .select({ id: accounts.id, visibility: accounts.visibility })
+        .from(accounts)
+        .where(inArray(accounts.id, mine))
+        .for('update');
+      const owners = await this.#owners(tx, mine);
+      let changed = 0;
+      for (const row of rows) {
+        const before = owners.get(row.id) ?? [];
+        const joint =
+          before.length === everyone.length &&
+          everyone.every((e) => before.some((b) => b.memberId === e.memberId));
+        if (joint && row.visibility === 'full') continue;
+        if (!joint) {
+          await tx.delete(accountOwners).where(eq(accountOwners.accountId, row.id));
+          await tx
+            .insert(accountOwners)
+            .values(
+              everyone.map((o) => ({ accountId: row.id, householdId: ctx.householdId, ...o })),
+            );
+        }
+        if (row.visibility !== 'full') {
+          await tx
+            .update(accounts)
+            .set({ visibility: 'full', version: sql`${accounts.version} + 1` })
+            .where(eq(accounts.id, row.id));
+        }
+        await activity.record({
+          action: 'account.made_joint',
+          targetType: 'account',
+          targetId: row.id,
+          accountId: row.id,
+          metadata: {
+            added: everyone
+              .filter((e) => !before.some((b) => b.memberId === e.memberId))
+              .map((e) => e.memberId),
+            visibility: row.visibility === 'full' ? null : 'full',
+          },
+          changes: {
+            before: { owners: before, visibility: row.visibility },
+            after: { owners: everyone, visibility: 'full' },
+          },
+        });
+        changed++;
+      }
+      return { changed };
+    });
+  }
+
   /** ACC-09: close (history kept) or reopen. */
   async setClosed(ctx: HouseholdContext, accountId: string, closed: boolean): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {

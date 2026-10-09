@@ -2,6 +2,7 @@
 import { etagFor, parseIfMatch } from '@fiscus/domain';
 import {
   changeRoleSchema,
+  updateMeSchema,
   createHouseholdSchema,
   createInviteSchema,
   type Household,
@@ -101,6 +102,16 @@ export class HouseholdsController {
   @Get(':householdId/members')
   async listMembers(@HouseholdCtx() ctx: HouseholdContext): Promise<{ data: HouseholdMember[] }> {
     return { data: await this.members.list(ctx) };
+  }
+
+  /** HH-18: your own name and color in this household. */
+  @Patch(':householdId/me')
+  @HttpCode(204)
+  async updateMe(
+    @HouseholdCtx() ctx: HouseholdContext,
+    @Body(new ZodPipe(updateMeSchema)) body: z.infer<typeof updateMeSchema>,
+  ): Promise<void> {
+    await this.members.updateMe(ctx, body);
   }
 
   /** HH-04: owners change roles. The last owner can't be demoted. */
