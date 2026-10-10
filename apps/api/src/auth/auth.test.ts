@@ -8,7 +8,11 @@ import { RateLimiter } from './rate-limiter.js';
 import { SessionService } from './session.service.js';
 import { SetupService } from './setup.service.js';
 
-const ADMIN = { email: 'admin@fiscus.test', password: 'correct horse battery', displayName: 'Ada' };
+const ADMIN = {
+  email: 'admin@fiscus.test',
+  password: 'Correct horse battery 1!',
+  displayName: 'Ada',
+};
 
 describe('authentication', () => {
   let tdb: TestDatabase;
@@ -97,7 +101,7 @@ describe('authentication', () => {
     it('is refused on an invite-only instance', async () => {
       const res = await client().post('/api/v1/auth/signup', {
         email: 'new@fiscus.test',
-        password: 'long enough password',
+        password: 'long enough Password1!',
         displayName: 'New',
       });
       expect(res.status).toBe(403);
@@ -108,7 +112,7 @@ describe('authentication', () => {
       const c = client(openApp);
       const res = await c.post('/api/v1/auth/signup', {
         email: '  Bea@Fiscus.TEST ',
-        password: 'another long password',
+        password: 'another long Password1!',
         displayName: 'Bea',
       });
       expect(res.status).toBe(201);
@@ -119,10 +123,10 @@ describe('authentication', () => {
       expect((await c.get('/api/v1/me')).status).toBe(200);
     });
 
-    it('rejects duplicate emails and short passwords with field errors', async () => {
+    it('rejects duplicate emails and passwords that miss the policy, with field errors', async () => {
       const dup = await client(openApp).post('/api/v1/auth/signup', {
         email: 'bea@fiscus.test',
-        password: 'another long password',
+        password: 'another long Password1!',
         displayName: 'Bea 2',
       });
       expect(dup.status).toBe(409);
@@ -133,18 +137,31 @@ describe('authentication', () => {
       });
       expect(weak.status).toBe(422);
       expect(weak.body.errors).toEqual([expect.objectContaining({ path: 'password' })]);
+      // Long but only lowercase: it says what's missing.
+      const plain = await client(openApp).post('/api/v1/auth/signup', {
+        email: 'plain-letters@fiscus.test',
+        password: 'only lowercase letters here',
+        displayName: 'P',
+      });
+      expect(plain.status).toBe(422);
+      expect(plain.body.errors).toEqual([
+        expect.objectContaining({
+          path: 'password',
+          message: 'Your password needs: an uppercase letter, a number, a symbol (like ! or #).',
+        }),
+      ]);
     });
   });
 
   describe('login', () => {
-    it('gives identical answers for unknown email and wrong password', async () => {
+    it('gives identical answers for unknown email and wrong Password1!', async () => {
       const unknown = await client().post('/api/v1/auth/login', {
         email: 'nobody@fiscus.test',
-        password: 'whatever password',
+        password: 'whatever Password1!',
       });
       const wrong = await client().post('/api/v1/auth/login', {
         email: ADMIN.email,
-        password: 'wrong password!',
+        password: 'wrong Password1!',
       });
       expect(unknown.status).toBe(401);
       const strip = ({ instance: _, ...rest }: Record<string, unknown>) => rest;
@@ -186,14 +203,14 @@ describe('authentication', () => {
       const c = client(openApp);
       await c.post('/api/v1/auth/signup', {
         email: 'dis@fiscus.test',
-        password: 'disabled user password',
+        password: 'disabled user Password1!',
         displayName: 'D',
       });
       await sql("UPDATE users SET disabled_at = now() WHERE email = 'dis@fiscus.test'");
       expect((await c.get('/api/v1/me')).status).toBe(401);
       const login = await client(openApp).post('/api/v1/auth/login', {
         email: 'dis@fiscus.test',
-        password: 'disabled user password',
+        password: 'disabled user Password1!',
       });
       expect(login.body.code).toBe('account_disabled');
     });
@@ -224,7 +241,7 @@ describe('authentication', () => {
       const bea = client(openApp);
       await bea.post('/api/v1/auth/login', {
         email: 'bea@fiscus.test',
-        password: 'another long password',
+        password: 'another long Password1!',
       });
       const laptopId = list.find((s) => s.current)!.id;
       expect((await bea.delete(`/api/v1/me/sessions/${laptopId}`)).status).toBe(404);
@@ -244,7 +261,7 @@ describe('authentication', () => {
       const bea = client(openApp);
       await bea.post('/api/v1/auth/login', {
         email: 'bea@fiscus.test',
-        password: 'another long password',
+        password: 'another long Password1!',
       });
       const [target] = await sql("SELECT id FROM users WHERE email = 'bea@fiscus.test'");
       expect((await bea.post(`/api/v1/admin/users/${target.id}/password-reset-link`)).status).toBe(
@@ -258,7 +275,7 @@ describe('authentication', () => {
       const victimSession = client(openApp);
       await victimSession.post('/api/v1/auth/login', {
         email: 'bea@fiscus.test',
-        password: 'another long password',
+        password: 'another long Password1!',
       });
 
       const sessions = app.get(SessionService);
@@ -284,19 +301,19 @@ describe('authentication', () => {
 
       const reset = await client(openApp).post('/api/v1/auth/password-reset', {
         token,
-        password: 'brand new password',
+        password: 'brand new Password1!',
       });
       expect(reset.status).toBe(204);
       expect((await victimSession.get('/api/v1/me')).status).toBe(401);
 
       const login = (password: string) =>
         client(openApp).post('/api/v1/auth/login', { email: 'bea@fiscus.test', password });
-      expect((await login('another long password')).status).toBe(401);
-      expect((await login('brand new password')).status).toBe(200);
+      expect((await login('another long Password1!')).status).toBe(401);
+      expect((await login('brand new Password1!')).status).toBe(200);
 
       const reuse = await client(openApp).post('/api/v1/auth/password-reset', {
         token,
-        password: 'yet another password',
+        password: 'yet another Password1!',
       });
       expect(reuse.body.code).toBe('invalid_reset_token');
     });
@@ -340,7 +357,7 @@ describe('authentication', () => {
       const plain = client(openApp);
       await plain.post('/api/v1/auth/signup', {
         email: 'plain@fiscus.test',
-        password: 'plain long password',
+        password: 'plain long Password1!',
         displayName: 'Plain',
       });
       expect((await plain.post('/api/v1/admin/invites', { email: 'x@fiscus.test' })).status).toBe(
@@ -368,7 +385,7 @@ describe('authentication', () => {
         (
           await cy.post('/api/v1/auth/signup', {
             email: 'cy@fiscus.test',
-            password: 'cy long password!',
+            password: 'cy long Password1!',
             displayName: 'Cy',
           })
         ).body.code,
@@ -381,7 +398,7 @@ describe('authentication', () => {
       });
       const joined = await cy.post('/api/v1/auth/join', {
         token,
-        password: 'cy long password!',
+        password: 'cy long Password1!',
         displayName: 'Cy',
       });
       expect(joined.status, JSON.stringify(joined.body)).toBe(201);
@@ -395,7 +412,7 @@ describe('authentication', () => {
         (
           await client().post('/api/v1/auth/join', {
             token,
-            password: 'other long password',
+            password: 'other long Password1!',
             displayName: 'X',
           })
         ).body.code,
@@ -429,7 +446,7 @@ describe('authentication', () => {
         (
           await client().post('/api/v1/auth/join', {
             token: expired.token,
-            password: 'eve long password',
+            password: 'eve long Password1!',
             displayName: 'Eve',
           })
         ).body.code,

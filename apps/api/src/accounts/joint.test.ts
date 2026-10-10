@@ -28,7 +28,7 @@ describe('members and finance style', () => {
       const c = new TestClient(app);
       await c.post('/api/v1/auth/signup', {
         email: `${name}@joint.test`,
-        password: 'joint test password',
+        password: 'joint test Password1!',
         displayName: name,
       });
       return c;

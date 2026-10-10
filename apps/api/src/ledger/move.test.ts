@@ -36,7 +36,7 @@ describe('moving transactions', () => {
       const c = new TestClient(app);
       await c.post('/api/v1/auth/signup', {
         email: `${name}@move.test`,
-        password: 'move test password',
+        password: 'move test Password1!',
         displayName: name,
       });
       return c;

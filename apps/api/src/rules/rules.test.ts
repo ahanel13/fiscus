@@ -59,7 +59,7 @@ describe('rules', () => {
       const c = new TestClient(app);
       await c.post('/api/v1/auth/signup', {
         email: `${name}@rules.test`,
-        password: 'rules test password',
+        password: 'rules test Password1!',
         displayName: name,
       });
       return c;
@@ -222,7 +222,7 @@ describe('rules', () => {
     const C = new TestClient(app);
     await C.post('/api/v1/auth/signup', {
       email: 'cy@rules.test',
-      password: 'rules test password',
+      password: 'rules test Password1!',
       displayName: 'Cy',
     });
     const invite = await A.post(url('/invites'), { email: 'cy@rules.test', role: 'member' });

@@ -6,6 +6,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client.js';
 import { authStatusQuery, lookupInvite, lookupServerInvite, meQuery } from '../api/queries.js';
 import { AuthLayout } from '../components/AuthLayout.js';
+import { NewPasswordField } from '../components/NewPasswordField.js';
 import { Alert, Button, ButtonLink, Form, TextField } from '../components/ui.js';
 
 type SignedIn = { data: { user: CurrentUser; csrfToken: string } };
@@ -83,15 +84,7 @@ export function SignupPage() {
         {err?.formError ? <Alert>{err.formError}</Alert> : null}
         <TextField label="Your name" name="displayName" autoComplete="name" isRequired />
         <TextField label="Email" name="email" type="email" autoComplete="email" isRequired />
-        <TextField
-          label="Password"
-          description="At least 12 characters."
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          isRequired
-          minLength={12}
-        />
+        <NewPasswordField />
         <Button type="submit" className="w-full" isPending={signup.isPending}>
           Create account
         </Button>
@@ -135,15 +128,7 @@ export function SetupPage() {
         />
         <TextField label="Your name" name="displayName" autoComplete="name" isRequired />
         <TextField label="Email" name="email" type="email" autoComplete="email" isRequired />
-        <TextField
-          label="Password"
-          description="At least 12 characters."
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          isRequired
-          minLength={12}
-        />
+        <NewPasswordField />
         <Button type="submit" className="w-full" isPending={setup.isPending}>
           Create admin account
         </Button>
@@ -223,15 +208,7 @@ export function InvitePage() {
         >
           <TextField label="Email" value={invite.email} isDisabled isReadOnly />
           <TextField label="Your name" name="displayName" autoComplete="name" isRequired />
-          <TextField
-            label="Password"
-            description="At least 12 characters."
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            isRequired
-            minLength={12}
-          />
+          <NewPasswordField />
           <Button type="submit" className="w-full" isPending={signup.isPending}>
             Create account and join
           </Button>
@@ -302,15 +279,7 @@ export function JoinPage() {
           {err?.formError ? <Alert>{err.formError}</Alert> : null}
           <TextField label="Email" value={invite.email} isDisabled isReadOnly />
           <TextField label="Your name" name="displayName" autoComplete="name" isRequired />
-          <TextField
-            label="Password"
-            description="At least 12 characters."
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            isRequired
-            minLength={12}
-          />
+          <NewPasswordField />
           <Button type="submit" className="w-full" isPending={join.isPending}>
             Create account
           </Button>
@@ -342,15 +311,7 @@ export function ResetPasswordPage() {
           validationErrors={err?.fieldErrors()}
         >
           {err?.formError ? <Alert>{err.formError}</Alert> : null}
-          <TextField
-            label="New password"
-            description="At least 12 characters."
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            isRequired
-            minLength={12}
-          />
+          <NewPasswordField label="New password" />
           <Button type="submit" className="w-full" isPending={reset.isPending} isDisabled={!token}>
             Set password
           </Button>

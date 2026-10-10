@@ -27,7 +27,7 @@ describe('cross-tenant isolation (generated from routes)', () => {
     const c = new TestClient(app);
     await c.post('/api/v1/auth/signup', {
       email: `${name}@tenant.test`,
-      password: 'tenant test password',
+      password: 'tenant test Password1!',
       displayName: name,
     });
     return c;

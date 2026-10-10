@@ -39,7 +39,7 @@ describe('time ranges', () => {
       const c = new TestClient(app);
       await c.post('/api/v1/auth/signup', {
         email: `${name}@ranges.test`,
-        password: 'ranges test password',
+        password: 'ranges test Password1!',
         displayName: name,
       });
       return c;
