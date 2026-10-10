@@ -600,7 +600,7 @@ describe('permissions matrix', () => {
       const c = new TestClient(app);
       await c.post('/api/v1/auth/signup', {
         email: `${name.toLowerCase()}${n++}@perm.test`,
-        password: 'permissions matrix password',
+        password: 'permissions matrix Password1!',
         displayName: name,
       });
       return c;

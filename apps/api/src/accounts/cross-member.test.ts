@@ -55,7 +55,7 @@ describe('cross-member visibility (generated)', () => {
     const c = new TestClient(app);
     await c.post('/api/v1/auth/signup', {
       email: `${name.toLowerCase()}@members.test`,
-      password: 'cross member password',
+      password: 'cross member Password1!',
       displayName: name,
     });
     return c;

@@ -49,7 +49,7 @@ describe('transfers and the review queue', () => {
       const c = new TestClient(app);
       await c.post('/api/v1/auth/signup', {
         email: `${name}@transfers.test`,
-        password: 'transfers test password',
+        password: 'transfers test Password1!',
         displayName: name,
       });
       return c;
@@ -584,7 +584,7 @@ describe('transfers and the review queue', () => {
     const reviewer = new TestClient(app);
     await reviewer.post('/api/v1/auth/signup', {
       email: 'rev@transfers.test',
-      password: 'transfers test password',
+      password: 'transfers test Password1!',
       displayName: 'Rev',
     });
     const home = (

@@ -55,7 +55,7 @@ describe('imports', () => {
       const c = new TestClient(app);
       await c.post('/api/v1/auth/signup', {
         email: `${name}@imports.test`,
-        password: 'imports test password',
+        password: 'imports test Password1!',
         displayName: name,
       });
       return c;

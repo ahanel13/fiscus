@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
 import { MEMBER_COLORS } from '../design.js';
-import { type CurrentUser, displayNameSchema, emailSchema } from './auth.js';
+import { type CurrentUser, displayNameSchema, emailSchema, passwordSchema } from './auth.js';
 
 const currencies = new Set(Intl.supportedValuesOf('currency'));
 const timeZones = new Set(Intl.supportedValuesOf('timeZone'));
@@ -61,7 +61,7 @@ export const updateMeSchema = z
   .refine((m) => Object.keys(m).length > 0, 'Nothing to change');
 
 export const inviteSignupSchema = z.object({
-  password: z.string().min(12, 'Use at least 12 characters').max(256),
+  password: passwordSchema,
   displayName: displayNameSchema,
 });
 

@@ -43,7 +43,7 @@ describe('activity history', () => {
       const c = new TestClient(app);
       await c.post('/api/v1/auth/signup', {
         email: `${name}@act.test`,
-        password: 'activity test password',
+        password: 'activity test Password1!',
         displayName: name,
       });
       return c;

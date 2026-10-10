@@ -5,7 +5,7 @@ import { axeViolations } from './axe.js';
 // One journey through a fresh instance: setup → household → navigate → sign out → sign in.
 test.describe.configure({ mode: 'serial' });
 
-const admin = { email: 'admin@e2e.test', password: 'e2e long password', name: 'Ada' };
+const admin = { email: 'admin@e2e.test', password: 'e2e long Password1!', name: 'Ada' };
 let householdUrl = '';
 
 async function signIn(page: Page) {
@@ -140,7 +140,7 @@ test('the admin invites someone to the server, who makes an account and their ow
   await expect(friend.getByRole('heading', { name: 'Join Fiscus' })).toBeVisible();
   expect(await axeViolations(friend)).toEqual([]);
   await friend.getByLabel('Your name').fill('Cam');
-  await friend.getByLabel('Password').fill('e2e friend password');
+  await friend.getByLabel('Password').fill('e2e friend Password1!');
   await friend.getByRole('button', { name: 'Create account' }).click();
   await expect(friend).toHaveURL(/\/welcome$/);
   // The link worked once.
@@ -653,7 +653,7 @@ test('you choose how you appear; a household that shares everything makes accoun
   const bea = await partner.newPage();
   await bea.goto(link);
   await bea.getByLabel('Your name').fill('Bea');
-  await bea.getByLabel('Password').fill('e2e partner password');
+  await bea.getByLabel('Password').fill('e2e partner Password1!');
   await bea.getByRole('button', { name: 'Create account and join' }).click();
   await expect(bea).toHaveURL(/\/h\/[0-9a-f-]{36}$/);
   await partner.close();

@@ -5,7 +5,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TestClient } from '../testing/test-app.js';
 
-const PASSWORD = 'household test password';
+const PASSWORD = 'household test Password1!';
 
 describe('households, members, and invites', () => {
   let tdb: TestDatabase;
@@ -306,7 +306,7 @@ describe('households, members, and invites', () => {
       const c = new TestClient(inviteOnlyApp);
       const res = await c.post('/api/v1/invites/signup', {
         token,
-        password: 'newbie long password',
+        password: 'newbie long Password1!',
         displayName: 'Newbie',
       });
       expect(res.status).toBe(201);
@@ -321,7 +321,7 @@ describe('households, members, and invites', () => {
       const { token } = await benInvite('closed@fiscus.test');
       const closed = await new TestClient(closedApp).post('/api/v1/invites/signup', {
         token,
-        password: 'closed long password',
+        password: 'closed long Password1!',
         displayName: 'C',
       });
       expect(closed.body.code).toBe('signup_closed');
@@ -329,7 +329,7 @@ describe('households, members, and invites', () => {
       const existing = await benInvite('vic@fiscus.test');
       const dup = await new TestClient(app).post('/api/v1/invites/signup', {
         token: existing.token,
-        password: 'another long password',
+        password: 'another long Password1!',
         displayName: 'V',
       });
       expect(dup.body.code).toBe('account_exists');
