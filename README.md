@@ -8,13 +8,55 @@ yours / mine / ours shared finances with settle-up, bills, goals, investments, f
 FIRE planning, AI receipt scanning, reporting, notifications, and an optional AI assistant and
 MCP server that can run on a local model.
 
-**Status:** planning. Nothing to install yet.
+**Status:** early. [v0.1.0](https://github.com/ahanel13/fiscus/releases/tag/v0.1.0) is the core
+ledger: households and invites, accounts and net worth, transactions with splits and tags,
+imports from Monarch and bank CSV files, rules, and transfers between your accounts. Bank sync,
+budgets, bills, and the rest follow in later milestones (see the roadmap). Expect breaking
+changes before 1.0.
 
 - [Architecture](docs/architecture.md)
 - [Roadmap & backlog](docs/roadmap.md)
 - [Monarch feature parity](docs/monarch-parity.md)
 - [Architecture decision records](docs/adr/)
 - [Contributing / workflow](CONTRIBUTING.md)
+
+## Install
+You need Docker with Compose v2, on amd64 or arm64.
+
+```sh
+mkdir fiscus && cd fiscus
+curl -fsSLO https://raw.githubusercontent.com/ahanel13/fiscus/v0.1.0/deploy/compose/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/ahanel13/fiscus/v0.1.0/deploy/compose/.env.example -o .env
+```
+
+Edit `.env`:
+- `POSTGRES_PASSWORD` and `APP_DATABASE_PASSWORD`: `openssl rand -hex 24` for each.
+- `APP_ENCRYPTION_KEY`: `openssl rand -base64 32`. **Back it up somewhere other than your
+  database backups.** Without it, encrypted data can't be recovered
+  ([why](docs/security/encryption.md)).
+- `FISCUS_VERSION=0.1.0`, so upgrades happen when you choose.
+- `FISCUS_PUBLIC_URL`: the address people will use, e.g. `https://fiscus.example.com`.
+
+Then start it and find the one-time setup token:
+
+```sh
+docker compose up -d --wait
+docker compose logs api | grep "setup token"
+```
+
+Open `http://localhost:8080` (or your public URL), enter the token, and create the admin account.
+After that, signup is invite-only: invite people from **Server** in your account menu, or from
+your household's menu to share a household.
+
+By default Fiscus listens on `127.0.0.1:8080` only. Put it behind a reverse proxy with HTTPS
+(Caddy, nginx, Traefik), or see the comments in `.env` for LAN access over plain HTTP.
+
+**Upgrading:** set `FISCUS_VERSION` to the new release, then `docker compose pull && docker compose
+up -d --wait`. The database is backed up automatically before any migration runs
+([upgrades](docs/design/upgrades.md)). Read the release notes first.
+
+## Security
+To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a public issue.
 
 ## Trust model
 The operator of a Fiscus instance can technically access the data stored on it. Only join an
