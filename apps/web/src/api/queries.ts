@@ -14,6 +14,8 @@ import type {
   Me,
   NetWorth,
   ReviewCount,
+  ServerInvite,
+  ServerInvitePreview,
   SessionSummary,
   Tag,
   Transaction,
@@ -55,6 +57,16 @@ export const sessionsQuery = queryOptions({
 
 export const lookupInvite = async (token: string) =>
   (await api<Data<InvitePreview>>('POST', '/api/v1/invites/lookup', { body: { token } })).data;
+
+export const lookupServerInvite = async (token: string) =>
+  (await api<Data<ServerInvitePreview>>('POST', '/api/v1/auth/join/lookup', { body: { token } }))
+    .data;
+
+/** Server invites not yet used (instance admins, ADM-08). */
+export const serverInvitesQuery = queryOptions({
+  queryKey: ['admin', 'invites'],
+  queryFn: async () => (await api<Data<ServerInvite[]>>('GET', '/api/v1/admin/invites')).data,
+});
 
 const hh = (id: string) => `/api/v1/households/${id}`;
 

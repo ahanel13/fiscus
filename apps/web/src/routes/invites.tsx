@@ -61,7 +61,7 @@ export async function copyText(text: string, field?: HTMLInputElement | null): P
 }
 
 /** The link an invite makes, with Copy, and Share where the device has a share sheet. */
-function InviteLink({ url, householdName }: { url: string; householdName: string }) {
+export function InviteLink({ url, shareTitle }: { url: string; shareTitle: string }) {
   const field = useRef<HTMLInputElement>(null);
   const canShare = typeof navigator.share === 'function';
   return (
@@ -91,11 +91,7 @@ function InviteLink({ url, householdName }: { url: string; householdName: string
         {canShare ? (
           <Button
             variant="secondary"
-            onPress={() =>
-              void navigator
-                .share({ title: `Join ${householdName} on Fiscus`, url })
-                .catch(() => undefined)
-            }
+            onPress={() => void navigator.share({ title: shareTitle, url }).catch(() => undefined)}
           >
             <Share2 aria-hidden className="size-4" /> Share
           </Button>
@@ -153,7 +149,7 @@ export function InviteDialog({
     <Dialog title={`Invite someone to ${household.name}`} isOpen={isOpen} onOpenChange={close}>
       {url ? (
         <div className="space-y-4">
-          <InviteLink url={url} householdName={household.name} />
+          <InviteLink url={url} shareTitle={`Join ${household.name} on Fiscus`} />
           <DialogActions>
             <Button onPress={() => close(false)}>Done</Button>
           </DialogActions>

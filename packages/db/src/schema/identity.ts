@@ -69,6 +69,24 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Server invites (ADM-08): an instance admin invites someone to create an account, even when
+ * signup is invite-only. They then create their own household. Instance-level, like the other
+ * identity tables; the token is stored only as a hash.
+ */
+export const serverInvites = pgTable('server_invites', {
+  id: id(),
+  /** Normalized: the account must be created with this email. */
+  email: text().notNull(),
+  tokenHash: bytea('token_hash').notNull().unique(),
+  invitedByUserId: uuid().references(() => users.id, { onDelete: 'set null' }),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  acceptedAt: timestamp({ withTimezone: true }),
+  acceptedByUserId: uuid().references(() => users.id, { onDelete: 'set null' }),
+  revokedAt: timestamp({ withTimezone: true }),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
 /** One-time first-run setup token (single row, removed once setup completes). */
 export const instanceSetup = pgTable(
   'instance_setup',

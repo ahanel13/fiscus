@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client.js';
-import { authStatusQuery, lookupInvite, meQuery } from '../api/queries.js';
+import { authStatusQuery, lookupInvite, lookupServerInvite, meQuery } from '../api/queries.js';
 import { AuthLayout } from '../components/AuthLayout.js';
 import { Alert, Button, ButtonLink, Form, TextField } from '../components/ui.js';
 
@@ -234,6 +234,85 @@ export function InvitePage() {
           />
           <Button type="submit" className="w-full" isPending={signup.isPending}>
             Create account and join
+          </Button>
+        </Form>
+      )}
+    </AuthLayout>
+  );
+}
+
+/**
+ * A server invite (ADM-08): someone new makes their account here, then their own household. The
+ * token stays in the fragment, as with household invites.
+ */
+export function JoinPage() {
+  const [token] = useState(fragmentToken);
+  const done = useSignedIn('/welcome');
+  const preview = useQuery({
+    queryKey: ['join', token],
+    queryFn: () => lookupServerInvite(token),
+    enabled: !!token,
+    retry: false,
+  });
+  const me = useQuery({ ...meQuery, retry: false });
+  const join = useMutation({
+    mutationFn: (body: Record<string, string>) =>
+      api<SignedIn>('POST', '/api/v1/auth/join', { body: { ...body, token } }),
+    onSuccess: done,
+  });
+
+  if (!token || preview.error) {
+    return (
+      <AuthLayout title="Invite not valid">
+        <p className="text-sm text-muted">
+          This invite link is invalid, used, or expired. Ask for a new one.
+        </p>
+      </AuthLayout>
+    );
+  }
+  if (!preview.data) return <AuthLayout title="Loading invite…">{null}</AuthLayout>;
+  const invite = preview.data;
+  const err = join.error as ApiError | null;
+  return (
+    <AuthLayout
+      title="Join Fiscus"
+      subtitle={`${invite.invitedBy ?? 'The server’s admin'} invited ${invite.email} to make an account here. You’ll set up your own household next.`}
+    >
+      {me.data ? (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            You’re already signed in as {me.data.email}, so there’s nothing to join.
+          </p>
+          <ButtonLink to="/" className="w-full">
+            Go to Fiscus
+          </ButtonLink>
+        </div>
+      ) : invite.accountExists ? (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">{invite.email} already has an account here.</p>
+          <ButtonLink to="/login" className="w-full">
+            Sign in
+          </ButtonLink>
+        </div>
+      ) : (
+        <Form
+          onSubmit={(e) => (e.preventDefault(), join.mutate(formValues(e)))}
+          validationErrors={err?.fieldErrors()}
+        >
+          {err?.formError ? <Alert>{err.formError}</Alert> : null}
+          <TextField label="Email" value={invite.email} isDisabled isReadOnly />
+          <TextField label="Your name" name="displayName" autoComplete="name" isRequired />
+          <TextField
+            label="Password"
+            description="At least 12 characters."
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            isRequired
+            minLength={12}
+          />
+          <Button type="submit" className="w-full" isPending={join.isPending}>
+            Create account
           </Button>
         </Form>
       )}

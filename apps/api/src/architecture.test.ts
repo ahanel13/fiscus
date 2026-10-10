@@ -22,6 +22,8 @@ const DIRECT_DB_ALLOWED: Record<string, string> = {
   'auth/session.service.ts': 'users and sessions are instance-level, not household data',
   'auth/auth.service.ts': 'users and reset tokens are instance-level',
   'auth/setup.service.ts': 'first-run setup is instance-level',
+  'auth/server-invites.service.ts':
+    'server invites (ADM-08) are instance-level, before any household',
   'audit/audit.service.ts': 'moves into the household transaction with #263',
 };
 

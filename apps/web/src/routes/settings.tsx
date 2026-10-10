@@ -24,6 +24,7 @@ import {
   TextField,
   toast,
 } from '../components/ui.js';
+import { BackHome } from './server.js';
 import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { describeDevice } from '../lib/device.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
@@ -205,7 +206,10 @@ export function PersonalSettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 md:px-8 md:py-10">
-      <h1 className="text-2xl font-semibold">Personal settings</h1>
+      <div>
+        <BackHome />
+        <h1 className="mt-2 text-2xl font-semibold">Personal settings</h1>
+      </div>
       <Card>
         <h2 className="mb-3 font-semibold">Profile</h2>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">

@@ -22,11 +22,19 @@ import { type SectionId, SECTIONS } from './lib/nav.js';
 import { AccountDetailPage, AccountsPage } from './routes/accounts.js';
 import { DashboardPage } from './routes/dashboard.js';
 import { TransactionsPage } from './routes/transactions.js';
-import { InvitePage, LoginPage, ResetPasswordPage, SetupPage, SignupPage } from './routes/auth.js';
+import {
+  InvitePage,
+  JoinPage,
+  LoginPage,
+  ResetPasswordPage,
+  SetupPage,
+  SignupPage,
+} from './routes/auth.js';
 import { SectionPage } from './routes/section.js';
 import { ImportPage } from './routes/import.js';
 import { ReviewPage } from './routes/review.js';
 import { RulesPage } from './routes/rules.js';
+import { ServerPage } from './routes/server.js';
 import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
 import { WelcomePage } from './routes/welcome.js';
 
@@ -86,6 +94,7 @@ const publicRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/signup', component: SignupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/setup', component: SetupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/invite', component: InvitePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/join', component: JoinPage }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/reset-password',
@@ -137,6 +146,12 @@ const personalSettingsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/settings',
   component: PersonalSettingsPage,
+});
+
+const serverRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/server',
+  component: ServerPage,
 });
 
 const householdRoute = createRoute({
@@ -194,6 +209,7 @@ const routeTree = rootRoute.addChildren([
     homeRoute,
     welcomeRoute,
     personalSettingsRoute,
+    serverRoute,
     householdRoute.addChildren([
       ...sectionRoutes,
       accountDetailRoute,

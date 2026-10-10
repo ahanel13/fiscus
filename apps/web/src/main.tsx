@@ -22,7 +22,10 @@ const router = createAppRouter(queryClient);
 // Session expired or revoked elsewhere: clear cached data and go to login, then come back.
 onUnauthenticated(() => {
   const here = router.state.location;
-  if (['/login', '/setup', '/signup', '/invite', '/reset-password'].includes(here.pathname)) return;
+  if (
+    ['/login', '/setup', '/signup', '/invite', '/join', '/reset-password'].includes(here.pathname)
+  )
+    return;
   queryClient.clear();
   resetCsrf();
   void router.navigate({ to: '/login', search: { redirect: here.href } });

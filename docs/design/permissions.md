@@ -195,6 +195,7 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 | ADM-05 | Instance settings | Signup mode, providers (Plaid instance keys, LLM providers, FX/price providers, SMTP), webhook URL + health, polling intervals, usage caps | Household Plaid secrets |
 | ADM-06 | Audit | Instance-level events and admin actions | Household-internal events (those belong to HH-11) |
 | ADM-07 | Usage | AI token usage and Plaid item counts per household | Prompt or response content |
+| ADM-08 | Server invites | Email, inviter, created and expiry dates, whether used or cancelled. Creating one gives a single-use link for that email, valid 7 days, that makes an account even when signup is invite-only (not when closed); the new person then creates their own household | The token (only its hash is stored) |
 
 ## 6. Edge cases
 
