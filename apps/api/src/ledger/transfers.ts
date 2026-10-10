@@ -282,6 +282,26 @@ export async function detectTransfers(
 }
 
 /**
+ * After a person links a transfer: what it settles. A deposit that could have come from either of
+ * two accounts has only one left once the other is linked, so detection links that pair too, as it
+ * would have if the choice had never been there. Returns how many pairs it linked.
+ */
+export async function detectAround(
+  tx: Executor,
+  activity: HouseholdActivity,
+  linked: Leg[],
+  levels: Map<string, AccessLevel>,
+): Promise<number> {
+  const neighbours = await ledgerCandidates(tx, linked, await transferCategories(tx));
+  return detectTransfers(
+    tx,
+    activity,
+    neighbours.map((l) => l.id),
+    levels,
+  );
+}
+
+/**
  * Pairs of (a transaction a rule is waiting on, one of `arrived` in the account it waits for):
  * the opposite amount, within the rule's days, the nearest first; both accounts yours.
  */
@@ -335,6 +355,11 @@ export interface TransferReviewIds {
   unique: [Leg, Leg][];
   /** Money-out legs whose candidates are identical transfers in step (round-ups). */
   identical: Set<string>;
+  /**
+   * Money-out legs with one candidate that could also be the other side of something else: those
+   * other transactions, so the review can say which.
+   */
+  rivals: Map<string, string[]>;
   /** Transfers older than UNMATCHED_AFTER_DAYS with no possible other side, newest first. */
   unmatched: string[];
 }
@@ -354,6 +379,7 @@ export async function transferReview(
     suggested: new Map(),
     unique: [],
     identical: new Set(),
+    rivals: new Map(),
     unmatched: [],
   };
   if (owned.size === 0 || cats.transferKind.size === 0) return empty;
@@ -424,6 +450,12 @@ export async function transferReview(
     unique.push(pair);
     identical.add(pair[0].id);
   }
+  const rivals = new Map<string, string[]>();
+  for (const [out, intos] of suggested) {
+    if (intos.length !== 1 || identical.has(out)) continue;
+    const others = [...(edges.get(intos[0]!) ?? [])].filter((id) => id !== out);
+    if (others.length) rivals.set(out, others);
+  }
   const cutoff = shiftDays(today, -UNMATCHED_AFTER_DAYS);
   // A rule waiting for the other side gives it the rule's days, if that's longer.
   const unmatched = sources
@@ -447,7 +479,7 @@ export async function transferReview(
         ),
       ]),
   );
-  return { suggested: ordered, unique, identical, unmatched };
+  return { suggested: ordered, unique, identical, rivals, unmatched };
 }
 
 /**
