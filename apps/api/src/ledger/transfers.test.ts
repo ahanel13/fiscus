@@ -333,7 +333,7 @@ describe('transfers and the review queue', () => {
     const day = (offset: number) =>
       new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
     const checking = await acct('Checking');
-    const vault = await acct('Wedding');
+    const vault = await acct('Vacation');
 
     // Two round-ups out, then two in, the same day: once the second lands, both pairs link.
     const outs = [await add(checking, -75, day(-30)), await add(checking, -75, day(-30))];
@@ -429,7 +429,7 @@ describe('transfers and the review queue', () => {
     const travel = await account(A, 'Settle travel');
     const house = await account(A, 'Settle house');
     const t = { categoryId: transferCat };
-    // $500 into the house vault twice, one from each: either deposit could be either one's.
+    // $500 into the roof vault twice, one from each: either deposit could be either one's.
     const fromTravel = await txn(A, travel, -50000, `${m}-03`, t);
     const fromChecking = await txn(A, checking, -50000, `${m}-03`, t);
     const in1 = await txn(A, house, 50000, `${m}-03`, t);

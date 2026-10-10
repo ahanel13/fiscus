@@ -261,7 +261,7 @@ function findDuplicates(accounts: MonarchAccount[], byDay: Map<string, Map<strin
   }
 }
 
-/** "2021 Toyota Tacoma TRD Pro (...1234)" → "toyota tacoma trd pro": names compared loosely. */
+/** "2019 Ford F-150 XLT (...1234)" → "ford f-150 xlt": names compared loosely. */
 export const looseName = (name: string) =>
   name
     .toLowerCase()

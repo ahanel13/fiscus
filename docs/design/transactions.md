@@ -204,7 +204,7 @@ All under `/api/v1/households/:householdId/`.
 
 ## Moving transactions between accounts (TXN-12)
 
-Banks sometimes report one account's transactions under another (SoFi once put its separate
+Banks sometimes report one account's transactions under another (one bank once put its separate
 accounts' transactions into one), so a transaction can be moved to another account: one from its
 drawer, or many from the list.
 

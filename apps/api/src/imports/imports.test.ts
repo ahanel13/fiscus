@@ -222,8 +222,8 @@ describe('imports', () => {
         { key: 'Old truck', sameAs: 'Truck', closeOn: '2024-09-09' },
       ],
       balances: [
-        { account: 'Old truck', date: '2024-09-07', balanceMinor: 3901000 },
-        { account: 'Old truck', date: '2024-09-08', balanceMinor: 3901000 },
+        { account: 'Old truck', date: '2024-09-07', balanceMinor: 3125000 },
+        { account: 'Old truck', date: '2024-09-08', balanceMinor: 3125000 },
         { account: 'Truck', date: '2024-09-09', balanceMinor: 3879797 },
       ],
     });
@@ -239,7 +239,7 @@ describe('imports', () => {
     const balances = (await A.get(url(`/accounts/${trucks[0]!.id}/balances?range=all_time`))).body
       .data as { asOf: string; amountMinor: number }[];
     expect(balances.map((b) => [b.asOf, b.amountMinor])).toEqual([
-      ['2024-09-07', 3901000],
+      ['2024-09-07', 3125000],
       ['2024-09-09', 3879797],
     ]);
     // Undoing the run removes the one account.
@@ -263,26 +263,26 @@ describe('imports', () => {
           transactions: parseCsv(
             [
               'Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags,Owner,Reviewed,Id',
-              '2026-09-03,Harmons,Coffee Beans,Blue Cash Preferred® ,HARMONS #12,,-97.55,,Shared,,9001',
-              '2026-09-03,Harmons,Coffee Beans,Blue Cash Preferred® ,HARMONS #12,,-97.55,,Shared,,9002',
-              '2026-09-04,Payroll,Pretax Paycheck,SoFi Checking,ACME PAYROLL,"Bonus month\nnice",2500.00,"Work, Taxes",Bea,Needs Review,9003',
-              '2026-09-05,Amex,Credit Card Payment,SoFi Checking,AMEX EPAYMENT,,-195.10,,Shared,Reviewed,9004',
+              '2026-09-03,Fresh Market,Coffee Beans,Blue Cash Preferred® ,FRESH MARKET #12,,-97.55,,Shared,,9001',
+              '2026-09-03,Fresh Market,Coffee Beans,Blue Cash Preferred® ,FRESH MARKET #12,,-97.55,,Shared,,9002',
+              '2026-09-04,Payroll,Pretax Paycheck,Ally Checking,ACME PAYROLL,"Bonus month\nnice",2500.00,"Work, Taxes",Bea,Needs Review,9003',
+              '2026-09-05,Amex,Credit Card Payment,Ally Checking,AMEX EPAYMENT,,-195.10,,Shared,Reviewed,9004',
               '2026-09-05,Amex,Credit Card Payment,Blue Cash Preferred® ,PAYMENT THANK YOU,,195.10,,Shared,,9005',
-              '2026-09-06,Mystery,Uncategorized,SoFi Checking,POS 1234,,-5.00,,Shared,,9006',
+              '2026-09-06,Mystery,Uncategorized,Ally Checking,POS 1234,,-5.00,,Shared,,9006',
             ].join('\n'),
           ),
           balances: parseCsv(
             [
               'Date,Balance,Account',
-              '2026-09-03,1000.00,SoFi Checking',
-              '2026-09-04,3500.00,SoFi Checking',
-              '2026-09-05,3304.90,SoFi Checking',
-              '2026-09-06,3299.90,SoFi Checking',
-              '2026-09-07,3299.90,SoFi Checking',
-              '2026-09-08,3299.90,SoFi Checking',
+              '2026-09-03,1000.00,Ally Checking',
+              '2026-09-04,3500.00,Ally Checking',
+              '2026-09-05,3304.90,Ally Checking',
+              '2026-09-06,3299.90,Ally Checking',
+              '2026-09-07,3299.90,Ally Checking',
+              '2026-09-08,3299.90,Ally Checking',
               '2024-01-30,15.00,Old Savings',
               '2024-01-31,0.00,Old Savings',
-              '2026-09-08,39010.00,Truck',
+              '2026-09-08,31250.00,Truck',
             ].join('\n'),
           ),
         },
@@ -345,8 +345,8 @@ describe('imports', () => {
       expect(byName('Truck').type).toBe('vehicle');
       expect(byName('Old Savings').closedAt).not.toBeNull();
 
-      const sofi = byName('SoFi Checking').id;
-      const rows = await list(sofi);
+      const ally = byName('Ally Checking').id;
+      const rows = await list(ally);
       const payroll = rows.find((t) => t.displayName === 'Payroll')!;
       expect(payroll).toMatchObject({
         originalDescription: 'ACME PAYROLL',
@@ -368,12 +368,14 @@ describe('imports', () => {
 
       // Identical rows stay apart through Monarch's ids.
       expect(
-        (await list(byName('Blue Cash Preferred®').id)).filter((t) => t.displayName === 'Harmons'),
+        (await list(byName('Blue Cash Preferred®').id)).filter(
+          (t) => t.displayName === 'Fresh Market',
+        ),
       ).toHaveLength(2);
 
       // Balances: only the first day, changes, and days with transactions are stored, and every
       // day reads as in the file.
-      const balances = (await A.get(url(`/accounts/${sofi}/balances`))).body.data as {
+      const balances = (await A.get(url(`/accounts/${ally}/balances`))).body.data as {
         asOf: string;
         amountMinor: number;
         source: string;
@@ -384,9 +386,9 @@ describe('imports', () => {
         ['2026-09-05', 330490],
         ['2026-09-06', 329990],
       ]);
-      // Net worth on the last day grows by SoFi's 3 299.90 and the truck's 39 010; the card nets
+      // Net worth on the last day grows by a bank's 3 299.90 and the truck's 31 250; the card nets
       // to zero (−97.55 × 2 + 195.10), and Old Savings was closed in 2024.
-      expect((await worthOn('2026-09-08')) - worthBefore).toBe(329990 + 3901000);
+      expect((await worthOn('2026-09-08')) - worthBefore).toBe(329990 + 3125000);
     });
 
     it('imports only what’s new from a later export, and can be undone completely', async () => {
@@ -407,7 +409,7 @@ describe('imports', () => {
           ...m.transactions,
           {
             line: 99,
-            account: 'SoFi Checking',
+            account: 'Ally Checking',
             date: '2026-09-09',
             amountMinor: -1200,
             description: 'NEW THING',
@@ -439,7 +441,7 @@ describe('imports', () => {
       const after = (await A.get(url('/accounts?include=closed'))).body.data.map(
         (a: { name: string }) => a.name,
       );
-      expect(after).toContain('SoFi Checking'); // the later import is still in it
+      expect(after).toContain('Ally Checking'); // the later import is still in it
       expect(after).not.toContain('Truck');
       expect(after).not.toContain('Old Savings');
     });

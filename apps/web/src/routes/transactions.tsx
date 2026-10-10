@@ -238,7 +238,7 @@ export function TransactionList({
                         <Badge tone="accent">Review</Badge>
                       ) : null}
                       {t.transfer ? (
-                        // Long account names ("MyLowe's® Rewards Credit Card (...6650)") truncate.
+                        // Long account names ("MyLowe's® Rewards Credit Card (...4444)") truncate.
                         <Badge className="max-w-full">
                           <span className="min-w-0 truncate">{transferLabel(t, members)}</span>
                         </Badge>

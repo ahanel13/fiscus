@@ -278,7 +278,7 @@ test('imports a Monarch export with the wizard, then undoes it', async ({ page }
   // Made-up rows in the format of a real Monarch export.
   const transactions = [
     'Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags,Owner,Reviewed,Id',
-    '2026-01-05,Harmons,Groceries,Blue Cash Preferred® ,HARMONS,,-97.55,,Shared,,1',
+    '2026-01-05,Fresh Market,Groceries,Blue Cash Preferred® ,FRESH MARKET,,-97.55,,Shared,,1',
     '2026-01-06,Payroll,Paychecks,Imported Checking,ACME,,2500.00,,Shared,Needs Review,2',
     '2026-01-07,Amex,Credit Card Payment,Imported Checking,AMEX,,-97.55,,Shared,,3',
     '2026-01-07,Amex,Credit Card Payment,Blue Cash Preferred® ,PAYMENT,,97.55,,Shared,,4',

@@ -58,19 +58,19 @@ describe('moving transactions', () => {
   });
 
   it('moves transactions, splits with their parts, and both balances follow', async () => {
-    const sofi = await account(A, 'SoFi Checking');
-    const savings = await account(A, 'SoFi Savings');
-    const deposit = await txn(sofi, 50000, 'To savings');
-    const groceries = await txn(sofi, -3000, 'Groceries');
+    const ally = await account(A, 'Ally Checking');
+    const savings = await account(A, 'Ally Savings');
+    const deposit = await txn(ally, 50000, 'To savings');
+    const groceries = await txn(ally, -3000, 'Groceries');
     await A.request('PUT', url(`/transactions/${groceries}/splits`), {
       parts: [{ amountMinor: -2000 }, { amountMinor: -1000 }],
     });
-    expect(await balance(sofi)).toBe(47000);
+    expect(await balance(ally)).toBe(47000);
 
     const r = await move(A, [deposit, groceries], savings);
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body.data).toEqual({ updated: [deposit, groceries], refused: [] });
-    expect(await balance(sofi)).toBe(0);
+    expect(await balance(ally)).toBe(0);
     expect(await balance(savings)).toBe(47000);
     const parts = (await A.get(url(`/transactions?accounts=${savings}`))).body.data as {
       displayName: string;
