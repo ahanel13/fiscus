@@ -50,17 +50,17 @@ describe('import wizard logic', () => {
   it('suggests existing accounts you own by name, and ticks closing only near zero', () => {
     const choices = suggestAccounts(
       [
-        found('SoFi Checking'),
+        found('Ally Checking'),
         found('Old Savings', { closeOn: '2024-02-01', closedAtZero: true }),
         found('Truck', { closeOn: '2024-09-09', closedAtZero: false, suggestedType: 'vehicle' }),
         found('Partner card'),
-        found('SAVINGS', { transactions: 0, duplicateOf: 'SAVINGS (...2124)' }),
+        found('SAVINGS', { transactions: 0, duplicateOf: 'SAVINGS (...5555)' }),
         found('Old truck', { closeOn: '2024-09-09', closedAtZero: true, continuedBy: 'Truck' }),
       ],
-      [account('a1', 'sofi checking'), account('a2', 'Partner card', { yourAccess: 'full' })],
+      [account('a1', 'ally checking'), account('a2', 'Partner card', { yourAccess: 'full' })],
     );
     expect(choices.map((c) => [c.key, c.mode, c.accountId, c.close, c.closeOn])).toEqual([
-      ['SoFi Checking', 'existing', 'a1', false, null],
+      ['Ally Checking', 'existing', 'a1', false, null],
       ['Old Savings', 'new', null, true, '2024-02-01'],
       ['Truck', 'new', null, false, '2024-09-09'],
       // Only accounts you own can take imports.
@@ -76,26 +76,26 @@ describe('import wizard logic', () => {
     const choices = suggestAccounts(
       [
         found('Checking'),
-        found('Wedding', { typeFromName: false, closeOn: '2025-06-11', closedAtZero: true }),
-        found('SOFI', { typeFromName: false, suggestedType: 'loan' }),
+        found('Vacation', { typeFromName: false, closeOn: '2025-06-11', closedAtZero: true }),
+        found('ALLY', { typeFromName: false, suggestedType: 'loan' }),
         found('Truck', { closeOn: '2024-09-09', closedAtZero: false }),
-        found('SAVINGS', { transactions: 0, duplicateOf: 'SAVINGS (...2124)' }),
+        found('SAVINGS', { transactions: 0, duplicateOf: 'SAVINGS (...5555)' }),
       ],
       [],
     );
     expect(choices.map((c) => [c.key, c.check])).toEqual([
       ['Checking', []],
       // Unnamed, but checking or savings is the likely answer: ready as it is.
-      ['Wedding', []],
-      ['SOFI', ['type_unsure']],
+      ['Vacation', []],
+      ['ALLY', ['type_unsure']],
       ['Truck', ['closed_with_money']],
       ['SAVINGS', ['duplicate']],
     ]);
     const next = chooseMany(choices, ['Checking', 'Truck'], (c) => withType(c, 'vehicle'));
     expect(next.map((c) => [c.key, c.type, c.balanceMode])).toEqual([
       ['Checking', 'vehicle', 'transactions'], // it has transactions: they still count
-      ['Wedding', 'depository', 'transactions'],
-      ['SOFI', 'loan', 'transactions'],
+      ['Vacation', 'depository', 'transactions'],
+      ['ALLY', 'loan', 'transactions'],
       ['Truck', 'vehicle', 'transactions'],
       ['SAVINGS', 'depository', 'transactions'],
     ]);

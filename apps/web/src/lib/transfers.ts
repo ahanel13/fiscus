@@ -19,8 +19,8 @@ const COMMON = new Set([
 const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
 
 /**
- * The word of `account`'s name that `text` mentions, if any: "From Travel Vault" names an account
- * called Travel, "From Checking Balance" one called SoFi Checking.
+ * The word of `account`'s name that `text` mentions, if any: "From Holiday Vault" names an account
+ * called Holiday, "From Checking Balance" one called Ally Checking.
  */
 export function namedAccount(text: string, account: string | undefined): string | null {
   if (!account) return null;
@@ -32,8 +32,8 @@ export function namedAccount(text: string, account: string | undefined): string 
 
 /**
  * The one candidate the names point to, and the account they name, or null. First a candidate
- * whose name says where it came from ("From Travel Vault"), then one `out`'s name says it went to
- * ("To House Vault"), each only when it singles one out. It ranks the review; a person still
+ * whose name says where it came from ("From Holiday Vault"), then one `out`'s name says it went to
+ * ("To Roof Vault"), each only when it singles one out. It ranks the review; a person still
  * confirms it, since banks word transfers in many ways.
  */
 export function likelyOtherSide(

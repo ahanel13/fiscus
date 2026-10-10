@@ -27,7 +27,7 @@ source → columns (CSV) → accounts → categories → review → done (undo a
     category and person names map.
   - `POST imports/:batchId/rows` adds **one part of one account's rows** (up to 5 000, never
     splitting a day, so identical purchases on one day stay distinct), then its balances. Each
-    request is short, and the wizard shows real progress ("SoFi Checking, 12 of 50").
+    request is short, and the wizard shows real progress ("Ally Checking, 12 of 50").
   - If a part fails, the accounts already done stay done; the wizard offers to retry the rest
     (safe: duplicates are skipped) or undo everything.
 - **Undo:** reverting a batch soft-deletes its transactions and removes its balances (TXN-10: the

@@ -8,22 +8,22 @@ const t = (id: string, account: string, displayName: string) =>
 
 describe('transfer name hints', () => {
   it('finds the account a transfer’s name mentions, ignoring common words', () => {
-    expect(namedAccount('From Travel Vault', 'Travel')).toBe('Travel');
-    expect(namedAccount('From Checking Balance', 'SoFi Checking')).toBe('Checking');
-    expect(namedAccount('From Checking Balance', 'House')).toBeNull();
+    expect(namedAccount('From Holiday Vault', 'Holiday')).toBe('Holiday');
+    expect(namedAccount('From Checking Balance', 'Ally Checking')).toBe('Checking');
+    expect(namedAccount('From Checking Balance', 'Roof')).toBeNull();
     expect(namedAccount('Transfer from savings account', 'Joint Account')).toBeNull();
     expect(namedAccount('Payment', undefined)).toBeNull();
   });
 
   it('picks the one candidate the names single out, or none', () => {
-    const fromTravel = t('a', 'House', 'From Travel Vault');
-    const fromChecking = t('b', 'House', 'From Checking Balance');
-    // Both are House, so "To House Vault" alone can't choose; the deposits' names can.
-    expect(likelyOtherSide(t('o', 'Travel', 'To House Vault'), [fromTravel, fromChecking])).toEqual(
-      { id: 'a', named: 'Travel' },
-    );
+    const fromHoliday = t('a', 'Roof', 'From Holiday Vault');
+    const fromChecking = t('b', 'Roof', 'From Checking Balance');
+    // Both are Roof, so "To Roof Vault" alone can't choose; the deposits' names can.
     expect(
-      likelyOtherSide(t('o', 'SoFi Checking', 'To House Vault'), [fromTravel, fromChecking]),
+      likelyOtherSide(t('o', 'Holiday', 'To Roof Vault'), [fromHoliday, fromChecking]),
+    ).toEqual({ id: 'a', named: 'Holiday' });
+    expect(
+      likelyOtherSide(t('o', 'Ally Checking', 'To Roof Vault'), [fromHoliday, fromChecking]),
     ).toEqual({ id: 'b', named: 'Checking' });
     // Different accounts: the money out's name says which.
     expect(
@@ -35,7 +35,7 @@ describe('transfer name hints', () => {
     expect(
       likelyOtherSide(t('o', 'Checking', 'Move money'), [t('x', 'A1', 'In'), t('y', 'B1', 'In')]),
     ).toBeNull();
-    expect(likelyOtherSide(t('o', 'Travel', 'x'), [fromTravel])).toBeNull();
+    expect(likelyOtherSide(t('o', 'Holiday', 'x'), [fromHoliday])).toBeNull();
   });
 });
 

@@ -127,17 +127,17 @@ describe('CSV mapping', () => {
   });
 
   it('guesses account types and category kinds', () => {
-    expect(guessAccountType('Tacoma Auto Loan')).toBe('loan');
-    expect(guessAccountType('Toyota Tacoma TRD Pro')).toBe('vehicle');
+    expect(guessAccountType('Truck Auto Loan')).toBe('loan');
+    expect(guessAccountType('Ford F-150 XLT')).toBe('vehicle');
     expect(guessAccountType('Auto Roth IRA')).toBe('investment');
     expect(guessAccountType('Blue Cash Preferred® ')).toBe('credit');
-    expect(guessAccountType('SoFi Checking')).toBe('depository');
-    expect(guessAccountType('SCHEELS Signature (...0963)')).toBe('credit');
-    expect(guessAccountType('Quicksilver (...4480)')).toBe('credit');
-    expect(guessAccountType('123 W 400 N Springville UT')).toBe('depository');
-    expect(guessAccountType('42 Elm St, Provo UT')).toBe('property');
-    expect(guessAccountType('Wedding', [-100, -200])).toBe('credit');
-    expect(guessAccountType('SOFI (...8884)', [-49050000, -48797499])).toBe('loan');
+    expect(guessAccountType('Ally Checking')).toBe('depository');
+    expect(guessAccountType('SCHEELS Signature (...3333)')).toBe('credit');
+    expect(guessAccountType('Quicksilver (...2222)')).toBe('credit');
+    expect(guessAccountType('123 W 400 N Anytown UT')).toBe('depository');
+    expect(guessAccountType('42 Elm St, Anytown UT')).toBe('property');
+    expect(guessAccountType('Vacation', [-100, -200])).toBe('credit');
+    expect(guessAccountType('ACME (...6666)', [-31500000, -31250000])).toBe('loan');
     expect(inferCategoryKind('Credit Card Payment', [-5])).toBe('transfer');
     expect(inferCategoryKind('Paychecks', [100, 200])).toBe('income');
     expect(inferCategoryKind('Groceries', [-100, 20])).toBe('flexible');
@@ -149,16 +149,16 @@ describe('Monarch export', () => {
   const transactions = parseCsv(
     [
       'Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags,Owner,Reviewed,Id',
-      '2026-10-05,Harmons,Groceries,Blue Cash Preferred® ,HARMONS,,-97.55,,Shared,,1001',
-      '2026-10-05,Harmons,Groceries,Blue Cash Preferred® ,HARMONS,,-97.55,,Shared,,1002',
-      '2026-10-04,Payroll,Paychecks,SoFi Checking,,"line one\nline two",2500.00,"Work, Taxes",Bea,Needs Review,1003',
+      '2026-10-05,Fresh Market,Groceries,Blue Cash Preferred® ,FRESH MARKET,,-97.55,,Shared,,1001',
+      '2026-10-05,Fresh Market,Groceries,Blue Cash Preferred® ,FRESH MARKET,,-97.55,,Shared,,1002',
+      '2026-10-04,Payroll,Paychecks,Ally Checking,,"line one\nline two",2500.00,"Work, Taxes",Bea,Needs Review,1003',
     ].join('\n'),
   );
   const balances = parseCsv(
     [
       'Date,Balance,Account',
-      '2026-10-04,100.00,SoFi Checking',
-      '2026-10-05,2600.00,SoFi Checking',
+      '2026-10-04,100.00,Ally Checking',
+      '2026-10-05,2600.00,Ally Checking',
       '2024-01-30,5.00,Old Savings',
       '2024-01-31,0.40,Old Savings',
     ].join('\n'),
@@ -175,7 +175,7 @@ describe('Monarch export', () => {
     expect(m.problems).toEqual([]);
     expect(m.transactions[2]).toEqual({
       line: 4,
-      account: 'SoFi Checking',
+      account: 'Ally Checking',
       date: '2026-10-04',
       amountMinor: 250000,
       description: 'Payroll', // no original statement: the merchant
@@ -205,13 +205,13 @@ describe('Monarch export', () => {
     const m = readMonarch(
       {
         transactions: parseCsv(
-          'Date,Merchant,Category,Account,Amount\n2026-08-02,X,Y,SAVINGS (...2124),1.00',
+          'Date,Merchant,Category,Account,Amount\n2026-08-02,X,Y,SAVINGS (...5555),1.00',
         ),
         balances: parseCsv(
           [
             'Date,Balance,Account',
             ...rows('SAVINGS'),
-            ...rows('SAVINGS (...2124)'),
+            ...rows('SAVINGS (...5555)'),
             ...rows('Other savings', 1),
           ].join('\n'),
         ),
@@ -220,8 +220,8 @@ describe('Monarch export', () => {
     );
     expect(m.accounts.map((a) => [a.key, a.duplicateOf])).toEqual([
       ['Other savings', null],
-      ['SAVINGS', 'SAVINGS (...2124)'],
-      ['SAVINGS (...2124)', null],
+      ['SAVINGS', 'SAVINGS (...5555)'],
+      ['SAVINGS (...5555)', null],
     ]);
   });
 
@@ -231,10 +231,10 @@ describe('Monarch export', () => {
         balances: parseCsv(
           [
             'Date,Balance,Account',
-            '2024-09-07,39010.00,Toyota Tacoma TRD Pro',
-            '2024-09-08,39010.00,Toyota Tacoma TRD Pro',
-            '2024-09-09,38797.97,2021 Toyota Tacoma TRD Pro',
-            '2024-09-10,38797.97,2021 Toyota Tacoma TRD Pro',
+            '2024-09-07,31250.00,Ford F-150 XLT',
+            '2024-09-08,31250.00,Ford F-150 XLT',
+            '2024-09-09,30980.45,2019 Ford F-150 XLT',
+            '2024-09-10,30980.45,2019 Ford F-150 XLT',
             '2024-09-09,500.00,Other',
             '2024-09-10,500.00,Other',
           ].join('\n'),
@@ -243,9 +243,9 @@ describe('Monarch export', () => {
       2,
     );
     expect(m.accounts.map((a) => [a.key, a.continuedBy])).toEqual([
-      ['2021 Toyota Tacoma TRD Pro', null],
+      ['2019 Ford F-150 XLT', null],
+      ['Ford F-150 XLT', '2019 Ford F-150 XLT'],
       ['Other', null],
-      ['Toyota Tacoma TRD Pro', '2021 Toyota Tacoma TRD Pro'],
     ]);
   });
 
@@ -254,9 +254,9 @@ describe('Monarch export', () => {
     expect(
       m.accounts.map((a) => [a.key, a.suggestedType, a.suggestedMode, a.closeOn, a.closedAtZero]),
     ).toEqual([
+      ['Ally Checking', 'depository', 'transactions', null, false],
       ['Blue Cash Preferred®', 'credit', 'transactions', null, false],
       ['Old Savings', 'depository', 'value', '2024-02-01', true],
-      ['SoFi Checking', 'depository', 'transactions', null, false],
     ]);
   });
 });
