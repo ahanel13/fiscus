@@ -67,3 +67,33 @@ export interface SessionSummary {
   userAgent: string | null;
   current: boolean;
 }
+
+// ── Server invites (ADM-08) ──────────────────────────────────────────────────────────────────
+
+/** An instance admin invites someone to make an account here, even when signup is invite-only. */
+export const createServerInviteSchema = z.object({ email: emailSchema });
+
+export interface ServerInvite {
+  id: string;
+  email: string;
+  /** The admin who sent it, if they still have an account. */
+  invitedBy: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** What the invitee sees before creating their account. */
+export interface ServerInvitePreview {
+  email: string;
+  invitedBy: string | null;
+  /** They already have an account: sign in instead. */
+  accountExists: boolean;
+}
+
+export const joinTokenSchema = z.object({ token: z.string().min(16).max(200) });
+
+/** Creates the invited account; the email comes from the invite. */
+export const joinRequestSchema = joinTokenSchema.extend({
+  password: passwordSchema,
+  displayName: displayNameSchema,
+});

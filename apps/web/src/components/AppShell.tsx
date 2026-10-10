@@ -12,6 +12,7 @@ import {
   Moon,
   Plus,
   Search,
+  Server,
   Settings,
   User,
   UserPlus,
@@ -175,6 +176,7 @@ export function AppShell() {
             onSignOut={actions.signOut}
             onTheme={actions.toggleTheme}
             onShortcuts={actions.showShortcuts}
+            isAdmin={me.isInstanceAdmin}
           />
         </div>
       </nav>
@@ -248,6 +250,7 @@ export function AppShell() {
                 .map((s) => ({ to: href(s), icon: s.icon, label: s.label })),
               { to: `/h/${householdId}/settings`, icon: Settings, label: 'Settings' },
               { to: '/settings', icon: User, label: 'You' },
+              ...(me.isInstanceAdmin ? [{ to: '/server', icon: Server, label: 'Server' }] : []),
             ].map((item) => (
               <li key={item.to}>
                 <Link
@@ -270,6 +273,7 @@ export function AppShell() {
         sections={sections}
         sectionHref={href}
         memberships={me.memberships}
+        isAdmin={me.isInstanceAdmin}
         actions={actions}
       />
       <ShortcutsHelp sections={sections} isOpen={helpOpen} onOpenChange={setHelpOpen} />
@@ -358,9 +362,12 @@ function UserMenu({
   onSignOut,
   onTheme,
   onShortcuts,
+  isAdmin,
 }: {
   name: string;
   color: string;
+  /** Instance admins also manage the server. */
+  isAdmin: boolean;
   onSignOut: () => void;
   onTheme: () => void;
   onShortcuts: () => void;
@@ -375,6 +382,11 @@ function UserMenu({
         <MenuItem href="/settings">
           <User aria-hidden /> Personal settings
         </MenuItem>
+        {isAdmin ? (
+          <MenuItem href="/server">
+            <Server aria-hidden /> Server
+          </MenuItem>
+        ) : null}
         <MenuItem onAction={onTheme}>
           <Moon aria-hidden /> Toggle dark mode
         </MenuItem>

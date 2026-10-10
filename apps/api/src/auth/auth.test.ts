@@ -332,4 +332,108 @@ describe('authentication', () => {
       );
     });
   });
+
+  describe('server invites', () => {
+    it('[ADM-08] lets an admin invite someone to make an account, once, for that email', async () => {
+      const admin = await signedInAdmin();
+      // Non-admins can't.
+      const plain = client(openApp);
+      await plain.post('/api/v1/auth/signup', {
+        email: 'plain@fiscus.test',
+        password: 'plain long password',
+        displayName: 'Plain',
+      });
+      expect((await plain.post('/api/v1/admin/invites', { email: 'x@fiscus.test' })).status).toBe(
+        403,
+      );
+      expect((await plain.get('/api/v1/admin/invites')).status).toBe(403);
+
+      // Someone with an account already doesn't need one.
+      expect(
+        (await admin.post('/api/v1/admin/invites', { email: 'bea@fiscus.test' })).body.code,
+      ).toBe('account_exists');
+
+      const created = await admin.post('/api/v1/admin/invites', { email: 'Cy@Fiscus.test' });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const url = new URL(created.body.data.url);
+      expect(url.origin + url.pathname).toBe('https://fiscus.test/join');
+      const token = new URLSearchParams(url.hash.slice(1)).get('token')!;
+      expect(
+        (await admin.get('/api/v1/admin/invites')).body.data.map((i: { email: string }) => i.email),
+      ).toContain('cy@fiscus.test');
+
+      // The invitee, on this invite-only server: sees who invited them, then makes the account.
+      const cy = client();
+      expect(
+        (
+          await cy.post('/api/v1/auth/signup', {
+            email: 'cy@fiscus.test',
+            password: 'cy long password!',
+            displayName: 'Cy',
+          })
+        ).body.code,
+      ).toBe('signup_invite_required');
+      const preview = await cy.post('/api/v1/auth/join/lookup', { token });
+      expect(preview.body.data).toEqual({
+        email: 'cy@fiscus.test',
+        invitedBy: ADMIN.displayName,
+        accountExists: false,
+      });
+      const joined = await cy.post('/api/v1/auth/join', {
+        token,
+        password: 'cy long password!',
+        displayName: 'Cy',
+      });
+      expect(joined.status, JSON.stringify(joined.body)).toBe(201);
+      expect((await cy.get('/api/v1/me')).body.data).toMatchObject({
+        email: 'cy@fiscus.test',
+        memberships: [],
+      });
+
+      // Once only, and gone from the pending list.
+      expect(
+        (
+          await client().post('/api/v1/auth/join', {
+            token,
+            password: 'other long password',
+            displayName: 'X',
+          })
+        ).body.code,
+      ).toBe('invalid_invite');
+      expect((await admin.get('/api/v1/admin/invites')).body.data).toEqual([]);
+    });
+
+    it('cancelled and expired invites stop working', async () => {
+      const admin = await signedInAdmin();
+      const make = async (email: string) => {
+        const r = await admin.post('/api/v1/admin/invites', { email });
+        return {
+          id: r.body.data.invite.id as string,
+          token: new URLSearchParams(new URL(r.body.data.url).hash.slice(1)).get('token')!,
+        };
+      };
+      const cancelled = await make('dee@fiscus.test');
+      expect((await admin.request('DELETE', `/api/v1/admin/invites/${cancelled.id}`)).status).toBe(
+        204,
+      );
+      expect(
+        (await client().post('/api/v1/auth/join/lookup', { token: cancelled.token })).status,
+      ).toBe(404);
+
+      const expired = await make('eve@fiscus.test');
+      await sql(
+        "UPDATE server_invites SET expires_at = now() - interval '1 minute' WHERE id = $1",
+        [expired.id],
+      );
+      expect(
+        (
+          await client().post('/api/v1/auth/join', {
+            token: expired.token,
+            password: 'eve long password',
+            displayName: 'Eve',
+          })
+        ).body.code,
+      ).toBe('invalid_invite');
+    });
+  });
 });

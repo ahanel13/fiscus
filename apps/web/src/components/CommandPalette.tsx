@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Membership } from '@fiscus/shared';
 import { Command } from 'cmdk';
-import { Home, LogOut, Moon, Settings, Sun, User } from 'lucide-react';
+import { Home, LogOut, Moon, Server, Settings, Sun, User } from 'lucide-react';
 import type { Section } from '../lib/nav.js';
 
 export interface PaletteActions {
@@ -19,6 +19,7 @@ export function CommandPalette({
   sections,
   sectionHref,
   memberships,
+  isAdmin,
   actions,
 }: {
   open: boolean;
@@ -27,6 +28,8 @@ export function CommandPalette({
   sections: Section[];
   sectionHref: (s: Section) => string;
   memberships: Membership[];
+  /** Instance admins also get the server page. */
+  isAdmin: boolean;
   actions: PaletteActions;
 }) {
   const run = (fn: () => void) => () => {
@@ -79,6 +82,15 @@ export function CommandPalette({
           >
             <User aria-hidden className="size-4 text-muted" /> Personal settings
           </Command.Item>
+          {isAdmin ? (
+            <Command.Item
+              value="go server invites admin"
+              onSelect={run(() => actions.go('/server'))}
+              className={item}
+            >
+              <Server aria-hidden className="size-4 text-muted" /> Server
+            </Command.Item>
+          ) : null}
         </Command.Group>
         {memberships.length > 1 ? (
           <Command.Group

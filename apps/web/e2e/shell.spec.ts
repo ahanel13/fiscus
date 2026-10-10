@@ -109,6 +109,52 @@ test('creates an invite link from household settings', async ({ page }) => {
   await expect(waiting).toHaveCount(0);
 });
 
+test('the admin invites someone to the server, who makes an account and their own household', async ({
+  page,
+  browser,
+}) => {
+  await signIn(page);
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .first()
+    .getByRole('button', { name: /^Ada/ })
+    .click();
+  await page.getByRole('menuitem', { name: 'Server' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Server' })).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+
+  await page.getByRole('button', { name: 'Invite someone' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Invite someone to this server' });
+  await dialog.getByLabel('Their email').fill('friend@e2e.test');
+  await dialog.getByRole('button', { name: 'Create invite link' }).click();
+  const link = await dialog.getByRole('textbox', { name: 'Invite link' }).inputValue();
+  expect(link).toMatch(/\/join#token=/);
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  const waiting = page.getByRole('region', { name: 'Waiting to join' });
+  await expect(waiting).toContainText('friend@e2e.test');
+
+  // They open the link signed out, make an account, and start their own household.
+  const theirs = await browser.newContext();
+  const friend = await theirs.newPage();
+  await friend.goto(link);
+  await expect(friend.getByRole('heading', { name: 'Join Fiscus' })).toBeVisible();
+  expect(await axeViolations(friend)).toEqual([]);
+  await friend.getByLabel('Your name').fill('Cam');
+  await friend.getByLabel('Password').fill('e2e friend password');
+  await friend.getByRole('button', { name: 'Create account' }).click();
+  await expect(friend).toHaveURL(/\/welcome$/);
+  // The link worked once.
+  await friend.goto(link);
+  await expect(friend.getByRole('heading', { name: 'Invite not valid' })).toBeVisible();
+  await theirs.close();
+
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1, name: 'Server' })).toBeVisible();
+  await expect(waiting).toHaveCount(0);
+  await page.getByRole('link', { name: 'Back' }).click();
+  await expect(page).toHaveURL(/\/h\/[0-9a-f-]{36}$/);
+});
+
 test('adds an account, updates its balance, and shows net worth', async ({ page }) => {
   await signIn(page);
   await page.goto(`${householdUrl}/accounts`);

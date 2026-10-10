@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
   type AuthStatus,
+  joinRequestSchema,
+  joinTokenSchema,
   loginRequestSchema,
   passwordResetRequestSchema,
   reauthRequestSchema,
   setupRequestSchema,
+  type ServerInvitePreview,
   signupRequestSchema,
 } from '@fiscus/shared';
 import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
@@ -17,6 +20,7 @@ import type { AuthContext } from './auth-context.js';
 import { AuthService } from './auth.service.js';
 import { AuthCookies } from './cookies.js';
 import { Auth, Public } from './decorators.js';
+import { ServerInvitesService } from './server-invites.service.js';
 import { SessionService } from './session.service.js';
 import { SetupService } from './setup.service.js';
 import { clientMeta, type SignedIn, SignInService } from './sign-in.service.js';
@@ -31,6 +35,7 @@ export class AuthController {
     private readonly signIns: SignInService,
     private readonly cookies: AuthCookies,
     private readonly audit: AuditService,
+    private readonly serverInvites: ServerInvitesService,
   ) {}
 
   @Public()
@@ -81,6 +86,28 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<SignedIn> {
     return this.signIns.signIn(await this.auth.signup(body), req, reply);
+  }
+
+  /** A server invite's details, before creating the account (ADM-08). */
+  @Public()
+  @Post('join/lookup')
+  @HttpCode(200)
+  async joinLookup(
+    @Body(new ZodPipe(joinTokenSchema)) body: z.infer<typeof joinTokenSchema>,
+  ): Promise<{ data: ServerInvitePreview }> {
+    return { data: await this.serverInvites.preview(body.token) };
+  }
+
+  /** Creates the invited account and signs in; then they create their household. */
+  @Public()
+  @Post('join')
+  async join(
+    @Body(new ZodPipe(joinRequestSchema)) body: z.infer<typeof joinRequestSchema>,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<SignedIn> {
+    const user = await this.serverInvites.join(body.token, body.password, body.displayName, req.ip);
+    return this.signIns.signIn(user, req, reply);
   }
 
   @Public()
