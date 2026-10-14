@@ -106,8 +106,8 @@ Each release lists:
 | Check | Status |
 |---|---|
 | Merged migrations are immutable (`scripts/check-migrations.sh`) | **In place** |
-| Fresh install and upgraded install end with identical schemas (migrate from the previous release's database, compare `pg_dump --schema-only`) | Follow-up, needs releases (#12) |
-| The previous release's api test suite passes against the new schema (proves §1.3) | Follow-up, needs releases (#12) |
+| Fresh install and upgraded install end with identical schemas (migrate from the previous release's database, compare `pg_dump --schema-only`) | **In place** (`scripts/upgrade-check.sh schema`, when migrations change) |
+| The previous release's api test suite passes against the new schema (proves §1.3) | **In place** (`scripts/upgrade-check.sh api`, when migrations change) |
 | Contract PRs are labeled and reference the release that stopped using the object | Review checklist |
 
 ## 9. PR checklist for migrations
