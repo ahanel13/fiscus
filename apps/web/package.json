@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "walkthrough": "playwright test -c playwright.walkthrough.config.ts"
   },
   "dependencies": {
     "@fiscus/shared": "workspace:*",
