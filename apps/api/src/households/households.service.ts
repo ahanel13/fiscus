@@ -22,6 +22,7 @@ const SETTINGS = [
   'fiscalYearStartMonth',
   'dateBasis',
   'financeStyle',
+  'categorizeMarksReviewed',
 ] as const;
 
 export function toHousehold(
@@ -37,6 +38,7 @@ export function toHousehold(
     fiscalYearStartMonth: row.fiscalYearStartMonth,
     dateBasis: row.dateBasis,
     financeStyle: row.financeStyle,
+    categorizeMarksReviewed: row.categorizeMarksReviewed,
     status: row.status,
     version: row.version,
     you: { memberId: you.memberId, role: you.role },
@@ -52,6 +54,7 @@ type HouseholdInput = Pick<
   | 'fiscalYearStartMonth'
   | 'dateBasis'
   | 'financeStyle'
+  | 'categorizeMarksReviewed'
 > & { displayName?: string | undefined };
 
 @Injectable()

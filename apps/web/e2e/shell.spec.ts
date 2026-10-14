@@ -207,12 +207,12 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   await expect(page.getByText('Transaction added.')).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
 
-  await page.getByRole('button', { name: /Costco run/ }).click();
+  await page.getByRole('button', { name: /^Costco run/ }).click();
   const drawer = page.getByRole('dialog', { name: 'Costco run' });
   await drawer.getByRole('button', { name: /Category/ }).click();
   await page.getByRole('option', { name: 'Groceries' }).click();
-  await drawer.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  // Saved as soon as it's chosen.
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
   expect(await axeViolations(page)).toEqual([]);
 
   await drawer.getByRole('button', { name: 'Split' }).click();
@@ -223,8 +223,9 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   await page.keyboard.press('Escape');
 
   // Two parts of $60.00 replace the $120.00 purchase in the list.
-  await expect(page.getByRole('button', { name: /Costco run \(1\/2\)/ })).toContainText('−$60.00');
-  await expect(page.getByRole('button', { name: /Costco run \(2\/2\)/ })).toContainText('−$60.00');
+  const part = (n: number) => page.getByRole('listitem').filter({ hasText: `Costco run (${n}/2)` });
+  await expect(part(1)).toContainText('−$60.00');
+  await expect(part(2)).toContainText('−$60.00');
 
   // The wallet's balance follows its transactions, split or not.
   await page.goto(`${householdUrl}/accounts`);
@@ -243,15 +244,14 @@ test('tags a transaction from a search box, and moves a split purchase to anothe
   await expect(page.getByRole('heading', { level: 1, name: 'Pocket' })).toBeVisible();
 
   await page.goto(`${householdUrl}/transactions`);
-  await page.getByRole('button', { name: /Costco run \(1\/2\)/ }).click();
+  await page.getByRole('button', { name: /^Costco run \(1\/2\)/ }).click();
   const drawer = page.getByRole('dialog', { name: /Costco run/ });
   // Tags: only the transaction's own show; others are found or created by typing.
   await expect(drawer.getByText('No tags')).toBeVisible();
   await drawer.getByRole('combobox', { name: 'Add tags' }).fill('Bulk buy');
   await page.getByRole('option', { name: 'Create tag “Bulk buy”' }).click();
   await expect(drawer.getByRole('row', { name: 'Bulk buy' })).toBeVisible();
-  await drawer.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
   expect(await axeViolations(page)).toEqual([]);
 
   // A part moves with its whole purchase.
@@ -420,7 +420,23 @@ test('creates a rule with a live preview, then applies it to existing transactio
   expect(await axeViolations(page)).toEqual([]);
 
   await page.goto(`${householdUrl}/transactions?range=all_time`);
-  await expect(page.getByRole('button', { name: /^Coffee Coffee/ })).toBeVisible();
+  const coffee = page
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('button', { name: /^Coffee Wallet/ }) });
+  await expect(coffee.getByRole('button', { name: /Category of Coffee/ })).toContainText('Coffee');
+
+  // A category can be set from the row itself, and undone from the toast.
+  await coffee.getByRole('button', { name: /Category of Coffee/ }).click();
+  await page.getByRole('option', { name: 'Restaurants', exact: true }).click();
+  await expect(page.getByText('Coffee: Restaurants.')).toBeVisible();
+  await expect(coffee.getByRole('button', { name: /Category of Coffee/ })).toContainText(
+    'Restaurants',
+  );
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(coffee.getByRole('button', { name: /Category of Coffee/ })).toContainText('Coffee');
+  // Undo also put back "needs review", which choosing the category had cleared.
+  await expect(coffee).toContainText('Review');
 });
 
 test('recategorizing a transaction suggests a rule for next time', async ({ page }) => {
@@ -430,7 +446,6 @@ test('recategorizing a transaction suggests a rule for next time', async ({ page
   const drawer = page.getByRole('dialog', { name: 'REFUND' });
   await drawer.getByRole('button', { name: /Category/ }).click();
   await page.getByRole('option', { name: 'Interest', exact: true }).click();
-  await drawer.getByRole('button', { name: 'Save changes' }).click();
   const suggestion = drawer.getByRole('region', { name: 'Rule suggestion' });
   await expect(suggestion).toContainText('When the description contains “REFUND”: Interest.');
   expect(await axeViolations(page)).toEqual([]);
@@ -469,9 +484,10 @@ test('links a transfer between accounts, and works through the review queue by k
   page,
 }) => {
   await signIn(page);
-  // The bank CSV's two rows still need review: the badge on Transactions says so.
+  // The bank CSV's coffee still needs review (choosing REFUND's category reviewed it): the badge
+  // on Transactions says so.
   const nav = page.getByRole('navigation', { name: 'Main' }).first();
-  await expect(nav.getByRole('link', { name: /Transactions/ })).toContainText('2');
+  await expect(nav.getByRole('link', { name: /Transactions/ })).toContainText('1');
 
   // Money out of checking and into the wallet, entered by hand: linked as a transfer.
   await page.goto(`${householdUrl}/transactions`);
@@ -526,15 +542,13 @@ test('links a transfer between accounts, and works through the review queue by k
   // The review queue: oldest first, r marks reviewed and moves on.
   await page.getByRole('link', { name: /Review/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Review' })).toBeVisible();
-  await expect(page.getByText('2 to review, oldest first.')).toBeVisible();
+  await expect(page.getByText('1 to review, oldest first.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Reviewing Coffee' })).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
-  // c opens the category list; choosing one closes it, and the keys work again.
+  // c opens the category list; choosing the one it has closes it, and the keys work again.
   await page.keyboard.press('c');
   await page.getByRole('option', { name: 'Coffee', exact: true }).click();
   await expect(page.getByRole('listbox')).toHaveCount(0);
-  await page.keyboard.press('r');
-  await expect(page.getByRole('region', { name: 'Reviewing REFUND' })).toBeVisible();
   await page.keyboard.press('r');
   await expect(page.getByText('All caught up')).toBeVisible();
 

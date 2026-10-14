@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   index,
   pgEnum,
   pgTable,
@@ -39,6 +40,8 @@ export const households = pgTable(
     fiscalYearStartMonth: smallint().notNull().default(1),
     dateBasis: dateBasis().notNull().default('posted'),
     financeStyle: financeStyle().notNull().default('hybrid'),
+    /** Setting a transaction's category marks it reviewed (the walkthrough's F14, #349). */
+    categorizeMarksReviewed: boolean().notNull().default(true),
     status: householdStatus().notNull().default('active'),
     ...versioning(),
     ...timestamps(),

@@ -1,0 +1,1 @@
+ALTER TABLE "households" ADD COLUMN "categorize_marks_reviewed" boolean DEFAULT true NOT NULL;

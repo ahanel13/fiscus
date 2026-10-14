@@ -13,6 +13,7 @@ import {
   RadioGroup,
   Select,
   SelectItem,
+  Switch,
   TextField,
   toast,
 } from '../components/ui.js';
@@ -52,6 +53,7 @@ export function HouseholdGeneral({
     fiscalYearStartMonth: household.fiscalYearStartMonth,
     dateBasis: household.dateBasis,
     financeStyle: household.financeStyle,
+    categorizeMarksReviewed: household.categorizeMarksReviewed,
   };
   const [form, setForm] = useState(initial);
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
@@ -165,6 +167,18 @@ export function HouseholdGeneral({
             ))}
           </Select>
         ) : null}
+        <div className="space-y-1">
+          <Switch
+            isSelected={form.categorizeMarksReviewed}
+            onChange={(categorizeMarksReviewed) => set({ categorizeMarksReviewed })}
+            isDisabled={!owner}
+          >
+            Setting a category marks a transaction reviewed
+          </Switch>
+          <p className="text-xs text-muted">
+            Choosing the category is usually the review. Turn this off to review separately.
+          </p>
+        </div>
         {owner ? (
           <div className="flex justify-end">
             <Button

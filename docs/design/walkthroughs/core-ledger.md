@@ -129,17 +129,19 @@ can't settle it. The mapping can be saved for the bank's next file.
 
 ## 4. Transactions
 
-The list is grouped by day. Each row shows the name, category, account, and amount, and a
-**Review** badge when it needs a look. Filters (time range, account, needs review) sit behind one
+The list is grouped by day. Each row shows the name, account, category, and amount, and a
+**Review** badge when it needs a look. The category is a picker on the row: choose one and it's
+saved, with **Undo** in the toast, and a rule suggestion if one fits. Filters (time range, account, needs review) sit behind one
 button. **Add** asks how: enter a transaction, or import a file.
 
-| Desktop | Phone | Phone filters |
-|---|---|---|
-| ![Transactions](core-ledger/18-transactions.png) | <img src="core-ledger/19-transactions-phone.png" width="260" alt="Transactions on a phone"> | <img src="core-ledger/20-filters-phone.png" width="260" alt="Filters on a phone"> |
+| Desktop | Category from the row | Phone | Phone filters |
+|---|---|---|---|
+| ![Transactions](core-ledger/18-transactions.png) | ![Row category](core-ledger/18b-row-category.png) | <img src="core-ledger/19-transactions-phone.png" width="260" alt="Transactions on a phone"> | <img src="core-ledger/20-filters-phone.png" width="260" alt="Filters on a phone"> |
 
 Opening a row shows the drawer: name, category, date, tags, notes, review state, and actions
-(make a rule, move to another account, link as a transfer, split). Changing a category offers a
-rule for next time.
+(make a rule, move to another account, link as a transfer, split). Each change saves as you make
+it; text fields save when you leave them. Changing a category offers a rule for next time, and
+marks the transaction reviewed (a household setting, on by default).
 
 | Add asks how | The drawer | Rule suggestion | Split |
 |---|---|---|---|
@@ -153,13 +155,13 @@ compact, and filters show as removable chips.
 - **F11.** The list is spacious: about eight rows fit on a laptop screen. Monarch's list is a dense
   table (date, merchant, category, account, amount) where 15–20 rows fit, and it can be sorted. The
   compact density setting helps, but it's in Personal settings, where few people will look.
-- **F12.** Recategorizing takes four steps: open the drawer, open the category list, pick one, then
-  **Save changes**. In Monarch you click the category on the row and pick one, and that's it. This
-  is the most frequent edit there is.
-- **F13.** Every edit in the drawer waits for **Save changes**. Monarch saves each field as it
-  changes. Forgetting to save loses the edit.
-- **F14.** Setting a category doesn't mark the transaction reviewed: Corner Hardware keeps its
-  **Review** badge after being categorized. Deciding the category is usually the review.
+- ~~**F12.**~~ *Fixed in #349.* Recategorizing took four steps: open the drawer, open the category
+  list, pick one, then **Save changes**. In Monarch you click the category on the row and pick one.
+  Now Fiscus works the same way.
+- ~~**F13.**~~ *Fixed in #349.* Every edit in the drawer waited for **Save changes**, and
+  forgetting to save lost the edit. Each field now saves as it changes, as in Monarch.
+- ~~**F14.**~~ *Fixed in #349.* Setting a category didn't mark the transaction reviewed. Deciding
+  the category is usually the review, so now it does, unless the household turns that off.
 - **F15.** **Split** sits at the bottom of the drawer, below both notes. The other actions (rule,
   move, link) are at the top. A new split starts as two equal halves in the same category, so both
   parts usually need changing.
@@ -179,8 +181,9 @@ on.
 **Works.** Oldest first, and one key per decision. Transfers are a second tab of the same page.
 
 **Gets in the way.**
-- **F17.** The keys aren't shown on the screen, so only people who read the help know them. The
-  transaction pane is the full drawer form, so reviewing is the same four steps as F12.
+- **F17.** The keys are listed above the queue, but only on wide screens. The transaction pane
+  repeats the category picker that the bar above it already has. (Since #349, choosing a category
+  here also completes the review and moves to the next transaction.)
 - (F8 again) The sidebar badge adds transactions and transfers, so it matches neither tab.
 
 ---
@@ -272,30 +275,29 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 
 | # | Problem | Impact | Proposal | Issue |
 |---|---|---|---|---|
-| F12 | Recategorizing takes four steps | High | Category picker on the row itself, on desktop and phone | new: faster transaction editing |
-| F13 | Drawer edits wait for Save | High | Save each field as it changes, with undo in the toast | new: faster transaction editing |
-| F14 | Categorizing doesn't mark reviewed | Medium | Setting a category marks it reviewed, as a household setting (on by default) | new: faster transaction editing |
+| F12 | Recategorizing takes four steps | High | Category picker on the row itself, on desktop and phone | Fixed (#349) |
+| F13 | Drawer edits wait for Save | High | Save each field as it changes, with undo in the toast | Fixed (#349) |
+| F14 | Categorizing doesn't mark reviewed | Medium | Setting a category marks it reviewed, as a household setting (on by default) | Fixed (#349) |
 | F10, F20 | Bank-formatted names | High | Merchant cleanup | #42 |
-| F11 | Low list density | Medium | A dense, sortable table on desktop; make the density choice visible on the list | new: transactions table |
-| F8, F17 | Counts that don't agree; hidden review keys | Medium | Separate badges, or "4 + 4 transfers"; the import's last step offers "Check 4 transfers"; key hints in the review pane | new: quick wins |
-| F18 | Applying a rule to past transactions is a second step | Medium | "Also apply to N existing" checkbox in the editor | new: quick wins |
-| F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | new: settings sections |
-| F2 | Six unbuilt sections in the navigation | Medium | Hide them until built, or show them under "Coming soon" | needs a decision |
-| F1 | Empty landing after setup | Medium | A first-run checklist on the dashboard (accounts, partner, review) until it's done | #234 later; a small checklist now |
-| F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | new; alongside #48 |
-| F15 | Split is hard to find, and starts as two halves | Low | Split with the other actions; the second part takes the rest, uncategorized | new: quick wins |
-| F4 | "No transactions match" on a new account | Low | "No transactions yet", with Add and Import | new: quick wins |
-| F3 | Two time controls; empty months on the dashboard | Low | Net worth follows the page range; start cash flow at the first transaction | new: quick wins |
-| F6, F7, F9 | Import step count shifts; accounts hidden; "0s" | Low | Fixed step list; show the accounts collapsed by default; "in under a second" | new: quick wins |
-| F16 | Phone rows wrap to three lines | Low | Truncate the account name; badge on the amount line | new: quick wins |
-| F19 | Long rule editor | Low | Start with one condition and one action; "Add condition" for more | later |
-| F22, F23 | Settings twice; password rules twice | Low | One entry each | new: quick wins |
+| F11 | Low list density | Medium | A dense, sortable table on desktop; make the density choice visible on the list | #351 |
+| F8, F17 | Counts that don't agree; review pane repeats the category | Medium | Separate badges, or "4 + 4 transfers"; the import's last step offers "Check 4 transfers"; one category picker in the review pane | #350 |
+| F18 | Applying a rule to past transactions is a second step | Medium | "Also apply to N existing" checkbox in the editor | #350 |
+| F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | #352 |
+| F2 | Six unbuilt sections in the navigation | — | Keep them: they show what Fiscus will have | Won't change |
+| F1 | Empty landing after setup | Medium | A first-run checklist on the dashboard (accounts, partner, review) until it's done | #354 |
+| F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | #353, with #48 |
+| F15 | Split is hard to find, and starts as two halves | Low | Split with the other actions; the second part takes the rest, uncategorized | #350 |
+| F4 | "No transactions match" on a new account | Low | "No transactions yet", with Add and Import | #350 |
+| F3 | Two time controls; empty months on the dashboard | Low | Net worth follows the page range; start cash flow at the first transaction | #350 |
+| F6, F7, F9 | Import step count shifts; accounts hidden; "0s" | Low | Fixed step list; show the accounts collapsed by default; "in under a second" | #350 |
+| F16 | Phone rows wrap to three lines | Low | Truncate the account name; badge on the amount line | #350 |
+| F19 | Long rule editor | Low | Start with one condition and one action; "Add condition" for more | #355 |
+| F22, F23 | Settings twice; password rules twice | Low | One entry each | #350 |
 | — | Transfer review at scale | Medium | | #332 |
 
 ## Proposed order for M1.5
 
-1. **Faster transaction editing** (F12, F13, F14). The most frequent task in the app, and the
-   biggest gap from Monarch.
+1. ~~**Faster transaction editing** (F12, F13, F14).~~ Done in #349.
 2. **Quick wins** (F3, F4, F6–F9, F15–F18, F22, F23). One PR of small fixes.
 3. **Merchant cleanup** (#42, F10, F20). It makes every list and rule read better.
 4. **Transactions table** (F11), once editing is fast.
@@ -304,8 +306,9 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 7. Then the rest of M1.5, as planned: edit history (#46), OFX and YNAB/Actual imports (#74, #76),
    multi-currency (#43), member-scoped rules (#58), member leaving (#62), and so on.
 
-## Questions
+## Decisions
 
-- **F2:** hide the unbuilt sections, or keep them visible as "Coming soon"?
-- **F14:** should setting a category count as reviewing it?
-- **F13:** save as you go in the drawer (Monarch's way), or keep an explicit Save?
+- **F2:** unbuilt sections stay in the navigation: they show what's coming. Each opens a page
+  saying so.
+- **F13:** the drawer saves as you go, as Monarch's does.
+- **F14:** setting a category counts as reviewing it. It's a household setting, on by default.

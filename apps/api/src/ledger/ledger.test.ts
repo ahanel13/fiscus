@@ -85,6 +85,77 @@ describe('ledger', () => {
     expect(system).toEqual(['settlement', 'transfer', 'uncategorized']);
   });
 
+  it('setting a category marks it reviewed, unless the household turns that off (#349)', async () => {
+    const acct = await account(A, { name: 'Review acct' });
+    const all = (await A.get(url('/categories'))).body.data.flatMap(
+      (g: { categories: { id: string; name: string }[] }) => g.categories,
+    );
+    const cat = (name: string) => all.find((c: { name: string }) => c.name === name).id;
+    const get = async (id: string) => (await A.get(url(`/transactions/${id}`))).body.data;
+    const flag = async (id: string) => {
+      const t = await get(id);
+      const r = await A.request(
+        'PATCH',
+        url(`/transactions/${id}`),
+        { reviewStatus: 'needs_review' },
+        { headers: { 'if-match': `"v${t.version}"` } },
+      );
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+    };
+    const categorize = async (id: string, name: string) => {
+      const t = await get(id);
+      const r = await A.request(
+        'PATCH',
+        url(`/transactions/${id}`),
+        { categoryId: cat(name) },
+        { headers: { 'if-match': `"v${t.version}"` } },
+      );
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      return r.body.data;
+    };
+
+    const one = await txn(A, acct, '2025-01-15', -1200, 'Review probe');
+    await flag(one);
+    expect((await categorize(one, 'Coffee')).reviewStatus).toBe('reviewed');
+    // Saying otherwise in the same change wins.
+    await flag(one);
+    const t = await get(one);
+    const keep = await A.request(
+      'PATCH',
+      url(`/transactions/${one}`),
+      { categoryId: cat('Restaurants'), reviewStatus: 'needs_review' },
+      { headers: { 'if-match': `"v${t.version}"` } },
+    );
+    expect(keep.body.data.reviewStatus).toBe('needs_review');
+    // In bulk too.
+    const bulk = await A.request('PATCH', url('/transactions'), {
+      ids: [one],
+      changes: { categoryId: cat('Coffee') },
+    });
+    expect(bulk.body.data.updated).toEqual([one]);
+    expect((await get(one)).reviewStatus).toBe('reviewed');
+
+    // Off: the category changes, the review flag stays.
+    const h = (await A.get(url())).body.data;
+    const off = await A.request(
+      'PATCH',
+      url(),
+      { categorizeMarksReviewed: false },
+      { headers: { 'if-match': `"v${h.version}"` } },
+    );
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    expect(off.body.data.categorizeMarksReviewed).toBe(false);
+    await flag(one);
+    expect((await categorize(one, 'Groceries')).reviewStatus).toBe('needs_review');
+    const h2 = (await A.get(url())).body.data;
+    await A.request(
+      'PATCH',
+      url(),
+      { categorizeMarksReviewed: true },
+      { headers: { 'if-match': `"v${h2.version}"` } },
+    );
+  });
+
   describe('balances follow transactions (design §2)', () => {
     it('computes days around an entered balance, backward and forward', async () => {
       const acct = await account(A, {
