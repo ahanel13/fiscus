@@ -118,7 +118,8 @@ describe('rules', () => {
     });
     expect(byAmount(-999)).toMatchObject({ categoryId: dining }); // from the file, kept
     expect(byAmount(-500)).toMatchObject({ categoryId: groceries });
-    expect(byAmount(-3000)).toMatchObject({ displayName: 'SHELL OIL', categoryId: null });
+    // Named from the bank's text (#42); no rule touched it.
+    expect(byAmount(-3000)).toMatchObject({ displayName: 'Shell Oil', categoryId: null });
     expect(uncategorized).toBeTruthy();
   });
 
@@ -153,7 +154,7 @@ describe('rules', () => {
       expect.objectContaining({ transactionId: id, changes: { categoryId: [null, groceries] } }),
       expect.objectContaining({
         transactionId: other.id,
-        changes: { displayName: ['COSTCO WHSE #55', 'Costco'] },
+        changes: { displayName: ['Costco Whse', 'Costco'] },
       }),
     ]);
     expect((await A.post(url(`/rules/${costco}/apply`))).body.data).toEqual({ changed: 2 });
