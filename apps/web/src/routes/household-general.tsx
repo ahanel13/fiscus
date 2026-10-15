@@ -54,6 +54,7 @@ export function HouseholdGeneral({
     dateBasis: household.dateBasis,
     financeStyle: household.financeStyle,
     categorizeMarksReviewed: household.categorizeMarksReviewed,
+    cleanMerchantNames: household.cleanMerchantNames,
   };
   const [form, setForm] = useState(initial);
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
@@ -177,6 +178,19 @@ export function HouseholdGeneral({
           </Switch>
           <p className="text-xs text-muted">
             Choosing the category is usually the review. Turn this off to review separately.
+          </p>
+        </div>
+        <div className="space-y-1">
+          <Switch
+            isSelected={form.cleanMerchantNames}
+            onChange={(cleanMerchantNames) => set({ cleanMerchantNames })}
+            isDisabled={!owner}
+          >
+            Clean up merchant names
+          </Switch>
+          <p className="text-xs text-muted">
+            “SQ *BLUE BOTTLE #12” becomes “Blue Bottle” when a bank file is imported. The bank’s
+            text is always kept as the original. Turn this off to name transactions with it as is.
           </p>
         </div>
         {owner ? (

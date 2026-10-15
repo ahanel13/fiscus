@@ -42,6 +42,8 @@ export const households = pgTable(
     financeStyle: financeStyle().notNull().default('hybrid'),
     /** Setting a transaction's category marks it reviewed (the walkthrough's F14, #349). */
     categorizeMarksReviewed: boolean().notNull().default(true),
+    /** Name transactions from a cleaned-up bank description (#42). The original stays as is. */
+    cleanMerchantNames: boolean().notNull().default(true),
     status: householdStatus().notNull().default('active'),
     ...versioning(),
     ...timestamps(),

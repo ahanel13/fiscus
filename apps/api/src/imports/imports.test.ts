@@ -132,6 +132,29 @@ describe('imports', () => {
     expect(balances.at(-1)).toMatchObject({ asOf: '2026-03-01', amountMinor: -900 });
   });
 
+  it('keeps the bank’s text as the name when the household turns cleanup off (#42)', async () => {
+    const setClean = async (on: boolean) => {
+      const h = (await A.get(url())).body.data;
+      const r = await A.request(
+        'PATCH',
+        url(),
+        { cleanMerchantNames: on },
+        {
+          headers: { 'if-match': `"v${h.version}"` },
+        },
+      );
+      expect(r.body.data.cleanMerchantNames).toBe(on);
+    };
+    await setClean(false);
+    const acc = await account('Raw names checking');
+    const done = await run(csv(acc, [row(2, '2026-03-04', -675, 'SQ *BLUE BOTTLE #12')]));
+    expect(done.res.status, JSON.stringify(done.res.body)).toBe(200);
+    expect((await list(acc)).map((t) => [t.displayName, t.originalDescription])).toEqual([
+      ['SQ *BLUE BOTTLE #12', 'SQ *BLUE BOTTLE #12'],
+    ]);
+    await setClean(true);
+  });
+
   it('skips rows imported before, and flags possible duplicates of what’s already there', async () => {
     const acc = await account('Dedupe checking');
     const manual = (

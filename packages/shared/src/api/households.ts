@@ -31,6 +31,8 @@ const householdSettings = {
   financeStyle: financeStyleSchema,
   /** Setting a transaction's category marks it reviewed. */
   categorizeMarksReviewed: z.boolean(),
+  /** Name imported transactions from a cleaned-up bank description. */
+  cleanMerchantNames: z.boolean(),
 };
 
 export const createHouseholdSchema = z.object({
@@ -40,6 +42,7 @@ export const createHouseholdSchema = z.object({
   dateBasis: householdSettings.dateBasis.default('posted'),
   financeStyle: householdSettings.financeStyle.default('hybrid'),
   categorizeMarksReviewed: householdSettings.categorizeMarksReviewed.default(true),
+  cleanMerchantNames: householdSettings.cleanMerchantNames.default(true),
   /** How the creator appears in this household. Defaults to their account display name. */
   displayName: displayNameSchema.optional(),
 });
@@ -79,6 +82,8 @@ export interface Household {
   financeStyle: 'combined' | 'hybrid' | 'separate' | 'roommates';
   /** Setting a transaction's category marks it reviewed. */
   categorizeMarksReviewed: boolean;
+  /** Name imported transactions from a cleaned-up bank description. */
+  cleanMerchantNames: boolean;
   status: 'active' | 'disabled' | 'deleting';
   version: number;
   you: { memberId: string; role: MemberRole };

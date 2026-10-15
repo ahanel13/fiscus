@@ -110,7 +110,7 @@ review step says so. Importing the same file again adds nothing.
 - ~~**F8.**~~ *Fixed in #350.* The last step says **Review 2 transactions**, while the sidebar badge says **6**. The
   badge also counts the 4 transfers to check, and nothing on this screen mentions them.
 - ~~**F9.**~~ *Fixed in #350.* "imported into 6 accounts in 0s". Under a second reads oddly as "0s".
-- ~~**F10.**~~ *Fixed in #42: bank-file names are cleaned as they arrive ("BEAN THERE CAFE" becomes "Bean There Cafe"), the bank's text stays the original, and Rules offers to clean up older names, with a preview and Undo.* Names stay as the bank wrote them. "BEAN THERE CAFE" (from the bank file) sits next to
+- ~~**F10.**~~ *Fixed in #42: bank-file names are cleaned as they arrive ("BEAN THERE CAFE" becomes "Bean There Cafe"), the bank's text stays the original, and Rules offers to clean up older names, with a preview and Undo. A household setting turns it off.* Names stay as the bank wrote them. "BEAN THERE CAFE" (from the bank file) sits next to
   "Bean There" (from Monarch), and every list shows the difference.
 
 ### A bank or card statement
