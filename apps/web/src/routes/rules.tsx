@@ -26,6 +26,7 @@ import {
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { NameCleanupCard } from './name-cleanup.js';
 import {
   AmountInput,
   Badge,
@@ -123,6 +124,7 @@ export function RulesPage() {
           more. They run top to bottom, and a later rule wins when two set the same thing. They
           never change something a person set, and act only where their author could by hand.
         </p>
+        {canEdit ? <NameCleanupCard householdId={householdId} /> : null}
         {list.isPending ? null : rules.length === 0 ? (
           <EmptyState icon={Wand2} title="No rules yet">
             <p>Create one here, or from a transaction: open it and choose “Make a rule”.</p>

@@ -22,6 +22,8 @@ import type {
   createTransactionSchema,
   linkTransferSchema,
   moveTransactionsSchema,
+  NameCleanup,
+  NameCleanupPreview,
   setSplitsSchema,
   RangeMeta,
   ReviewCount,
@@ -29,8 +31,10 @@ import type {
   TransferCounterpart,
   TransferReview,
   transactionsQuerySchema,
+  undoNameCleanupSchema,
   updateTransactionSchema,
 } from '@fiscus/shared';
+import { cleanMerchantName } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import {
   and,
@@ -51,7 +55,7 @@ import type { z } from 'zod';
 import { recomputeBalances } from '../accounts/balances.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
-import { HouseholdScope } from '../households/household-scope.js';
+import { type HouseholdActivity, HouseholdScope } from '../households/household-scope.js';
 import {
   type HouseholdRanges,
   householdRanges,
@@ -721,6 +725,144 @@ export class TransactionsService {
       }
       return result;
     });
+  }
+
+  /**
+   * #42: names that are still the bank's text (no person or rule renamed them), and the cleaner
+   * name for each, among transactions you can categorize. The original description stays as is.
+   */
+  async #nameCleanups(tx: Executor, access: Access) {
+    const rows = await tx
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          isNull(transactions.deletedAt),
+          isNull(transactions.parentId),
+          sql`${transactions.displayName} = ${transactions.originalDescription}`,
+        ),
+      )
+      .orderBy(desc(transactions.effectiveDate), desc(transactions.id));
+    return (
+      rows
+        // Typed in by hand, the name is a person's own, whatever it looks like.
+        .filter(
+          (r) =>
+            r.source !== 'manual' &&
+            !('displayName' in r.fieldVersions) &&
+            this.#permissions(r, access).categorize,
+        )
+        .map((row) => ({ row, to: cleanMerchantName(row.originalDescription) }))
+        .filter(({ row, to }) => to && to !== row.displayName)
+    );
+  }
+
+  async nameCleanupPreview(ctx: HouseholdContext): Promise<NameCleanupPreview> {
+    return this.scope.run(ctx, async (tx) => {
+      const all = await this.#nameCleanups(tx, await this.#access(tx, ctx));
+      return {
+        total: all.length,
+        changes: all.slice(0, 200).map(({ row, to }) => ({
+          id: row.id,
+          date: row.effectiveDate,
+          amountMinor: row.amountMinor,
+          currency: row.currency,
+          from: row.displayName,
+          to,
+        })),
+      };
+    });
+  }
+
+  /** Cleans up every name the preview lists. Not marked as set by a person: rules still apply. */
+  async cleanNames(ctx: HouseholdContext): Promise<NameCleanup[]> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const all = await this.#nameCleanups(tx, await this.#access(tx, ctx));
+      const changes = all.map(({ row, to }) => ({ id: row.id, from: row.displayName, to }));
+      await this.#rename(tx, activity, changes, 'from', 'to');
+      return all.map(({ row, to }) => ({
+        id: row.id,
+        date: row.effectiveDate,
+        amountMinor: row.amountMinor,
+        currency: row.currency,
+        from: row.displayName,
+        to,
+      }));
+    });
+  }
+
+  /** Undo for cleanNames: names still as the cleanup left them go back. */
+  async undoCleanNames(
+    ctx: HouseholdContext,
+    input: z.infer<typeof undoNameCleanupSchema>,
+  ): Promise<{ restored: number }> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const access = await this.#access(tx, ctx);
+      if (input.changes.length === 0) return { restored: 0 };
+      const rows = await tx
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            inArray(
+              transactions.id,
+              input.changes.map((c) => c.id),
+            ),
+            isNull(transactions.deletedAt),
+          ),
+        );
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const allowed = input.changes.filter((c) => {
+        const row = byId.get(c.id);
+        return (
+          row &&
+          row.displayName === c.to &&
+          row.originalDescription === c.from &&
+          !('displayName' in row.fieldVersions) &&
+          this.#permissions(row, access).categorize
+        );
+      });
+      const restored = await this.#rename(tx, activity, allowed, 'to', 'from');
+      return { restored };
+    });
+  }
+
+  /**
+   * Sets names in one statement, only where they're still `whereWas`, and records one event per
+   * account. Returns how many changed.
+   */
+  async #rename(
+    tx: Executor,
+    activity: HouseholdActivity,
+    changes: { id: string; from: string; to: string }[],
+    whereWas: 'from' | 'to',
+    setTo: 'from' | 'to',
+  ): Promise<number> {
+    if (changes.length === 0) return 0;
+    const list = JSON.stringify(
+      changes.map((c) => ({ id: c.id, was: c[whereWas], name: c[setTo] })),
+    );
+    const updated = await tx.execute(sql`
+      UPDATE transactions AS t
+      SET display_name = v.name, version = t.version + 1
+      FROM jsonb_to_recordset(${list}::jsonb) AS v(id uuid, was text, name text)
+      WHERE t.id = v.id AND t.display_name = v.was
+      RETURNING t.id, t.account_id`);
+    const byAccount = new Map<string, string[]>();
+    for (const r of updated.rows as { id: string; account_id: string }[]) {
+      byAccount.set(r.account_id, [...(byAccount.get(r.account_id) ?? []), r.id]);
+    }
+    for (const [accountId, ids] of byAccount) {
+      await activity.record({
+        action: 'transaction.bulk_updated',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: { count: ids.length, fields: ['displayName'], via: 'name_cleanup' },
+        changes: { after: { ids } },
+      });
+    }
+    return updated.rows.length;
   }
 
   /** ATT-01/02: owners of the paying account say who it's for. `[]` inherits from the owners. */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { CategoryGroup, Rule, RuleActions, RuleConditions } from '@fiscus/shared';
-import { formatMoney, ruleMatches } from '@fiscus/shared';
+import { formatMoney, PROCESSOR_PREFIX, ruleMatches, US_STATES } from '@fiscus/shared';
 
 // Rules in words, for the list and the editor (docs/design/imports.md §3).
 
@@ -80,23 +80,18 @@ export function describeActions(
 export const categoryNames = (groups: CategoryGroup[]) =>
   new Map(groups.flatMap((g) => g.categories.map((c) => [c.id, c.name] as const)));
 
-/** Card processors put their name before the merchant's: "SQ *BLUE BOTTLE", "TST* SHAKE SHACK". */
-const PROCESSOR =
-  /^(sq|tst|sp|pp|paypal|gglpay|google|apl|apple pay|py|in|dd|bt|ck|wpy|pos)\s?\*\s?/i;
-
-const STATES = new Set(
-  'AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC'.split(
-    ' ',
-  ),
-);
-
 /**
  * The part of a bank description that names the merchant, to match others from it: processor
  * prefix and store numbers removed, a trailing state dropped, at most three words
  * ("TRADER JOE S #123 SALT LAKE" → "TRADER JOE", "SQ *BLUE BOTTLE" → "BLUE BOTTLE").
  */
 export function suggestMatchText(description: string): string {
-  const words = description.trim().replace(PROCESSOR, '').replace(/\*/g, ' ').trim().split(/\s+/);
+  const words = description
+    .trim()
+    .replace(PROCESSOR_PREFIX, '')
+    .replace(/\*/g, ' ')
+    .trim()
+    .split(/\s+/);
   let i = 0;
   while (i < words.length - 1 && /\d/.test(words[i]!)) i++; // "9640 AMC"
   const kept: string[] = [];
@@ -104,7 +99,7 @@ export function suggestMatchText(description: string): string {
     if (/[\d#]/.test(w)) break;
     kept.push(w);
   }
-  while (kept.length > 1 && STATES.has(kept.at(-1)!)) kept.pop();
+  while (kept.length > 1 && US_STATES.has(kept.at(-1)!)) kept.pop();
   while (kept.length > 1 && kept.at(-1)!.length === 1) kept.pop(); // "EBAY O"
   const out = kept.slice(0, 3);
   return (out.length ? out : words.slice(0, 2)).join(' ');

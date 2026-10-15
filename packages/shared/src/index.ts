@@ -10,3 +10,4 @@ export { MEMBER_COLORS } from './design.js';
 export * from './ranges.js';
 export * from './api/imports.js';
 export * from './imports/index.js';
+export * from './merchants.js';

@@ -110,7 +110,7 @@ review step says so. Importing the same file again adds nothing.
 - ~~**F8.**~~ *Fixed in #350.* The last step says **Review 2 transactions**, while the sidebar badge says **6**. The
   badge also counts the 4 transfers to check, and nothing on this screen mentions them.
 - ~~**F9.**~~ *Fixed in #350.* "imported into 6 accounts in 0s". Under a second reads oddly as "0s".
-- **F10.** Names stay as the bank wrote them. "BEAN THERE CAFE" (from the bank file) sits next to
+- ~~**F10.**~~ *Fixed in #42: bank-file names are cleaned as they arrive ("BEAN THERE CAFE" becomes "Bean There Cafe"), the bank's text stays the original, and Rules offers to clean up older names, with a preview and Undo.* Names stay as the bank wrote them. "BEAN THERE CAFE" (from the bank file) sits next to
   "Bean There" (from Monarch), and every list shows the difference.
 
 ### A bank or card statement
@@ -208,7 +208,7 @@ unless you untick that. Rules run top to bottom, and never undo what a person se
   so. Monarch asks in the editor, with a count ("Apply to 12 existing transactions").
 - **F19.** The editor shows every condition and action at once, which makes for a long dialog for
   "if it says X, call it Y". Most rules use one condition and one or two actions.
-- **F20.** Suggested rules use the bank's raw text ("When the description contains “CORNER
+- ~~**F20.**~~ *Better since #42: rule suggestions still match the bank's text, but names read as names.* Suggested rules use the bank's raw text ("When the description contains “CORNER
   HARDWARE”"). That's correct, but loud. It goes away with merchant cleanup (F10).
 
 ---
@@ -279,7 +279,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 | F12 | Recategorizing takes four steps | High | Category picker on the row itself, on desktop and phone | Fixed (#349) |
 | F13 | Drawer edits wait for Save | High | Save each field as it changes, with undo in the toast | Fixed (#349) |
 | F14 | Categorizing doesn't mark reviewed | Medium | Setting a category marks it reviewed, as a household setting (on by default) | Fixed (#349) |
-| F10, F20 | Bank-formatted names | High | Merchant cleanup | #42 |
+| F10, F20 | Bank-formatted names | High | Merchant cleanup | Fixed (#42) |
 | F11 | Low list density | Medium | A dense, sortable table on desktop; make the density choice visible on the list | #351 |
 | F8, F17 | Counts that don't agree; review pane repeats the category | Medium | Separate badges, or "4 + 4 transfers"; the import's last step offers "Check 4 transfers"; one category picker in the review pane | Fixed (#350) |
 | F18 | Applying a rule to past transactions is a second step | Medium | "Also apply to N existing" checkbox in the editor | Fixed (#350) |
@@ -300,7 +300,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 
 1. ~~**Faster transaction editing** (F12, F13, F14).~~ Done in #349.
 2. ~~**Quick wins** (F3, F4, F6–F9, F15–F18, F22, F23).~~ Done in #350.
-3. **Merchant cleanup** (#42, F10, F20). It makes every list and rule read better.
+3. ~~**Merchant cleanup** (#42, F10, F20).~~ Done in #42.
 4. **Transactions table** (F11), once editing is fast.
 5. **Settings sections** (F21) and **account page chart** (F5, with #48 account groups).
 6. **Transfer review follow-ups** (#332).

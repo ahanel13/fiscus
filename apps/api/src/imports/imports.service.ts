@@ -32,6 +32,7 @@ import {
   type importRowsSchema,
   type ImportRowsResult,
   type ImportRun,
+  cleanMerchantName,
   inferCategoryKind,
   MEMBER_COLORS,
   normalizeDescription,
@@ -1087,7 +1088,9 @@ export class ImportsService {
           authorizedDate: p.row.date,
           postedDate: p.row.date,
           originalDescription: p.row.description.trim() || p.row.name!.trim(),
-          displayName: p.row.name?.trim() || p.row.description.trim(),
+          // A name given in the file (Monarch's merchant) as is; otherwise cleaned from the
+          // bank's text, which stays the original description (#42).
+          displayName: p.row.name?.trim() || cleanMerchantName(p.row.description),
           categoryId: p.row.category ? (mapping.categories[lower(p.row.category)] ?? null) : null,
           // What the file supplied counts as someone's decision: rules don't change it.
           fieldVersions: Object.fromEntries(

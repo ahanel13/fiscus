@@ -114,9 +114,18 @@ describe('imports', () => {
       { accountId: acc, runId: done.run!.runId, transactionCount: 2, canRevert: true },
     ]);
     const rows = await list(acc);
-    expect(rows.map((t) => [t.date, t.amountMinor, t.displayName, t.reviewStatus])).toEqual([
-      ['2026-03-01', -450, 'COFFEE', 'needs_review'],
-      ['2026-03-01', -450, 'COFFEE', 'needs_review'],
+    // The name is cleaned from the bank's text (#42), which is kept as it came.
+    expect(
+      rows.map((t) => [
+        t.date,
+        t.amountMinor,
+        t.displayName,
+        t.originalDescription,
+        t.reviewStatus,
+      ]),
+    ).toEqual([
+      ['2026-03-01', -450, 'Coffee', 'COFFEE', 'needs_review'],
+      ['2026-03-01', -450, 'Coffee', 'COFFEE', 'needs_review'],
     ]);
     // The account follows its transactions.
     const balances = (await A.get(url(`/accounts/${acc}/balances`))).body.data;

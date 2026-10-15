@@ -334,6 +334,50 @@ describe('ledger', () => {
     });
   });
 
+  describe('name cleanup (#42)', () => {
+    it('previews, cleans, and undoes, touching only names still as the bank wrote them', async () => {
+      const acct = await account(A, { name: 'Cleanup acct', visibility: 'private' });
+      const imported = async (text: string, name = text) =>
+        (
+          await sql(
+            `INSERT INTO transactions (household_id, id, account_id, amount_minor, currency, authorized_date, posted_date,
+               original_description, display_name, source)
+             VALUES ($1, gen_random_uuid(), $2, -500, 'USD', '2025-02-03', '2025-02-03', $3, $4, 'import')
+             RETURNING id`,
+            [hh, acct, text, name],
+          )
+        )[0].id as string;
+      const bottle = await imported('SQ *BLUE BOTTLE #12');
+      const renamed = await imported('TST* SHAKE SHACK 9', 'Shakes'); // a rule or person named it
+      const clean = await imported('Subway');
+      const typed = await txn(A, acct, '2025-02-04', -300, 'MY NOTE 42'); // typed in by hand
+      const get = async (id: string) => (await A.get(url(`/transactions/${id}`))).body.data;
+
+      const preview = (await A.get(url('/transactions/clean-names'))).body.data;
+      const ids = preview.changes.map((c: { id: string }) => c.id);
+      expect(preview.changes.find((c: { id: string }) => c.id === bottle)).toMatchObject({
+        from: 'SQ *BLUE BOTTLE #12',
+        to: 'Blue Bottle',
+      });
+      for (const id of [renamed, clean, typed]) expect(ids).not.toContain(id);
+      // Only those you can categorize: Bea sees nothing of Ada's private account here.
+      const bea = (await B.get(url('/transactions/clean-names'))).body.data.changes;
+      expect(bea.map((c: { id: string }) => c.id)).not.toContain(bottle);
+
+      const cleaned = await A.post(url('/transactions/clean-names'));
+      expect(cleaned.status, JSON.stringify(cleaned.body)).toBe(200);
+      expect((await get(bottle)).displayName).toBe('Blue Bottle');
+      expect((await get(bottle)).originalDescription).toBe('SQ *BLUE BOTTLE #12');
+      expect((await get(renamed)).displayName).toBe('Shakes');
+
+      const undo = await A.post(url('/transactions/clean-names/undo'), {
+        changes: cleaned.body.data.map((c: { id: string; from: string; to: string }) => c),
+      });
+      expect(undo.body.data.restored).toBe(cleaned.body.data.length);
+      expect((await get(bottle)).displayName).toBe('SQ *BLUE BOTTLE #12');
+    });
+  });
+
   describe('date override (#281)', () => {
     it('moves an imported transaction to another day without losing the bank’s date', async () => {
       const acct = await account(A, {});
