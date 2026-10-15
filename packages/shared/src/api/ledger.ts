@@ -157,6 +157,10 @@ const csv = z
   .transform((s) => s.split(',').filter(Boolean))
   .pipe(z.array(z.uuid()).max(100));
 
+/** The columns the transactions table sorts by (#351). */
+export const transactionSortSchema = z.enum(['date', 'name', 'category', 'account', 'amount']);
+export type TransactionSort = z.infer<typeof transactionSortSchema>;
+
 export const transactionsQuerySchema = z.object({
   lens: lensSchema.default('all'),
   /** A preset or `custom` (with from/to); plain from/to also work on their own. */
@@ -171,9 +175,14 @@ export const transactionsQuerySchema = z.object({
   maxAmount: z.coerce.number().int().optional(),
   review: z.enum(['needs_review', 'reviewed']).optional(),
   includeExcluded: z.enum(['true', 'false']).default('true'),
-  /** Newest first, or oldest first (the review queue). */
+  /** Newest first, or oldest first (the review queue). With `sort`, `direction` overrides it. */
   order: z.enum(['newest', 'oldest']).default('newest'),
-  cursor: z.string().max(200).optional(),
+  /** Ties go newest first. */
+  sort: transactionSortSchema.default('date'),
+  /** By default: newest first, A to Z, and the most money out first. */
+  direction: z.enum(['asc', 'desc']).optional(),
+  /** Holds the last row's sort value, so it's longer for names. */
+  cursor: z.string().max(600).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 

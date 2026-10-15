@@ -6,9 +6,11 @@ import type {
   HouseholdMember,
   Tag,
   Transaction,
+  TransactionSort,
 } from '@fiscus/shared';
 import { MEMBER_COLORS } from '@fiscus/shared';
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -22,6 +24,8 @@ import {
   Landmark,
   Link2,
   Plus,
+  Rows3,
+  Rows4,
   Search,
   SlidersHorizontal,
   SplitSquareHorizontal,
@@ -31,6 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import type { Key, SortDescriptor } from 'react-aria-components';
 import { api, type ApiError } from '../api/client.js';
 import {
   accountsQuery,
@@ -52,7 +57,9 @@ import {
   Badge,
   Button,
   ButtonLink,
+  Cell,
   Checkbox,
+  Column,
   ConfirmDialog,
   DatePicker,
   DateText,
@@ -66,12 +73,16 @@ import {
   MenuTrigger,
   Radio,
   RadioGroup,
+  Row,
   SegmentedControl,
   Select,
   SelectItem,
   SelectSection,
   Skeleton,
   Switch,
+  Table,
+  TableBody,
+  TableHeader,
   TagPicker,
   TextField,
   toast,
@@ -83,6 +94,8 @@ import { RangeSelect } from '../components/RangeControls.js';
 import { rangeParams, selectionLabel } from '../lib/ranges.js';
 import { RuleEditor, RuleSuggestion, suggestMatchText, useRuleSuggestionContext } from './rules.js';
 import { type SuggestedRule, suggestRule } from '../lib/rules.js';
+import { applyDensity, type Density, storedDensity } from '../lib/density.js';
+import { useMediaQuery, WIDE } from '../lib/media.js';
 import { useRange } from '../lib/use-range.js';
 
 type Data<T> = { data: T };
@@ -192,6 +205,22 @@ function useRowCategory(
 
 // ── List ─────────────────────────────────────────────────────────────────────────────────────
 
+/** Newest first: the list's order, and the table's until a column is chosen. */
+const BY_DATE: SortDescriptor = { column: 'date', direction: 'descending' };
+
+/** The table's sort as query parameters; newest first needs none. */
+function sortParams(sort: SortDescriptor): Pick<TransactionFilters, 'sort' | 'direction'> {
+  if (sort.column === BY_DATE.column && sort.direction === BY_DATE.direction) return {};
+  return {
+    sort: sort.column as TransactionSort,
+    direction: sort.direction === 'ascending' ? 'asc' : 'desc',
+  };
+}
+
+/**
+ * Transactions, newest first. A list grouped by day; from `xl` up, a dense table
+ * sortable by each column (the walkthrough's F11).
+ */
 export function TransactionList({
   householdId,
   filters,
@@ -202,6 +231,7 @@ export function TransactionList({
   onSelectedChange,
   onOpen,
   onCategorized,
+  showAccount = true,
   empty,
 }: {
   householdId: string;
@@ -214,10 +244,19 @@ export function TransactionList({
   onOpen: (id: string) => void;
   /** After a row's category changes, e.g. to suggest a rule. */
   onCategorized?: (t: Transaction, categoryId: string) => void;
+  /** The table's Account column; an account's own page leaves it out. */
+  showAccount?: boolean;
   /** Shown when there's nothing at all, rather than nothing matching the filters. */
   empty?: ReactNode;
 }) {
-  const query = useInfiniteQuery(transactionsQuery(householdId, filters));
+  const wide = useMediaQuery(WIDE);
+  const [sort, setSort] = useState<SortDescriptor>(BY_DATE);
+  const query = useInfiniteQuery({
+    // The list groups by day, so only the table sorts otherwise.
+    ...transactionsQuery(householdId, wide ? { ...filters, ...sortParams(sort) } : filters),
+    // Re-sorting keeps the rows in place until the new order arrives.
+    ...(wide ? { placeholderData: keepPreviousData } : {}),
+  });
   const { names } = categoryIndex(groups);
   const categorize = useRowCategory(householdId, groups, onCategorized);
   const items = useMemo(() => query.data?.pages.flatMap((p) => p.data) ?? [], [query.data]);
@@ -242,6 +281,132 @@ export function TransactionList({
           No transactions match.
         </p>
       )
+    );
+  }
+
+  const category = (t: Transaction) =>
+    t.can.categorize && !t.hasSplits ? (
+      <CategorySelect
+        groups={groups}
+        value={t.categoryId}
+        label={`Category of ${t.displayName}`}
+        hideLabel
+        appearance="chip"
+        onChange={(categoryId) => categoryId !== t.categoryId && categorize(t, categoryId)}
+      />
+    ) : (
+      <span className="truncate text-xs text-muted">
+        {t.categoryId ? (names.get(t.categoryId) ?? 'Uncategorized') : 'Uncategorized'}
+      </span>
+    );
+  const badges = (t: Transaction) => (
+    <>
+      {t.reviewStatus === 'needs_review' ? <Badge tone="accent">Review</Badge> : null}
+      {t.transfer ? (
+        // Long account names ("MyLowe's® Rewards Credit Card (...4444)") truncate.
+        <Badge className="max-w-full min-w-0">
+          <span className="min-w-0 truncate">{transferLabel(t, members)}</span>
+        </Badge>
+      ) : null}
+      {t.excluded ? <Badge>Excluded</Badge> : null}
+      {t.dateEdited ? <Badge>Date moved</Badge> : null}
+    </>
+  );
+  const more = query.hasNextPage ? (
+    <div className="flex justify-center">
+      <Button
+        variant="secondary"
+        onPress={() => void query.fetchNextPage()}
+        isPending={query.isFetchingNextPage}
+      >
+        Show more
+      </Button>
+    </div>
+  ) : null;
+
+  if (wide) {
+    const editable = items.filter((t) => t.can.categorize).map((t) => t.id);
+    return (
+      <div className="space-y-5">
+        <div className="rounded-xl border border-border bg-surface">
+          <Table
+            aria-label="Transactions"
+            className="table-fixed"
+            sortDescriptor={sort}
+            onSortChange={setSort}
+            onRowAction={(id) => onOpen(String(id))}
+            {...(selectable
+              ? {
+                  selectionMode: 'multiple' as const,
+                  selectedKeys: selected ?? new Set<string>(),
+                  // Rows you can't change can still be opened, but not selected.
+                  disabledKeys: items.filter((t) => !t.can.categorize).map((t) => t.id),
+                  disabledBehavior: 'selection' as const,
+                  onSelectionChange: (keys: 'all' | Set<Key>) =>
+                    onSelectedChange?.(new Set(keys === 'all' ? editable : [...keys].map(String))),
+                }
+              : {})}
+          >
+            <TableHeader>
+              <Column id="date" allowsSorting className="w-32">
+                Date
+              </Column>
+              <Column id="name" allowsSorting isRowHeader>
+                Name
+              </Column>
+              <Column id="category" allowsSorting className="w-44">
+                Category
+              </Column>
+              {showAccount ? (
+                <Column id="account" allowsSorting className="w-52">
+                  Account
+                </Column>
+              ) : null}
+              <Column id="amount" allowsSorting align="end" className="w-32">
+                Amount
+              </Column>
+            </TableHeader>
+            <TableBody items={items} dependencies={[groups, members, showAccount]}>
+              {(t) => (
+                <Row id={t.id} className="cursor-default">
+                  <Cell className="whitespace-nowrap text-muted">
+                    <DateText value={t.date} format="date" />
+                  </Cell>
+                  <Cell>
+                    <span className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+                      <span className="max-w-full shrink-0 truncate font-medium">
+                        {t.displayName}
+                      </span>
+                      {/* Badges give way before the name does. */}
+                      <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+                        {badges(t)}
+                      </span>
+                    </span>
+                  </Cell>
+                  <Cell>
+                    <span className="flex max-w-full">{category(t)}</span>
+                  </Cell>
+                  {showAccount ? (
+                    <Cell>
+                      {/* The account name gives way, so whose it is stays in view. */}
+                      <span className="flex min-w-0 gap-1 whitespace-nowrap text-muted">
+                        <span className="min-w-0 truncate">
+                          {t.account ? t.account.name : paidByLabel(t, members)}
+                        </span>
+                        {shared ? <span className="shrink-0">· {forLabel(t, members)}</span> : null}
+                      </span>
+                    </Cell>
+                  ) : null}
+                  <Cell align="end">
+                    <Amount minor={t.amountMinor} currency={t.currency} className="font-medium" />
+                  </Cell>
+                </Row>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        {more}
+      </div>
     );
   }
 
@@ -289,15 +454,7 @@ export function TransactionList({
                         <span>{forLabel(t, members)}</span>
                       </>
                     ) : null}
-                    {t.reviewStatus === 'needs_review' ? <Badge tone="accent">Review</Badge> : null}
-                    {t.transfer ? (
-                      // Long account names ("MyLowe's® Rewards Credit Card (...4444)") truncate.
-                      <Badge className="max-w-full">
-                        <span className="min-w-0 truncate">{transferLabel(t, members)}</span>
-                      </Badge>
-                    ) : null}
-                    {t.excluded ? <Badge>Excluded</Badge> : null}
-                    {t.dateEdited ? <Badge>Date moved</Badge> : null}
+                    {badges(t)}
                   </span>
                 </button>
                 {/* Category and amount: one above the other on a phone, side by side wider. */}
@@ -307,43 +464,14 @@ export function TransactionList({
                     currency={t.currency}
                     className="text-sm font-medium md:order-last md:w-28 md:text-right"
                   />
-                  <span className="flex max-w-full md:w-44 md:justify-end">
-                    {t.can.categorize && !t.hasSplits ? (
-                      <CategorySelect
-                        groups={groups}
-                        value={t.categoryId}
-                        label={`Category of ${t.displayName}`}
-                        hideLabel
-                        appearance="chip"
-                        onChange={(categoryId) =>
-                          categoryId !== t.categoryId && categorize(t, categoryId)
-                        }
-                      />
-                    ) : (
-                      <span className="truncate text-xs text-muted">
-                        {t.categoryId
-                          ? (names.get(t.categoryId) ?? 'Uncategorized')
-                          : 'Uncategorized'}
-                      </span>
-                    )}
-                  </span>
+                  <span className="flex max-w-full md:w-44 md:justify-end">{category(t)}</span>
                 </div>
               </li>
             ))}
           </ul>
         </section>
       ))}
-      {query.hasNextPage ? (
-        <div className="flex justify-center">
-          <Button
-            variant="secondary"
-            onPress={() => void query.fetchNextPage()}
-            isPending={query.isFetchingNextPage}
-          >
-            Show more
-          </Button>
-        </div>
-      ) : null}
+      {more}
     </div>
   );
 }
@@ -564,6 +692,7 @@ export function TransactionsPage() {
                     )}
                   </Dialog>
                 </DialogTrigger>
+                <DensityChoice />
               </div>
               {activeFilters ? (
                 <div role="group" aria-label="Filters on" className="flex flex-wrap gap-2">
@@ -680,6 +809,29 @@ export function TransactionsPage() {
         />
       ) : null}
     </>
+  );
+}
+
+/** Comfortable or compact rows, here on the list rather than in settings (F11). */
+function DensityChoice() {
+  const [density, setDensity] = useState<Density>(storedDensity);
+  const option = (value: Density, label: string, Icon: typeof Rows3) => ({
+    value,
+    label: (
+      <span className="inline-flex items-center gap-1.5">
+        <Icon aria-hidden className="size-4" />
+        <span className="sr-only xl:not-sr-only">{label}</span>
+      </span>
+    ),
+  });
+  return (
+    <SegmentedControl
+      aria-label="Density"
+      className="shrink-0"
+      options={[option('comfortable', 'Comfortable', Rows3), option('compact', 'Compact', Rows4)]}
+      value={density}
+      onChange={(d) => (setDensity(d), applyDensity(d))}
+    />
   );
 }
 

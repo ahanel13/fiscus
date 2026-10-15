@@ -334,6 +334,127 @@ describe('ledger', () => {
     });
   });
 
+  describe('sorting (#351)', () => {
+    const july = '/transactions?from=2027-03-01&to=2027-03-31';
+    beforeAll(async () => {
+      const all = (await A.get(url('/categories'))).body.data.flatMap(
+        (g: { categories: { id: string; name: string }[] }) => g.categories,
+      );
+      const cat = (name: string) => all.find((c: { name: string }) => c.name === name).id;
+      const zed = await account(A, {
+        name: 'Zed joint',
+        owners: [{ memberId: member.A }, { memberId: member.B }],
+      });
+      const able = await account(A, {
+        name: 'able joint',
+        owners: [{ memberId: member.A }, { memberId: member.B }],
+      });
+      const mine = await account(A, { name: 'Aardvark private', visibility: 'private' });
+      const add = async (
+        accountId: string,
+        date: string,
+        amountMinor: number,
+        displayName: string,
+        category?: string,
+      ) =>
+        (
+          await A.post(url('/transactions'), {
+            accountId,
+            date,
+            amountMinor,
+            displayName,
+            ...(category ? { categoryId: cat(category) } : {}),
+          })
+        ).body.data.id as string;
+      await add(zed, '2027-03-01', -500, 'Cafe', 'Coffee');
+      await add(able, '2027-03-02', -9000, 'bakery', 'Restaurants');
+      await add(zed, '2027-03-03', 120000, 'Paycheck');
+      await add(able, '2027-03-04', -500, 'Cafe');
+      const hidden = await add(mine, '2027-03-05', -2000, 'Gift');
+      await A.request('PUT', url(`/transactions/${hidden}/attribution`), {
+        attribution: [{ memberId: member.B }],
+      });
+    });
+    const sorted = async (c: TestClient, params: string, limit = 2) => {
+      const out: { displayName: string; date: string }[] = [];
+      let cursor = '';
+      do {
+        const r = await c.get(url(`${july}&${params}&limit=${limit}${cursor}`));
+        expect(r.status, JSON.stringify(r.body)).toBe(200);
+        out.push(...r.body.data);
+        cursor = r.body.meta.nextCursor ? `&cursor=${r.body.meta.nextCursor}` : '';
+      } while (cursor);
+      return out.map((t) => `${t.displayName} ${t.date.slice(-2)}`);
+    };
+
+    it('sorts by name ignoring case, ties newest first, across pages', async () => {
+      const az = ['bakery 02', 'Cafe 04', 'Cafe 01', 'Gift 05', 'Paycheck 03'];
+      expect(await sorted(A, 'sort=name')).toEqual(az);
+      expect(await sorted(A, 'sort=name', 50)).toEqual(az);
+      expect(await sorted(A, 'sort=name&direction=desc')).toEqual([
+        'Paycheck 03',
+        'Gift 05',
+        'Cafe 04',
+        'Cafe 01',
+        'bakery 02',
+      ]);
+    });
+
+    it('sorts by amount, the most money out first', async () => {
+      expect(await sorted(A, 'sort=amount')).toEqual([
+        'bakery 02',
+        'Gift 05',
+        'Cafe 04',
+        'Cafe 01',
+        'Paycheck 03',
+      ]);
+      expect((await sorted(A, 'sort=amount&direction=desc'))[0]).toBe('Paycheck 03');
+    });
+
+    it('sorts by category name, with none as Uncategorized', async () => {
+      expect(await sorted(A, 'sort=category')).toEqual([
+        'Cafe 01', // Coffee
+        'bakery 02', // Restaurants
+        'Gift 05',
+        'Cafe 04',
+        'Paycheck 03',
+      ]);
+    });
+
+    it('sorts by account, and an account you only see through attribution as blank (F1)', async () => {
+      expect(await sorted(A, 'sort=account')).toEqual([
+        'Gift 05', // Aardvark private
+        'Cafe 04',
+        'bakery 02',
+        'Paycheck 03',
+        'Cafe 01',
+      ]);
+      // Bea sees the gift but not the account it was paid from, so it can't sort by its name.
+      expect(await sorted(B, 'sort=account&direction=desc')).toEqual([
+        'Paycheck 03',
+        'Cafe 01',
+        'Cafe 04',
+        'bakery 02',
+        'Gift 05',
+      ]);
+    });
+
+    it('keeps date as the default, with direction overriding order', async () => {
+      expect(await sorted(A, 'direction=asc')).toEqual(await sorted(A, 'order=oldest'));
+      expect((await sorted(A, 'sort=date'))[0]).toBe('Gift 05');
+    });
+
+    it('refuses a cursor from another sort', async () => {
+      const r = await A.get(url(`${july}&sort=name&limit=1`));
+      const other = await A.get(url(`${july}&sort=amount&cursor=${r.body.meta.nextCursor}`));
+      expect(other.body.code).toBe('invalid_cursor');
+      const dated = await A.get(url(`${july}&limit=1`));
+      expect(
+        (await A.get(url(`${july}&sort=name&cursor=${dated.body.meta.nextCursor}`))).body.code,
+      ).toBe('invalid_cursor');
+    });
+  });
+
   describe('name cleanup (#42)', () => {
     it('previews, cleans, and undoes, touching only names still as the bank wrote them', async () => {
       const acct = await account(A, { name: 'Cleanup acct', visibility: 'private' });

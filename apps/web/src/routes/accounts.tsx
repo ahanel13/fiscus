@@ -1009,6 +1009,7 @@ function AccountTransactions({
         members={members}
         groups={groups}
         onOpen={setOpen}
+        showAccount={false}
         empty={
           <div className="rounded-xl border border-dashed border-border px-6 py-10 text-center text-sm">
             <p className="font-medium">No transactions yet</p>

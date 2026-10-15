@@ -19,6 +19,7 @@ import type {
   SessionSummary,
   Tag,
   Transaction,
+  TransactionSort,
   TransferReview,
 } from '@fiscus/shared';
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
@@ -127,9 +128,12 @@ export interface TransactionFilters {
   review?: 'needs_review' | 'reviewed';
   /** Newest first unless `oldest` (the review queue). */
   order?: 'newest' | 'oldest';
+  /** The table's sort (#351); `direction` overrides `order`. */
+  sort?: TransactionSort;
+  direction?: 'asc' | 'desc';
 }
 
-/** Pages of transactions, newest first, by cursor. */
+/** Pages of transactions, newest first unless sorted otherwise, by cursor. */
 export const transactionsQuery = (id: string, filters: TransactionFilters) =>
   infiniteQueryOptions({
     queryKey: ['households', id, 'transactions', filters],
@@ -143,6 +147,8 @@ export const transactionsQuery = (id: string, filters: TransactionFilters) =>
       if (filters.q) params.set('q', filters.q);
       if (filters.review) params.set('review', filters.review);
       if (filters.order) params.set('order', filters.order);
+      if (filters.sort) params.set('sort', filters.sort);
+      if (filters.direction) params.set('direction', filters.direction);
       if (pageParam) params.set('cursor', pageParam);
       return api<{ data: Transaction[]; meta: { nextCursor: string | null } }>(
         'GET',

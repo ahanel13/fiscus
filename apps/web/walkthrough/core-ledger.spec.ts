@@ -250,7 +250,7 @@ test('4. import a bank CSV into an account', async ({ page }) => {
 test('5. transactions: the list, the drawer, a split', async ({ page, browser }) => {
   await signIn(page);
   await page.goto(`${home}/transactions`);
-  await expect(page.getByRole('button', { name: /^Amazon/ })).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: /^Amazon/ })).toBeVisible();
   await shot(page, '18-transactions');
   // The category is set from the row.
   await page.getByRole('button', { name: /Category of Amazon/ }).click();
@@ -270,7 +270,7 @@ test('5. transactions: the list, the drawer, a split', async ({ page, browser })
   await page.keyboard.press('Escape');
 
   // Recategorize: the drawer suggests a rule for next time.
-  await page.getByRole('button', { name: /^Corner Hardware/ }).click();
+  await page.getByRole('rowheader', { name: /^Corner Hardware/ }).click();
   const drawer = page.getByRole('dialog', { name: 'Corner Hardware' });
   await expect(drawer).toBeVisible();
   await shot(page, '22-drawer');
@@ -284,7 +284,7 @@ test('5. transactions: the list, the drawer, a split', async ({ page, browser })
 
   // Split a grocery run: part of it was household supplies.
   await page
-    .getByRole('button', { name: /^Fresh Market/ })
+    .getByRole('rowheader', { name: /^Fresh Market/ })
     .first()
     .click();
   const grocery = page.getByRole('dialog', { name: 'Fresh Market' });
