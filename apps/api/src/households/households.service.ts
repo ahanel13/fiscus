@@ -23,6 +23,7 @@ const SETTINGS = [
   'dateBasis',
   'financeStyle',
   'categorizeMarksReviewed',
+  'cleanMerchantNames',
 ] as const;
 
 export function toHousehold(
@@ -39,6 +40,7 @@ export function toHousehold(
     dateBasis: row.dateBasis,
     financeStyle: row.financeStyle,
     categorizeMarksReviewed: row.categorizeMarksReviewed,
+    cleanMerchantNames: row.cleanMerchantNames,
     status: row.status,
     version: row.version,
     you: { memberId: you.memberId, role: you.role },
@@ -55,6 +57,7 @@ type HouseholdInput = Pick<
   | 'dateBasis'
   | 'financeStyle'
   | 'categorizeMarksReviewed'
+  | 'cleanMerchantNames'
 > & { displayName?: string | undefined };
 
 @Injectable()

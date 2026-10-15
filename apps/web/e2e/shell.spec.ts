@@ -447,8 +447,8 @@ test('creates a rule with a live preview, and applies it to existing transaction
 test('recategorizing a transaction suggests a rule for next time', async ({ page }) => {
   await signIn(page);
   await page.goto(`${householdUrl}/transactions?range=all_time`);
-  await page.getByRole('button', { name: /^REFUND/ }).click();
-  const drawer = page.getByRole('dialog', { name: 'REFUND' });
+  await page.getByRole('button', { name: /^Refund/ }).click();
+  const drawer = page.getByRole('dialog', { name: 'Refund' });
   await drawer.getByRole('button', { name: /Category/ }).click();
   await page.getByRole('option', { name: 'Interest', exact: true }).click();
   const suggestion = drawer.getByRole('region', { name: 'Rule suggestion' });
@@ -594,7 +594,7 @@ test('only the content scrolls: the page and sidebar stay put on a long list', a
   await page.setViewportSize({ width: 1280, height: 420 });
   await signIn(page);
   await page.goto(`${householdUrl}/transactions?range=all_time`);
-  await expect(page.getByRole('button', { name: /^REFUND/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Refund/ })).toBeVisible();
   const sizes = await page.evaluate(() => ({
     page: document.documentElement.scrollHeight,
     window: window.innerHeight,

@@ -14,6 +14,9 @@ import {
   deleteCategoryQuerySchema,
   linkTransferSchema,
   moveTransactionsSchema,
+  type NameCleanup,
+  type NameCleanupPreview,
+  undoNameCleanupSchema,
   noteSchema,
   setAttributionSchema,
   setSplitsSchema,
@@ -229,6 +232,29 @@ export class TransactionsController {
     @Body(new ZodPipe(moveTransactionsSchema)) body: z.infer<typeof moveTransactionsSchema>,
   ): Promise<{ data: BulkUpdateResult }> {
     return { data: await this.transactions.move(ctx, body) };
+  }
+
+  /** #42: names that are still the bank's text, and what cleaning them up would make them. */
+  @Get('clean-names')
+  async nameCleanupPreview(
+    @Household() ctx: HouseholdContext,
+  ): Promise<{ data: NameCleanupPreview }> {
+    return { data: await this.transactions.nameCleanupPreview(ctx) };
+  }
+
+  @Post('clean-names')
+  @HttpCode(200)
+  async cleanNames(@Household() ctx: HouseholdContext): Promise<{ data: NameCleanup[] }> {
+    return { data: await this.transactions.cleanNames(ctx) };
+  }
+
+  @Post('clean-names/undo')
+  @HttpCode(200)
+  async undoCleanNames(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(undoNameCleanupSchema)) body: z.infer<typeof undoNameCleanupSchema>,
+  ): Promise<{ data: { restored: number } }> {
+    return { data: await this.transactions.undoCleanNames(ctx, body) };
   }
 
   /** The review queue's size (#44), for the badge on Transactions. */

@@ -617,11 +617,11 @@ describe('transfers and the review queue', () => {
     const page = await reviewer.get(
       `${base}/transactions?review=needs_review&order=oldest&limit=2`,
     );
-    expect(page.body.data.map((t: Transaction) => t.displayName)).toEqual(['FIRST', 'SECOND']);
+    expect(page.body.data.map((t: Transaction) => t.displayName)).toEqual(['First', 'Second']);
     const next = await reviewer.get(
       `${base}/transactions?review=needs_review&order=oldest&limit=2&cursor=${page.body.meta.nextCursor}`,
     );
-    expect(next.body.data.map((t: Transaction) => t.displayName)).toEqual(['THIRD']);
+    expect(next.body.data.map((t: Transaction) => t.displayName)).toEqual(['Third']);
 
     await reviewer.request('PATCH', `${base}/transactions`, {
       ids: [page.body.data[0].id],

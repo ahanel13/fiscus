@@ -114,13 +114,45 @@ describe('imports', () => {
       { accountId: acc, runId: done.run!.runId, transactionCount: 2, canRevert: true },
     ]);
     const rows = await list(acc);
-    expect(rows.map((t) => [t.date, t.amountMinor, t.displayName, t.reviewStatus])).toEqual([
-      ['2026-03-01', -450, 'COFFEE', 'needs_review'],
-      ['2026-03-01', -450, 'COFFEE', 'needs_review'],
+    // The name is cleaned from the bank's text (#42), which is kept as it came.
+    expect(
+      rows.map((t) => [
+        t.date,
+        t.amountMinor,
+        t.displayName,
+        t.originalDescription,
+        t.reviewStatus,
+      ]),
+    ).toEqual([
+      ['2026-03-01', -450, 'Coffee', 'COFFEE', 'needs_review'],
+      ['2026-03-01', -450, 'Coffee', 'COFFEE', 'needs_review'],
     ]);
     // The account follows its transactions.
     const balances = (await A.get(url(`/accounts/${acc}/balances`))).body.data;
     expect(balances.at(-1)).toMatchObject({ asOf: '2026-03-01', amountMinor: -900 });
+  });
+
+  it('keeps the bank’s text as the name when the household turns cleanup off (#42)', async () => {
+    const setClean = async (on: boolean) => {
+      const h = (await A.get(url())).body.data;
+      const r = await A.request(
+        'PATCH',
+        url(),
+        { cleanMerchantNames: on },
+        {
+          headers: { 'if-match': `"v${h.version}"` },
+        },
+      );
+      expect(r.body.data.cleanMerchantNames).toBe(on);
+    };
+    await setClean(false);
+    const acc = await account('Raw names checking');
+    const done = await run(csv(acc, [row(2, '2026-03-04', -675, 'SQ *BLUE BOTTLE #12')]));
+    expect(done.res.status, JSON.stringify(done.res.body)).toBe(200);
+    expect((await list(acc)).map((t) => [t.displayName, t.originalDescription])).toEqual([
+      ['SQ *BLUE BOTTLE #12', 'SQ *BLUE BOTTLE #12'],
+    ]);
+    await setClean(true);
   });
 
   it('skips rows imported before, and flags possible duplicates of what’s already there', async () => {

@@ -1,0 +1,1 @@
+ALTER TABLE "households" ADD COLUMN "clean_merchant_names" boolean DEFAULT true NOT NULL;

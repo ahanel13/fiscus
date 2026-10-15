@@ -327,3 +327,27 @@ export const preferenceKeySchema = z
 export const setPreferenceSchema = z.object({
   value: z.json().refine((v) => JSON.stringify(v).length <= 2000, 'Preference is too large'),
 });
+
+/** #42: a transaction whose name is still the bank's text, and the cleaner name it would get. */
+export interface NameCleanup {
+  id: string;
+  date: string;
+  amountMinor: number;
+  currency: string;
+  from: string;
+  to: string;
+}
+
+export interface NameCleanupPreview {
+  /** How many names would change, of those you can categorize. */
+  total: number;
+  /** The first of them, newest first. */
+  changes: NameCleanup[];
+}
+
+/** Puts names back after a cleanup: only those still as the cleanup left them. */
+export const undoNameCleanupSchema = z.object({
+  changes: z
+    .array(z.object({ id: z.uuid(), from: z.string().max(500), to: z.string().max(500) }))
+    .max(20_000),
+});

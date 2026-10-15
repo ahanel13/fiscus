@@ -32,6 +32,7 @@ import {
   type importRowsSchema,
   type ImportRowsResult,
   type ImportRun,
+  cleanMerchantName,
   inferCategoryKind,
   MEMBER_COLORS,
   normalizeDescription,
@@ -1076,6 +1077,13 @@ export class ImportsService {
   ): Promise<string[]> {
     const ids = rows.map(() => uuidv7());
     const mapping = batch.mapping;
+    // The household can keep the bank's text as the name instead (#42).
+    const [household] = await tx
+      .select({ clean: households.cleanMerchantNames })
+      .from(households)
+      .where(eq(households.id, ctx.householdId));
+    const nameFrom = (description: string) =>
+      household?.clean === false ? description.trim() : cleanMerchantName(description);
     for (const part of chunks(rows.map((p, i) => ({ p, id: ids[i]! })))) {
       await tx.insert(transactions).values(
         part.map(({ p, id }) => ({
@@ -1087,7 +1095,9 @@ export class ImportsService {
           authorizedDate: p.row.date,
           postedDate: p.row.date,
           originalDescription: p.row.description.trim() || p.row.name!.trim(),
-          displayName: p.row.name?.trim() || p.row.description.trim(),
+          // A name given in the file (Monarch's merchant) as is; otherwise from the bank's text,
+          // which stays the original description (#42).
+          displayName: p.row.name?.trim() || nameFrom(p.row.description),
           categoryId: p.row.category ? (mapping.categories[lower(p.row.category)] ?? null) : null,
           // What the file supplied counts as someone's decision: rules don't change it.
           fieldVersions: Object.fromEntries(
