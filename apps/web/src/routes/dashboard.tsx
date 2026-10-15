@@ -28,7 +28,7 @@ export function DashboardPage() {
       <PageHeader title="Dashboard" range={range} showLens={showLens} members={members} />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
         <CashFlowCard household={household} lens={lens} range={range} />
-        <NetWorthCard household={household} lens={lens} />
+        <NetWorthCard household={household} lens={lens} range={range} />
       </div>
     </>
   );
@@ -153,7 +153,8 @@ function CashFlowBody({ flow, householdId }: { flow: CashFlow; householdId: stri
           </tr>
         </thead>
         <tbody>
-          {flow.buckets.map((b) => (
+          {/* From the first period with data: earlier ones would only say "No data". */}
+          {flow.buckets.slice(Math.max(0, flow.buckets.indexOf(withData[0]!))).map((b) => (
             <BucketRow key={b.start} b={b} max={max} currency={c} />
           ))}
         </tbody>

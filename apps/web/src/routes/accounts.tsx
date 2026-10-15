@@ -30,6 +30,7 @@ import {
   Avatar,
   Badge,
   Button,
+  ButtonLink,
   Card,
   Cell,
   Checkbox,
@@ -78,7 +79,7 @@ import { type Lens, lensVisible, parseLens } from '../lib/lens.js';
 import { formatSpan, rangeParams } from '../lib/ranges.js';
 import { useRange } from '../lib/use-range.js';
 import { RangeChips } from '../components/RangeControls.js';
-import { TransactionDrawer, TransactionList } from './transactions.js';
+import { AddTransactionDialog, TransactionDrawer, TransactionList } from './transactions.js';
 import { MakeJointOffer } from './make-joint.js';
 
 type Data<T> = { data: T };
@@ -182,8 +183,21 @@ export function AccountsPage() {
 }
 
 /** Net worth "visible to you" (F3), with one-click ranges for its trend (ADR 0011 §2). */
-export function NetWorthCard({ household, lens }: { household: Household; lens: Lens }) {
-  const range = useRange(household, 'net-worth', 'last_12m');
+/**
+ * Net worth and its trend. On its own (Accounts) it has its own range; given the page's `range`
+ * (the dashboard), it follows that instead, so one page doesn't have two time controls.
+ */
+export function NetWorthCard({
+  household,
+  lens,
+  range: pageRange,
+}: {
+  household: Household;
+  lens: Lens;
+  range?: ReturnType<typeof useRange>;
+}) {
+  const ownRange = useRange(household, 'net-worth', 'last_12m');
+  const range = pageRange ?? ownRange;
   const query = useQuery(netWorthRangeQuery(household.id, lens, rangeParams(range.selection)));
   const data = query.data;
   if (!data) return <Skeleton className="h-36" />;
@@ -228,7 +242,7 @@ export function NetWorthCard({ household, lens }: { household: Household; lens: 
         ) : null}
       </div>
       <div className="space-y-2 md:w-72">
-        <RangeChips state={range} label="Net worth range" />
+        {pageRange ? null : <RangeChips state={range} label="Net worth range" />}
         <Sparkline values={values} />
         {values.length > 1 ? (
           <p className="text-right text-xs text-muted">
@@ -593,7 +607,7 @@ export function AccountDetailPage() {
           <Tab id="settings">{owner ? 'Settings' : 'Details'}</Tab>
         </TabList>
         <TabPanel id="transactions">
-          <AccountTransactions householdId={householdId} accountId={a.id} members={members} />
+          <AccountTransactions householdId={householdId} account={a} members={members} />
         </TabPanel>
         <TabPanel id="history" className="space-y-4">
           {owner ? <UpdateBalance account={a} householdId={householdId} /> : null}
@@ -976,24 +990,60 @@ function AccountSettings({
 
 function AccountTransactions({
   householdId,
-  accountId,
+  account,
   members,
 }: {
   householdId: string;
-  accountId: string;
+  account: Account;
   members: HouseholdMember[];
 }) {
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const [open, setOpen] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const canAdd = account.yourAccess === 'owner' && !account.closedAt;
   return (
     <>
       <TransactionList
         householdId={householdId}
-        filters={{ lens: 'all', accounts: [accountId] }}
+        filters={{ lens: 'all', accounts: [account.id] }}
         members={members}
         groups={groups}
         onOpen={setOpen}
+        empty={
+          <div className="rounded-xl border border-dashed border-border px-6 py-10 text-center text-sm">
+            <p className="font-medium">No transactions yet</p>
+            {canAdd ? (
+              <>
+                <p className="mt-1 text-muted">
+                  Enter them as they happen, or import a file from your bank or Monarch.
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <Button variant="secondary" size="sm" onPress={() => setAdding(true)}>
+                    <Plus aria-hidden className="size-4" /> Add a transaction
+                  </Button>
+                  <ButtonLink
+                    variant="secondary"
+                    size="sm"
+                    to="/h/$householdId/import"
+                    params={{ householdId }}
+                  >
+                    <Upload aria-hidden className="size-4" /> Import a file
+                  </ButtonLink>
+                </div>
+              </>
+            ) : null}
+          </div>
+        }
       />
+      {adding ? (
+        <AddTransactionDialog
+          householdId={householdId}
+          isOpen
+          onOpenChange={(o) => !o && setAdding(false)}
+          accounts={[account]}
+          groups={groups}
+        />
+      ) : null}
       {open ? (
         <TransactionDrawer
           householdId={householdId}

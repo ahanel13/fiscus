@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { BulkUpdateResult, Transaction } from '@fiscus/shared';
 import { useInfiniteQuery, useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { useParams } from '@tanstack/react-router';
+import { useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
 import { CheckCheck, ClipboardCheck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -61,7 +61,8 @@ export function ReviewPage() {
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const counts = useQuery(reviewCountQuery(householdId)).data;
-  const [view, setView] = useState<'transactions' | 'transfers'>('transactions');
+  const { view: startOn } = useSearch({ strict: false }) as { view?: 'transfers' };
+  const [view, setView] = useState<'transactions' | 'transfers'>(startOn ?? 'transactions');
   const invalidate = useInvalidateLedger(householdId);
   const query = useInfiniteQuery(
     transactionsQuery(householdId, { lens: 'all', review: 'needs_review', order: 'oldest' }),
@@ -318,6 +319,7 @@ export function ReviewPage() {
               groups={groups}
               onDeleted={() => undefined}
               onSuggest={setSuggestion}
+              hideCategory
             />
           </div>
         </section>

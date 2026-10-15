@@ -27,7 +27,12 @@ export function NewPasswordField({
         value={value}
         onChange={setValue}
         validate={passwordProblem}
-        description="At least 15 characters, with uppercase and lowercase letters, a number, and a symbol."
+        // Read by screen readers; everyone else sees the checklist below, so it isn't said twice.
+        description={
+          <span className="sr-only">
+            At least 15 characters, with uppercase and lowercase letters, a number, and a symbol.
+          </span>
+        }
       />
       <ul aria-hidden className="grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
         {PASSWORD_RULES.map((rule) => {

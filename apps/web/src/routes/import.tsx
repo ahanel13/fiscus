@@ -26,6 +26,7 @@ import {
   importCategoryMapQuery,
   importProfilesQuery,
   membersQuery,
+  reviewCountQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import {
@@ -142,7 +143,9 @@ export function ImportPage() {
     'source',
     ...(source === 'csv' ? (['columns'] as const) : []),
     'accounts',
-    ...(hasCategories ? (['categories'] as const) : []),
+    // A Monarch export has categories: show the step before the file is read, so the list of
+    // steps doesn't grow under you once it is.
+    ...(hasCategories || (source === 'monarch' && !rows) ? (['categories'] as const) : []),
     'review',
     'done',
   ];
@@ -829,7 +832,9 @@ function AccountsStep({
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Collapsing only helps with a long list: a bank file's one account is always in view.
-  const collapsible = choices.length > 5;
+  // Most exports have a dozen accounts or so: list them, so you see what's about to be created.
+  // Past that, the ones that need nothing fold away.
+  const collapsible = choices.length > 15;
   const [showReady, setShowReady] = useState(!collapsible);
   const update = (key: string, patch: Partial<AccountChoice>) =>
     onChange(chooseAccount(choices, key, patch));
@@ -1603,6 +1608,10 @@ function DoneStep({
   const [started] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
   const ran = useRef(false);
+  // Once it's imported: transfers it couldn't pair on its own, to offer checking them.
+  const transfersToCheck =
+    useQuery({ ...reviewCountQuery(householdId), staleTime: 0, enabled: !running }).data
+      ?.transfers ?? 0;
 
   // Leaving mid-import would stop it partway: ask first.
   useBlocker({
@@ -1721,7 +1730,8 @@ function DoneStep({
         <>
           <p className="text-base" role="status">
             {n(state.added)} transactions and {n(state.balances)} balances imported into{' '}
-            {n(state.done.size)} {state.done.size === 1 ? 'account' : 'accounts'} in {elapsed}s.
+            {n(state.done.size)} {state.done.size === 1 ? 'account' : 'accounts'}{' '}
+            {elapsed < 1 ? 'in under a second' : `in ${elapsed}s`}.
           </p>
           {state.transfers ? (
             <p className="text-sm text-muted">
@@ -1749,6 +1759,17 @@ function DoneStep({
                 {review ? (
                   <ButtonLink to="/h/$householdId/review" params={{ householdId }}>
                     Review {n(review)} {review === 1 ? 'transaction' : 'transactions'}
+                  </ButtonLink>
+                ) : null}
+                {/* Transfers it couldn't pair on its own: the rest of the count on Transactions. */}
+                {transfersToCheck ? (
+                  <ButtonLink
+                    to="/h/$householdId/review"
+                    params={{ householdId }}
+                    search={{ view: 'transfers' }}
+                    variant={review ? 'secondary' : 'primary'}
+                  >
+                    Check {n(transfersToCheck)} {transfersToCheck === 1 ? 'transfer' : 'transfers'}
                   </ButtonLink>
                 ) : null}
                 <ButtonLink

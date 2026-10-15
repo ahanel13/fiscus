@@ -39,7 +39,7 @@ households of more than one person. The time zone comes from the device.
 - **F2.** The sidebar lists Budget, Goals, Planning, Reports, Investments, and Bills & recurring.
   None are built yet, and each opens an "on the way" page. It's six dead ends in the main
   navigation.
-- **F3.** The dashboard has two time controls that don't agree: the page's range (Last 6 months)
+- ~~**F3.**~~ *Fixed in #350.* The dashboard has two time controls that don't agree: the page's range (Last 6 months)
   and net worth's own (1Y). Cash flow lists the months before your first transaction as rows of
   "No data".
 
@@ -67,7 +67,7 @@ each, under net worth.
 type, with totals.
 
 **Gets in the way.**
-- **F4.** A new account says "No transactions match.", which reads like a filter hiding something.
+- ~~**F4.**~~ *Fixed in #350.* A new account says "No transactions match.", which reads like a filter hiding something.
   It offers no way to add a transaction or import a file from there.
 - **F5.** The account page shows its transactions. Its balance history sits behind the **Balances**
   tab, so the Brokerage page shows one $1,000 contribution under a $25,900 balance with no chart.
@@ -103,13 +103,13 @@ instructions sit next to the drop zone. Transfers within the file are linked as 
 review step says so. Importing the same file again adds nothing.
 
 **Gets in the way.**
-- **F6.** The steps change from four to five once Monarch is chosen (Categories appears). It's
+- ~~**F6.**~~ *Fixed in #350.* The steps change from four to five once Monarch is chosen (Categories appears). It's
   small, but the progress bar shifts under you.
-- **F7.** When every account looks right, the account list is hidden behind **Show**. That's fast,
+- ~~**F7.**~~ *Fixed in #350.* When every account looks right, the account list is hidden behind **Show**. That's fast,
   but you can't see at a glance what's about to be created, and as which type.
-- **F8.** The last step says **Review 2 transactions**, while the sidebar badge says **6**. The
+- ~~**F8.**~~ *Fixed in #350.* The last step says **Review 2 transactions**, while the sidebar badge says **6**. The
   badge also counts the 4 transfers to check, and nothing on this screen mentions them.
-- **F9.** "imported into 6 accounts in 0s". Under a second reads oddly as "0s".
+- ~~**F9.**~~ *Fixed in #350.* "imported into 6 accounts in 0s". Under a second reads oddly as "0s".
 - **F10.** Names stay as the bank wrote them. "BEAN THERE CAFE" (from the bank file) sits next to
   "Bean There" (from Monarch), and every list shows the difference.
 
@@ -162,10 +162,10 @@ compact, and filters show as removable chips.
   forgetting to save lost the edit. Each field now saves as it changes, as in Monarch.
 - ~~**F14.**~~ *Fixed in #349.* Setting a category didn't mark the transaction reviewed. Deciding
   the category is usually the review, so now it does, unless the household turns that off.
-- **F15.** **Split** sits at the bottom of the drawer, below both notes. The other actions (rule,
+- ~~**F15.**~~ *Fixed in #350.* **Split** sits at the bottom of the drawer, below both notes. The other actions (rule,
   move, link) are at the top. A new split starts as two equal halves in the same category, so both
   parts usually need changing.
-- **F16.** On a phone, long account names wrap a row onto three lines, and the Review badge drops
+- ~~**F16.**~~ *Fixed in #350.* On a phone, long account names wrap a row onto three lines, and the Review badge drops
   to a line of its own.
 
 ---
@@ -181,10 +181,11 @@ on.
 **Works.** Oldest first, and one key per decision. Transfers are a second tab of the same page.
 
 **Gets in the way.**
-- **F17.** The keys are listed above the queue, but only on wide screens. The transaction pane
+- ~~**F17.**~~ *Fixed in #350.* The keys are listed above the queue, but only on wide screens. The transaction pane
   repeats the category picker that the bar above it already has. (Since #349, choosing a category
   here also completes the review and moves to the next transaction.)
-- (F8 again) The sidebar badge adds transactions and transfers, so it matches neither tab.
+- (F8 again) The sidebar badge adds transactions and transfers, so it matches neither tab. Since
+  #350, the import's last step offers both: **Review N transactions** and **Check N transfers**.
 
 ---
 
@@ -192,18 +193,18 @@ on.
 
 A rule has conditions (description text, money in or out, amount, account, current category) and
 actions (rename, set category, add tags, treat as a transfer to an account). While you type, the
-editor previews how many transactions it would change. Rules run top to bottom, and never undo what
-a person set.
+editor previews how many transactions it would change, and applies the rule to them as it's saved
+unless you untick that. Rules run top to bottom, and never undo what a person set.
 
-| Editor | Rules | Apply to existing |
-|---|---|---|
-| ![Rule editor](core-ledger/26-rule-editor.png) | ![Rules](core-ledger/27-rules-list.png) | ![Apply to existing](core-ledger/28-rule-apply.png) |
+| Editor | Rules |
+|---|---|
+| ![Rule editor](core-ledger/26-rule-editor.png) | ![Rules](core-ledger/27-rules-list.png) |
 
 **Works.** A live preview while you write the rule. Each rule reads as a sentence on the list.
 "Apply to existing" shows exactly what would change first.
 
 **Gets in the way.**
-- **F18.** Applying a rule to past transactions is a separate step after creating it; a toast says
+- ~~**F18.**~~ *Fixed in #350.* Applying a rule to past transactions is a separate step after creating it; a toast says
   so. Monarch asks in the editor, with a count ("Apply to 12 existing transactions").
 - **F19.** The editor shows every condition and action at once, which makes for a long dialog for
   "if it says X, call it Y". Most rules use one condition and one or two actions.
@@ -262,9 +263,9 @@ for. The lens appears only once there's someone to share with.
 - **F21.** Household settings is one long page: general settings, how you appear, members, and
   every category, over 2,400 pixels tall. Categories, which people edit most, are at the bottom.
   Monarch splits settings into sections.
-- **F22.** **Household settings** is in two places: the household menu, and the bottom of the
+- ~~**F22.**~~ *Fixed in #350.* **Household settings** is in two places: the household menu, and the bottom of the
   sidebar.
-- **F23.** The new-password field states the rules twice: as a sentence, then as the checklist.
+- ~~**F23.**~~ *Fixed in #350.* The new-password field states the rules twice: as a sentence, then as the checklist.
 
 ---
 
@@ -280,25 +281,25 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 | F14 | Categorizing doesn't mark reviewed | Medium | Setting a category marks it reviewed, as a household setting (on by default) | Fixed (#349) |
 | F10, F20 | Bank-formatted names | High | Merchant cleanup | #42 |
 | F11 | Low list density | Medium | A dense, sortable table on desktop; make the density choice visible on the list | #351 |
-| F8, F17 | Counts that don't agree; review pane repeats the category | Medium | Separate badges, or "4 + 4 transfers"; the import's last step offers "Check 4 transfers"; one category picker in the review pane | #350 |
-| F18 | Applying a rule to past transactions is a second step | Medium | "Also apply to N existing" checkbox in the editor | #350 |
+| F8, F17 | Counts that don't agree; review pane repeats the category | Medium | Separate badges, or "4 + 4 transfers"; the import's last step offers "Check 4 transfers"; one category picker in the review pane | Fixed (#350) |
+| F18 | Applying a rule to past transactions is a second step | Medium | "Also apply to N existing" checkbox in the editor | Fixed (#350) |
 | F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | #352 |
 | F2 | Six unbuilt sections in the navigation | — | Keep them: they show what Fiscus will have | Won't change |
 | F1 | Empty landing after setup | Medium | A first-run checklist on the dashboard (accounts, partner, review) until it's done | #354 |
 | F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | #353, with #48 |
-| F15 | Split is hard to find, and starts as two halves | Low | Split with the other actions; the second part takes the rest, uncategorized | #350 |
-| F4 | "No transactions match" on a new account | Low | "No transactions yet", with Add and Import | #350 |
-| F3 | Two time controls; empty months on the dashboard | Low | Net worth follows the page range; start cash flow at the first transaction | #350 |
-| F6, F7, F9 | Import step count shifts; accounts hidden; "0s" | Low | Fixed step list; show the accounts collapsed by default; "in under a second" | #350 |
-| F16 | Phone rows wrap to three lines | Low | Truncate the account name; badge on the amount line | #350 |
+| F15 | Split is hard to find, and starts as two halves | Low | Split with the other actions; the second part takes the rest, uncategorized | Fixed (#350) |
+| F4 | "No transactions match" on a new account | Low | "No transactions yet", with Add and Import | Fixed (#350) |
+| F3 | Two time controls; empty months on the dashboard | Low | Net worth follows the page range; start cash flow at the first transaction | Fixed (#350) |
+| F6, F7, F9 | Import step count shifts; accounts hidden; "0s" | Low | Fixed step list; show the accounts collapsed by default; "in under a second" | Fixed (#350) |
+| F16 | Phone rows wrap to three lines | Low | Truncate the account name; badge on the amount line | Fixed (#350) |
 | F19 | Long rule editor | Low | Start with one condition and one action; "Add condition" for more | #355 |
-| F22, F23 | Settings twice; password rules twice | Low | One entry each | #350 |
+| F22, F23 | Settings twice; password rules twice | Low | One entry each | Fixed (#350) |
 | — | Transfer review at scale | Medium | | #332 |
 
 ## Proposed order for M1.5
 
 1. ~~**Faster transaction editing** (F12, F13, F14).~~ Done in #349.
-2. **Quick wins** (F3, F4, F6–F9, F15–F18, F22, F23). One PR of small fixes.
+2. ~~**Quick wins** (F3, F4, F6–F9, F15–F18, F22, F23).~~ Done in #350.
 3. **Merchant cleanup** (#42, F10, F20). It makes every list and rule read better.
 4. **Transactions table** (F11), once editing is fast.
 5. **Settings sections** (F21) and **account page chart** (F5, with #48 account groups).

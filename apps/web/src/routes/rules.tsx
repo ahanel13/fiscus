@@ -367,20 +367,33 @@ export function RuleEditor({
   });
   const preview = valid && settled === key ? (previewQuery.data ?? null) : null;
 
+  // Applying it to what it would change now, in the same step (the walkthrough's F18).
+  const [applyNow, setApplyNow] = useState(true);
+  const willApply = applyNow && (preview?.total ?? 0) > 0;
   const save = useMutation({
-    mutationFn: () =>
-      rule
-        ? api('PATCH', `${base(householdId)}/rules/${rule.id}`, {
+    mutationFn: async () => {
+      const saved = rule
+        ? await api<Data<Rule>>('PATCH', `${base(householdId)}/rules/${rule.id}`, {
             body: { name: d.name.trim() || null, ...body },
           })
-        : api('POST', `${base(householdId)}/rules`, {
+        : await api<Data<Rule>>('POST', `${base(householdId)}/rules`, {
             body: { ...(d.name.trim() ? { name: d.name.trim() } : {}), ...body },
-          }),
-    onSuccess: () => {
+          });
+      if (!willApply) return null;
+      return (
+        await api<Data<{ changed: number }>>(
+          'POST',
+          `${base(householdId)}/rules/${saved.data.id}/apply`,
+        )
+      ).data.changed;
+    },
+    onSuccess: (changed) => {
       onSaved();
       toast(rule ? 'Rule saved.' : 'Rule created.', {
         description:
-          'It runs on transactions as they arrive. Use “Apply to existing” for the rest.',
+          changed === null
+            ? 'It runs on transactions as they arrive. Use “Apply to existing” for the rest.'
+            : `Applied to ${changed.toLocaleString('en-US')} existing ${changed === 1 ? 'transaction' : 'transactions'}, and it runs on new ones as they arrive.`,
       });
       onClose();
     },
@@ -570,6 +583,11 @@ export function RuleEditor({
                       preview.total === 1 ? 'transaction' : 'transactions'
                     } you can see, if applied to existing ones.`}
               </p>
+              {preview.total > 0 ? (
+                <Checkbox isSelected={applyNow} onChange={setApplyNow} className="mt-2">
+                  Apply it to {preview.total === 1 ? 'that one' : 'those'} now too
+                </Checkbox>
+              ) : null}
               {preview.changes.length ? (
                 <ul className="mt-2 space-y-1 text-muted">
                   {preview.changes.slice(0, 5).map((c) => (

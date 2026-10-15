@@ -344,9 +344,12 @@ function HouseholdSwitcher({
               <UserPlus aria-hidden /> Invite someone
             </MenuItem>
           ) : null}
-          <MenuItem href={`/h/${householdId}/settings`}>
-            <Settings aria-hidden /> Household settings
-          </MenuItem>
+          {/* The sidebar links to it on a computer; a phone has no sidebar. */}
+          {compact ? (
+            <MenuItem href={`/h/${householdId}/settings`}>
+              <Settings aria-hidden /> Household settings
+            </MenuItem>
+          ) : null}
           <MenuItem href="/welcome">
             <Plus aria-hidden /> Create household
           </MenuItem>
