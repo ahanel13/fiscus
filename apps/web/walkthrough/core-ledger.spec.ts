@@ -315,14 +315,11 @@ test('7. rules', async ({ page }) => {
   await editor.getByRole('button', { name: /Set category/ }).click();
   await page.getByRole('option', { name: 'Coffee', exact: true }).click();
   await expect(editor.getByText(/Would change \d+ transaction/)).toBeVisible();
-  await shot(page, '26-rule-editor', true);
+  await editor.getByRole('checkbox', { name: /Apply it to/ }).scrollIntoViewIfNeeded();
+  await shot(page, '26-rule-editor');
   await editor.getByRole('button', { name: 'Create rule' }).click();
   await expect(page.getByText('Rule created.')).toBeVisible();
   await shot(page, '27-rules-list');
-  await page.getByRole('button', { name: 'Apply to existing' }).first().click();
-  await expect(page.getByRole('dialog', { name: 'Apply to existing transactions' })).toBeVisible();
-  await shot(page, '28-rule-apply');
-  await page.keyboard.press('Escape');
 });
 
 test('8. checking transfers', async ({ page }) => {

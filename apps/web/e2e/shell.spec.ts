@@ -390,7 +390,7 @@ test('imports a bank CSV into an existing account, saving the column mapping', a
   ).toBeVisible();
 });
 
-test('creates a rule with a live preview, then applies it to existing transactions', async ({
+test('creates a rule with a live preview, and applies it to existing transactions as it does', async ({
   page,
 }) => {
   await signIn(page);
@@ -408,16 +408,21 @@ test('creates a rule with a live preview, then applies it to existing transactio
   // The bank CSV's "COFFEE SHOP" from the previous test.
   await expect(editor.getByText(/Would change 1 transaction you can see/)).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
+  // Applied to the one it would change, in the same step.
+  await expect(
+    editor.getByRole('checkbox', { name: 'Apply it to that one now too' }),
+  ).toBeChecked();
   await editor.getByRole('button', { name: 'Create rule' }).click();
   await expect(page.getByText('Rule created.')).toBeVisible();
+  await expect(page.getByText(/Applied to 1 existing transaction/)).toBeVisible();
   await expect(page.getByText('When: Description contains “coffee”')).toBeVisible();
 
+  // Nothing left for "Apply to existing" to do.
   await page.getByRole('button', { name: 'Apply to existing' }).click();
   const apply = page.getByRole('dialog', { name: 'Apply to existing transactions' });
-  await expect(apply.getByText('1 transaction would change.', { exact: false })).toBeVisible();
-  await apply.getByRole('button', { name: 'Apply', exact: true }).click();
-  await expect(page.getByText('1 changed.')).toBeVisible();
+  await expect(apply).toContainText('Nothing to change');
   expect(await axeViolations(page)).toEqual([]);
+  await page.keyboard.press('Escape');
 
   await page.goto(`${householdUrl}/transactions?range=all_time`);
   const coffee = page

@@ -30,7 +30,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
   accountsQuery,
@@ -202,6 +202,7 @@ export function TransactionList({
   onSelectedChange,
   onOpen,
   onCategorized,
+  empty,
 }: {
   householdId: string;
   filters: TransactionFilters;
@@ -213,6 +214,8 @@ export function TransactionList({
   onOpen: (id: string) => void;
   /** After a row's category changes, e.g. to suggest a rule. */
   onCategorized?: (t: Transaction, categoryId: string) => void;
+  /** Shown when there's nothing at all, rather than nothing matching the filters. */
+  empty?: ReactNode;
 }) {
   const query = useInfiniteQuery(transactionsQuery(householdId, filters));
   const { names } = categoryIndex(groups);
@@ -234,9 +237,11 @@ export function TransactionList({
   if (query.isError) return <Alert>Couldn’t load transactions. Try again in a moment.</Alert>;
   if (items.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-border px-6 py-10 text-center text-sm text-muted">
-        No transactions match.
-      </p>
+      empty ?? (
+        <p className="rounded-xl border border-dashed border-border px-6 py-10 text-center text-sm text-muted">
+          No transactions match.
+        </p>
+      )
     );
   }
 
@@ -273,7 +278,8 @@ export function TransactionList({
                   className="min-w-0 flex-1 py-2 text-left"
                 >
                   <span className="block truncate text-sm font-medium">{t.displayName}</span>
-                  <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-muted">
+                  {/* One line: the account name gives way, so a row stays two lines on a phone. */}
+                  <span className="flex min-w-0 items-center gap-x-2 overflow-hidden text-xs whitespace-nowrap text-muted">
                     <span className="min-w-0 truncate">
                       {t.account ? t.account.name : paidByLabel(t, members)}
                     </span>
@@ -697,7 +703,7 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
 
 // ── Add ──────────────────────────────────────────────────────────────────────────────────────
 
-function AddTransactionDialog({
+export function AddTransactionDialog({
   householdId,
   isOpen,
   onOpenChange,
@@ -864,6 +870,7 @@ export function TransactionDetails({
   groups,
   onDeleted,
   onSuggest,
+  hideCategory,
 }: {
   householdId: string;
   t: Transaction;
@@ -871,6 +878,8 @@ export function TransactionDetails({
   groups: CategoryGroup[];
   onDeleted: () => void;
   onSuggest: (s: SuggestedRule | null) => void;
+  /** The review queue has its own category picker above these details. */
+  hideCategory?: boolean;
 }) {
   const invalidate = useInvalidateLedger(householdId);
   const queryClient = useQueryClient();
@@ -1006,6 +1015,9 @@ export function TransactionDetails({
               label={t.parentId ? 'Move this purchase to another account' : undefined}
             />
           ) : null}
+          {t.can.edit && !t.parentId ? (
+            <SplitEditor householdId={householdId} t={t} groups={groups} />
+          ) : null}
           {canLinkTransfer(t) ? (
             // Toggles the picker below; it stays put, so focus has somewhere to stay.
             <Button
@@ -1042,12 +1054,14 @@ export function TransactionDetails({
           isReadOnly={!t.can.categorize}
           maxLength={200}
         />
-        <CategorySelect
-          groups={groups}
-          value={t.categoryId}
-          onChange={(categoryId) => categoryId !== t.categoryId && change({ categoryId })}
-          isDisabled={!t.can.categorize}
-        />
+        {hideCategory ? null : (
+          <CategorySelect
+            groups={groups}
+            value={t.categoryId}
+            onChange={(categoryId) => categoryId !== t.categoryId && change({ categoryId })}
+            isDisabled={!t.can.categorize}
+          />
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
             <DatePicker
@@ -1137,10 +1151,6 @@ export function TransactionDetails({
       ) : null}
 
       <Notes householdId={householdId} t={t} />
-
-      {t.can.edit && !t.parentId ? (
-        <SplitEditor householdId={householdId} t={t} groups={groups} />
-      ) : null}
 
       {t.can.edit && !t.parentId ? (
         <div className="border-t border-border pt-4">
@@ -1277,7 +1287,8 @@ function SplitEditor({
   const half = Math.trunc(t.amountMinor / 2);
   const [parts, setParts] = useState([
     { amountMinor: half as number | null, categoryId: t.categoryId },
-    { amountMinor: (t.amountMinor - half) as number | null, categoryId: t.categoryId },
+    // The second part is the rest, waiting for its own category.
+    { amountMinor: (t.amountMinor - half) as number | null, categoryId: null as string | null },
   ]);
   const total = parts.reduce((s, p) => s + (p.amountMinor ?? 0), 0);
   const left = t.amountMinor - total;
@@ -1347,9 +1358,7 @@ function SplitEditor({
               <Button
                 variant="ghost"
                 size="sm"
-                onPress={() =>
-                  setParts([...parts, { amountMinor: left, categoryId: t.categoryId }])
-                }
+                onPress={() => setParts([...parts, { amountMinor: left, categoryId: null }])}
               >
                 <Plus aria-hidden className="size-4" /> Add part
               </Button>

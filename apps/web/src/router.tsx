@@ -190,6 +190,10 @@ const importRoute = createRoute({
 const reviewRoute = createRoute({
   getParentRoute: () => householdRoute,
   path: '/review',
+  // `?view=transfers` opens on the transfer check (from the import's last step).
+  validateSearch: (s: Record<string, unknown>) => ({
+    view: s.view === 'transfers' ? ('transfers' as const) : undefined,
+  }),
   component: ReviewPage,
 });
 const rulesRoute = createRoute({
