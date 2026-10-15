@@ -21,6 +21,10 @@ describe('cleanMerchantName', () => {
     ['USAA INSURANCE PAYMENT', 'USAA Insurance Payment'],
     ['CVS/PHARMACY #04512', 'CVS/Pharmacy'],
     ['Via 313 Pizza', 'Via 313 Pizza'],
+    // A short number in the middle is part of a name, in capitals too.
+    ['VIA 313 PIZZA #4 DETROIT MI', 'Via 313 Pizza'],
+    ['FIVE GUYS 1234 AUSTIN TX', 'Five Guys'],
+    ['MCDONALDS F12345 DALLAS TX', 'Mcdonalds'],
     // Already written by a person or a bank that doesn't shout: only the noise goes.
     ['Subway 15048', 'Subway'],
     ['From Checking Balance', 'From Checking Balance'],

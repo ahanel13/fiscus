@@ -59,13 +59,18 @@ export function cleanMerchantName(description: string): string {
   const stripped = raw.replace(LEADING_NOISE, '').replace(PROCESSOR_PREFIX, '').replace(/\*/g, ' ');
   const shouting = /\p{Lu}/u.test(stripped) && !/\p{Ll}/u.test(stripped);
   let words = stripped.split(/\s+/).filter(Boolean);
-  // Numbers before the name ("9640 AMC"). In bank capitals, everything from the first number on
-  // is store numbers and places; a name written normally keeps its numbers ("Via 313 Pizza")
+  // Numbers before the name ("9640 AMC"). In bank capitals, a store number or code and everything
+  // after it (the place) goes; a name written normally keeps its numbers ("Via 313 Pizza")
   // except at the end ("Subway 15048").
   while (words.length > 1 && isNumber(words[0]!)) words.shift();
   if (shouting) {
-    const cut = words.findIndex((w, i) => i > 0 && isNumber(w));
+    // Store numbers and codes end the name ("#123", "05123", "F12345"); a short number in the
+    // middle is part of it ("VIA 313 PIZZA").
+    const cut = words.findIndex(
+      (w, i) => i > 0 && isNumber(w) && (i === words.length - 1 || !/^\d{1,3}$/.test(w)),
+    );
     if (cut > 0) words = words.slice(0, cut);
+    while (words.length > 1 && isNumber(words.at(-1)!)) words.pop();
   } else {
     while (words.length > 1 && isNumber(words.at(-1)!)) words.pop();
   }
