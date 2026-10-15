@@ -311,7 +311,7 @@ export function ReviewPage() {
           ) : null}
           <div className="rounded-xl border border-border bg-surface p-4">
             <TransactionDetails
-              key={`${current.id}:${current.version}`}
+              key={current.id}
               householdId={householdId}
               t={current}
               members={members}

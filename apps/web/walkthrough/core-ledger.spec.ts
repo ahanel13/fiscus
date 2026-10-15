@@ -252,6 +252,11 @@ test('5. transactions: the list, the drawer, a split', async ({ page, browser })
   await page.goto(`${home}/transactions`);
   await expect(page.getByRole('button', { name: /^Amazon/ })).toBeVisible();
   await shot(page, '18-transactions');
+  // The category is set from the row.
+  await page.getByRole('button', { name: /Category of Amazon/ }).click();
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await shot(page, '18b-row-category');
+  await page.keyboard.press('Escape');
   const phone = await onPhone(browser, page, `${home}/transactions`);
   await phone.waitForTimeout(400);
   await phone.screenshot({ path: `${OUT}/19-transactions-phone.png` });
@@ -271,7 +276,6 @@ test('5. transactions: the list, the drawer, a split', async ({ page, browser })
   await shot(page, '22-drawer');
   await drawer.getByRole('button', { name: /Category/ }).click();
   await page.getByRole('option', { name: 'Home maintenance', exact: true }).click();
-  await drawer.getByRole('button', { name: 'Save changes' }).click();
   const suggestion = drawer.getByRole('region', { name: 'Rule suggestion' });
   await expect(suggestion).toBeVisible();
   await suggestion.scrollIntoViewIfNeeded();

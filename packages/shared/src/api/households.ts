@@ -29,6 +29,8 @@ const householdSettings = {
   fiscalYearStartMonth: z.number().int().min(1).max(12),
   dateBasis: dateBasisSchema,
   financeStyle: financeStyleSchema,
+  /** Setting a transaction's category marks it reviewed. */
+  categorizeMarksReviewed: z.boolean(),
 };
 
 export const createHouseholdSchema = z.object({
@@ -37,6 +39,7 @@ export const createHouseholdSchema = z.object({
   fiscalYearStartMonth: householdSettings.fiscalYearStartMonth.default(1),
   dateBasis: householdSettings.dateBasis.default('posted'),
   financeStyle: householdSettings.financeStyle.default('hybrid'),
+  categorizeMarksReviewed: householdSettings.categorizeMarksReviewed.default(true),
   /** How the creator appears in this household. Defaults to their account display name. */
   displayName: displayNameSchema.optional(),
 });
@@ -74,6 +77,8 @@ export interface Household {
   fiscalYearStartMonth: number;
   dateBasis: 'posted' | 'authorized';
   financeStyle: 'combined' | 'hybrid' | 'separate' | 'roommates';
+  /** Setting a transaction's category marks it reviewed. */
+  categorizeMarksReviewed: boolean;
   status: 'active' | 'disabled' | 'deleting';
   version: number;
   you: { memberId: string; role: MemberRole };

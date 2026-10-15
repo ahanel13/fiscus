@@ -107,6 +107,7 @@ export function CategorySelect({
   label = 'Category',
   hideLabel,
   isDisabled,
+  appearance,
 }: {
   groups: CategoryGroup[];
   value: string | null;
@@ -114,11 +115,13 @@ export function CategorySelect({
   label?: string;
   hideLabel?: boolean;
   isDisabled?: boolean;
+  appearance?: 'field' | 'chip';
 }) {
   const { uncategorized } = categoryIndex(groups);
   return (
     <Select
       {...(hideLabel ? { 'aria-label': label } : { label })}
+      {...(appearance ? { appearance } : {})}
       value={value ?? uncategorized ?? null}
       onChange={(v) => v && onChange(String(v))}
       isDisabled={isDisabled}
@@ -138,6 +141,55 @@ export function CategorySelect({
   );
 }
 
+/**
+ * Sets a transaction's category from its row, without opening it (the walkthrough's F12). The
+ * toast offers Undo; setting a category may also have marked it reviewed (F14), which Undo
+ * puts back too.
+ */
+function useRowCategory(
+  householdId: string,
+  groups: CategoryGroup[],
+  onCategorized?: (t: Transaction, categoryId: string) => void,
+) {
+  const invalidate = useInvalidateLedger(householdId);
+  const { names } = categoryIndex(groups);
+  const patch = (id: string, version: number, body: Record<string, unknown>) =>
+    api<Data<Transaction>>('PATCH', `${base(householdId)}/transactions/${id}`, {
+      body,
+      headers: { 'if-match': `"v${version}"` },
+    });
+  const fail = async (e: unknown) => {
+    const err = e as ApiError;
+    toast(err.code === 'edit_conflict' ? 'Someone else changed this first' : err.title, {
+      tone: 'error',
+    });
+    await invalidate();
+  };
+  return (t: Transaction, categoryId: string) => {
+    void patch(t.id, t.version, { categoryId })
+      .then(async (r) => {
+        await invalidate();
+        onCategorized?.(t, categoryId);
+        const before = {
+          categoryId: t.categoryId,
+          ...(r.data.reviewStatus !== t.reviewStatus ? { reviewStatus: t.reviewStatus } : {}),
+        };
+        toast(`${t.displayName}: ${names.get(categoryId) ?? 'Uncategorized'}.`, {
+          actions: [
+            {
+              label: 'Undo',
+              onAction: () =>
+                void patch(t.id, r.data.version, before)
+                  .then(() => invalidate())
+                  .catch(fail),
+            },
+          ],
+        });
+      })
+      .catch(fail);
+  };
+}
+
 // ── List ─────────────────────────────────────────────────────────────────────────────────────
 
 export function TransactionList({
@@ -149,6 +201,7 @@ export function TransactionList({
   selected,
   onSelectedChange,
   onOpen,
+  onCategorized,
 }: {
   householdId: string;
   filters: TransactionFilters;
@@ -158,9 +211,12 @@ export function TransactionList({
   selected?: Set<string>;
   onSelectedChange?: (s: Set<string>) => void;
   onOpen: (id: string) => void;
+  /** After a row's category changes, e.g. to suggest a rule. */
+  onCategorized?: (t: Transaction, categoryId: string) => void;
 }) {
   const query = useInfiniteQuery(transactionsQuery(householdId, filters));
   const { names } = categoryIndex(groups);
+  const categorize = useRowCategory(householdId, groups, onCategorized);
   const items = useMemo(() => query.data?.pages.flatMap((p) => p.data) ?? [], [query.data]);
   const shared = members.length > 1;
 
@@ -214,45 +270,58 @@ export function TransactionList({
                 <button
                   type="button"
                   onClick={() => onOpen(t.id)}
-                  className="flex min-w-0 flex-1 items-center gap-3 py-2 text-left"
+                  className="min-w-0 flex-1 py-2 text-left"
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{t.displayName}</span>
-                    <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
-                      <span>
+                  <span className="block truncate text-sm font-medium">{t.displayName}</span>
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-muted">
+                    <span className="min-w-0 truncate">
+                      {t.account ? t.account.name : paidByLabel(t, members)}
+                    </span>
+                    {shared ? (
+                      <>
+                        <span aria-hidden>·</span>
+                        <span>{forLabel(t, members)}</span>
+                      </>
+                    ) : null}
+                    {t.reviewStatus === 'needs_review' ? <Badge tone="accent">Review</Badge> : null}
+                    {t.transfer ? (
+                      // Long account names ("MyLowe's® Rewards Credit Card (...4444)") truncate.
+                      <Badge className="max-w-full">
+                        <span className="min-w-0 truncate">{transferLabel(t, members)}</span>
+                      </Badge>
+                    ) : null}
+                    {t.excluded ? <Badge>Excluded</Badge> : null}
+                    {t.dateEdited ? <Badge>Date moved</Badge> : null}
+                  </span>
+                </button>
+                {/* Category and amount: one above the other on a phone, side by side wider. */}
+                <div className="flex max-w-[45%] shrink-0 flex-col items-end gap-1 py-2 md:max-w-none md:flex-row md:items-center md:gap-4">
+                  <Amount
+                    minor={t.amountMinor}
+                    currency={t.currency}
+                    className="text-sm font-medium md:order-last md:w-28 md:text-right"
+                  />
+                  <span className="flex max-w-full md:w-44 md:justify-end">
+                    {t.can.categorize && !t.hasSplits ? (
+                      <CategorySelect
+                        groups={groups}
+                        value={t.categoryId}
+                        label={`Category of ${t.displayName}`}
+                        hideLabel
+                        appearance="chip"
+                        onChange={(categoryId) =>
+                          categoryId !== t.categoryId && categorize(t, categoryId)
+                        }
+                      />
+                    ) : (
+                      <span className="truncate text-xs text-muted">
                         {t.categoryId
                           ? (names.get(t.categoryId) ?? 'Uncategorized')
                           : 'Uncategorized'}
                       </span>
-                      <span aria-hidden>·</span>
-                      <span className="max-w-full truncate">
-                        {t.account ? t.account.name : paidByLabel(t, members)}
-                      </span>
-                      {shared ? (
-                        <>
-                          <span aria-hidden>·</span>
-                          <span>{forLabel(t, members)}</span>
-                        </>
-                      ) : null}
-                      {t.reviewStatus === 'needs_review' ? (
-                        <Badge tone="accent">Review</Badge>
-                      ) : null}
-                      {t.transfer ? (
-                        // Long account names ("MyLowe's® Rewards Credit Card (...4444)") truncate.
-                        <Badge className="max-w-full">
-                          <span className="min-w-0 truncate">{transferLabel(t, members)}</span>
-                        </Badge>
-                      ) : null}
-                      {t.excluded ? <Badge>Excluded</Badge> : null}
-                      {t.dateEdited ? <Badge>Date moved</Badge> : null}
-                    </span>
+                    )}
                   </span>
-                  <Amount
-                    minor={t.amountMinor}
-                    currency={t.currency}
-                    className="text-sm font-medium"
-                  />
-                </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -567,6 +636,21 @@ export function TransactionsPage() {
               selected={selected}
               onSelectedChange={setSelected}
               onOpen={setOpen}
+              onCategorized={(t, categoryId) =>
+                setSuggestion(
+                  suggestRule(
+                    {
+                      originalDescription: t.originalDescription,
+                      accountId: t.account?.id ?? null,
+                      amountMinor: t.amountMinor,
+                    },
+                    { categoryId },
+                    ruleContext.rules,
+                    ruleContext.muted,
+                    categoryIndex(groups).uncategorized ?? null,
+                  ),
+                )
+              }
             />
           </>
         )}
@@ -734,7 +818,7 @@ export function TransactionDrawer({
 }) {
   const query = useQuery(transactionQuery(householdId, transactionId));
   const t = query.data;
-  // Kept here: the details remount after each save (keyed on the version).
+  // Kept here, so it outlives the details when another transaction opens.
   const [suggestion, setSuggestion] = useState<SuggestedRule | null>(null);
   return (
     <Dialog
@@ -756,7 +840,7 @@ export function TransactionDrawer({
       ) : null}
       {t ? (
         <TransactionDetails
-          key={`${t.id}:${t.version}`}
+          key={t.id}
           householdId={householdId}
           t={t}
           members={members}
@@ -793,25 +877,15 @@ export function TransactionDetails({
   const tags = useQuery(tagsQuery(householdId)).data ?? [];
   const url = `${base(householdId)}/transactions/${t.id}`;
   const manual = t.source === 'manual';
-  const [form, setForm] = useState({
-    displayName: t.displayName,
-    categoryId: t.categoryId,
-    date: t.date,
-    amountMinor: t.amountMinor,
-    reviewed: t.reviewStatus === 'reviewed',
-    excluded: t.excluded,
-    tagIds: t.tagIds,
-  });
-  const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
-  const changes: Record<string, unknown> = {};
-  if (form.displayName !== t.displayName) changes.displayName = form.displayName;
-  if (form.categoryId !== t.categoryId) changes.categoryId = form.categoryId;
-  if (form.date !== t.date) changes.date = form.date;
-  if (manual && form.amountMinor !== t.amountMinor) changes.amountMinor = form.amountMinor;
-  if (form.reviewed !== (t.reviewStatus === 'reviewed'))
-    changes.reviewStatus = form.reviewed ? 'reviewed' : 'needs_review';
-  if (form.excluded !== t.excluded) changes.excluded = form.excluded;
-  if ([...form.tagIds].sort().join() !== [...t.tagIds].sort().join()) changes.tagIds = form.tagIds;
+  // Each field saves as it changes (the walkthrough's F13); text fields when you leave them.
+  const [name, setName] = useState(t.displayName);
+  const [saved, setSaved] = useState('');
+  // Kept in step when the transaction changes underneath (a save, or someone else's).
+  const [shownName, setShownName] = useState(t.displayName);
+  if (t.displayName !== shownName) {
+    setShownName(t.displayName);
+    setName(t.displayName);
+  }
 
   const onError = async (e: unknown) => {
     const err = e as ApiError;
@@ -826,8 +900,8 @@ export function TransactionDetails({
     mutationFn: (body: Record<string, unknown>) =>
       api<Data<Transaction>>('PATCH', url, { body, headers: { 'if-match': `"v${t.version}"` } }),
     onSuccess: async (_r, body) => {
+      setSaved('Saved');
       await invalidate();
-      toast('Saved.');
       // Renamed or recategorized: offer to do the same for the others, next time too.
       onSuggest(
         suggestRule(
@@ -850,6 +924,12 @@ export function TransactionDetails({
     },
     onError,
   });
+  const change = (body: Record<string, unknown>) => save.mutate(body);
+  const commitName = () => {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== t.displayName) change({ displayName: trimmed });
+    else setName(t.displayName);
+  };
   const resetDate = useMutation({
     mutationFn: () =>
       api('PATCH', url, { body: { date: null }, headers: { 'if-match': `"v${t.version}"` } }),
@@ -881,13 +961,14 @@ export function TransactionDetails({
 
   const forIds = t.attribution.map((a) => a.memberId);
   const [linking, setLinking] = useState(false);
-  // These details remount after every save (keyed on the version), taking the control you used
-  // with them. Keep focus here rather than letting it fall to the page, where Escape and the
-  // keyboard stop reaching the drawer.
+  // When these details mount, keep focus in them rather than letting it fall to the page, where
+  // Escape and the keyboard stop reaching the drawer.
   const root = useRef<HTMLDivElement>(null);
+  // The same after a change: the control you used can go with it (a picker closes, a section
+  // re-renders), and focus would fall to the page.
   useEffect(() => {
     if (!document.activeElement || document.activeElement === document.body) root.current?.focus();
-  }, []);
+  }, [t.version]);
   return (
     <div ref={root} tabIndex={-1} className="space-y-5 outline-none">
       <div>
@@ -949,29 +1030,30 @@ export function TransactionDetails({
 
       <Form
         onSubmit={(e) => {
-          e.preventDefault();
-          save.mutate(changes);
+          e.preventDefault(); // Enter in a text field saves it
+          commitName();
         }}
       >
         <TextField
           label="Name"
-          value={form.displayName}
-          onChange={(displayName) => set({ displayName })}
+          value={name}
+          onChange={setName}
+          onBlur={commitName}
           isReadOnly={!t.can.categorize}
           maxLength={200}
         />
         <CategorySelect
           groups={groups}
-          value={form.categoryId}
-          onChange={(categoryId) => set({ categoryId })}
+          value={t.categoryId}
+          onChange={(categoryId) => categoryId !== t.categoryId && change({ categoryId })}
           isDisabled={!t.can.categorize}
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
             <DatePicker
               label="Date"
-              value={form.date}
-              onChange={(d) => d && set({ date: d })}
+              value={t.date}
+              onChange={(d) => d && d !== t.date && change({ date: d })}
               isDisabled={!t.can.edit || Boolean(t.parentId)}
             />
             {t.dateEdited && t.can.edit && !manual ? (
@@ -990,18 +1072,19 @@ export function TransactionDetails({
               label="Amount"
               currency={t.currency}
               allowNegative
-              value={form.amountMinor}
-              onChange={(v) => v !== null && set({ amountMinor: v })}
+              value={t.amountMinor}
+              // Number fields report a change when you leave them, not per keystroke.
+              onChange={(v) => v && v !== t.amountMinor && change({ amountMinor: v })}
             />
           ) : null}
         </div>
         <TagPicker
           tags={tags}
-          value={form.tagIds}
-          onChange={(tagIds) => set({ tagIds })}
-          onCreate={async (name) => {
+          value={t.tagIds}
+          onChange={(tagIds) => change({ tagIds })}
+          onCreate={async (tagName) => {
             const r = await api<Data<Tag>>('POST', `${base(householdId)}/tags`, {
-              body: { name, color: MEMBER_COLORS[tags.length % MEMBER_COLORS.length] },
+              body: { name: tagName, color: MEMBER_COLORS[tags.length % MEMBER_COLORS.length] },
             });
             await queryClient.invalidateQueries({ queryKey: tagsQuery(householdId).queryKey });
             return r.data;
@@ -1010,30 +1093,24 @@ export function TransactionDetails({
         />
         <div className="space-y-1">
           <Switch
-            isSelected={form.reviewed}
-            onChange={(reviewed) => set({ reviewed })}
+            isSelected={t.reviewStatus === 'reviewed'}
+            onChange={(on) => change({ reviewStatus: on ? 'reviewed' : 'needs_review' })}
             isDisabled={!t.can.categorize}
           >
             Reviewed
           </Switch>
           <Switch
-            isSelected={form.excluded}
-            onChange={(excluded) => set({ excluded })}
+            isSelected={t.excluded}
+            onChange={(excluded) => change({ excluded })}
             isDisabled={!t.can.edit}
           >
             Leave out of reports and budgets
           </Switch>
         </div>
         {t.can.categorize || t.can.edit ? (
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              isPending={save.isPending}
-              isDisabled={Object.keys(changes).length === 0}
-            >
-              Save changes
-            </Button>
-          </div>
+          <p role="status" className="min-h-5 text-xs text-muted">
+            {save.isPending ? 'Saving…' : saved}
+          </p>
         ) : (
           <p className="text-xs text-muted">You can see this transaction but not change it.</p>
         )}

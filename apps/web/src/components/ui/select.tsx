@@ -68,7 +68,14 @@ export type SelectProps<T extends object> = Omit<AriaSelectProps<T>, 'children'>
     items?: Iterable<T>;
     children: ReactNode | ((item: T) => ReactNode);
     triggerClassName?: string;
+    /** `chip`: a small pill that fits inside a list row (a transaction's category). */
+    appearance?: 'field' | 'chip';
   };
+
+const chipStyles =
+  'inline-flex max-w-full min-h-7 items-center gap-1 rounded-full border border-transparent bg-surface-2 px-2.5 ' +
+  'text-xs text-fg outline-none hover:border-border-strong pressed:border-border-strong ' +
+  'focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60';
 
 /**
  * Choose one option from a short list. Works in forms (`name`) and controlled
@@ -82,16 +89,24 @@ export function Select<T extends object>({
   children,
   className,
   triggerClassName,
+  appearance = 'field',
   ...props
 }: SelectProps<T>) {
+  const chip = appearance === 'chip';
   return (
-    <AriaSelect {...props} className={cx('flex flex-col gap-1.5', className)}>
+    <AriaSelect
+      {...props}
+      className={cx(chip ? 'inline-flex min-w-0' : 'flex flex-col gap-1.5', className)}
+    >
       {label ? <Label>{label}</Label> : null}
       <AriaButton
-        className={clsx(controlStyles, 'flex items-center gap-2 text-left', triggerClassName)}
+        className={clsx(
+          chip ? chipStyles : [controlStyles, 'flex items-center gap-2 text-left'],
+          triggerClassName,
+        )}
       >
-        <SelectValue className="flex-1 truncate placeholder-shown:text-muted" />
-        <ChevronDown aria-hidden className="size-4 text-muted" />
+        <SelectValue className="min-w-0 flex-1 truncate placeholder-shown:text-muted" />
+        <ChevronDown aria-hidden className={chip ? 'size-3 text-muted' : 'size-4 text-muted'} />
       </AriaButton>
       {description ? <Description>{description}</Description> : null}
       <FieldError>{errorMessage}</FieldError>

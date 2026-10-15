@@ -15,25 +15,37 @@ import { Button } from './button.js';
 
 export type ToastTone = 'success' | 'info' | 'error';
 
+/** A button on the toast, e.g. Undo. Pressing it closes the toast. */
+export interface ToastAction {
+  label: string;
+  onAction: () => void;
+}
+
 export interface ToastContentData {
   title: string;
   description?: string;
   tone: ToastTone;
+  actions?: ToastAction[];
 }
 
 export const toastQueue = new ToastQueue<ToastContentData>({ maxVisibleToasts: 3 });
 
 /**
  * Brief confirmation of something that just happened ("Split saved."). Errors stay until
- * dismissed; everything else disappears after 5 seconds. Don't toast what the screen already shows.
+ * dismissed; everything else disappears after 5 seconds, or 8 with actions, to leave time for
+ * Undo. Don't toast what the screen already shows.
  */
 export function toast(
   title: string,
-  { description, tone = 'success' }: { description?: string; tone?: ToastTone } = {},
+  {
+    description,
+    tone = 'success',
+    actions,
+  }: { description?: string; tone?: ToastTone; actions?: ToastAction[] } = {},
 ) {
   return toastQueue.add(
-    { title, tone, ...(description ? { description } : {}) },
-    tone === 'error' ? {} : { timeout: 5000 },
+    { title, tone, ...(description ? { description } : {}), ...(actions ? { actions } : {}) },
+    tone === 'error' ? {} : { timeout: actions?.length ? 8000 : 5000 },
   );
 }
 
@@ -70,6 +82,23 @@ export function Toaster() {
                 <Text slot="description" className="block text-sm text-muted">
                   {t.content.description}
                 </Text>
+              ) : null}
+              {t.content.actions?.length ? (
+                <span className="mt-2 flex flex-wrap gap-2">
+                  {t.content.actions.map((a) => (
+                    <Button
+                      key={a.label}
+                      variant="secondary"
+                      size="sm"
+                      onPress={() => {
+                        toastQueue.close(t.key);
+                        a.onAction();
+                      }}
+                    >
+                      {a.label}
+                    </Button>
+                  ))}
+                </span>
               ) : null}
             </ToastContent>
             <Button

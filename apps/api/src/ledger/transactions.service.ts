@@ -6,6 +6,7 @@ import {
   categories,
   type Executor,
   householdMembers,
+  households,
   tags,
   transactionAttributions,
   transactionNotes,
@@ -508,6 +509,16 @@ export class TransactionsService {
         transferExternal: row.transferExternal,
       };
       const { tagIds, ...rest } = patch;
+      // Deciding the category is usually the review (the household can turn this off).
+      if (
+        rest.categoryId !== undefined &&
+        rest.categoryId !== row.categoryId &&
+        rest.reviewStatus === undefined &&
+        row.reviewStatus === 'needs_review' &&
+        (await this.#categorizeMarksReviewed(tx, ctx))
+      ) {
+        rest.reviewStatus = 'reviewed';
+      }
       const plan = planVersionedPatch(
         current,
         { version: row.version, fieldVersions: row.fieldVersions },
@@ -641,9 +652,14 @@ export class TransactionsService {
       }
       if (result.updated.length === 0) return result;
 
+      const marksReviewed =
+        changes.categoryId !== undefined &&
+        !changes.reviewStatus &&
+        (await this.#categorizeMarksReviewed(tx, ctx));
       const columns = {
         ...(changes.categoryId !== undefined ? { categoryId: changes.categoryId } : {}),
         ...(changes.reviewStatus ? { reviewStatus: changes.reviewStatus } : {}),
+        ...(marksReviewed ? { reviewStatus: 'reviewed' as const } : {}),
         ...(changes.excluded !== undefined ? { excluded: changes.excluded } : {}),
         ...(changes.transferExternal !== undefined
           ? { transferExternal: changes.transferExternal }
@@ -1118,6 +1134,15 @@ export class TransactionsService {
       levels,
       attributedPayers,
     };
+  }
+
+  /** The household's "categorizing marks it reviewed" setting. */
+  async #categorizeMarksReviewed(tx: Executor, ctx: HouseholdContext): Promise<boolean> {
+    const [h] = await tx
+      .select({ on: households.categorizeMarksReviewed })
+      .from(households)
+      .where(eq(households.id, ctx.householdId));
+    return h?.on ?? true;
   }
 
   async #transferReview(tx: Executor, access: Access): Promise<TransferReviewIds> {
