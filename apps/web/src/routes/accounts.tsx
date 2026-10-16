@@ -14,7 +14,18 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight, Landmark, Pencil, Plus, Upload } from 'lucide-react';
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
+  Landmark,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Upload,
+} from 'lucide-react';
+import { useLocale } from 'react-aria-components';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -60,13 +71,9 @@ import {
   SelectItem,
   Skeleton,
   Switch,
-  Tab,
   Table,
   TableBody,
   TableHeader,
-  TabList,
-  TabPanel,
-  Tabs,
   TextField,
   toast,
   useToday,
@@ -83,7 +90,7 @@ import {
   VISIBILITY,
 } from '../lib/accounts.js';
 import { type Lens, lensVisible, parseLens } from '../lib/lens.js';
-import { formatSpan, rangeParams, selectionLabel } from '../lib/ranges.js';
+import { formatSpan, type RangeSelection, rangeParams, selectionLabel } from '../lib/ranges.js';
 import { useRange } from '../lib/use-range.js';
 import { RangeChips } from '../components/RangeControls.js';
 import { AddTransactionDialog, TransactionDrawer, TransactionList } from './transactions.js';
@@ -580,6 +587,7 @@ export function AccountDetailPage() {
   const params = rangeParams(range.selection);
   const balances = useQuery(balancesQuery(householdId, accountId, params));
   const chart = useQuery(balancesQuery(householdId, accountId, params, true));
+  const [dialog, setDialog] = useState<'balance' | 'history' | 'settings' | null>(null);
 
   if (account.isPending) {
     return (
@@ -605,9 +613,14 @@ export function AccountDetailPage() {
   }
   const a = account.data;
   const owner = a.yourAccess === 'owner';
+  const points = chart.data;
+  const opening = points?.[0];
+  const latest = points?.at(-1);
+  const change = opening && latest ? latest.amountMinor - opening.amountMinor : 0;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 md:px-8">
+      {/* As Monarch lays it out (F5): the balance and its change, the chart, then what's in it. */}
       <div>
         <Link
           to={`/h/${householdId}/accounts`}
@@ -615,7 +628,7 @@ export function AccountDetailPage() {
         >
           <ChevronLeft aria-hidden className="size-4" /> Accounts
         </Link>
-        <div className="mt-2 flex flex-wrap items-end gap-4">
+        <div className="mt-2 flex items-start gap-2">
           <div className="mr-auto min-w-0">
             <h1 className="truncate text-2xl font-semibold">{a.name}</h1>
             <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
@@ -626,38 +639,75 @@ export function AccountDetailPage() {
               {a.closedAt ? <Badge tone="warning">Closed</Badge> : null}
             </p>
           </div>
-          <div className="text-right">
-            {a.balance ? (
-              <>
-                <Amount
-                  minor={a.balance.amountMinor}
-                  currency={a.currency}
-                  kind={balanceKind(a.type)}
-                  className="text-3xl font-semibold tracking-tight"
-                />
-                <p className="text-xs text-muted">
-                  as of <DateText value={a.balance.asOf} />
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted">No balance yet</p>
-            )}
-          </div>
+          <MenuTrigger>
+            <Button variant="ghost" size="icon" aria-label="Account actions">
+              <MoreHorizontal aria-hidden className="size-5" />
+            </Button>
+            <Menu placement="bottom end">
+              {owner && !a.closedAt ? (
+                <MenuItem onAction={() => setDialog('balance')}>Update balance</MenuItem>
+              ) : null}
+              <MenuItem onAction={() => setDialog('history')}>Balance history</MenuItem>
+              {owner ? (
+                <MenuItem onAction={() => setDialog('settings')}>Account settings</MenuItem>
+              ) : null}
+            </Menu>
+          </MenuTrigger>
+        </div>
+        <div className="mt-4">
+          {a.balance ? (
+            <>
+              <Amount
+                minor={a.balance.amountMinor}
+                currency={a.currency}
+                kind={balanceKind(a.type)}
+                className="block text-3xl font-semibold tracking-tight"
+              />
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm">
+                {opening && change !== 0 ? (
+                  <span className="inline-flex items-center gap-1">
+                    {change > 0 ? (
+                      <ArrowUpRight aria-hidden className="size-4 text-positive" />
+                    ) : (
+                      <ArrowDownRight aria-hidden className="size-4 text-muted" />
+                    )}
+                    <Amount minor={change} currency={a.currency} className="font-medium" />
+                    {opening.amountMinor !== 0 ? (
+                      <span className="text-muted">
+                        (<Percent value={change / Math.abs(opening.amountMinor)} />)
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+                {/* An account that began during the range changed since its first balance. */}
+                <span className="text-muted">
+                  {opening && opening.asOf > range.resolved.from ? (
+                    <>
+                      since <DateText value={opening.asOf} format="short" />
+                    </>
+                  ) : (
+                    rangeName(range.selection)
+                  )}
+                </span>
+                <span className="text-muted">
+                  · as of <DateText value={a.balance.asOf} />
+                </span>
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted">No balance yet</p>
+          )}
         </div>
       </div>
 
       <Card className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-muted">Balance</h2>
-          <RangeChips state={range} label="Balance range" />
-        </div>
-        {chart.data ? (
+        {points ? (
           <BalanceChart
-            points={chart.data}
+            points={points}
             // The whole range, empty before an account's first balance; "All" starts at it.
             from={
-              chart.data[0] && chart.data[0].asOf < range.resolved.from
-                ? chart.data[0].asOf
+              points[0] && points[0].asOf < range.resolved.from
+                ? points[0].asOf
                 : range.resolved.from
             }
             to={range.resolved.to}
@@ -666,34 +716,92 @@ export function AccountDetailPage() {
             label={`${a.name} balance`}
           />
         ) : (
-          <Skeleton className="h-52" />
+          <Skeleton className="h-56" />
         )}
+        <RangeChips state={range} label="Balance range" />
       </Card>
 
-      {/* Bank-style accounts open on their transactions; hand-valued assets on their balances. */}
-      <Tabs defaultSelectedKey={a.balanceMode === 'transactions' ? 'transactions' : 'history'}>
-        <TabList aria-label="Account">
-          <Tab id="transactions">Transactions</Tab>
-          <Tab id="history">Balances</Tab>
-          <Tab id="settings">{owner ? 'Settings' : 'Details'}</Tab>
-        </TabList>
-        <TabPanel id="transactions">
+      {/* Bank-style accounts list their transactions; hand-valued assets their balances. */}
+      {a.balanceMode === 'transactions' ? (
+        <section aria-labelledby="account-transactions" className="space-y-3">
+          <h2 id="account-transactions" className="font-semibold">
+            Transactions
+          </h2>
           <AccountTransactions householdId={householdId} account={a} members={members} />
-        </TabPanel>
-        <TabPanel id="history" className="space-y-4">
-          {owner ? <UpdateBalance account={a} householdId={householdId} /> : null}
+        </section>
+      ) : (
+        <section aria-labelledby="account-balances" className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="account-balances" className="font-semibold">
+              Balances
+            </h2>
+            {owner && !a.closedAt ? (
+              <Button variant="secondary" size="sm" onPress={() => setDialog('balance')}>
+                Update balance
+              </Button>
+            ) : null}
+          </div>
           <BalanceHistory account={a} points={balances.data} />
-        </TabPanel>
-        <TabPanel id="settings">
-          {owner ? (
-            <AccountSettings account={a} household={household} members={members} />
-          ) : (
-            <AccountDetails account={a} members={members} />
-          )}
-        </TabPanel>
-      </Tabs>
+        </section>
+      )}
+
+      <section aria-labelledby="account-summary" className="space-y-3">
+        <h2 id="account-summary" className="font-semibold">
+          Summary
+        </h2>
+        <AccountDetails account={a} members={members} />
+      </section>
+
+      {owner ? (
+        <UpdateBalance
+          account={a}
+          householdId={householdId}
+          isOpen={dialog === 'balance'}
+          onOpenChange={(open) => setDialog(open ? 'balance' : null)}
+        />
+      ) : null}
+      <Dialog
+        title="Balance history"
+        isOpen={dialog === 'history'}
+        onOpenChange={(open) => setDialog(open ? 'history' : null)}
+      >
+        <BalanceHistory account={a} points={balances.data} />
+      </Dialog>
+      {owner ? (
+        <Dialog
+          title="Account settings"
+          isOpen={dialog === 'settings'}
+          onOpenChange={(open) => setDialog(open ? 'settings' : null)}
+        >
+          <AccountSettings account={a} household={household} members={members} />
+        </Dialog>
+      ) : null}
     </div>
   );
+}
+
+/** A signed share in the viewer's language: "+12.5%", "−53.2%". */
+function Percent({ value }: { value: number }) {
+  const { locale } = useLocale();
+  const text = new Intl.NumberFormat(locale, {
+    style: 'percent',
+    maximumFractionDigits: 1,
+    signDisplay: 'exceptZero',
+  }).format(value);
+  return <>{text.replace('-', '−')}</>;
+}
+
+/** The chips' ranges as Monarch words them: "1 month", "1 year". */
+function rangeName(s: RangeSelection): string {
+  const names: Partial<Record<string, string>> = {
+    last_30d: '1 month',
+    last_90d: '3 months',
+    last_6m: '6 months',
+    ytd: 'Year to date',
+    last_12m: '1 year',
+    all_time: 'All time',
+  };
+  return names[s.range] ?? selectionLabel(s);
 }
 
 function BalanceHistory({
@@ -750,7 +858,17 @@ function BalanceHistory({
   );
 }
 
-function UpdateBalance({ account, householdId }: { account: Account; householdId: string }) {
+function UpdateBalance({
+  account,
+  householdId,
+  isOpen,
+  onOpenChange,
+}: {
+  account: Account;
+  householdId: string;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const today = useToday();
   const liability = isLiability(account.type);
   const invalidate = useInvalidateAccounts(householdId);
@@ -770,43 +888,40 @@ function UpdateBalance({ account, householdId }: { account: Account; householdId
     onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
   });
   return (
-    <DialogTrigger>
-      <Button variant="secondary">Update balance</Button>
-      <Dialog title="Update balance" size="sm">
-        {(close) => (
-          <Form
-            onSubmit={(e) => {
-              e.preventDefault();
-              save.mutate(undefined, { onSuccess: close });
-            }}
-          >
-            <AmountInput
-              label={liability ? 'Amount owed' : 'Balance'}
-              currency={account.currency}
-              value={amount}
-              onChange={setAmount}
-              isRequired
-              autoFocus
-              description="At the end of that day, including that day’s transactions. Other days are worked out from your transactions."
-            />
-            <DatePicker
-              label="As of"
-              value={asOf}
-              maxValue={today}
-              onChange={(d) => d && setAsOf(d)}
-            />
-            <DialogActions>
-              <Button variant="secondary" onPress={close}>
-                Cancel
-              </Button>
-              <Button type="submit" isPending={save.isPending}>
-                Save
-              </Button>
-            </DialogActions>
-          </Form>
-        )}
-      </Dialog>
-    </DialogTrigger>
+    <Dialog title="Update balance" size="sm" isOpen={isOpen} onOpenChange={onOpenChange}>
+      {(close) => (
+        <Form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate(undefined, { onSuccess: close });
+          }}
+        >
+          <AmountInput
+            label={liability ? 'Amount owed' : 'Balance'}
+            currency={account.currency}
+            value={amount}
+            onChange={setAmount}
+            isRequired
+            autoFocus
+            description="At the end of that day, including that day’s transactions. Other days are worked out from your transactions."
+          />
+          <DatePicker
+            label="As of"
+            value={asOf}
+            maxValue={today}
+            onChange={(d) => d && setAsOf(d)}
+          />
+          <DialogActions>
+            <Button variant="secondary" onPress={close}>
+              Cancel
+            </Button>
+            <Button type="submit" isPending={save.isPending}>
+              Save
+            </Button>
+          </DialogActions>
+        </Form>
+      )}
+    </Dialog>
   );
 }
 
@@ -834,6 +949,7 @@ function OwnersList({ account, members }: { account: Account; members: Household
 
 /** What a non-owner sees: who owns it and how it's shared, plus notes at view-only and above. */
 function AccountDetails({ account, members }: { account: Account; members: HouseholdMember[] }) {
+  const owner = account.yourAccess === 'owner';
   return (
     <Card className="space-y-5">
       <div>
@@ -850,7 +966,9 @@ function AccountDetails({ account, members }: { account: Account; members: House
           <p className="whitespace-pre-wrap text-sm">{account.notes}</p>
         </div>
       ) : null}
-      <p className="text-xs text-muted">Only the account’s owners can change it.</p>
+      {owner ? null : (
+        <p className="text-xs text-muted">Only the account’s owners can change it.</p>
+      )}
     </Card>
   );
 }
