@@ -366,9 +366,30 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     const mine = await txn(f.B, f.accB, -9999);
     refused(await f.B.post(url(`/transactions/${mine}/transfer`), { transactionId: theirs }));
     refused(await f.B.post(url(`/transactions/${f.tPriv}/transfer`), { transactionId: mine }), 404);
+    // Linking from the review, a group at a time (#332): the same, pair by pair.
+    const group = await f.B.post(url('/transactions/transfer-review/link'), {
+      pairs: [
+        { out: mine, into: theirs },
+        { out: f.tPriv, into: mine },
+      ],
+    });
+    ok(group);
+    expect(group.body.data).toMatchObject({
+      linked: 0,
+      refused: [
+        { id: mine, code: 'forbidden' },
+        { id: f.tPriv, code: 'not_found' },
+      ],
+    });
   },
-  'TXN-08/VIEW': async () =>
-    refused(await f.V.post(url(`/transactions/${f.tA}/transfer`), { transactionId: f.tB })),
+  'TXN-08/VIEW': async () => {
+    refused(await f.V.post(url(`/transactions/${f.tA}/transfer`), { transactionId: f.tB }));
+    refused(
+      await f.V.post(url('/transactions/transfer-review/link'), {
+        pairs: [{ out: f.tA, into: f.tB }],
+      }),
+    );
+  },
   // Moving needs ownership of both accounts (acct-own).
   'TXN-12/OWN': async () => {
     const t = await txn(f.A, f.accA);

@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Transaction, TransferReview } from '@fiscus/shared';
 import { describe, expect, it } from 'vitest';
-import { likelyOtherSide, namedAccount, withoutTransactions } from './transfers.js';
+import {
+  groupSuggestions,
+  groupUnmatched,
+  likelyOtherSide,
+  namedAccount,
+  withoutTransactions,
+} from './transfers.js';
 
 const t = (id: string, account: string, displayName: string) =>
   ({ id, account: { id: account, name: account }, displayName }) as unknown as Transaction;
@@ -60,5 +66,62 @@ describe('withoutTransactions', () => {
     ]);
     expect(next.unmatched).toEqual([]);
     expect(next.counts).toEqual({ suggested: 119, unmatched: 0, unique: 1 });
+  });
+});
+
+describe('grouping the review (#332)', () => {
+  const s = (
+    out: Transaction,
+    candidates: Transaction[],
+    unique = false,
+    reason: TransferReview['suggested'][number]['reason'] = 'several',
+  ) => ({ transaction: out, candidates, rivals: [], unique, reason });
+
+  it('groups by account pair, biggest first, with the pairs one click can link', () => {
+    const groups = groupSuggestions([
+      // Clear: one match either way.
+      s(t('o1', 'Checking', 'To savings'), [t('i1', 'Savings', 'In')], true, 'one_match'),
+      // The names point to one: ready too.
+      s(t('o2', 'Checking', 'To Savings'), [t('i2', 'Savings', 'In'), t('x2', 'House', 'In')]),
+      // Two possible accounts, no hint: its own group, and nothing to link in one click.
+      s(t('o3', 'Checking', 'Move'), [t('i3', 'Savings', 'In'), t('x3', 'House', 'In')]),
+      s(t('o4', 'Vault', 'Move'), [t('i4', 'Savings', 'In')], false, 'rivals'),
+    ]);
+    expect(groups.map((g) => [g.from, g.to, g.items.length, g.ready])).toEqual([
+      [
+        'Checking',
+        'Savings',
+        2,
+        [
+          { out: 'o1', into: 'i1' },
+          { out: 'o2', into: 'i2' },
+        ],
+      ],
+      ['Checking', null, 1, []],
+      ['Vault', 'Savings', 1, []],
+    ]);
+  });
+
+  it('gives identical transfers in step their own other sides', () => {
+    const intos = [t('i1', 'Savings', 'Round up'), t('i2', 'Savings', 'Round up')];
+    const [group] = groupSuggestions([
+      s(t('o1', 'Checking', 'Round up'), intos, true, 'identical'),
+      s(t('o2', 'Checking', 'Round up'), intos, true, 'identical'),
+    ]);
+    expect(group!.ready).toEqual([
+      { out: 'o1', into: 'i1' },
+      { out: 'o2', into: 'i2' },
+    ]);
+  });
+
+  it('groups transfers with no other side by account', () => {
+    expect(
+      groupUnmatched([t('a', 'Card', 'x'), t('b', 'Checking', 'y'), t('c', 'Checking', 'z')]).map(
+        (g) => [g.account, g.items.map((i) => i.id)],
+      ),
+    ).toEqual([
+      ['Checking', ['b', 'c']],
+      ['Card', ['a']],
+    ]);
   });
 });

@@ -77,3 +77,73 @@ export function withoutTransactions(review: TransferReview, ids: Set<string>): T
     },
   };
 }
+
+type Suggestion = TransferReview['suggested'][number];
+
+/** Suggested pairs from one account to another (#332), with the ones a single click can link. */
+export interface SuggestionGroup {
+  key: string;
+  from: string;
+  /** Null when the suggestions in it point to more than one account. */
+  to: string | null;
+  items: Suggestion[];
+  /**
+   * The pairs "Link N" links: clear ones (one match either way, or identical transfers in step)
+   * and ones the names point to. Each money-out leg gets its own other side.
+   */
+  ready: { out: string; into: string }[];
+}
+
+const accountName = (t: Transaction) => t.account?.name ?? 'another account';
+
+/**
+ * The review's suggestions by account pair, the biggest group first, so a large import reads as
+ * "SoFi Checking → House: 12" rather than 173 cards.
+ */
+export function groupSuggestions(list: Suggestion[]): SuggestionGroup[] {
+  const groups = new Map<string, SuggestionGroup & { used: Set<string> }>();
+  for (const s of list) {
+    const out = s.transaction;
+    const likely = likelyOtherSide(out, s.candidates);
+    const intoAccounts = new Set(s.candidates.map((c) => c.account?.id ?? ''));
+    const pointed = likely
+      ? s.candidates.find((c) => c.id === likely.id)!
+      : s.unique || intoAccounts.size === 1
+        ? s.candidates[0]!
+        : null;
+    const to = pointed ? accountName(pointed) : null;
+    const key = `${out.account?.id ?? ''}→${pointed?.account?.id ?? '*'}`;
+    const group = groups.get(key) ?? {
+      key,
+      from: accountName(out),
+      to,
+      items: [],
+      ready: [],
+      used: new Set<string>(),
+    };
+    group.items.push(s);
+    if (s.unique || likely) {
+      // Identical transfers in step share candidates: give each its own.
+      const into = likely
+        ? s.candidates.find((c) => c.id === likely.id)
+        : s.candidates.find((c) => !group.used.has(c.id));
+      if (into && !group.used.has(into.id)) {
+        group.used.add(into.id);
+        group.ready.push({ out: out.id, into: into.id });
+      }
+    }
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .map(({ used: _used, ...g }) => g)
+    .sort((a, b) => b.items.length - a.items.length);
+}
+
+/** Transfers with no other side, by account, the biggest first. */
+export function groupUnmatched(
+  list: Transaction[],
+): { key: string; account: string; items: Transaction[] }[] {
+  return [...Map.groupBy(list, (t) => t.account?.id ?? '').entries()]
+    .map(([key, items]) => ({ key, account: accountName(items[0]!), items }))
+    .sort((a, b) => b.items.length - a.items.length);
+}

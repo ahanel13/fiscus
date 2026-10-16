@@ -3,11 +3,12 @@ import type {
   BulkUpdateResult,
   CategoryGroup,
   HouseholdMember,
+  LinkTransfersResult,
   Transaction,
   TransferReview,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCheck, Info, Link2 } from 'lucide-react';
+import { ArrowRight, CheckCheck, ChevronRight, Info, Link2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { transferReviewQuery } from '../api/queries.js';
@@ -18,12 +19,19 @@ import {
   Badge,
   Button,
   Checkbox,
+  ConfirmDialog,
   DateText,
   LoadingRegion,
   Skeleton,
   toast,
 } from '../components/ui.js';
-import { likelyOtherSide, withoutTransactions } from '../lib/transfers.js';
+import {
+  groupSuggestions,
+  groupUnmatched,
+  likelyOtherSide,
+  type SuggestionGroup,
+  withoutTransactions,
+} from '../lib/transfers.js';
 import { CategorySelect, TransactionDrawer, useInvalidateLedger } from './transactions.js';
 
 type Data<T> = { data: T };
@@ -107,6 +115,46 @@ function mergeIdentical(list: SuggestionData[]): { suggestion: SuggestionData; c
     suggestion: group[0]!,
     count: group.length,
   }));
+}
+
+/** "3 transfers linked, and 2 more they settled." */
+function linkedText(linked: number, settled: number): string {
+  const head =
+    linked === 1
+      ? 'Linked as a transfer'
+      : `${linked} ${linked === 1 ? 'transfer' : 'transfers'} linked`;
+  return settled
+    ? `${head}, and ${settled} more ${linked === 1 ? 'it' : 'they'} settled.`
+    : `${head}.`;
+}
+
+/** Opens and closes a group of the review. */
+function GroupToggle({
+  open,
+  onToggle,
+  controls,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  controls: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={open ? controls : undefined}
+      onClick={onToggle}
+      className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      <ChevronRight
+        aria-hidden
+        className={`size-4 shrink-0 text-muted transition-transform ${open ? 'rotate-90' : ''}`}
+      />
+      {children}
+    </button>
+  );
 }
 
 /** One side of a pair: which account, how much, and the transaction's name and date. */
@@ -242,14 +290,42 @@ export function TransferReviewList({
 
   const link = useMutation({
     mutationFn: ({ out, into }: { out: string; into: string }) =>
-      api('POST', `${base}/${out}/transfer`, { body: { transactionId: into } }),
+      api<{ meta: { settled: number } }>('POST', `${base}/${out}/transfer`, {
+        body: { transactionId: into },
+      }),
     onMutate: ({ out, into }) => drop([out, into]),
-    onSuccess: () => {
+    onSuccess: (r) => {
       invalidate();
-      toast('Linked as a transfer.');
+      toast(linkedText(1, r.meta.settled));
     },
     onError,
   });
+  // A group's clear and likely pairs (#332), once confirmed.
+  const linkGroup = useMutation({
+    mutationFn: (pairs: { out: string; into: string }[]) =>
+      api<Data<LinkTransfersResult>>('POST', `${base}/transfer-review/link`, { body: { pairs } }),
+    onMutate: (pairs) => drop(pairs.flatMap((p) => [p.out, p.into])),
+    onSuccess: (r) => {
+      setConfirming(null);
+      invalidate();
+      const { linked, settled, refused } = r.data;
+      toast(linkedText(linked, settled), {
+        ...(refused.length
+          ? { description: `${refused.length} couldn’t be linked; they stay on the list.` }
+          : {}),
+      });
+    },
+    onError,
+  });
+  const [confirming, setConfirming] = useState<SuggestionGroup | null>(null);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpenGroups((open) => {
+      const next = new Set(open);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const linkAll = useMutation({
     mutationFn: () => api<Data<{ linked: number }>>('POST', `${base}/transfer-review/link-all`),
     onSuccess: (r) => {
@@ -328,22 +404,69 @@ export function TransferReviewList({
             Money out of one account and the same amount into another that Fiscus didn’t link on its
             own. Why is under each.
           </p>
+          {/* By account pair (#332): a large import reads as a few groups, not hundreds of cards. */}
           <ul className="space-y-3">
-            {mergeIdentical(suggested).map(({ suggestion: s, count }) => (
-              <Suggestion
-                key={s.transaction.id}
-                suggestion={s}
-                count={count}
-                onLink={(into) => link.mutate({ out: s.transaction.id, into })}
-                linking={link.isPending ? (link.variables?.into ?? null) : null}
-              />
-            ))}
+            {groupSuggestions(suggested).map((g, _, all) => {
+              const open = all.length === 1 || openGroups.has(g.key);
+              return (
+                <li key={g.key} className="rounded-xl border border-border bg-surface">
+                  <div className="flex flex-wrap items-center gap-2 p-2">
+                    <GroupToggle
+                      open={open}
+                      onToggle={() => toggle(g.key)}
+                      controls={`group-${g.key}`}
+                    >
+                      <span className="font-medium">{g.from}</span>
+                      <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
+                      <span className="font-medium">{g.to ?? 'more than one account'}</span>
+                      <Badge>{g.items.length}</Badge>
+                    </GroupToggle>
+                    {g.ready.length ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="ml-auto"
+                        onPress={() => setConfirming(g)}
+                      >
+                        <Link2 aria-hidden className="size-4" /> Link {g.ready.length}
+                      </Button>
+                    ) : null}
+                  </div>
+                  {open ? (
+                    <ul id={`group-${g.key}`} className="space-y-3 border-t border-border p-3">
+                      {mergeIdentical(g.items).map(({ suggestion: s, count }) => (
+                        <Suggestion
+                          key={s.transaction.id}
+                          suggestion={s}
+                          count={count}
+                          onLink={(into) => link.mutate({ out: s.transaction.id, into })}
+                          linking={link.isPending ? (link.variables?.into ?? null) : null}
+                        />
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
           {counts.suggested > suggested.length ? (
             <p className="text-sm text-muted">
               Showing the latest {suggested.length}; link these to see more.
             </p>
           ) : null}
+          <ConfirmDialog
+            isOpen={confirming !== null}
+            onOpenChange={(isOpen) => !isOpen && setConfirming(null)}
+            title={`Link ${confirming?.ready.length ?? 0} ${confirming?.ready.length === 1 ? 'pair' : 'pairs'}?`}
+            confirmLabel="Link them"
+            onConfirm={async () => {
+              if (confirming) await linkGroup.mutateAsync(confirming.ready);
+            }}
+          >
+            From {confirming?.from} to {confirming?.to ?? 'more than one account'}: the clear pairs
+            and the ones the names point to. Pairs with more than one possible match stay for you to
+            choose. Any of them can be unlinked from its transaction afterwards.
+          </ConfirmDialog>
         </section>
       ) : null}
 
@@ -377,52 +500,95 @@ export function TransferReviewList({
               </Button>
             ) : null}
           </div>
-          <ul className="divide-y divide-border rounded-xl border border-border bg-surface">
-            {unmatched.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
-                <Checkbox
-                  aria-label={`Select ${t.displayName}`}
-                  isSelected={selected.has(t.id)}
-                  onChange={(on) => {
-                    const next = new Set(selected);
-                    if (on) next.add(t.id);
-                    else next.delete(t.id);
-                    setSelected(next);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setOpen(t.id)}
-                  className="min-w-40 flex-1 text-left text-sm"
-                >
-                  <span className="font-medium">{t.displayName}</span>
-                  <span className="block text-xs text-muted">
-                    <DateText value={t.date} /> · {accountOf(t)}
-                  </span>
-                </button>
-                <Amount minor={t.amountMinor} currency={t.currency} className="text-sm" />
-                <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
-                  <div className="w-48">
-                    <CategorySelect
-                      groups={groups}
-                      label={`Recategorize ${t.displayName}`}
-                      hideLabel
-                      value={t.categoryId}
-                      onChange={(categoryId) =>
-                        categoryId !== t.categoryId && patch.mutate({ t, body: { categoryId } })
-                      }
-                    />
+          {/* By account (#332), so a card's or a bank's unpaired transfers can be handled together. */}
+          <ul className="space-y-3">
+            {groupUnmatched(unmatched).map((g, _, all) => {
+              const open = all.length === 1 || openGroups.has(`u:${g.key}`);
+              const every = g.items.every((t) => selected.has(t.id));
+              const some = g.items.some((t) => selected.has(t.id));
+              return (
+                <li key={g.key} className="rounded-xl border border-border bg-surface">
+                  <div className="flex flex-wrap items-center gap-2 p-2">
+                    <GroupToggle
+                      open={open}
+                      onToggle={() => toggle(`u:${g.key}`)}
+                      controls={`unmatched-${g.key}`}
+                    >
+                      <span className="font-medium">{g.account}</span>
+                      <Badge>{g.items.length}</Badge>
+                    </GroupToggle>
+                    <Checkbox
+                      className="ml-auto"
+                      isSelected={every}
+                      isIndeterminate={some && !every}
+                      onChange={(on) => {
+                        const next = new Set(selected);
+                        for (const t of g.items) {
+                          if (on) next.add(t.id);
+                          else next.delete(t.id);
+                        }
+                        setSelected(next);
+                      }}
+                    >
+                      Select all {g.items.length}
+                    </Checkbox>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onPress={() => patch.mutate({ t, body: { transferExternal: true } })}
-                  >
-                    Outside Fiscus
-                  </Button>
-                </div>
-              </li>
-            ))}
+                  {open ? (
+                    <ul
+                      id={`unmatched-${g.key}`}
+                      className="divide-y divide-border border-t border-border"
+                    >
+                      {g.items.map((t) => (
+                        <li key={t.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
+                          <Checkbox
+                            aria-label={`Select ${t.displayName}`}
+                            isSelected={selected.has(t.id)}
+                            onChange={(on) => {
+                              const next = new Set(selected);
+                              if (on) next.add(t.id);
+                              else next.delete(t.id);
+                              setSelected(next);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setOpen(t.id)}
+                            className="min-w-40 flex-1 text-left text-sm"
+                          >
+                            <span className="font-medium">{t.displayName}</span>
+                            <span className="block text-xs text-muted">
+                              <DateText value={t.date} /> · {accountOf(t)}
+                            </span>
+                          </button>
+                          <Amount minor={t.amountMinor} currency={t.currency} className="text-sm" />
+                          <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
+                            <div className="w-48">
+                              <CategorySelect
+                                groups={groups}
+                                label={`Recategorize ${t.displayName}`}
+                                hideLabel
+                                value={t.categoryId}
+                                onChange={(categoryId) =>
+                                  categoryId !== t.categoryId &&
+                                  patch.mutate({ t, body: { categoryId } })
+                                }
+                              />
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onPress={() => patch.mutate({ t, body: { transferExternal: true } })}
+                            >
+                              Outside Fiscus
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}

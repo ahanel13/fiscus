@@ -250,6 +250,32 @@ export interface TransferCounterpart {
 /** Link a transaction to the other leg of a transfer (TXN-08). */
 export const linkTransferSchema = z.object({ transactionId: z.uuid() });
 
+/** Pairs a person confirmed in the transfer review, linked together (#332). */
+export const linkTransferPairsSchema = z.object({
+  pairs: z
+    .array(z.object({ out: z.uuid(), into: z.uuid() }))
+    .min(1)
+    .max(500),
+});
+
+/** What linking did: the pairs linked, the ones that settled, and any refused. */
+export interface LinkTransfersResult {
+  linked: number;
+  /** Other pairs the links left with only one possible match, so linked too. */
+  settled: number;
+  refused: {
+    /** The pair's money-out leg. */
+    id: string;
+    code:
+      | 'not_found'
+      | 'forbidden'
+      | 'already_linked'
+      | 'not_editable'
+      | 'same_account'
+      | 'not_opposite';
+  }[];
+}
+
 /** What waits for you in the review queue (#44, transfers.md §2). */
 export interface ReviewCount {
   /** Both together: the badge. */
@@ -280,7 +306,7 @@ export interface TransferReview {
   }[];
   /** In a transfer category, over a week old, and nothing that could be its other side. */
   unmatched: Transaction[];
-  /** The full counts: the lists stop at 100 and 200. */
+  /** The full counts: the lists stop at 1,000 each. */
   counts: { suggested: number; unmatched: number; unique: number };
 }
 

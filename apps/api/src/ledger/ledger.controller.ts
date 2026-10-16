@@ -12,7 +12,9 @@ import {
   createTagSchema,
   createTransactionSchema,
   deleteCategoryQuerySchema,
+  linkTransferPairsSchema,
   linkTransferSchema,
+  type LinkTransfersResult,
   moveTransactionsSchema,
   type NameCleanup,
   type NameCleanupPreview,
@@ -277,6 +279,16 @@ export class TransactionsController {
     return { data: await this.transactions.linkAllTransfers(ctx) };
   }
 
+  /** Links pairs a person confirmed in the review, a group at a time (#332, TXN-08). */
+  @Post('transfer-review/link')
+  @HttpCode(200)
+  async linkTransferPairs(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(linkTransferPairsSchema)) body: z.infer<typeof linkTransferPairsSchema>,
+  ): Promise<{ data: LinkTransfersResult }> {
+    return { data: await this.transactions.linkTransferPairs(ctx, body) };
+  }
+
   @Get(':transactionId')
   async get(
     @Household() ctx: HouseholdContext,
@@ -325,8 +337,9 @@ export class TransactionsController {
     @Household() ctx: HouseholdContext,
     @Param('transactionId', UuidPipe) id: string,
     @Body(new ZodPipe(linkTransferSchema)) body: z.infer<typeof linkTransferSchema>,
-  ): Promise<{ data: Transaction }> {
-    return { data: await this.transactions.linkTransfer(ctx, id, body) };
+  ): Promise<{ data: Transaction; meta: { settled: number } }> {
+    const { transaction, settled } = await this.transactions.linkTransfer(ctx, id, body);
+    return { data: transaction, meta: { settled } };
   }
 
   @Delete(':transactionId/transfer')

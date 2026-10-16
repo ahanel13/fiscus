@@ -439,6 +439,67 @@ describe('transfers and the review queue', () => {
     const r = await A.post(url(`/transactions/${fromTravel}/transfer`), { transactionId: in1 });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect((await get(A, fromChecking)).transfer?.transactionId).toBe(in2);
+    // It says so, so the review can (#332).
+    expect(r.body.meta).toEqual({ settled: 1 });
+  });
+
+  it('links the pairs a person confirmed together, refusing the ones that can’t be (#332)', async () => {
+    const m = month();
+    const checking = await account(A, 'Group checking');
+    const savings = await account(A, 'Group savings');
+    const vault = await account(A, 'Group vault');
+    const t = { categoryId: transferCat };
+    // Two $40 moves into savings the same day, from checking and the vault: ambiguous.
+    const out1 = await txn(A, checking, -4000, `${m}-05`, t);
+    const out2 = await txn(A, vault, -4000, `${m}-05`, t);
+    const in1 = await txn(A, savings, 4000, `${m}-05`, t);
+    const in2 = await txn(A, savings, 4000, `${m}-05`, t);
+    // And a $70 move, plus things that can't pair.
+    const out3 = await txn(A, checking, -7000, `${m}-12`, t);
+    const in3 = await txn(A, savings, 7000, `${m}-20`, t);
+    const odd = await txn(A, savings, 1234, `${m}-12`, t);
+    const r = await A.post(url('/transactions/transfer-review/link'), {
+      pairs: [
+        { out: out1, into: in1 },
+        { out: out3, into: in3 },
+        { out: out2, into: in1 }, // in1 is taken by the first pair
+        { out: out3, into: odd }, // out3 is in the second pair
+        { out: out1, into: crypto.randomUUID() },
+      ],
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.data).toEqual({
+      linked: 2,
+      // out2 and in2 were left with only each other.
+      settled: 1,
+      refused: [
+        { id: out2, code: 'already_linked' },
+        { id: out3, code: 'already_linked' },
+        { id: out1, code: 'not_found' },
+      ],
+    });
+    expect((await get(A, out1)).transfer?.transactionId).toBe(in1);
+    expect((await get(A, out3)).transfer?.transactionId).toBe(in3);
+    expect((await get(A, out2)).transfer?.transactionId).toBe(in2);
+    expect((await get(A, odd)).transfer).toBeNull();
+
+    // Each refusal names why.
+    const same = await txn(A, checking, 900, `${m}-14`, t);
+    const away = await txn(A, checking, -900, `${m}-14`, t);
+    const off = await txn(A, savings, 901, `${m}-14`, t);
+    expect(
+      (
+        await A.post(url('/transactions/transfer-review/link'), {
+          pairs: [
+            { out: away, into: same },
+            { out: away, into: off },
+          ],
+        })
+      ).body.data.refused,
+    ).toEqual([
+      { id: away, code: 'same_account' },
+      { id: away, code: 'not_opposite' },
+    ]);
   });
 
   it('deleting one leg leaves the other a plain transaction again', async () => {

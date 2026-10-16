@@ -20,7 +20,9 @@ import type {
   BulkUpdateResult,
   bulkUpdateTransactionsSchema,
   createTransactionSchema,
+  linkTransferPairsSchema,
   linkTransferSchema,
+  LinkTransfersResult,
   moveTransactionsSchema,
   NameCleanup,
   NameCleanupPreview,
@@ -86,6 +88,34 @@ type BulkInput = z.infer<typeof bulkUpdateTransactionsSchema>;
 type MoveInput = z.infer<typeof moveTransactionsSchema>;
 type SplitsInput = z.infer<typeof setSplitsSchema>;
 type LinkInput = z.infer<typeof linkTransferSchema>;
+type LinkPairsInput = z.infer<typeof linkTransferPairsSchema>;
+type LinkRefusal = LinkTransfersResult['refused'][number]['code'];
+
+/** A link by hand refused, as the problem it answers (all but `forbidden` and `not_found`). */
+const LINK_PROBLEMS: Record<Exclude<LinkRefusal, 'forbidden' | 'not_found'>, () => Problem> = {
+  already_linked: () =>
+    new Problem(
+      409,
+      'already_linked',
+      'Already part of a transfer',
+      'Unlink it first, then link it again.',
+    ),
+  not_editable: () =>
+    new Problem(
+      422,
+      'not_editable',
+      'Split or pending transactions can’t be linked',
+      'Remove the split first.',
+    ),
+  same_account: () => new Problem(422, 'same_account', 'A transfer goes between two accounts'),
+  not_opposite: () =>
+    new Problem(
+      422,
+      'not_opposite',
+      'The two sides don’t match',
+      'A transfer is money out of one account and the same amount into another.',
+    ),
+};
 
 /** What the caller may see and do, computed once per request. */
 interface Access {
@@ -311,8 +341,9 @@ export class TransactionsService {
     return this.scope.run(ctx, async (tx) => {
       const access = await this.#access(tx, ctx);
       const review = await this.#transferReview(tx, access);
-      const suggested = [...review.suggested].slice(0, 100);
-      const unmatched = review.unmatched.slice(0, 200);
+      // Enough for a large import's review (#332); the page groups them by account.
+      const suggested = [...review.suggested].slice(0, 1000);
+      const unmatched = review.unmatched.slice(0, 1000);
       const rivalsOf = (out: string) => review.rivals.get(out) ?? [];
       const ids = [
         ...new Set([
@@ -1029,45 +1060,84 @@ export class TransactionsService {
    * TXN-08: links a transaction to the other leg of a transfer. Needs ownership of both legs, in
    * different accounts, for opposite amounts in the same currency.
    */
-  async linkTransfer(ctx: HouseholdContext, id: string, input: LinkInput): Promise<Transaction> {
+  /** Links two transactions by hand; `settled` counts the other pairs that left clear (#332). */
+  async linkTransfer(
+    ctx: HouseholdContext,
+    id: string,
+    input: LinkInput,
+  ): Promise<{ transaction: Transaction; settled: number }> {
     return this.scope.run(ctx, async (tx, activity) => {
       const access = await this.#access(tx, ctx);
       const a = await this.#visible(tx, id, true);
       const b = await this.#visible(tx, input.transactionId, true);
-      if (!this.#permissions(a, access).transfer || !this.#permissions(b, access).transfer) {
+      const refusal = this.#linkRefusal(a, b, access);
+      if (refusal === 'forbidden') {
         throw forbidden('Linking a transfer needs ownership of both accounts.');
       }
-      if (a.transferGroupId || b.transferGroupId) {
-        throw new Problem(
-          409,
-          'already_linked',
-          'Already part of a transfer',
-          'Unlink it first, then link it again.',
-        );
-      }
-      if (!linkable(a) || !linkable(b)) {
-        throw new Problem(
-          422,
-          'not_editable',
-          'Split or pending transactions can’t be linked',
-          'Remove the split first.',
-        );
-      }
-      if (a.accountId === b.accountId) {
-        throw new Problem(422, 'same_account', 'A transfer goes between two accounts');
-      }
-      if (a.currency !== b.currency || a.amountMinor !== -b.amountMinor) {
-        throw new Problem(
-          422,
-          'not_opposite',
-          'The two sides don’t match',
-          'A transfer is money out of one account and the same amount into another.',
-        );
-      }
+      if (refusal) throw LINK_PROBLEMS[refusal]();
       await linkTransfers(tx, activity, [[a, b]], await transferCategories(tx), false);
-      await detectAround(tx, activity, [a, b], access.levels);
-      return (await this.#present(tx, ctx, access, [await this.#visible(tx, id)]))[0]!;
+      const settled = await detectAround(tx, activity, [a, b], access.levels);
+      const [transaction] = await this.#present(tx, ctx, access, [await this.#visible(tx, id)]);
+      return { transaction: transaction!, settled };
     });
+  }
+
+  /**
+   * Links the pairs a person confirmed in the review (#332), as one change: each checked as a
+   * link by hand is, refused ones reported rather than failing the rest, then what they settle.
+   */
+  async linkTransferPairs(
+    ctx: HouseholdContext,
+    input: LinkPairsInput,
+  ): Promise<LinkTransfersResult> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const access = await this.#access(tx, ctx);
+      if (access.viewer) throw forbidden('Viewers can’t link transfers.');
+      const ids = input.pairs.flatMap((p) => [p.out, p.into]);
+      const rows = new Map(
+        (
+          await tx
+            .select()
+            .from(transactions)
+            .where(and(inArray(transactions.id, ids), isNull(transactions.deletedAt)))
+        ).map((r) => [r.id, r]),
+      );
+      const refused: LinkTransfersResult['refused'] = [];
+      const pairs: [Row, Row][] = [];
+      const taken = new Set<string>();
+      for (const p of input.pairs) {
+        const a = rows.get(p.out);
+        const b = rows.get(p.into);
+        // Rows outside your access read as missing, as a link by hand does.
+        if (!a || !b || !access.levels.has(a.accountId) || !access.levels.has(b.accountId)) {
+          refused.push({ id: p.out, code: 'not_found' });
+          continue;
+        }
+        const code =
+          taken.has(a.id) || taken.has(b.id) ? 'already_linked' : this.#linkRefusal(a, b, access);
+        if (code) {
+          refused.push({ id: p.out, code });
+          continue;
+        }
+        taken.add(a.id).add(b.id);
+        pairs.push([a, b]);
+      }
+      await linkTransfers(tx, activity, pairs, await transferCategories(tx), false);
+      const settled = await detectAround(tx, activity, pairs.flat(), access.levels);
+      return { linked: pairs.length, settled, refused };
+    });
+  }
+
+  /** Why two transactions can't be linked as a transfer by this person, if they can't. */
+  #linkRefusal(a: Row, b: Row, access: Access): Exclude<LinkRefusal, 'not_found'> | null {
+    if (!this.#permissions(a, access).transfer || !this.#permissions(b, access).transfer) {
+      return 'forbidden';
+    }
+    if (a.transferGroupId || b.transferGroupId) return 'already_linked';
+    if (!linkable(a) || !linkable(b)) return 'not_editable';
+    if (a.accountId === b.accountId) return 'same_account';
+    if (a.currency !== b.currency || a.amountMinor !== -b.amountMinor) return 'not_opposite';
+    return null;
   }
 
   /** TXN-08: unlinks a transfer; each leg goes back to the category it had. */
