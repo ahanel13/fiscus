@@ -131,10 +131,12 @@ export function AccountsPage() {
   const [adding, setAdding] = useState(false);
   const canAdd = household.you.role !== 'viewer';
   // One way in, which asks how: by hand, or from a file (bank connections join it in M2).
-  const add = canAdd ? (
+  // In the header it's an icon on a phone, as on Transactions; the empty state keeps its label.
+  const addMenu = (compact: boolean) => (
     <MenuTrigger>
-      <Button>
-        <Plus aria-hidden className="size-4" /> Add account
+      <Button className={compact ? 'px-2.5 sm:px-3.5' : undefined}>
+        <Plus aria-hidden className="size-4" />
+        <span className={compact ? 'sr-only sm:not-sr-only' : undefined}>Add account</span>
       </Button>
       <Menu placement="bottom end" aria-label="Add an account">
         <MenuItem onAction={() => setAdding(true)}>
@@ -145,7 +147,7 @@ export function AccountsPage() {
         </MenuItem>
       </Menu>
     </MenuTrigger>
-  ) : undefined;
+  );
 
   return (
     <>
@@ -154,7 +156,7 @@ export function AccountsPage() {
         range={range}
         showLens={showLens}
         members={members}
-        action={add}
+        action={canAdd ? addMenu(true) : undefined}
       />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
         <MakeJointOffer householdId={householdId} />
@@ -174,7 +176,7 @@ export function AccountsPage() {
               you own, like a home or a car. Enter them yourself, or import them from a Monarch
               export or a bank’s file. Bank connections arrive later.
             </p>
-            {add}
+            {canAdd ? addMenu(false) : null}
           </EmptyState>
         ) : (
           <>

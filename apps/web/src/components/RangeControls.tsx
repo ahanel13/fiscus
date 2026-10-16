@@ -47,7 +47,7 @@ export function RangeSelect({
             setCustom(true);
           } else if (v) state.setRange(v as Preset);
         }}
-        triggerClassName="min-w-44"
+        triggerClassName={align === 'end' ? 'min-w-36 sm:min-w-44' : 'min-w-44'}
       >
         {RANGE_GROUPS.map((g) => (
           <SelectSection key={g.label} title={g.label}>
@@ -65,7 +65,8 @@ export function RangeSelect({
         </SelectSection>
       </Select>
       {selection.range !== 'custom' && selection.range !== 'all_time' ? (
-        <span className="mt-0.5 text-xs text-muted">
+        // In a page header the dates give way on a phone, where the page shows them anyway.
+        <span className={`mt-0.5 text-xs text-muted ${align === 'end' ? 'hidden sm:block' : ''}`}>
           {formatSpan(resolved.from, resolved.to)}
           {resolved.partial ? ' (so far)' : ''}
         </span>
