@@ -307,7 +307,7 @@ test('6. the review queue', async ({ page }) => {
 
 test('7. rules', async ({ page }) => {
   await signIn(page);
-  await page.goto(`${home}/rules`);
+  await page.goto(`${home}/settings/rules`);
   await page.getByRole('button', { name: 'New rule' }).click();
   const editor = page.getByRole('dialog', { name: 'New rule' });
   await editor.getByRole('textbox', { name: 'Text' }).fill('bean there');
@@ -370,7 +370,7 @@ test('9. people: a partner joins, and the lens appears', async ({ page, browser 
   await expect(partner).toHaveURL(/\/h\/[0-9a-f-]{36}$/);
   await theirs.close();
 
-  await page.goto(`${home}/settings`);
+  await page.goto(`${home}/settings/members`);
   await expect(page.getByText('Sam').first()).toBeVisible();
   await shot(page, '35-household-settings', true);
   await page.goto(home);

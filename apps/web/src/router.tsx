@@ -33,9 +33,15 @@ import {
 import { SectionPage } from './routes/section.js';
 import { ImportPage } from './routes/import.js';
 import { ReviewPage } from './routes/review.js';
-import { RulesPage } from './routes/rules.js';
+import { RulesSettings } from './routes/rules.js';
 import { ServerPage } from './routes/server.js';
-import { HouseholdSettingsPage, PersonalSettingsPage } from './routes/settings.js';
+import {
+  CategoriesSettingsPage,
+  GeneralSettings,
+  HouseholdSettingsLayout,
+  MembersSettings,
+  PersonalSettingsPage,
+} from './routes/settings.js';
 import { WelcomePage } from './routes/welcome.js';
 
 interface Context {
@@ -196,16 +202,27 @@ const reviewRoute = createRoute({
   }),
   component: ReviewPage,
 });
+// Rules moved into household settings (F21); old links still work.
 const rulesRoute = createRoute({
   getParentRoute: () => householdRoute,
   path: '/rules',
-  component: RulesPage,
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: '/h/$householdId/settings/rules', params, replace: true });
+  },
 });
 const householdSettingsRoute = createRoute({
   getParentRoute: () => householdRoute,
   path: '/settings',
-  component: HouseholdSettingsPage,
+  component: HouseholdSettingsLayout,
 });
+const settingsSection = (path: string, component: () => React.JSX.Element) =>
+  createRoute({ getParentRoute: () => householdSettingsRoute, path, component });
+const settingsRoutes = [
+  settingsSection('/', GeneralSettings),
+  settingsSection('/members', MembersSettings),
+  settingsSection('/categories', CategoriesSettingsPage),
+  settingsSection('/rules', RulesSettings),
+];
 
 const routeTree = rootRoute.addChildren([
   ...publicRoutes,
@@ -220,7 +237,7 @@ const routeTree = rootRoute.addChildren([
       importRoute,
       reviewRoute,
       rulesRoute,
-      householdSettingsRoute,
+      householdSettingsRoute.addChildren(settingsRoutes),
     ]),
   ]),
 ]);

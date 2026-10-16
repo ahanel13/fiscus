@@ -595,7 +595,7 @@ export function TransactionsPage() {
               </ButtonLink>
               <ButtonLink
                 variant="ghost"
-                to="/h/$householdId/rules"
+                to="/h/$householdId/settings/rules"
                 params={{ householdId }}
                 className="px-2.5 sm:px-3.5"
               >
