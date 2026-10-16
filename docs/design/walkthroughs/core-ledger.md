@@ -262,9 +262,10 @@ That's **Server** in the account menu.
 for. The lens appears only once there's someone to share with.
 
 **Gets in the way.**
-- **F21.** Household settings is one long page: general settings, how you appear, members, and
-  every category, over 2,400 pixels tall. Categories, which people edit most, are at the bottom.
-  Monarch splits settings into sections.
+- ~~**F21.**~~ *Fixed in #352.* Household settings is one long page: general settings, how you
+  appear, members, and every category, over 2,400 pixels tall. Categories, which people edit most,
+  are at the bottom. Monarch splits settings into sections. Now it has sections, each at its own
+  URL: General, Members, Categories, and Rules (moved from Transactions).
 - ~~**F22.**~~ *Fixed in #350.* **Household settings** is in two places: the household menu, and the bottom of the
   sidebar.
 - ~~**F23.**~~ *Fixed in #350.* The new-password field states the rules twice: as a sentence, then as the checklist.
@@ -285,7 +286,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 | F11 | Low list density | Medium | A dense, sortable table on desktop; make the density choice visible on the list | Fixed (#351) |
 | F8, F17 | Counts that don't agree; review pane repeats the category | Medium | Separate badges, or "4 + 4 transfers"; the import's last step offers "Check 4 transfers"; one category picker in the review pane | Fixed (#350) |
 | F18 | Applying a rule to past transactions is a second step | Medium | "Also apply to N existing" checkbox in the editor | Fixed (#350) |
-| F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | #352 |
+| F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | Fixed (#352) |
 | F2 | Six unbuilt sections in the navigation | — | Keep them: they show what Fiscus will have | Won't change |
 | F1 | Empty landing after setup | Medium | A first-run checklist on the dashboard (accounts, partner, review) until it's done | #354 |
 | F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | #353, with #48 |
@@ -304,7 +305,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 2. ~~**Quick wins** (F3, F4, F6–F9, F15–F18, F22, F23).~~ Done in #350.
 3. ~~**Merchant cleanup** (#42, F10, F20).~~ Done in #42.
 4. ~~**Transactions table** (F11), once editing is fast.~~ Done in #351.
-5. **Settings sections** (F21) and **account page chart** (F5, with #48 account groups).
+5. ~~**Settings sections** (F21)~~ (done in #352) and **account page chart** (F5, with #48 account groups).
 6. **Transfer review follow-ups** (#332).
 7. Then the rest of M1.5, as planned: edit history (#46), OFX and YNAB/Actual imports (#74, #76),
    multi-currency (#43), member-scoped rules (#58), member leaving (#62), and so on.

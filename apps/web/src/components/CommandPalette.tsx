@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Membership } from '@fiscus/shared';
 import { Command } from 'cmdk';
-import { Home, LogOut, Moon, Server, Settings, Sun, User } from 'lucide-react';
+import { Home, LogOut, Moon, Server, Settings, Sun, User, Wand2 } from 'lucide-react';
 import type { Section } from '../lib/nav.js';
 
 export interface PaletteActions {
@@ -74,6 +74,13 @@ export function CommandPalette({
             className={item}
           >
             <Settings aria-hidden className="size-4 text-muted" /> Household settings
+          </Command.Item>
+          <Command.Item
+            value="go rules automation"
+            onSelect={run(() => actions.go(`/h/${householdId}/settings/rules`))}
+            className={item}
+          >
+            <Wand2 aria-hidden className="size-4 text-muted" /> Rules
           </Command.Item>
           <Command.Item
             value="go personal settings sessions profile"

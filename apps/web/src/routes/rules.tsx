@@ -25,7 +25,6 @@ import {
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
-import { PageHeader } from '../components/PageHeader.js';
 import { NameCleanupCard } from './name-cleanup.js';
 import {
   AmountInput,
@@ -66,7 +65,8 @@ const rulesQuery = (id: string) => ({
   queryFn: async () => (await api<Data<Rule[]>>('GET', `${base(id)}/rules`)).data,
 });
 
-export function RulesPage() {
+/** Household settings → Rules (moved from Transactions, F21). */
+export function RulesSettings() {
   const { householdId } = useParams({ strict: false }) as { householdId: string };
   const household = useSuspenseQuery(householdQuery(householdId)).data;
   const members = useQuery(membersQuery(householdId)).data ?? [];
@@ -106,24 +106,19 @@ export function RulesPage() {
 
   return (
     <>
-      <PageHeader
-        title="Rules"
-        showLens={false}
-        members={members}
-        action={
-          canEdit ? (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start gap-3">
+          <p className="min-w-0 flex-1 basis-64 text-sm text-muted">
+            Rules tidy up transactions as they arrive: rename them, categorize them, tag them, and
+            more. They run top to bottom, and a later rule wins when two set the same thing. They
+            never change something a person set, and act only where their author could by hand.
+          </p>
+          {canEdit ? (
             <Button onPress={() => setEditing('new')}>
               <Wand2 aria-hidden className="size-4" /> New rule
             </Button>
-          ) : undefined
-        }
-      />
-      <div className="mx-auto max-w-4xl space-y-4 px-4 py-6 md:px-8">
-        <p className="text-sm text-muted">
-          Rules tidy up transactions as they arrive: rename them, categorize them, tag them, and
-          more. They run top to bottom, and a later rule wins when two set the same thing. They
-          never change something a person set, and act only where their author could by hand.
-        </p>
+          ) : null}
+        </div>
         {canEdit && household.cleanMerchantNames ? (
           <NameCleanupCard householdId={householdId} />
         ) : null}

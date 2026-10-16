@@ -394,9 +394,15 @@ test('creates a rule with a live preview, and applies it to existing transaction
   page,
 }) => {
   await signIn(page);
-  await page.goto(`${householdUrl}/transactions`);
-  await page.getByRole('link', { name: 'Rules' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Rules' })).toBeVisible();
+  // Rules are a section of household settings, with its own URL (#352).
+  await page.goto(`${householdUrl}/settings`);
+  const sections = page.getByRole('navigation', { name: 'Settings sections' });
+  await sections.getByRole('link', { name: 'Rules' }).click();
+  await expect(page).toHaveURL(/\/settings\/rules$/);
+  await expect(sections.getByRole('link', { name: 'Rules' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
   await expect(page.getByText('No rules yet')).toBeVisible();
 
   await page.getByRole('button', { name: 'New rule' }).click();
@@ -483,7 +489,9 @@ test('recategorizing a transaction suggests a rule for next time', async ({ page
   await expect(page.getByText('Rule created.')).toBeVisible();
   await expect(suggestion).toHaveCount(0);
 
+  // The old address still leads there.
   await page.goto(`${householdUrl}/rules`);
+  await expect(page).toHaveURL(/\/settings\/rules$/);
   await expect(page.getByText('When: Description contains “REFUND”')).toBeVisible();
 });
 
@@ -596,7 +604,7 @@ test('a rule can treat payments as transfers to another account, recording the o
   page,
 }) => {
   await signIn(page);
-  await page.goto(`${householdUrl}/rules`);
+  await page.goto(`${householdUrl}/settings/rules`);
   await page.getByRole('button', { name: 'New rule' }).click();
   const editor = page.getByRole('dialog', { name: 'New rule' });
   await editor.getByRole('textbox', { name: 'Text' }).fill('payment to pocket');
@@ -679,7 +687,7 @@ test('you choose how you appear; a household that shares everything makes accoun
   browser,
 }) => {
   await signIn(page);
-  await page.goto(`${householdUrl}/settings`);
+  await page.goto(`${householdUrl}/settings/members`);
   await expect(page.getByRole('heading', { name: 'How you appear here' })).toBeVisible();
   await page.getByLabel('Your name here').fill('Ada L.');
   await page.getByRole('radiogroup', { name: 'Your color' }).getByText('Violet').click();
@@ -704,6 +712,10 @@ test('you choose how you appear; a household that shares everything makes accoun
 
   // Switching to "it's all ours" offers to make your accounts joint.
   await page.reload();
+  await page
+    .getByRole('navigation', { name: 'Settings sections' })
+    .getByRole('link', { name: 'General' })
+    .click();
   await page.getByRole('button', { name: /How you handle money together/ }).click();
   await page.getByRole('option', { name: 'It’s all ours' }).click();
   await page.getByRole('button', { name: 'Save changes' }).click();

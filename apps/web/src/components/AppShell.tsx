@@ -335,7 +335,7 @@ function HouseholdSwitcher({
             <MenuItem
               onAction={() =>
                 void navigate({
-                  to: '/h/$householdId/settings',
+                  to: '/h/$householdId/settings/members',
                   params: { householdId },
                   search: { invite: '1' },
                 })

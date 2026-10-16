@@ -593,15 +593,6 @@ export function TransactionsPage() {
                   </Badge>
                 ) : null}
               </ButtonLink>
-              <ButtonLink
-                variant="ghost"
-                to="/h/$householdId/rules"
-                params={{ householdId }}
-                className="px-2.5 sm:px-3.5"
-              >
-                <Wand2 aria-hidden className="size-4" />
-                <span className="sr-only sm:not-sr-only">Rules</span>
-              </ButtonLink>
               <MenuTrigger>
                 <Button className="px-2.5 sm:px-3.5">
                   <Plus aria-hidden className="size-4" />
