@@ -38,36 +38,64 @@ export function PageHeader({
   // Wider screens: all on one row.
   return (
     <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 md:px-8 md:py-5">
-      <h1 className="mr-auto min-w-0 truncate text-xl font-semibold md:text-2xl">{title}</h1>
+      {/* It gives way before the actions wrap under it. */}
+      <h1 className="min-w-0 flex-1 basis-0 truncate text-xl font-semibold md:text-2xl">{title}</h1>
       {controls ? (
-        <div className="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">
+        <div className="order-last flex w-full items-start gap-2 sm:order-none sm:w-auto sm:flex-wrap sm:items-center">
           {range ? <RangeSelect state={range} /> : null}
           {showLens ? (
-            options.length <= 4 ? (
-              <SegmentedControl
-                aria-label="Whose money"
+            <>
+              {/* A dropdown on a phone, so the range and the lens share one row. */}
+              <LensSelect
                 options={options}
-                value={lens}
+                lens={lens}
                 onChange={(v) => set({ lens: v })}
+                className={options.length <= 4 ? 'sm:hidden' : undefined}
               />
-            ) : (
-              <Select
-                aria-label="Whose money"
-                value={lens}
-                onChange={(v) => v && set({ lens: String(v) as Lens })}
-                triggerClassName="min-w-36"
-              >
-                {options.map((o) => (
-                  <SelectItem key={o.value} id={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </Select>
-            )
+              {options.length <= 4 ? (
+                <div className="hidden sm:block">
+                  <SegmentedControl
+                    aria-label="Whose money"
+                    options={options}
+                    value={lens}
+                    onChange={(v) => set({ lens: v })}
+                  />
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       ) : null}
       {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
     </header>
+  );
+}
+
+function LensSelect({
+  options,
+  lens,
+  onChange,
+  className,
+}: {
+  options: { value: Lens; label: string }[];
+  lens: Lens;
+  onChange: (lens: Lens) => void;
+  className?: string | undefined;
+}) {
+  return (
+    <div className={className}>
+      <Select
+        aria-label="Whose money"
+        value={lens}
+        onChange={(v) => v && onChange(String(v) as Lens)}
+        triggerClassName="min-w-28"
+      >
+        {options.map((o) => (
+          <SelectItem key={o.value} id={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </Select>
+    </div>
   );
 }

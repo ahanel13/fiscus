@@ -25,7 +25,7 @@ import type {
   updateAccountSchema,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { addDays, daysBetween, todayIn } from '../common/dates.js';
@@ -107,7 +107,13 @@ export class AccountsService {
     private readonly crypto: FieldCrypto,
   ) {}
 
-  async list(ctx: HouseholdContext, lens: Lens, include: 'open' | 'closed'): Promise<Account[]> {
+  /** With a window (a range, or from/to), each account also carries its change over it (#353). */
+  async list(
+    ctx: HouseholdContext,
+    lens: Lens,
+    include: 'open' | 'closed',
+    window?: WindowParams,
+  ): Promise<Account[]> {
     return this.scope.run(ctx, async (tx) => {
       const scoped = await moneyScope(tx, ctx, lens);
       if (scoped.size === 0) return [];
@@ -122,8 +128,57 @@ export class AccountsService {
         )
         .orderBy(asc(accounts.sortOrder), asc(accounts.name));
       const levels = new Map([...scoped].map(([id, s]) => [id, s.level]));
-      return this.#present(tx, ctx, rows, levels);
+      const list = await this.#present(tx, ctx, rows, levels);
+      if (!window) return list;
+      const changes = await this.#changes(
+        tx,
+        ctx,
+        window,
+        rows.map((r) => r.id),
+      );
+      return list.map((a) => ({ ...a, change: changes.get(a.id) ?? null }));
     });
+  }
+
+  /**
+   * Each account's change over the window: its balance at the end, less the one in effect at the
+   * start (or its first balance inside the window, for an account that began during it).
+   */
+  async #changes(tx: Executor, ctx: HouseholdContext, window: WindowParams, ids: string[]) {
+    const out = new Map<string, { amountMinor: number; from: string; to: string }>();
+    if (ids.length === 0) return out;
+    const { from, to } = await this.#window(tx, ctx, window);
+    const { rows } = await tx.execute<{
+      id: string;
+      end_minor: string;
+      start_minor: string;
+      start_date: string;
+    }>(sql`
+      SELECT a.id, e.balance_minor AS end_minor,
+             coalesce(o.balance_minor, f.balance_minor) AS start_minor,
+             CASE WHEN o.balance_minor IS NOT NULL THEN ${from}::date ELSE f.as_of END::text AS start_date
+      FROM unnest(${sql.param(ids)}::uuid[]) AS a(id)
+      JOIN LATERAL (
+        SELECT b.balance_minor FROM balance_snapshots b
+        WHERE b.account_id = a.id AND b.as_of <= ${to}::date ORDER BY b.as_of DESC LIMIT 1
+      ) e ON true
+      LEFT JOIN LATERAL (
+        SELECT b.balance_minor FROM balance_snapshots b
+        WHERE b.account_id = a.id AND b.as_of <= ${from}::date ORDER BY b.as_of DESC LIMIT 1
+      ) o ON true
+      LEFT JOIN LATERAL (
+        SELECT b.balance_minor, b.as_of FROM balance_snapshots b
+        WHERE b.account_id = a.id AND b.as_of > ${from}::date AND b.as_of <= ${to}::date
+        ORDER BY b.as_of ASC LIMIT 1
+      ) f ON true`);
+    for (const r of rows) {
+      out.set(r.id, {
+        amountMinor: Number(r.end_minor) - Number(r.start_minor),
+        from: r.start_date,
+        to,
+      });
+    }
+    return out;
   }
 
   async get(ctx: HouseholdContext, accountId: string): Promise<Account> {
@@ -440,10 +495,11 @@ export class AccountsService {
     });
   }
 
+  /** Balances in the window; with `opening`, led by the one in effect when it opens (#353). */
   async balances(
     ctx: HouseholdContext,
     accountId: string,
-    window: WindowParams,
+    window: WindowParams & { opening?: 'true' | 'false' },
   ): Promise<BalancePoint[]> {
     return this.scope.run(ctx, async (tx) => {
       if (!(await accessLevels(tx)).has(accountId)) throw problems.notFound();
@@ -459,6 +515,15 @@ export class AccountsService {
           ),
         )
         .orderBy(asc(balanceSnapshots.asOf));
+      if (window.opening === 'true' && rows[0]?.asOf !== from) {
+        const [before] = await tx
+          .select()
+          .from(balanceSnapshots)
+          .where(and(eq(balanceSnapshots.accountId, accountId), lt(balanceSnapshots.asOf, from)))
+          .orderBy(desc(balanceSnapshots.asOf))
+          .limit(1);
+        if (before) rows.unshift({ ...before, asOf: from });
+      }
       return rows.map((r) => ({
         asOf: r.asOf,
         amountMinor: r.balanceMinor,

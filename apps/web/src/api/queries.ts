@@ -71,16 +71,21 @@ export const serverInvitesQuery = queryOptions({
 
 const hh = (id: string) => `/api/v1/households/${id}`;
 
-export const accountsQuery = (id: string, lens: Lens, include: 'open' | 'closed' = 'open') =>
+/** With range parameters (rangeParams()), each account carries its change over the range (#353). */
+export const accountsQuery = (
+  id: string,
+  lens: Lens,
+  include: 'open' | 'closed' = 'open',
+  range?: URLSearchParams,
+) =>
   queryOptions({
-    queryKey: ['households', id, 'accounts', { lens, include }],
-    queryFn: async () =>
-      (
-        await api<Data<Account[]>>(
-          'GET',
-          `${hh(id)}/accounts?lens=${encodeURIComponent(lens)}&include=${include}`,
-        )
-      ).data,
+    queryKey: ['households', id, 'accounts', { lens, include, range: range?.toString() ?? null }],
+    queryFn: async () => {
+      const params = new URLSearchParams(range);
+      params.set('lens', lens);
+      params.set('include', include);
+      return (await api<Data<Account[]>>('GET', `${hh(id)}/accounts?${params}`)).data;
+    },
   });
 
 export const accountQuery = (id: string, accountId: string) =>
@@ -89,11 +94,29 @@ export const accountQuery = (id: string, accountId: string) =>
     queryFn: async () => (await api<Data<Account>>('GET', `${hh(id)}/accounts/${accountId}`)).data,
   });
 
-export const balancesQuery = (id: string, accountId: string) =>
+/** An account's balances: the last 365 days, or a range; `opening` leads with the balance in effect. */
+export const balancesQuery = (
+  id: string,
+  accountId: string,
+  range?: URLSearchParams,
+  opening = false,
+) =>
   queryOptions({
-    queryKey: ['households', id, 'accounts', accountId, 'balances'],
-    queryFn: async () =>
-      (await api<Data<BalancePoint[]>>('GET', `${hh(id)}/accounts/${accountId}/balances`)).data,
+    queryKey: [
+      'households',
+      id,
+      'accounts',
+      accountId,
+      'balances',
+      { range: range?.toString() ?? null, opening },
+    ],
+    queryFn: async () => {
+      const params = new URLSearchParams(range);
+      if (opening) params.set('opening', 'true');
+      return (
+        await api<Data<BalancePoint[]>>('GET', `${hh(id)}/accounts/${accountId}/balances?${params}`)
+      ).data;
+    },
   });
 
 export const netWorthQuery = (id: string, lens: Lens) =>

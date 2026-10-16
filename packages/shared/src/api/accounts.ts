@@ -116,21 +116,31 @@ export const setBalanceSchema = z.object({
   creditLimitMinor: minorUnitsSchema.nullable().optional(),
 });
 
-export const accountsQuerySchema = z.object({
-  lens: lensSchema.default('all'),
-  include: z.enum(['open', 'closed']).default('open'),
-});
-
 /** Date windows until shared time ranges land on every endpoint (#64, #65). */
 export const dateWindowSchema = z
   .object({ from: isoDateSchema.optional(), to: isoDateSchema.optional() })
   .refine((w) => !w.from || !w.to || w.from <= w.to, '"from" must not be after "to"');
 
+/** With a range, each account also carries its change over it (#353). */
+export const accountsQuerySchema = z
+  .object({
+    lens: lensSchema.default('all'),
+    include: z.enum(['open', 'closed']).default('open'),
+    ...optionalRangeFields,
+  })
+  .and(dateWindowSchema);
+
 export const netWorthQuerySchema = z
   .object({ lens: lensSchema.default('all'), ...optionalRangeFields })
   .and(dateWindowSchema);
 
-export const balancesQuerySchema = z.object({ ...optionalRangeFields }).and(dateWindowSchema);
+export const balancesQuerySchema = z
+  .object({
+    ...optionalRangeFields,
+    /** Also the balance in effect when the window opens, dated its first day (a chart's start). */
+    opening: z.enum(['true', 'false']).default('false'),
+  })
+  .and(dateWindowSchema);
 
 export interface AccountOwner {
   memberId: string;
@@ -155,6 +165,11 @@ export interface Account {
   yourAccess: AccessLevel;
   /** The latest balance, if any. */
   balance: { amountMinor: number; asOf: string } | null;
+  /**
+   * Asked for with a range (#353): the balance's change from the range's start (or the first
+   * balance in it) to its end. Absent without a range; null when there's no balance by its end.
+   */
+  change?: { amountMinor: number; from: string; to: string } | null;
   /** Shared account notes: present at `view_only` and above. */
   notes?: string | null;
   version: number;

@@ -6,9 +6,26 @@ import type {
   Household,
   HouseholdMember,
 } from '@fiscus/shared';
-import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight, Landmark, Pencil, Plus, Upload } from 'lucide-react';
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
+  Landmark,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Upload,
+} from 'lucide-react';
+import { useLocale } from 'react-aria-components';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -23,6 +40,7 @@ import {
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { BalanceChart } from '../components/BalanceChart.js';
 import { Sparkline } from '../components/Sparkline.js';
 import {
   Alert,
@@ -53,13 +71,9 @@ import {
   SelectItem,
   Skeleton,
   Switch,
-  Tab,
   Table,
   TableBody,
   TableHeader,
-  TabList,
-  TabPanel,
-  Tabs,
   TextField,
   toast,
   useToday,
@@ -76,7 +90,7 @@ import {
   VISIBILITY,
 } from '../lib/accounts.js';
 import { type Lens, lensVisible, parseLens } from '../lib/lens.js';
-import { formatSpan, rangeParams } from '../lib/ranges.js';
+import { formatSpan, type RangeSelection, rangeParams, selectionLabel } from '../lib/ranges.js';
 import { useRange } from '../lib/use-range.js';
 import { RangeChips } from '../components/RangeControls.js';
 import { AddTransactionDialog, TransactionDrawer, TransactionList } from './transactions.js';
@@ -108,14 +122,21 @@ export function AccountsPage() {
   const search = useSearch({ strict: false }) as { lens?: string };
   const showLens = lensVisible(household, members.length);
   const lens = showLens ? parseLens(search.lens) : 'all';
-  const accounts = useQuery(accountsQuery(householdId, lens));
+  // One range for the page: net worth's trend and each account's change over it (#353).
+  const range = useRange(household, 'net-worth', 'last_12m');
+  const accounts = useQuery({
+    ...accountsQuery(householdId, lens, 'open', rangeParams(range.selection)),
+    placeholderData: keepPreviousData,
+  });
   const [adding, setAdding] = useState(false);
   const canAdd = household.you.role !== 'viewer';
   // One way in, which asks how: by hand, or from a file (bank connections join it in M2).
-  const add = canAdd ? (
+  // In the header it's an icon on a phone, as on Transactions; the empty state keeps its label.
+  const addMenu = (compact: boolean) => (
     <MenuTrigger>
-      <Button>
-        <Plus aria-hidden className="size-4" /> Add account
+      <Button className={compact ? 'px-2.5 sm:px-3.5' : undefined}>
+        <Plus aria-hidden className="size-4" />
+        <span className={compact ? 'sr-only sm:not-sr-only' : undefined}>Add account</span>
       </Button>
       <Menu placement="bottom end" aria-label="Add an account">
         <MenuItem onAction={() => setAdding(true)}>
@@ -126,11 +147,17 @@ export function AccountsPage() {
         </MenuItem>
       </Menu>
     </MenuTrigger>
-  ) : undefined;
+  );
 
   return (
     <>
-      <PageHeader title="Accounts" showLens={showLens} members={members} action={add} />
+      <PageHeader
+        title="Accounts"
+        range={range}
+        showLens={showLens}
+        members={members}
+        action={canAdd ? addMenu(true) : undefined}
+      />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
         <MakeJointOffer householdId={householdId} />
         {accounts.isPending ? (
@@ -149,11 +176,11 @@ export function AccountsPage() {
               you own, like a home or a car. Enter them yourself, or import them from a Monarch
               export or a bank’s file. Bank connections arrive later.
             </p>
-            {add}
+            {canAdd ? addMenu(false) : null}
           </EmptyState>
         ) : (
           <>
-            <NetWorthCard household={household} lens={lens} />
+            <NetWorthCard household={household} lens={lens} range={range} />
             {GROUPS.map((g) => {
               const items = accounts.data.filter((a) => g.types.includes(a.type));
               return items.length ? (
@@ -164,6 +191,7 @@ export function AccountsPage() {
                   members={members}
                   householdId={householdId}
                   currency={household.baseCurrency}
+                  range={{ from: range.resolved.from, label: selectionLabel(range.selection) }}
                 />
               ) : null;
             })}
@@ -260,12 +288,15 @@ function AccountGroup({
   members,
   householdId,
   currency,
+  range,
 }: {
   label: string;
   accounts: Account[];
   members: HouseholdMember[];
   householdId: string;
   currency: string;
+  /** The page's range, for each account's change over it. */
+  range: { from: string; label: string };
 }) {
   const sameCurrency = accounts.every((a) => a.currency === currency);
   const total = accounts.reduce((sum, a) => sum + (a.balance?.amountMinor ?? 0), 0);
@@ -284,7 +315,8 @@ function AccountGroup({
           />
         ) : null}
       </div>
-      <Card className="p-0">
+      {/* Not a Card: its padding would double the rows' own and squeeze the names. */}
+      <div className="rounded-xl border border-border bg-surface">
         <ul className="divide-y divide-border">
           {accounts.map((a) => (
             <li key={a.id}>
@@ -294,7 +326,10 @@ function AccountGroup({
                 style={{ minHeight: 'var(--row-h)', paddingInline: 'var(--cell-px)' }}
               >
                 <span className="min-w-0 flex-1 py-2">
-                  <span className="block truncate text-sm font-medium">{a.name}</span>
+                  {/* Long bank names wrap to a second line on a phone rather than cutting off. */}
+                  <span className="line-clamp-2 text-sm font-medium break-words sm:line-clamp-1">
+                    {a.name}
+                  </span>
                   <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
                     {members.length > 1 ? <span>{ownerLabel(a, members)}</span> : null}
                     {a.mask ? <span>•••• {a.mask}</span> : null}
@@ -304,24 +339,45 @@ function AccountGroup({
                     {a.closedAt ? <Badge>Closed</Badge> : null}
                   </span>
                 </span>
-                <span className="text-right">
+                {/* The change over the page's range, then the balance and when it's from. */}
+                {a.change && a.change.amountMinor !== 0 ? (
+                  <span className="hidden text-right text-xs sm:block">
+                    <Amount minor={a.change.amountMinor} currency={a.currency} />
+                    {/* An account that began during the range counts from its first balance. */}
+                    <span className="block text-muted">
+                      {a.change.from === range.from ? (
+                        range.label
+                      ) : (
+                        <>
+                          since <DateText value={a.change.from} format="short" />
+                        </>
+                      )}
+                    </span>
+                  </span>
+                ) : null}
+                <span className="shrink-0 text-right sm:w-32">
                   {a.balance ? (
-                    <Amount
-                      minor={a.balance.amountMinor}
-                      currency={a.currency}
-                      kind={balanceKind(a.type)}
-                      className="block text-sm font-medium"
-                    />
+                    <>
+                      <Amount
+                        minor={a.balance.amountMinor}
+                        currency={a.currency}
+                        kind={balanceKind(a.type)}
+                        className="block text-sm font-medium"
+                      />
+                      <span className="block text-xs text-muted">
+                        as of <DateText value={a.balance.asOf} format="short" />
+                      </span>
+                    </>
                   ) : (
                     <span className="block text-sm text-muted">No balance</span>
                   )}
                 </span>
-                <ChevronRight aria-hidden className="size-4 text-muted" />
+                <ChevronRight aria-hidden className="hidden size-4 shrink-0 text-muted sm:block" />
               </Link>
             </li>
           ))}
         </ul>
-      </Card>
+      </div>
     </section>
   );
 }
@@ -532,7 +588,12 @@ export function AccountDetailPage() {
   const { householdId, household, members } = useHouseholdData();
   const { accountId } = useParams({ strict: false }) as { accountId: string };
   const account = useQuery(accountQuery(householdId, accountId));
-  const balances = useQuery(balancesQuery(householdId, accountId));
+  // The chart and the Balances tab follow one range (#353).
+  const range = useRange(household, 'account', 'last_12m');
+  const params = rangeParams(range.selection);
+  const balances = useQuery(balancesQuery(householdId, accountId, params));
+  const chart = useQuery(balancesQuery(householdId, accountId, params, true));
+  const [dialog, setDialog] = useState<'balance' | 'history' | 'settings' | null>(null);
 
   if (account.isPending) {
     return (
@@ -558,9 +619,14 @@ export function AccountDetailPage() {
   }
   const a = account.data;
   const owner = a.yourAccess === 'owner';
+  const points = chart.data;
+  const opening = points?.[0];
+  const latest = points?.at(-1);
+  const change = opening && latest ? latest.amountMinor - opening.amountMinor : 0;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 md:px-8">
+      {/* As Monarch lays it out (F5): the balance and its change, the chart, then what's in it. */}
       <div>
         <Link
           to={`/h/${householdId}/accounts`}
@@ -568,61 +634,194 @@ export function AccountDetailPage() {
         >
           <ChevronLeft aria-hidden className="size-4" /> Accounts
         </Link>
-        <div className="mt-2 flex flex-wrap items-end gap-4">
+        <div className="mt-2 flex items-start gap-2">
           <div className="mr-auto min-w-0">
             <h1 className="truncate text-2xl font-semibold">{a.name}</h1>
-            <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
-              {members.length > 1 ? <span>{ownerLabel(a, members)} ·</span> : null}
-              <span>{TYPE_LABELS[a.type]}</span>
-              {a.mask ? <span>· •••• {a.mask}</span> : null}
-              {owner && members.length > 1 ? <Badge>{VISIBILITY[a.visibility].label}</Badge> : null}
-              {a.closedAt ? <Badge tone="warning">Closed</Badge> : null}
+            {/* One line on a phone: the account type gives way. */}
+            <p className="flex min-w-0 items-center gap-2 text-sm whitespace-nowrap text-muted">
+              {members.length > 1 ? (
+                <span className="shrink-0">{ownerLabel(a, members)} ·</span>
+              ) : null}
+              <span className="min-w-0 truncate">{TYPE_LABELS[a.type]}</span>
+              {a.mask ? <span className="shrink-0">· •••• {a.mask}</span> : null}
+              {owner && members.length > 1 ? (
+                <Badge className="shrink-0">{VISIBILITY[a.visibility].label}</Badge>
+              ) : null}
+              {a.closedAt ? (
+                <Badge tone="warning" className="shrink-0">
+                  Closed
+                </Badge>
+              ) : null}
             </p>
           </div>
-          <div className="text-right">
-            {a.balance ? (
-              <>
-                <Amount
-                  minor={a.balance.amountMinor}
-                  currency={a.currency}
-                  kind={balanceKind(a.type)}
-                  className="text-3xl font-semibold tracking-tight"
-                />
-                <p className="text-xs text-muted">
-                  as of <DateText value={a.balance.asOf} />
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted">No balance yet</p>
-            )}
-          </div>
+          <MenuTrigger>
+            <Button variant="ghost" size="icon" aria-label="Account actions">
+              <MoreHorizontal aria-hidden className="size-5" />
+            </Button>
+            <Menu placement="bottom end">
+              {owner && !a.closedAt ? (
+                <MenuItem onAction={() => setDialog('balance')}>Update balance</MenuItem>
+              ) : null}
+              <MenuItem onAction={() => setDialog('history')}>Balance history</MenuItem>
+              {owner ? (
+                <MenuItem onAction={() => setDialog('settings')}>Account settings</MenuItem>
+              ) : null}
+            </Menu>
+          </MenuTrigger>
+        </div>
+        <div className="mt-4">
+          {a.balance ? (
+            <>
+              <Amount
+                minor={a.balance.amountMinor}
+                currency={a.currency}
+                kind={balanceKind(a.type)}
+                className="block text-3xl font-semibold tracking-tight"
+              />
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm">
+                {opening && change !== 0 ? (
+                  <span className="inline-flex items-center gap-1">
+                    {change > 0 ? (
+                      <ArrowUpRight aria-hidden className="size-4 text-positive" />
+                    ) : (
+                      <ArrowDownRight aria-hidden className="size-4 text-muted" />
+                    )}
+                    <Amount minor={change} currency={a.currency} className="font-medium" />
+                    {opening.amountMinor !== 0 ? (
+                      <span className="text-muted">
+                        (<Percent value={change / Math.abs(opening.amountMinor)} />)
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+                {/* An account that began during the range changed since its first balance. */}
+                <span className="text-muted">
+                  {opening && opening.asOf > range.resolved.from ? (
+                    <>
+                      since <DateText value={opening.asOf} format="short" />
+                    </>
+                  ) : (
+                    rangeName(range.selection)
+                  )}
+                </span>
+                {/* On its own line on a phone. */}
+                <span className="w-full text-xs text-muted sm:w-auto sm:text-sm">
+                  <span className="hidden sm:inline">· </span>as of{' '}
+                  <DateText value={a.balance.asOf} />
+                </span>
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted">No balance yet</p>
+          )}
         </div>
       </div>
 
-      {/* Bank-style accounts open on their transactions; hand-valued assets on their balances. */}
-      <Tabs defaultSelectedKey={a.balanceMode === 'transactions' ? 'transactions' : 'history'}>
-        <TabList aria-label="Account">
-          <Tab id="transactions">Transactions</Tab>
-          <Tab id="history">Balances</Tab>
-          <Tab id="settings">{owner ? 'Settings' : 'Details'}</Tab>
-        </TabList>
-        <TabPanel id="transactions">
+      {/* Edge to edge on a phone, as in Monarch; a card on wider screens. */}
+      <div className="-mx-4 space-y-4 border-y border-border bg-surface px-3 py-5 sm:mx-0 sm:rounded-xl sm:border sm:px-5">
+        {points ? (
+          <BalanceChart
+            points={points}
+            // The whole range, empty before an account's first balance; "All" starts at it.
+            from={
+              points[0] && points[0].asOf < range.resolved.from
+                ? points[0].asOf
+                : range.resolved.from
+            }
+            to={range.resolved.to}
+            currency={a.currency}
+            kind={balanceKind(a.type)}
+            label={`${a.name} balance`}
+          />
+        ) : (
+          <Skeleton className="h-44 sm:h-56" />
+        )}
+        <div className="flex justify-center sm:justify-start">
+          <RangeChips state={range} label="Balance range" />
+        </div>
+      </div>
+
+      {/* Bank-style accounts list their transactions; hand-valued assets their balances. */}
+      {a.balanceMode === 'transactions' ? (
+        <section aria-labelledby="account-transactions" className="space-y-3">
+          <h2 id="account-transactions" className="font-semibold">
+            Transactions
+          </h2>
           <AccountTransactions householdId={householdId} account={a} members={members} />
-        </TabPanel>
-        <TabPanel id="history" className="space-y-4">
-          {owner ? <UpdateBalance account={a} householdId={householdId} /> : null}
+        </section>
+      ) : (
+        <section aria-labelledby="account-balances" className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="account-balances" className="font-semibold">
+              Balances
+            </h2>
+            {owner && !a.closedAt ? (
+              <Button variant="secondary" size="sm" onPress={() => setDialog('balance')}>
+                Update balance
+              </Button>
+            ) : null}
+          </div>
           <BalanceHistory account={a} points={balances.data} />
-        </TabPanel>
-        <TabPanel id="settings">
-          {owner ? (
-            <AccountSettings account={a} household={household} members={members} />
-          ) : (
-            <AccountDetails account={a} members={members} />
-          )}
-        </TabPanel>
-      </Tabs>
+        </section>
+      )}
+
+      <section aria-labelledby="account-summary" className="space-y-3">
+        <h2 id="account-summary" className="font-semibold">
+          Summary
+        </h2>
+        <AccountDetails account={a} members={members} />
+      </section>
+
+      {owner ? (
+        <UpdateBalance
+          account={a}
+          householdId={householdId}
+          isOpen={dialog === 'balance'}
+          onOpenChange={(open) => setDialog(open ? 'balance' : null)}
+        />
+      ) : null}
+      <Dialog
+        title="Balance history"
+        isOpen={dialog === 'history'}
+        onOpenChange={(open) => setDialog(open ? 'history' : null)}
+      >
+        <BalanceHistory account={a} points={balances.data} />
+      </Dialog>
+      {owner ? (
+        <Dialog
+          title="Account settings"
+          isOpen={dialog === 'settings'}
+          onOpenChange={(open) => setDialog(open ? 'settings' : null)}
+        >
+          <AccountSettings account={a} household={household} members={members} />
+        </Dialog>
+      ) : null}
     </div>
   );
+}
+
+/** A signed share in the viewer's language: "+12.5%", "−53.2%". */
+function Percent({ value }: { value: number }) {
+  const { locale } = useLocale();
+  const text = new Intl.NumberFormat(locale, {
+    style: 'percent',
+    maximumFractionDigits: 1,
+    signDisplay: 'exceptZero',
+  }).format(value);
+  return <>{text.replace('-', '−')}</>;
+}
+
+/** The chips' ranges as Monarch words them: "1 month", "1 year". */
+function rangeName(s: RangeSelection): string {
+  const names: Partial<Record<string, string>> = {
+    last_30d: '1 month',
+    last_90d: '3 months',
+    last_6m: '6 months',
+    ytd: 'Year to date',
+    last_12m: '1 year',
+    all_time: 'All time',
+  };
+  return names[s.range] ?? selectionLabel(s);
 }
 
 function BalanceHistory({
@@ -634,12 +833,11 @@ function BalanceHistory({
 }) {
   if (!points) return <Skeleton className="h-40" />;
   if (points.length === 0) {
-    return <p className="text-sm text-muted">No balances in the last 12 months.</p>;
+    return <p className="text-sm text-muted">No balances in this range.</p>;
   }
   const rows = [...points].reverse();
   return (
-    <Card className="space-y-4">
-      <Sparkline values={points.map((p) => p.amountMinor)} />
+    <Card>
       <div className="-mx-5 overflow-x-auto">
         <Table aria-label={`${account.name} balance history`}>
           <TableHeader>
@@ -680,7 +878,17 @@ function BalanceHistory({
   );
 }
 
-function UpdateBalance({ account, householdId }: { account: Account; householdId: string }) {
+function UpdateBalance({
+  account,
+  householdId,
+  isOpen,
+  onOpenChange,
+}: {
+  account: Account;
+  householdId: string;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const today = useToday();
   const liability = isLiability(account.type);
   const invalidate = useInvalidateAccounts(householdId);
@@ -700,43 +908,40 @@ function UpdateBalance({ account, householdId }: { account: Account; householdId
     onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
   });
   return (
-    <DialogTrigger>
-      <Button variant="secondary">Update balance</Button>
-      <Dialog title="Update balance" size="sm">
-        {(close) => (
-          <Form
-            onSubmit={(e) => {
-              e.preventDefault();
-              save.mutate(undefined, { onSuccess: close });
-            }}
-          >
-            <AmountInput
-              label={liability ? 'Amount owed' : 'Balance'}
-              currency={account.currency}
-              value={amount}
-              onChange={setAmount}
-              isRequired
-              autoFocus
-              description="At the end of that day, including that day’s transactions. Other days are worked out from your transactions."
-            />
-            <DatePicker
-              label="As of"
-              value={asOf}
-              maxValue={today}
-              onChange={(d) => d && setAsOf(d)}
-            />
-            <DialogActions>
-              <Button variant="secondary" onPress={close}>
-                Cancel
-              </Button>
-              <Button type="submit" isPending={save.isPending}>
-                Save
-              </Button>
-            </DialogActions>
-          </Form>
-        )}
-      </Dialog>
-    </DialogTrigger>
+    <Dialog title="Update balance" size="sm" isOpen={isOpen} onOpenChange={onOpenChange}>
+      {(close) => (
+        <Form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate(undefined, { onSuccess: close });
+          }}
+        >
+          <AmountInput
+            label={liability ? 'Amount owed' : 'Balance'}
+            currency={account.currency}
+            value={amount}
+            onChange={setAmount}
+            isRequired
+            autoFocus
+            description="At the end of that day, including that day’s transactions. Other days are worked out from your transactions."
+          />
+          <DatePicker
+            label="As of"
+            value={asOf}
+            maxValue={today}
+            onChange={(d) => d && setAsOf(d)}
+          />
+          <DialogActions>
+            <Button variant="secondary" onPress={close}>
+              Cancel
+            </Button>
+            <Button type="submit" isPending={save.isPending}>
+              Save
+            </Button>
+          </DialogActions>
+        </Form>
+      )}
+    </Dialog>
   );
 }
 
@@ -764,6 +969,7 @@ function OwnersList({ account, members }: { account: Account; members: Household
 
 /** What a non-owner sees: who owns it and how it's shared, plus notes at view-only and above. */
 function AccountDetails({ account, members }: { account: Account; members: HouseholdMember[] }) {
+  const owner = account.yourAccess === 'owner';
   return (
     <Card className="space-y-5">
       <div>
@@ -780,7 +986,9 @@ function AccountDetails({ account, members }: { account: Account; members: House
           <p className="whitespace-pre-wrap text-sm">{account.notes}</p>
         </div>
       ) : null}
-      <p className="text-xs text-muted">Only the account’s owners can change it.</p>
+      {owner ? null : (
+        <p className="text-xs text-muted">Only the account’s owners can change it.</p>
+      )}
     </Card>
   );
 }

@@ -170,17 +170,33 @@ test('adds an account, updates its balance, and shows net worth', async ({ page 
   await expect(page.getByText('$2,500.00').first()).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
 
-  await page.getByRole('tab', { name: 'Balances' }).click();
-  await page.getByRole('button', { name: 'Update balance' }).click();
+  // The account's actions live in its ⋯ menu (no tabs, as in Monarch).
+  await page.getByRole('button', { name: 'Account actions' }).click();
+  await page.getByRole('menuitem', { name: 'Update balance' }).click();
   const update = page.getByRole('dialog', { name: 'Update balance' });
   await update.getByLabel('Balance').fill('2,750.25');
   await update.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Balance updated.')).toBeVisible();
   await expect(page.getByText('$2,750.25').first()).toBeVisible();
 
+  // The balance chart sits above the tabs (#353); the keyboard reads it point by point.
+  const chart = page.getByRole('group', { name: 'Everyday checking balance' });
+  await chart.focus();
+  await page.keyboard.press('End');
+  await expect(chart.getByText('$2,750.25')).toBeVisible();
+  // The table view of the same numbers.
+  await page.getByRole('button', { name: 'Account actions' }).click();
+  await page.getByRole('menuitem', { name: 'Balance history' }).click();
+  const history = page.getByRole('dialog', { name: 'Balance history' });
+  await expect(history.getByRole('grid')).toContainText('$2,750.25');
+  expect(await axeViolations(page)).toEqual([]);
+  await page.keyboard.press('Escape');
+  expect(await axeViolations(page)).toEqual([]);
+
   await page.getByRole('link', { name: 'Accounts', exact: true }).first().click();
   await expect(page.getByText('Net worth')).toBeVisible();
   await expect(page.getByRole('link', { name: /Everyday checking/ })).toContainText('$2,750.25');
+  await expect(page.getByRole('link', { name: /Everyday checking/ })).toContainText('as of');
   expect(await axeViolations(page)).toEqual([]);
 });
 
