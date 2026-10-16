@@ -265,7 +265,7 @@ for. The lens appears only once there's someone to share with.
 - ~~**F21.**~~ *Fixed in #352.* Household settings is one long page: general settings, how you
   appear, members, and every category, over 2,400 pixels tall. Categories, which people edit most,
   are at the bottom. Monarch splits settings into sections. Now it has sections, each at its own
-  URL: General, Members, Categories, and Rules (moved from Transactions).
+  URL: General, Members, Categories, and Rules (Transactions keeps a shortcut to it).
 - ~~**F22.**~~ *Fixed in #350.* **Household settings** is in two places: the household menu, and the bottom of the
   sidebar.
 - ~~**F23.**~~ *Fixed in #350.* The new-password field states the rules twice: as a sentence, then as the checklist.
