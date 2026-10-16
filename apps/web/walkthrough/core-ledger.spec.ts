@@ -328,12 +328,24 @@ test('8. checking transfers', async ({ page }) => {
   await page.getByText(/^Transfers \(/).click();
   await expect(page.getByRole('heading', { name: /Suggested pairs/ })).toBeVisible();
   await shot(page, '29-transfer-review', true);
+  // Suggestions are grouped by account pair (#332); a group opens to show its pairs.
+  const group = page.getByRole('button', { name: /^Holiday Fund High-Yield Savings/ });
+  if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
   await page
     .getByRole('button', { name: /^Link Holiday Fund .* to High-Yield Savings From Holiday Fund/ })
     .click();
-  await expect(page.getByText('Linked as a transfer.')).toBeVisible();
+  await expect(page.getByText(/^Linked as a transfer/)).toBeVisible();
   await page.waitForTimeout(1500); // the refetch brings in what the link settled
   await shot(page, '30-transfer-review-after', true);
+  // A group's clear and likely pairs link together, once confirmed.
+  const linkGroup = page.getByRole('button', { name: /^Link \d+$/ }).first();
+  if (await linkGroup.isVisible()) {
+    await linkGroup.click();
+    const confirm = page.getByRole('alertdialog', { name: /^Link \d+ pairs?\?$/ });
+    await shot(page, '30b-link-group');
+    await confirm.getByRole('button', { name: 'Link them' }).click();
+    await expect(confirm).toHaveCount(0);
+  }
 });
 
 test('9. people: a partner joins, and the lens appears', async ({ page, browser }) => {

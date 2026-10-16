@@ -42,6 +42,10 @@ A **Transfers** section on the Review page, worked out when you open it (no back
 - Only rows in accounts you own are listed (linking needs ownership of both sides, TXN-08); "isn't
   in Fiscus" and recategorizing need categorize access (owner or full).
 - The count of both lists joins the review badge.
+- **Grouped** (#332): suggestions by account pair ("SoFi Checking → House: 12") and rows with no
+  other side by account, the biggest group first, so a large import reads as a few groups. A
+  group's **Link N** links its clear pairs and the ones the names point to ("Likely"), after you
+  confirm; pairs with a real choice stay for you. Each link says how many other pairs it settled.
 
 ## 3. "Transfer to an account" (a rule action)
 
