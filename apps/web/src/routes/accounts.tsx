@@ -654,9 +654,12 @@ export function AccountDetailPage() {
         {chart.data ? (
           <BalanceChart
             points={chart.data}
-            // From the balance in effect when the range opens, or from the account's first
-            // balance if it began later (or for "All").
-            from={chart.data[0]?.asOf ?? range.resolved.from}
+            // The whole range, empty before an account's first balance; "All" starts at it.
+            from={
+              chart.data[0] && chart.data[0].asOf < range.resolved.from
+                ? chart.data[0].asOf
+                : range.resolved.from
+            }
             to={range.resolved.to}
             currency={a.currency}
             kind={balanceKind(a.type)}
