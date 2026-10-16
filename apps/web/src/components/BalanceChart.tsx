@@ -80,7 +80,7 @@ export function BalanceChart({
         onFocus={() => setActive((a) => a ?? series.length - 1)}
         onBlur={() => setActive(null)}
         onKeyDown={onKey}
-        className="relative h-56 touch-pan-y rounded-sm text-accent outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+        className="relative h-44 touch-pan-y sm:h-56 rounded-sm text-accent outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
       >
         <svg
           aria-hidden

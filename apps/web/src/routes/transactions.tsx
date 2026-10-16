@@ -445,12 +445,15 @@ export function TransactionList({
                   <span className="block truncate text-sm font-medium">{t.displayName}</span>
                   {/* One line: the account name gives way, so a row stays two lines on a phone. */}
                   <span className="flex min-w-0 items-center gap-x-2 overflow-hidden text-xs whitespace-nowrap text-muted">
-                    <span className="min-w-0 truncate">
-                      {t.account ? t.account.name : paidByLabel(t, members)}
-                    </span>
+                    {/* An account's own page doesn't repeat its name on every row. */}
+                    {showAccount || !t.account ? (
+                      <span className="min-w-0 truncate">
+                        {t.account ? t.account.name : paidByLabel(t, members)}
+                      </span>
+                    ) : null}
                     {shared ? (
                       <>
-                        <span aria-hidden>·</span>
+                        {showAccount || !t.account ? <span aria-hidden>·</span> : null}
                         <span>{forLabel(t, members)}</span>
                       </>
                     ) : null}

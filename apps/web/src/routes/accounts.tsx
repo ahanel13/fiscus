@@ -315,7 +315,8 @@ function AccountGroup({
           />
         ) : null}
       </div>
-      <Card className="p-0">
+      {/* Not a Card: its padding would double the rows' own and squeeze the names. */}
+      <div className="rounded-xl border border-border bg-surface">
         <ul className="divide-y divide-border">
           {accounts.map((a) => (
             <li key={a.id}>
@@ -325,7 +326,10 @@ function AccountGroup({
                 style={{ minHeight: 'var(--row-h)', paddingInline: 'var(--cell-px)' }}
               >
                 <span className="min-w-0 flex-1 py-2">
-                  <span className="block truncate text-sm font-medium">{a.name}</span>
+                  {/* Long bank names wrap to a second line on a phone rather than cutting off. */}
+                  <span className="line-clamp-2 text-sm font-medium break-words sm:line-clamp-1">
+                    {a.name}
+                  </span>
                   <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
                     {members.length > 1 ? <span>{ownerLabel(a, members)}</span> : null}
                     {a.mask ? <span>•••• {a.mask}</span> : null}
@@ -351,7 +355,7 @@ function AccountGroup({
                     </span>
                   </span>
                 ) : null}
-                <span className="w-32 shrink-0 text-right">
+                <span className="shrink-0 text-right sm:w-32">
                   {a.balance ? (
                     <>
                       <Amount
@@ -368,12 +372,12 @@ function AccountGroup({
                     <span className="block text-sm text-muted">No balance</span>
                   )}
                 </span>
-                <ChevronRight aria-hidden className="size-4 text-muted" />
+                <ChevronRight aria-hidden className="hidden size-4 shrink-0 text-muted sm:block" />
               </Link>
             </li>
           ))}
         </ul>
-      </Card>
+      </div>
     </section>
   );
 }
@@ -633,12 +637,21 @@ export function AccountDetailPage() {
         <div className="mt-2 flex items-start gap-2">
           <div className="mr-auto min-w-0">
             <h1 className="truncate text-2xl font-semibold">{a.name}</h1>
-            <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
-              {members.length > 1 ? <span>{ownerLabel(a, members)} ·</span> : null}
-              <span>{TYPE_LABELS[a.type]}</span>
-              {a.mask ? <span>· •••• {a.mask}</span> : null}
-              {owner && members.length > 1 ? <Badge>{VISIBILITY[a.visibility].label}</Badge> : null}
-              {a.closedAt ? <Badge tone="warning">Closed</Badge> : null}
+            {/* One line on a phone: the account type gives way. */}
+            <p className="flex min-w-0 items-center gap-2 text-sm whitespace-nowrap text-muted">
+              {members.length > 1 ? (
+                <span className="shrink-0">{ownerLabel(a, members)} ·</span>
+              ) : null}
+              <span className="min-w-0 truncate">{TYPE_LABELS[a.type]}</span>
+              {a.mask ? <span className="shrink-0">· •••• {a.mask}</span> : null}
+              {owner && members.length > 1 ? (
+                <Badge className="shrink-0">{VISIBILITY[a.visibility].label}</Badge>
+              ) : null}
+              {a.closedAt ? (
+                <Badge tone="warning" className="shrink-0">
+                  Closed
+                </Badge>
+              ) : null}
             </p>
           </div>
           <MenuTrigger>
@@ -691,8 +704,10 @@ export function AccountDetailPage() {
                     rangeName(range.selection)
                   )}
                 </span>
-                <span className="text-muted">
-                  · as of <DateText value={a.balance.asOf} />
+                {/* On its own line on a phone. */}
+                <span className="w-full text-xs text-muted sm:w-auto sm:text-sm">
+                  <span className="hidden sm:inline">· </span>as of{' '}
+                  <DateText value={a.balance.asOf} />
                 </span>
               </p>
             </>
@@ -702,7 +717,8 @@ export function AccountDetailPage() {
         </div>
       </div>
 
-      <Card className="space-y-4">
+      {/* Edge to edge on a phone, as in Monarch; a card on wider screens. */}
+      <div className="-mx-4 space-y-4 border-y border-border bg-surface px-3 py-5 sm:mx-0 sm:rounded-xl sm:border sm:px-5">
         {points ? (
           <BalanceChart
             points={points}
@@ -718,10 +734,12 @@ export function AccountDetailPage() {
             label={`${a.name} balance`}
           />
         ) : (
-          <Skeleton className="h-56" />
+          <Skeleton className="h-44 sm:h-56" />
         )}
-        <RangeChips state={range} label="Balance range" />
-      </Card>
+        <div className="flex justify-center sm:justify-start">
+          <RangeChips state={range} label="Balance range" />
+        </div>
+      </div>
 
       {/* Bank-style accounts list their transactions; hand-valued assets their balances. */}
       {a.balanceMode === 'transactions' ? (
