@@ -69,11 +69,13 @@ type, with totals.
 **Gets in the way.**
 - ~~**F4.**~~ *Fixed in #350.* A new account says "No transactions match.", which reads like a filter hiding something.
   It offers no way to add a transaction or import a file from there.
-- **F5.** The account page shows its transactions. Its balance history sits behind the **Balances**
-  tab, so the Brokerage page shows one $1,000 contribution under a $25,900 balance with no chart.
-  The accounts list shows no change over time and no "updated" date. The net worth chart is small,
-  and flat where there's little history. Monarch puts the balance chart at the top of every
-  account, and shows each account's change on the list.
+- ~~**F5.**~~ *Fixed in #353.* The account page shows its transactions. Its balance history sits
+  behind the **Balances** tab, so the Brokerage page shows one $1,000 contribution under a $25,900
+  balance with no chart. The accounts list shows no change over time and no "updated" date. The net
+  worth chart is small, and flat where there's little history. Monarch puts the balance chart at
+  the top of every account, and shows each account's change on the list. Now every account page
+  opens with its balance chart, and the list shows each account's change over the page's range and
+  the date of its balance. Account groups and ordering stay with #48.
 
 ---
 
@@ -289,7 +291,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 | F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | Fixed (#352) |
 | F2 | Six unbuilt sections in the navigation | — | Keep them: they show what Fiscus will have | Won't change |
 | F1 | Empty landing after setup | Medium | A first-run checklist on the dashboard (accounts, partner, review) until it's done | #354 |
-| F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | #353, with #48 |
+| F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | Fixed (#353); groups in #48 |
 | F15 | Split is hard to find, and starts as two halves | Low | Split with the other actions; the second part takes the rest, uncategorized | Fixed (#350) |
 | F4 | "No transactions match" on a new account | Low | "No transactions yet", with Add and Import | Fixed (#350) |
 | F3 | Two time controls; empty months on the dashboard | Low | Net worth follows the page range; start cash flow at the first transaction | Fixed (#350) |
@@ -305,7 +307,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 2. ~~**Quick wins** (F3, F4, F6–F9, F15–F18, F22, F23).~~ Done in #350.
 3. ~~**Merchant cleanup** (#42, F10, F20).~~ Done in #42.
 4. ~~**Transactions table** (F11), once editing is fast.~~ Done in #351.
-5. ~~**Settings sections** (F21)~~ (done in #352) and **account page chart** (F5, with #48 account groups).
+5. ~~**Settings sections** (F21)~~ (done in #352) and ~~**account page chart** (F5)~~ (done in #353; account groups stay with #48).
 6. **Transfer review follow-ups** (#332).
 7. Then the rest of M1.5, as planned: edit history (#46), OFX and YNAB/Actual imports (#74, #76),
    multi-currency (#43), member-scoped rules (#58), member leaving (#62), and so on.

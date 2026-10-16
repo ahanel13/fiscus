@@ -56,7 +56,13 @@ export class AccountsController {
     @Query(new ZodPipe(accountsQuerySchema)) query: z.infer<typeof accountsQuerySchema>,
   ): Promise<{ data: Account[]; meta: { scope: 'visible_to_you' } }> {
     return {
-      data: await this.accounts.list(ctx, query.lens, query.include),
+      data: await this.accounts.list(
+        ctx,
+        query.lens,
+        query.include,
+        // A range or a from/to asks for each account's change over it.
+        query.range || query.from || query.to ? query : undefined,
+      ),
       meta: { scope: 'visible_to_you' },
     };
   }

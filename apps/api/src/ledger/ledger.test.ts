@@ -187,6 +187,50 @@ describe('ledger', () => {
       });
     });
 
+    it('opens a window with the balance in effect, and reports each account’s change (#353)', async () => {
+      const acct = await account(A, {
+        name: 'Change probe',
+        openingBalance: { amountMinor: 100000, asOf: '2026-02-01' },
+      });
+      await txn(A, acct, '2026-02-20', -3000);
+      await txn(A, acct, '2026-02-25', 500);
+      const window = (q: string) =>
+        A.get(url(`/accounts/${acct}/balances?from=2026-02-10&to=2026-02-28${q}`));
+      // Without `opening`, only the days in the window; with it, the day it opens comes first.
+      expect((await window('')).body.data.map((p: { asOf: string }) => p.asOf)).toEqual([
+        '2026-02-20',
+        '2026-02-25',
+      ]);
+      expect(
+        (await window('&opening=true')).body.data.map(
+          (p: { asOf: string; amountMinor: number }) => [p.asOf, p.amountMinor],
+        ),
+      ).toEqual([
+        ['2026-02-10', 100000],
+        ['2026-02-20', 97000],
+        ['2026-02-25', 97500],
+      ]);
+
+      const change = async (q: string) =>
+        (await A.get(url(`/accounts?${q}`))).body.data.find((a: { id: string }) => a.id === acct)
+          .change;
+      expect(await change('from=2026-02-10&to=2026-02-28')).toEqual({
+        amountMinor: -2500,
+        from: '2026-02-10',
+        to: '2026-02-28',
+      });
+      // A window that starts before its first balance counts from that balance.
+      expect(await change('from=2026-01-01&to=2026-02-21')).toEqual({
+        amountMinor: -3000,
+        from: '2026-02-01',
+        to: '2026-02-21',
+      });
+      // No balance by the window's end: nothing to compare.
+      expect(await change('from=2025-01-01&to=2025-12-31')).toBeNull();
+      // Without a window, no change at all.
+      expect(await change('')).toBeUndefined();
+    });
+
     it('runs a total from zero when no balance was entered', async () => {
       const acct = await account(A, {});
       await txn(A, acct, '2026-04-01', 50000);

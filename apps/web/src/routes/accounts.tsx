@@ -6,7 +6,13 @@ import type {
   Household,
   HouseholdMember,
 } from '@fiscus/shared';
-import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight, Landmark, Pencil, Plus, Upload } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -23,6 +29,7 @@ import {
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { BalanceChart } from '../components/BalanceChart.js';
 import { Sparkline } from '../components/Sparkline.js';
 import {
   Alert,
@@ -76,7 +83,7 @@ import {
   VISIBILITY,
 } from '../lib/accounts.js';
 import { type Lens, lensVisible, parseLens } from '../lib/lens.js';
-import { formatSpan, rangeParams } from '../lib/ranges.js';
+import { formatSpan, rangeParams, selectionLabel } from '../lib/ranges.js';
 import { useRange } from '../lib/use-range.js';
 import { RangeChips } from '../components/RangeControls.js';
 import { AddTransactionDialog, TransactionDrawer, TransactionList } from './transactions.js';
@@ -108,7 +115,12 @@ export function AccountsPage() {
   const search = useSearch({ strict: false }) as { lens?: string };
   const showLens = lensVisible(household, members.length);
   const lens = showLens ? parseLens(search.lens) : 'all';
-  const accounts = useQuery(accountsQuery(householdId, lens));
+  // One range for the page: net worth's trend and each account's change over it (#353).
+  const range = useRange(household, 'net-worth', 'last_12m');
+  const accounts = useQuery({
+    ...accountsQuery(householdId, lens, 'open', rangeParams(range.selection)),
+    placeholderData: keepPreviousData,
+  });
   const [adding, setAdding] = useState(false);
   const canAdd = household.you.role !== 'viewer';
   // One way in, which asks how: by hand, or from a file (bank connections join it in M2).
@@ -130,7 +142,13 @@ export function AccountsPage() {
 
   return (
     <>
-      <PageHeader title="Accounts" showLens={showLens} members={members} action={add} />
+      <PageHeader
+        title="Accounts"
+        range={range}
+        showLens={showLens}
+        members={members}
+        action={add}
+      />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
         <MakeJointOffer householdId={householdId} />
         {accounts.isPending ? (
@@ -153,7 +171,7 @@ export function AccountsPage() {
           </EmptyState>
         ) : (
           <>
-            <NetWorthCard household={household} lens={lens} />
+            <NetWorthCard household={household} lens={lens} range={range} />
             {GROUPS.map((g) => {
               const items = accounts.data.filter((a) => g.types.includes(a.type));
               return items.length ? (
@@ -164,6 +182,7 @@ export function AccountsPage() {
                   members={members}
                   householdId={householdId}
                   currency={household.baseCurrency}
+                  range={{ from: range.resolved.from, label: selectionLabel(range.selection) }}
                 />
               ) : null;
             })}
@@ -260,12 +279,15 @@ function AccountGroup({
   members,
   householdId,
   currency,
+  range,
 }: {
   label: string;
   accounts: Account[];
   members: HouseholdMember[];
   householdId: string;
   currency: string;
+  /** The page's range, for each account's change over it. */
+  range: { from: string; label: string };
 }) {
   const sameCurrency = accounts.every((a) => a.currency === currency);
   const total = accounts.reduce((sum, a) => sum + (a.balance?.amountMinor ?? 0), 0);
@@ -304,14 +326,35 @@ function AccountGroup({
                     {a.closedAt ? <Badge>Closed</Badge> : null}
                   </span>
                 </span>
-                <span className="text-right">
+                {/* The change over the page's range, then the balance and when it's from. */}
+                {a.change && a.change.amountMinor !== 0 ? (
+                  <span className="hidden text-right text-xs sm:block">
+                    <Amount minor={a.change.amountMinor} currency={a.currency} />
+                    {/* An account that began during the range counts from its first balance. */}
+                    <span className="block text-muted">
+                      {a.change.from === range.from ? (
+                        range.label
+                      ) : (
+                        <>
+                          since <DateText value={a.change.from} format="short" />
+                        </>
+                      )}
+                    </span>
+                  </span>
+                ) : null}
+                <span className="w-32 shrink-0 text-right">
                   {a.balance ? (
-                    <Amount
-                      minor={a.balance.amountMinor}
-                      currency={a.currency}
-                      kind={balanceKind(a.type)}
-                      className="block text-sm font-medium"
-                    />
+                    <>
+                      <Amount
+                        minor={a.balance.amountMinor}
+                        currency={a.currency}
+                        kind={balanceKind(a.type)}
+                        className="block text-sm font-medium"
+                      />
+                      <span className="block text-xs text-muted">
+                        as of <DateText value={a.balance.asOf} format="short" />
+                      </span>
+                    </>
                   ) : (
                     <span className="block text-sm text-muted">No balance</span>
                   )}
@@ -532,7 +575,11 @@ export function AccountDetailPage() {
   const { householdId, household, members } = useHouseholdData();
   const { accountId } = useParams({ strict: false }) as { accountId: string };
   const account = useQuery(accountQuery(householdId, accountId));
-  const balances = useQuery(balancesQuery(householdId, accountId));
+  // The chart and the Balances tab follow one range (#353).
+  const range = useRange(household, 'account', 'last_12m');
+  const params = rangeParams(range.selection);
+  const balances = useQuery(balancesQuery(householdId, accountId, params));
+  const chart = useQuery(balancesQuery(householdId, accountId, params, true));
 
   if (account.isPending) {
     return (
@@ -599,6 +646,27 @@ export function AccountDetailPage() {
         </div>
       </div>
 
+      <Card className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium text-muted">Balance</h2>
+          <RangeChips state={range} label="Balance range" />
+        </div>
+        {chart.data ? (
+          <BalanceChart
+            points={chart.data}
+            // From the balance in effect when the range opens, or from the account's first
+            // balance if it began later (or for "All").
+            from={chart.data[0]?.asOf ?? range.resolved.from}
+            to={range.resolved.to}
+            currency={a.currency}
+            kind={balanceKind(a.type)}
+            label={`${a.name} balance`}
+          />
+        ) : (
+          <Skeleton className="h-52" />
+        )}
+      </Card>
+
       {/* Bank-style accounts open on their transactions; hand-valued assets on their balances. */}
       <Tabs defaultSelectedKey={a.balanceMode === 'transactions' ? 'transactions' : 'history'}>
         <TabList aria-label="Account">
@@ -634,12 +702,11 @@ function BalanceHistory({
 }) {
   if (!points) return <Skeleton className="h-40" />;
   if (points.length === 0) {
-    return <p className="text-sm text-muted">No balances in the last 12 months.</p>;
+    return <p className="text-sm text-muted">No balances in this range.</p>;
   }
   const rows = [...points].reverse();
   return (
-    <Card className="space-y-4">
-      <Sparkline values={points.map((p) => p.amountMinor)} />
+    <Card>
       <div className="-mx-5 overflow-x-auto">
         <Table aria-label={`${account.name} balance history`}>
           <TableHeader>
