@@ -25,7 +25,6 @@ import {
   toast,
 } from '../components/ui.js';
 import { BackHome } from './server.js';
-import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { describeDevice } from '../lib/device.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
 
@@ -195,7 +194,6 @@ export function PersonalSettingsPage() {
   const sessions = useQuery(sessionsQuery);
   const queryClient = useQueryClient();
   const [theme, setTheme] = useState<ThemePreference>(storedTheme);
-  const [density, setDensity] = useState<Density>(storedDensity);
   const revoke = useMutation({
     mutationFn: (id: string) => api('DELETE', `/api/v1/me/sessions/${id}`),
     onSuccess: () => {
@@ -237,16 +235,6 @@ export function PersonalSettingsPage() {
           ]}
           value={theme}
           onChange={(t) => (setTheme(t), applyTheme(t))}
-        />
-        <h3 className="mb-2 mt-5 text-sm font-medium">Density</h3>
-        <SegmentedControl
-          aria-label="Density"
-          options={[
-            { value: 'comfortable', label: 'Comfortable' },
-            { value: 'compact', label: 'Compact' },
-          ]}
-          value={density}
-          onChange={(d) => (setDensity(d), applyDensity(d))}
         />
       </Card>
       <Card>

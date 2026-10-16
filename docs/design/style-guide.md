@@ -115,8 +115,8 @@ deficiencies), with separate light and dark variants, each ≥ 3:1 against the s
 - **Focus:** a 2 px accent outline with 2 px offset, on every interactive element. Never remove it.
 
 ## 8. Density
-**Comfortable** by default (48 px rows). A **compact** option (36 px rows) is in Personal settings.
-It's stored per device and applied before first paint. Lists and tables use `var(--row-h)` and
+**Comfortable** by default (48 px rows). A **compact** option (36 px rows) sits on the
+transactions list, where it matters most (#351). It's stored per device and applied before first paint. Lists and tables use `var(--row-h)` and
 `var(--cell-px)` so they follow the setting. Touch targets stay ≥ 44 px on phones in either mode.
 
 ## 9. Icons

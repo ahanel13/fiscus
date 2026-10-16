@@ -207,7 +207,7 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   await expect(page.getByText('Transaction added.')).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
 
-  await page.getByRole('button', { name: /^Costco run/ }).click();
+  await page.getByRole('rowheader', { name: /^Costco run/ }).click();
   const drawer = page.getByRole('dialog', { name: 'Costco run' });
   await drawer.getByRole('button', { name: /Category/ }).click();
   await page.getByRole('option', { name: 'Groceries' }).click();
@@ -223,7 +223,7 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   await page.keyboard.press('Escape');
 
   // Two parts of $60.00 replace the $120.00 purchase in the list.
-  const part = (n: number) => page.getByRole('listitem').filter({ hasText: `Costco run (${n}/2)` });
+  const part = (n: number) => page.getByRole('row').filter({ hasText: `Costco run (${n}/2)` });
   await expect(part(1)).toContainText('−$60.00');
   await expect(part(2)).toContainText('−$60.00');
 
@@ -244,7 +244,7 @@ test('tags a transaction from a search box, and moves a split purchase to anothe
   await expect(page.getByRole('heading', { level: 1, name: 'Pocket' })).toBeVisible();
 
   await page.goto(`${householdUrl}/transactions`);
-  await page.getByRole('button', { name: /^Costco run \(1\/2\)/ }).click();
+  await page.getByRole('rowheader', { name: /^Costco run \(1\/2\)/ }).click();
   const drawer = page.getByRole('dialog', { name: /Costco run/ });
   // Tags: only the transaction's own show; others are found or created by typing.
   await expect(drawer.getByText('No tags')).toBeVisible();
@@ -425,9 +425,11 @@ test('creates a rule with a live preview, and applies it to existing transaction
   await page.keyboard.press('Escape');
 
   await page.goto(`${householdUrl}/transactions?range=all_time`);
+  // On a desktop, transactions are a table (#351).
   const coffee = page
-    .getByRole('listitem')
-    .filter({ has: page.getByRole('button', { name: /^Coffee Wallet/ }) });
+    .getByRole('row')
+    .filter({ has: page.getByRole('rowheader', { name: /^Coffee/ }) })
+    .filter({ hasText: 'Wallet' });
   await expect(coffee.getByRole('button', { name: /Category of Coffee/ })).toContainText('Coffee');
 
   // A category can be set from the row itself, and undone from the toast.
@@ -442,12 +444,35 @@ test('creates a rule with a live preview, and applies it to existing transaction
   await expect(coffee.getByRole('button', { name: /Category of Coffee/ })).toContainText('Coffee');
   // Undo also put back "needs review", which choosing the category had cleared.
   await expect(coffee).toContainText('Review');
+
+  // Sorted by amount: the most money out first, then the most money in (#351).
+  const table = page.getByRole('grid', { name: 'Transactions' });
+  const amount = table.getByRole('columnheader', { name: 'Amount' });
+  const inOrder = async (direction: 1 | -1) => {
+    const amounts = (await table.locator('tbody tr td:last-child').allTextContents()).map((t) =>
+      Number(t.replace('−', '-').replace(/[^0-9.-]/g, '')),
+    );
+    return (
+      amounts.length > 1 &&
+      amounts.every((a, i) => i === 0 || (a - amounts[i - 1]!) * direction >= 0)
+    );
+  };
+  await amount.click();
+  await expect(amount).toHaveAttribute('aria-sort', 'ascending');
+  await expect.poll(() => inOrder(1)).toBe(true);
+  await amount.click();
+  await expect(amount).toHaveAttribute('aria-sort', 'descending');
+  await expect.poll(() => inOrder(-1)).toBe(true);
+  // The density choice is on the list.
+  await page.getByRole('radio', { name: 'Compact' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-density', 'compact');
+  expect(await axeViolations(page)).toEqual([]);
 });
 
 test('recategorizing a transaction suggests a rule for next time', async ({ page }) => {
   await signIn(page);
   await page.goto(`${householdUrl}/transactions?range=all_time`);
-  await page.getByRole('button', { name: /^Refund/ }).click();
+  await page.getByRole('rowheader', { name: /^Refund/ }).click();
   const drawer = page.getByRole('dialog', { name: 'Refund' });
   await drawer.getByRole('button', { name: /Category/ }).click();
   await page.getByRole('option', { name: 'Interest', exact: true }).click();
@@ -524,12 +549,12 @@ test('links a transfer between accounts, and works through the review queue by k
   await venmo.getByRole('button', { name: 'Add transaction' }).click();
   await expect(venmo).toHaveCount(0);
 
-  await expect(page.getByRole('button', { name: /^To wallet/ })).toContainText(
+  await expect(page.getByRole('rowheader', { name: /^To wallet/ })).toContainText(
     'Transfer to Wallet',
   );
 
   // Unlink, then link it again by hand.
-  await page.getByRole('button', { name: /^To wallet/ }).click();
+  await page.getByRole('rowheader', { name: /^To wallet/ }).click();
   const drawer = page.getByRole('dialog', { name: 'To wallet' });
   await expect(drawer.getByText('Transfer to Wallet')).toBeVisible();
   await drawer.getByRole('button', { name: 'Unlink' }).click();
@@ -594,7 +619,7 @@ test('only the content scrolls: the page and sidebar stay put on a long list', a
   await page.setViewportSize({ width: 1280, height: 420 });
   await signIn(page);
   await page.goto(`${householdUrl}/transactions?range=all_time`);
-  await expect(page.getByRole('button', { name: /^Refund/ })).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: /^Refund/ })).toBeVisible();
   const sizes = await page.evaluate(() => ({
     page: document.documentElement.scrollHeight,
     window: window.innerHeight,

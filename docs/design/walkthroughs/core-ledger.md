@@ -152,9 +152,11 @@ come in two kinds: shared, and only-you. Splits must add up before they save. Th
 compact, and filters show as removable chips.
 
 **Gets in the way.**
-- **F11.** The list is spacious: about eight rows fit on a laptop screen. Monarch's list is a dense
-  table (date, merchant, category, account, amount) where 15–20 rows fit, and it can be sorted. The
-  compact density setting helps, but it's in Personal settings, where few people will look.
+- ~~**F11.**~~ *Fixed in #351.* The list is spacious: about eight rows fit on a laptop screen.
+  Monarch's list is a dense table (date, merchant, category, account, amount) where 15–20 rows fit,
+  and it can be sorted. The compact density setting helps, but it's in Personal settings, where few
+  people will look. Now a desktop shows a table sortable by each column, with the density choice
+  beside the search.
 - ~~**F12.**~~ *Fixed in #349.* Recategorizing took four steps: open the drawer, open the category
   list, pick one, then **Save changes**. In Monarch you click the category on the row and pick one.
   Now Fiscus works the same way.
@@ -280,7 +282,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 | F13 | Drawer edits wait for Save | High | Save each field as it changes, with undo in the toast | Fixed (#349) |
 | F14 | Categorizing doesn't mark reviewed | Medium | Setting a category marks it reviewed, as a household setting (on by default) | Fixed (#349) |
 | F10, F20 | Bank-formatted names | High | Merchant cleanup | Fixed (#42) |
-| F11 | Low list density | Medium | A dense, sortable table on desktop; make the density choice visible on the list | #351 |
+| F11 | Low list density | Medium | A dense, sortable table on desktop; make the density choice visible on the list | Fixed (#351) |
 | F8, F17 | Counts that don't agree; review pane repeats the category | Medium | Separate badges, or "4 + 4 transfers"; the import's last step offers "Check 4 transfers"; one category picker in the review pane | Fixed (#350) |
 | F18 | Applying a rule to past transactions is a second step | Medium | "Also apply to N existing" checkbox in the editor | Fixed (#350) |
 | F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | #352 |
@@ -301,7 +303,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 1. ~~**Faster transaction editing** (F12, F13, F14).~~ Done in #349.
 2. ~~**Quick wins** (F3, F4, F6–F9, F15–F18, F22, F23).~~ Done in #350.
 3. ~~**Merchant cleanup** (#42, F10, F20).~~ Done in #42.
-4. **Transactions table** (F11), once editing is fast.
+4. ~~**Transactions table** (F11), once editing is fast.~~ Done in #351.
 5. **Settings sections** (F21) and **account page chart** (F5, with #48 account groups).
 6. **Transfer review follow-ups** (#332).
 7. Then the rest of M1.5, as planned: edit history (#46), OFX and YNAB/Actual imports (#74, #76),

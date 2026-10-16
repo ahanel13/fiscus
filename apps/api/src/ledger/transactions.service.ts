@@ -31,6 +31,7 @@ import type {
   TransferCounterpart,
   TransferReview,
   transactionsQuerySchema,
+  TransactionSort,
   undoNameCleanupSchema,
   updateTransactionSchema,
 } from '@fiscus/shared';
@@ -147,19 +148,39 @@ function equalShares(count: number): number[] {
 const encodeCursor = (date: string, id: string) =>
   Buffer.from(JSON.stringify([date, id])).toString('base64url');
 
+const invalidCursor = () =>
+  new Problem(422, 'invalid_cursor', 'Invalid page cursor', 'Start again from the first page.');
+
+const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+const isId = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v);
+
 function decodeCursor(cursor: string): [string, string] {
   try {
-    const [date, id] = JSON.parse(Buffer.from(cursor, 'base64url').toString()) as [string, string];
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date) && /^[0-9a-f-]{36}$/.test(id)) return [date, id];
+    const [date, id] = JSON.parse(Buffer.from(cursor, 'base64url').toString()) as unknown[];
+    if (isDate(date) && isId(id)) return [date, id];
   } catch {
     // fall through
   }
-  throw new Problem(
-    422,
-    'invalid_cursor',
-    'Invalid page cursor',
-    'Start again from the first page.',
-  );
+  throw invalidCursor();
+}
+
+/** Sorted by another column (#351), a page ends at its sort value, then its date and id. */
+type SortedCursor = [sort: TransactionSort, key: string | number, date: string, id: string];
+
+const encodeSortedCursor = (...c: SortedCursor) =>
+  Buffer.from(JSON.stringify(c)).toString('base64url');
+
+function decodeSortedCursor(cursor: string, sort: TransactionSort): SortedCursor {
+  try {
+    const [s, key, date, id] = JSON.parse(Buffer.from(cursor, 'base64url').toString()) as unknown[];
+    const keyOk = sort === 'amount' ? Number.isSafeInteger(key) : typeof key === 'string';
+    if (s === sort && keyOk && isDate(date) && isId(id)) {
+      return [sort, key as string | number, date, id];
+    }
+  } catch {
+    // fall through
+  }
+  throw invalidCursor();
 }
 
 /** Escapes LIKE wildcards in search text. */
@@ -210,7 +231,15 @@ export class TransactionsService {
         q.includeExcluded === 'false' ? eq(transactions.excluded, false) : undefined,
         await spendingLensFilter(tx, ctx, q.lens),
       ];
-      const oldest = q.order === 'oldest';
+      if (q.sort !== 'date') {
+        const sorted = await this.#sortedPage(tx, ctx, access, q, where, dateColumn);
+        return {
+          data: await this.#present(tx, ctx, access, sorted.page),
+          nextCursor: sorted.nextCursor,
+          range: resolved?.meta ?? null,
+        };
+      }
+      const oldest = (q.direction ?? (q.order === 'oldest' ? 'asc' : 'desc')) === 'asc';
       if (q.cursor) {
         const [date, id] = decodeCursor(q.cursor);
         where.push(
@@ -1255,6 +1284,80 @@ export class TransactionsService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * A page sorted by name, category, account, or amount (#351), ties newest first. Names sort
+   * ignoring case; no category sorts as Uncategorized; an account you can't see sorts as blank,
+   * as the row shows only who paid (F1).
+   */
+  async #sortedPage(
+    tx: Executor,
+    ctx: HouseholdContext,
+    access: Access,
+    q: Query,
+    where: (SQL | undefined)[],
+    dateColumn: ReturnType<typeof transactionDate>,
+  ): Promise<{ page: Row[]; nextCursor: string | null }> {
+    const sort = q.sort as Exclude<TransactionSort, 'date'>;
+    let key: SQL;
+    if (sort === 'name') key = sql`lower(${transactions.displayName})`;
+    else if (sort === 'amount') key = sql`${transactions.amountMinor}`;
+    else if (sort === 'category') {
+      const [uncategorized] = await tx
+        .select({ name: categories.name })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.householdId, ctx.householdId),
+            eq(categories.systemKey, 'uncategorized'),
+          ),
+        );
+      key = sql`lower(coalesce((SELECT ${categories.name} FROM ${categories}
+                  WHERE ${categories.id} = ${transactions.categoryId}), ${uncategorized?.name ?? ''}))`;
+    } else {
+      const shown = [...access.levels]
+        .filter(([, l]) => l === 'owner' || l === 'full' || l === 'view_only')
+        .map(([id]) => id);
+      key = sql`lower(coalesce(CASE WHEN ${transactions.accountId} = ANY(${sql.param(shown)}::uuid[])
+                  THEN (SELECT ${accounts.name} FROM ${accounts} WHERE ${accounts.id} = ${transactions.accountId})
+                  END, ''))`;
+    }
+    const ascending = (q.direction ?? 'asc') === 'asc';
+    if (q.cursor) {
+      const [, after, date, id] = decodeSortedCursor(q.cursor, sort);
+      const value = sort === 'amount' ? sql`${after}::bigint` : sql`${after}::text`;
+      where.push(
+        sql`(${key} ${sql.raw(ascending ? '>' : '<')} ${value} OR (${key} = ${value}
+              AND (${dateColumn}, ${transactions.id}) < (${date}::date, ${id}::uuid)))`,
+      );
+    }
+    const rows = await tx
+      .select({ row: transactions, key: sql<string | number>`${key}` })
+      .from(transactions)
+      .where(and(...where))
+      .orderBy(
+        ascending ? sql`${key} ASC` : sql`${key} DESC`,
+        desc(dateColumn),
+        desc(transactions.id),
+      )
+      .limit(q.limit + 1);
+    const page = rows.slice(0, q.limit);
+    const last = page.at(-1);
+    return {
+      page: page.map((r) => r.row),
+      nextCursor:
+        rows.length > q.limit && last
+          ? encodeSortedCursor(
+              sort,
+              sort === 'amount' ? Number(last.key) : String(last.key),
+              access.dateBasis === 'authorized'
+                ? last.row.effectiveAuthorizedDate
+                : last.row.effectiveDate,
+              last.row.id,
+            )
+          : null,
+    };
+  }
 
   async #access(tx: Executor, ctx: HouseholdContext): Promise<Access> {
     const levels = await accessLevels(tx);
