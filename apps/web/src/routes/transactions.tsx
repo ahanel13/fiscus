@@ -95,7 +95,7 @@ import { rangeParams, selectionLabel } from '../lib/ranges.js';
 import { RuleEditor, RuleSuggestion, suggestMatchText, useRuleSuggestionContext } from './rules.js';
 import { type SuggestedRule, suggestRule } from '../lib/rules.js';
 import { applyDensity, type Density, storedDensity } from '../lib/density.js';
-import { useMediaQuery, WIDE } from '../lib/media.js';
+import { SMALL, useMediaQuery, WIDE } from '../lib/media.js';
 import { useRange } from '../lib/use-range.js';
 
 type Data<T> = { data: T };
@@ -517,6 +517,9 @@ export function TransactionsPage() {
     setReview(false);
   };
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // A phone shows checkboxes only after "Select" (bulk edits are rarer than a glance).
+  const phone = !useMediaQuery(SMALL);
+  const [selecting, setSelecting] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const ownsAny = accounts.some((a) => a.yourAccess === 'owner');
@@ -590,8 +593,9 @@ export function TransactionsPage() {
                 <ClipboardCheck aria-hidden className="size-4" />
                 <span className="sr-only sm:not-sr-only">Review</span>
                 {toReview ? (
+                  // Capped like the navigation's badge, so the header stays on one row.
                   <Badge tone="accent">
-                    {toReview}
+                    {toReview > 99 ? '99+' : toReview}
                     <span className="sr-only"> to review</span>
                   </Badge>
                 ) : null}
@@ -695,7 +699,22 @@ export function TransactionsPage() {
                     )}
                   </Dialog>
                 </DialogTrigger>
-                <DensityChoice />
+                {/* Density only changes the desktop table; on a phone, choosing rows to edit together. */}
+                <div className="hidden xl:block">
+                  <DensityChoice />
+                </div>
+                {phone ? (
+                  <Button
+                    variant={selecting ? 'primary' : 'secondary'}
+                    className="shrink-0"
+                    onPress={() => {
+                      if (selecting) setSelected(new Set());
+                      setSelecting(!selecting);
+                    }}
+                  >
+                    {selecting ? 'Done' : 'Select'}
+                  </Button>
+                ) : null}
               </div>
               {activeFilters ? (
                 <div role="group" aria-label="Filters on" className="flex flex-wrap gap-2">
@@ -770,7 +789,7 @@ export function TransactionsPage() {
               filters={filters}
               members={members}
               groups={groups}
-              selectable
+              selectable={!phone || selecting}
               selected={selected}
               onSelectedChange={setSelected}
               onOpen={setOpen}

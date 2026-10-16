@@ -38,7 +38,8 @@ export function PageHeader({
   // Wider screens: all on one row.
   return (
     <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 md:px-8 md:py-5">
-      <h1 className="mr-auto min-w-0 truncate text-xl font-semibold md:text-2xl">{title}</h1>
+      {/* It gives way before the actions wrap under it. */}
+      <h1 className="min-w-0 flex-1 basis-0 truncate text-xl font-semibold md:text-2xl">{title}</h1>
       {controls ? (
         <div className="order-last flex w-full items-start gap-2 sm:order-none sm:w-auto sm:flex-wrap sm:items-center">
           {range ? <RangeSelect state={range} /> : null}
