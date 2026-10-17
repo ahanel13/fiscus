@@ -89,12 +89,64 @@ export interface SuggestionGroup {
   items: Suggestion[];
   /**
    * The pairs "Link N" links: clear ones (one match either way, or identical transfers in step)
-   * and ones the names point to. Each money-out leg gets its own other side.
+   * and ones a hint points to (the names, or the closest date both ways). Each money-out leg gets
+   * its own other side.
    */
   ready: { out: string; into: string }[];
 }
 
 const accountName = (t: Transaction) => t.account?.name ?? 'another account';
+
+/** What points to one candidate: the names, or the closest date both ways. */
+export interface Hint {
+  id: string;
+  /** "names Holiday", or "closest date". */
+  label: string;
+}
+
+const dayGap = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+
+/** The one item of `items` strictly closest to `date`, or null on a tie. */
+function closest<T>(items: T[], date: (t: T) => string, to: string): T | null {
+  let best: T | null = null;
+  let gap = Infinity;
+  let tie = false;
+  for (const item of items) {
+    const g = dayGap(date(item), to);
+    if (g < gap) [best, gap, tie] = [item, g, false];
+    else if (g === gap) tie = true;
+  }
+  return tie ? null : best;
+}
+
+/**
+ * The candidate each suggestion's hints point to (#332): first the names (likelyOtherSide), then
+ * the closest date, when it's closest both ways. A recurring transfer ($10 to investing every few
+ * days) has several same-amount candidates within the window, but each deposit's own transfer is
+ * the one nearest to it, and it nearest to that one. A person still confirms it.
+ */
+export function hints(list: Suggestion[]): Map<string, Hint> {
+  const out = new Map<string, Hint>();
+  // Each candidate's possible transfers out, across the review.
+  const outsOf = new Map<string, Transaction[]>();
+  for (const s of list) {
+    for (const c of s.candidates) outsOf.set(c.id, [...(outsOf.get(c.id) ?? []), s.transaction]);
+  }
+  for (const s of list) {
+    const named = likelyOtherSide(s.transaction, s.candidates);
+    if (named) {
+      out.set(s.transaction.id, { id: named.id, label: `names ${named.named}` });
+      continue;
+    }
+    if (s.candidates.length < 2) continue;
+    const near = closest(s.candidates, (c) => c.date, s.transaction.date);
+    if (!near) continue;
+    const back = closest(outsOf.get(near.id) ?? [], (o) => o.date, near.date);
+    if (back?.id === s.transaction.id)
+      out.set(s.transaction.id, { id: near.id, label: 'closest date' });
+  }
+  return out;
+}
 
 /**
  * The review's suggestions by account pair, the biggest group first, so a large import reads as
@@ -102,9 +154,10 @@ const accountName = (t: Transaction) => t.account?.name ?? 'another account';
  */
 export function groupSuggestions(list: Suggestion[]): SuggestionGroup[] {
   const groups = new Map<string, SuggestionGroup & { used: Set<string> }>();
+  const hinted = hints(list);
   for (const s of list) {
     const out = s.transaction;
-    const likely = likelyOtherSide(out, s.candidates);
+    const likely = hinted.get(out.id) ?? null;
     const intoAccounts = new Set(s.candidates.map((c) => c.account?.id ?? ''));
     const pointed = likely
       ? s.candidates.find((c) => c.id === likely.id)!

@@ -28,7 +28,8 @@ import {
 import {
   groupSuggestions,
   groupUnmatched,
-  likelyOtherSide,
+  type Hint,
+  hints,
   type SuggestionGroup,
   withoutTransactions,
 } from '../lib/transfers.js';
@@ -77,16 +78,18 @@ type SuggestionData = TransferReview['suggested'][number];
 /** Why a pair wasn't linked automatically, in words. */
 function reasonText(
   { reason, transaction: out, candidates, rivals }: SuggestionData,
-  likely: boolean,
+  hint: Hint | null,
 ): string {
   const first = candidates[0]!;
   switch (reason) {
     case 'identical':
       return `Identical transfers, like round-ups: any pairing is right, so “Link the clear pairs” takes them.`;
     case 'several':
-      return likely
-        ? `${candidates.length} possible matches, and the names point to the first. Linking one can settle others.`
-        : `${candidates.length} possible matches: link the one that’s really the other side. Linking one can settle others.`;
+      return hint?.label === 'closest date'
+        ? `${candidates.length} possible matches, like a recurring transfer; this one is the closest date both ways.`
+        : hint
+          ? `${candidates.length} possible matches, and the names point to this one. Linking one can settle others.`
+          : `${candidates.length} possible matches: link the one that’s really the other side. Linking one can settle others.`;
     case 'rivals': {
       const r = rivals[0]!;
       const more = rivals.length > 1 ? ` and ${rivals.length - 1} more` : '';
@@ -157,85 +160,82 @@ function GroupToggle({
   );
 }
 
-/** One side of a pair: which account, how much, and the transaction's name and date. */
-function Side({
-  t,
-  label,
-  note,
-  badge,
-}: {
-  t: Transaction;
-  label: 'From' | 'To';
-  note?: string | undefined;
-  badge?: ReactNode;
-}) {
-  return (
-    <span className="min-w-0 flex-1">
-      <span className="flex items-baseline gap-2">
-        <span className="text-xs text-muted">{label}</span>
-        <span className="truncate font-medium">{accountOf(t)}</span>
-        <Amount minor={t.amountMinor} currency={t.currency} className="ml-auto font-medium" />
-      </span>
-      <span className="block text-xs text-muted">
-        {t.displayName} · <DateText value={t.date} />
-        {note ? ` · ${note}` : ''}
-      </span>
-      {badge ? <span className="mt-1 block">{badge}</span> : null}
-    </span>
-  );
-}
-
 /**
- * A suggested pair: the money going out, each possible other side (identical ones shown once,
- * with how many), and why it wasn't linked automatically.
+ * A suggested pair, flat enough to read on a phone (#332): the money going out, then its best
+ * match (the one a hint points to, else the closest date) with the others a tap away, and why it
+ * wasn't linked automatically. Accounts the group's heading names aren't repeated.
  */
 function Suggestion({
   suggestion,
   count,
+  hint,
+  from,
+  to,
   onLink,
   linking,
 }: {
   suggestion: SuggestionData;
   /** Identical transfers out shown as this one. */
   count: number;
+  hint: Hint | null;
+  /** The group's accounts, which each row then leaves out. */
+  from: string;
+  to: string | null;
   onLink: (into: string) => void;
   linking: string | null;
 }) {
+  const [more, setMore] = useState(false);
   const out = suggestion.transaction;
   const same = (c: Transaction) =>
     `${c.account?.id}|${c.date}|${c.amountMinor}|${c.displayName.toLowerCase()}`;
-  const likely = likelyOtherSide(out, suggestion.candidates);
-  // The likely one first; the rest keep their order (nearest date first).
+  // The hinted one first; the rest keep their order (nearest date first).
   const groups = [...Map.groupBy(suggestion.candidates, same).values()].sort(
-    (a, b) => Number(b[0]!.id === likely?.id) - Number(a[0]!.id === likely?.id),
+    (a, b) => Number(b[0]!.id === hint?.id) - Number(a[0]!.id === hint?.id),
   );
+  const shown = more ? groups : groups.slice(0, 1);
   return (
-    <li className="space-y-2 rounded-xl border border-border bg-surface p-3">
-      <div className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
-        <Side t={out} label="From" note={count > 1 ? `×${count} identical` : undefined} />
+    <li className="space-y-2 px-3 py-3">
+      <div className="flex items-baseline gap-3 text-sm">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium">
+            {out.displayName}
+            {count > 1 ? <span className="font-normal text-muted"> ×{count} identical</span> : null}
+          </span>
+          <span className="block text-xs text-muted">
+            <DateText value={out.date} />
+            {accountOf(out) !== from ? ` · ${accountOf(out)}` : ''}
+          </span>
+        </span>
+        <Amount minor={out.amountMinor} currency={out.currency} className="shrink-0 font-medium" />
       </div>
-      <ul aria-label={`Possible other sides of ${out.displayName}`} className="space-y-2">
-        {groups.map((group) => {
+      <ul aria-label={`Possible other sides of ${out.displayName}`} className="space-y-1.5">
+        {shown.map((group) => {
           const c = group[0]!;
           return (
             <li
               key={c.id}
-              className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm"
+              className="flex items-center gap-2 rounded-lg bg-surface-2 py-2 pr-2 pl-3 text-sm"
             >
               <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
-              <Side
-                t={c}
-                label="To"
-                note={`${apart(out.date, c.date)}${group.length > 1 ? ` · ×${group.length} identical` : ''}`}
-                badge={
-                  c.id === likely?.id ? (
-                    <Badge tone="accent">Likely: names {likely.named}</Badge>
-                  ) : undefined
-                }
-              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">
+                  {to === null ? `${accountOf(c)} · ` : ''}
+                  {c.displayName}
+                </span>
+                <span className="block text-xs text-muted">
+                  <DateText value={c.date} /> · {apart(out.date, c.date)}
+                  {group.length > 1 ? ` · ×${group.length} identical` : ''}
+                </span>
+                {c.id === hint?.id ? (
+                  <Badge tone="accent" className="mt-1">
+                    Likely: {hint.label}
+                  </Badge>
+                ) : null}
+              </span>
               <Button
                 size="sm"
                 variant="secondary"
+                className="shrink-0"
                 aria-label={`Link ${accountOf(out)} ${out.displayName} ${out.date} to ${accountOf(c)} ${c.displayName} ${c.date}`}
                 onPress={() => onLink(c.id)}
                 isPending={linking === c.id}
@@ -246,9 +246,14 @@ function Suggestion({
           );
         })}
       </ul>
+      {groups.length > 1 && !more ? (
+        <Button variant="ghost" size="sm" onPress={() => setMore(true)}>
+          Show {groups.length - 1} other {groups.length === 2 ? 'match' : 'matches'}
+        </Button>
+      ) : null}
       <p className="flex gap-1.5 text-xs text-muted">
         <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-        {reasonText(suggestion, likely !== null)}
+        {reasonText(suggestion, hint)}
       </p>
     </li>
   );
@@ -387,6 +392,8 @@ export function TransferReviewList({
   }
   if (query.isError) return <Alert>Couldn’t check transfers. Try again in a moment.</Alert>;
   const { suggested, unmatched, counts } = query.data;
+  // What points to each pair's other side: the names, or the closest date both ways.
+  const hinted = hints(suggested);
   if (suggested.length === 0 && unmatched.length === 0) {
     return (
       <div className="space-y-6">
@@ -455,12 +462,18 @@ export function TransferReviewList({
                     ) : null}
                   </div>
                   {open ? (
-                    <ul id={`group-${g.key}`} className="space-y-3 border-t border-border p-3">
+                    <ul
+                      id={`group-${g.key}`}
+                      className="divide-y divide-border border-t border-border"
+                    >
                       {mergeIdentical(g.items).map(({ suggestion: s, count }) => (
                         <Suggestion
                           key={s.transaction.id}
                           suggestion={s}
                           count={count}
+                          hint={hinted.get(s.transaction.id) ?? null}
+                          from={g.from}
+                          to={g.to}
                           onLink={(into) => link.mutate({ out: s.transaction.id, into })}
                           linking={link.isPending ? (link.variables?.into ?? null) : null}
                         />
@@ -486,8 +499,8 @@ export function TransferReviewList({
             }}
           >
             From {confirming?.from} to {confirming?.to ?? 'more than one account'}: the clear pairs
-            and the ones the names point to. Pairs with more than one possible match stay for you to
-            choose. You can undo it from the message that follows.
+            and the likely ones (the names, or the closest date both ways). Pairs with more than one
+            possible match stay for you to choose. You can undo it from the message that follows.
           </ConfirmDialog>
         </section>
       ) : null}

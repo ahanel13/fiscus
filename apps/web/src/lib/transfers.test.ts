@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   groupSuggestions,
   groupUnmatched,
+  hints,
   likelyOtherSide,
   namedAccount,
   withoutTransactions,
@@ -123,5 +124,61 @@ describe('grouping the review (#332)', () => {
       ['Checking', ['b', 'c']],
       ['Card', ['a']],
     ]);
+  });
+});
+
+describe('closest-date hints (#332)', () => {
+  const dated = (id: string, account: string, date: string) =>
+    ({ ...t(id, account, 'Transfer'), date }) as Transaction;
+  const within = (out: Transaction, ins: Transaction[]) =>
+    ins.filter((i) => Math.abs(Date.parse(i.date) - Date.parse(out.date)) <= 10 * 86_400_000);
+
+  it('pairs a recurring transfer with the deposit closest to it both ways', () => {
+    // $10 to investing every few days: each out has several same-amount deposits in range.
+    const outs = ['2024-02-06', '2024-02-02', '2024-01-30', '2024-01-26'].map((d, i) =>
+      dated(`o${i}`, 'SoFi', d),
+    );
+    const ins = ['2024-02-05', '2024-02-01', '2024-01-29', '2024-01-25', '2024-01-22'].map((d, i) =>
+      dated(`i${i}`, 'Invest', d),
+    );
+    const list = outs.map((o) => ({
+      transaction: o,
+      candidates: within(o, ins),
+      rivals: [],
+      unique: false,
+      reason: 'several' as const,
+    }));
+    const found = hints(list);
+    expect(outs.map((o) => found.get(o.id))).toEqual([
+      { id: 'i0', label: 'closest date' },
+      { id: 'i1', label: 'closest date' },
+      { id: 'i2', label: 'closest date' },
+      { id: 'i3', label: 'closest date' },
+    ]);
+    // So the whole group links in one go.
+    expect(groupSuggestions(list)[0]!.ready).toHaveLength(4);
+  });
+
+  it('gives no date hint on a tie, or when the closest deposit is closer to another', () => {
+    const out = dated('o', 'SoFi', '2024-03-10');
+    const tie = hints([
+      {
+        transaction: out,
+        candidates: [dated('a', 'Invest', '2024-03-09'), dated('b', 'Invest', '2024-03-11')],
+        rivals: [],
+        unique: false,
+        reason: 'several',
+      },
+    ]);
+    expect(tie.size).toBe(0);
+    // b is closest to o, but closer still to o2: o gets nothing, o2 gets b.
+    const o2 = dated('o2', 'SoFi', '2024-03-12');
+    const b = dated('b', 'Invest', '2024-03-12');
+    const a = dated('a', 'Invest', '2024-03-05');
+    const found = hints([
+      { transaction: out, candidates: [a, b], rivals: [], unique: false, reason: 'several' },
+      { transaction: o2, candidates: [b], rivals: [], unique: false, reason: 'one_match' },
+    ]);
+    expect(found.get('o')).toBeUndefined();
   });
 });
