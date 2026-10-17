@@ -45,7 +45,8 @@ A **Transfers** section on the Review page, worked out when you open it (no back
 - **Grouped** (#332): suggestions by account pair ("SoFi Checking → House: 12") and rows with no
   other side by account, the biggest group first, so a large import reads as a few groups. A
   group's **Link N** links its clear pairs and the ones the names point to ("Likely"), after you
-  confirm; pairs with a real choice stay for you. Each link says how many other pairs it settled.
+  confirm; pairs with a real choice stay for you. Each link says how many other pairs it settled,
+  and its message offers **Undo**, which unlinks everything it linked, settled pairs too.
 
 ## 3. "Transfer to an account" (a rule action)
 

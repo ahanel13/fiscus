@@ -345,6 +345,13 @@ test('8. checking transfers', async ({ page }) => {
     await shot(page, '30b-link-group');
     await confirm.getByRole('button', { name: 'Link them' }).click();
     await expect(confirm).toHaveCount(0);
+    // And undo it from the message, settled pairs too (#332).
+    const message = page
+      .getByRole('alertdialog')
+      .filter({ hasText: /linked|Linked/ })
+      .last();
+    await message.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByText(/^Undone: \d+ transfers? unlinked\.$/)).toBeVisible();
   }
 });
 

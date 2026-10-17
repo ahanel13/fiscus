@@ -193,7 +193,7 @@ describe('transfers and the review queue', () => {
     expect((await A.get(`${base}/transactions/review-count`)).body.data.transfers).toBe(3);
 
     const linked = await A.post(`${base}/transactions/transfer-review/link-all`);
-    expect(linked.body.data).toEqual({ linked: 1 });
+    expect(linked.body.data).toEqual({ linked: 1, groups: [expect.any(String)] });
     expect(
       ((await A.get(`${base}/transactions/${out2}`)).body.data as Transaction).transfer
         ?.transactionId,
@@ -375,9 +375,11 @@ describe('transfers and the review queue', () => {
       ['identical', true],
       ['identical', true],
     ]);
-    expect((await A.post(`${base}/transactions/transfer-review/link-all`)).body.data).toEqual({
-      linked: 2,
-    });
+    expect((await A.post(`${base}/transactions/transfer-review/link-all`)).body.data).toMatchObject(
+      {
+        linked: 2,
+      },
+    );
     expect((await Promise.all(lateOuts.map(one))).every((t) => t.transfer !== null)).toBe(true);
   });
 
@@ -440,7 +442,7 @@ describe('transfers and the review queue', () => {
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect((await get(A, fromChecking)).transfer?.transactionId).toBe(in2);
     // It says so, so the review can (#332).
-    expect(r.body.meta).toEqual({ settled: 1 });
+    expect(r.body.meta).toEqual({ settled: 1, groups: [expect.any(String), expect.any(String)] });
   });
 
   it('links the pairs a person confirmed together, refusing the ones that can’t be (#332)', async () => {
@@ -472,6 +474,7 @@ describe('transfers and the review queue', () => {
       linked: 2,
       // out2 and in2 were left with only each other.
       settled: 1,
+      groups: [expect.any(String), expect.any(String), expect.any(String)],
       refused: [
         { id: out2, code: 'already_linked' },
         { id: out3, code: 'already_linked' },
@@ -500,6 +503,43 @@ describe('transfers and the review queue', () => {
       { id: away, code: 'same_account' },
       { id: away, code: 'not_opposite' },
     ]);
+  });
+
+  it('undoes what a link did, the pairs it settled too, back to their categories (#332)', async () => {
+    const m = month();
+    const checking = await account(A, 'Undo checking');
+    const savings = await account(A, 'Undo savings');
+    const vault = await account(A, 'Undo vault');
+    const t = { categoryId: transferCat };
+    // Either deposit could be either one's, so linking one pair settles the other.
+    const out1 = await txn(A, checking, -6100, `${m}-05`, t);
+    const out2 = await txn(A, vault, -6100, `${m}-05`, t);
+    const in1 = await txn(A, savings, 6100, `${m}-05`);
+    const in2 = await txn(A, savings, 6100, `${m}-05`, t);
+    const linked = await A.post(url('/transactions/transfer-review/link'), {
+      pairs: [{ out: out1, into: in1 }],
+    });
+    expect(linked.body.data).toMatchObject({ linked: 1, settled: 1 });
+    expect((await get(A, out2)).transfer?.transactionId).toBe(in2);
+    expect((await get(A, in1)).categoryId).toBe(transferCat);
+
+    const undo = await A.post(url('/transactions/transfer-review/unlink'), {
+      groups: linked.body.data.groups,
+    });
+    expect(undo.status, JSON.stringify(undo.body)).toBe(200);
+    expect(undo.body.data).toEqual({ unlinked: 2 });
+    for (const id of [out1, out2, in1, in2]) expect((await get(A, id)).transfer).toBeNull();
+    // Each leg back to what it was: in1 Uncategorized again, the rest Transfer as entered.
+    expect((await get(A, in1)).categoryId).toBeNull();
+    expect((await get(A, in2)).categoryId).toBe(transferCat);
+    // Again: nothing left to undo.
+    expect(
+      (
+        await A.post(url('/transactions/transfer-review/unlink'), {
+          groups: linked.body.data.groups,
+        })
+      ).body.data,
+    ).toEqual({ unlinked: 0 });
   });
 
   it('deleting one leg leaves the other a plain transaction again', async () => {

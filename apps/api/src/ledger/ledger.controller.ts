@@ -15,6 +15,7 @@ import {
   linkTransferPairsSchema,
   linkTransferSchema,
   type LinkTransfersResult,
+  unlinkTransferGroupsSchema,
   moveTransactionsSchema,
   type NameCleanup,
   type NameCleanupPreview,
@@ -275,8 +276,18 @@ export class TransactionsController {
   @HttpCode(200)
   async linkAllTransfers(
     @Household() ctx: HouseholdContext,
-  ): Promise<{ data: { linked: number } }> {
+  ): Promise<{ data: { linked: number; groups: string[] } }> {
     return { data: await this.transactions.linkAllTransfers(ctx) };
+  }
+
+  /** Undoes links made in the review: the transfer groups they made (#332, TXN-08). */
+  @Post('transfer-review/unlink')
+  @HttpCode(200)
+  async unlinkTransferGroups(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(unlinkTransferGroupsSchema)) body: z.infer<typeof unlinkTransferGroupsSchema>,
+  ): Promise<{ data: { unlinked: number } }> {
+    return { data: await this.transactions.unlinkTransferGroups(ctx, body) };
   }
 
   /** Links pairs a person confirmed in the review, a group at a time (#332, TXN-08). */
@@ -337,9 +348,9 @@ export class TransactionsController {
     @Household() ctx: HouseholdContext,
     @Param('transactionId', UuidPipe) id: string,
     @Body(new ZodPipe(linkTransferSchema)) body: z.infer<typeof linkTransferSchema>,
-  ): Promise<{ data: Transaction; meta: { settled: number } }> {
-    const { transaction, settled } = await this.transactions.linkTransfer(ctx, id, body);
-    return { data: transaction, meta: { settled } };
+  ): Promise<{ data: Transaction; meta: { settled: number; groups: string[] } }> {
+    const { transaction, settled, groups } = await this.transactions.linkTransfer(ctx, id, body);
+    return { data: transaction, meta: { settled, groups } };
   }
 
   @Delete(':transactionId/transfer')

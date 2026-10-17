@@ -288,15 +288,32 @@ export function TransferReviewList({
     invalidate();
   };
 
+  // Undo unlinks every transfer a link made, the ones it settled too (#332).
+  const unlink = useMutation({
+    mutationFn: (groups: string[]) =>
+      api<Data<{ unlinked: number }>>('POST', `${base}/transfer-review/unlink`, {
+        body: { groups },
+      }),
+    onSuccess: (r) => {
+      invalidate();
+      toast(
+        `Undone: ${r.data.unlinked} ${r.data.unlinked === 1 ? 'transfer' : 'transfers'} unlinked.`,
+      );
+    },
+    onError,
+  });
+  const undoable = (groups: string[]) =>
+    groups.length ? { actions: [{ label: 'Undo', onAction: () => unlink.mutate(groups) }] } : {};
+
   const link = useMutation({
     mutationFn: ({ out, into }: { out: string; into: string }) =>
-      api<{ meta: { settled: number } }>('POST', `${base}/${out}/transfer`, {
+      api<{ meta: { settled: number; groups: string[] } }>('POST', `${base}/${out}/transfer`, {
         body: { transactionId: into },
       }),
     onMutate: ({ out, into }) => drop([out, into]),
     onSuccess: (r) => {
       invalidate();
-      toast(linkedText(1, r.meta.settled));
+      toast(linkedText(1, r.meta.settled), undoable(r.meta.groups));
     },
     onError,
   });
@@ -308,8 +325,9 @@ export function TransferReviewList({
     onSuccess: (r) => {
       setConfirming(null);
       invalidate();
-      const { linked, settled, refused } = r.data;
+      const { linked, settled, refused, groups } = r.data;
       toast(linkedText(linked, settled), {
+        ...undoable(groups),
         ...(refused.length
           ? { description: `${refused.length} couldn’t be linked; they stay on the list.` }
           : {}),
@@ -327,10 +345,14 @@ export function TransferReviewList({
       return next;
     });
   const linkAll = useMutation({
-    mutationFn: () => api<Data<{ linked: number }>>('POST', `${base}/transfer-review/link-all`),
+    mutationFn: () =>
+      api<Data<{ linked: number; groups: string[] }>>('POST', `${base}/transfer-review/link-all`),
     onSuccess: (r) => {
       invalidate();
-      toast(`${r.data.linked} ${r.data.linked === 1 ? 'transfer' : 'transfers'} linked.`);
+      toast(
+        `${r.data.linked} ${r.data.linked === 1 ? 'transfer' : 'transfers'} linked.`,
+        undoable(r.data.groups),
+      );
     },
     onError,
   });
@@ -465,7 +487,7 @@ export function TransferReviewList({
           >
             From {confirming?.from} to {confirming?.to ?? 'more than one account'}: the clear pairs
             and the ones the names point to. Pairs with more than one possible match stay for you to
-            choose. Any of them can be unlinked from its transaction afterwards.
+            choose. You can undo it from the message that follows.
           </ConfirmDialog>
         </section>
       ) : null}
