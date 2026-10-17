@@ -66,9 +66,16 @@ test('first run: setup creates the admin, then the first household', async ({ pa
 test('navigates with the command palette, shortcuts, and the range control', async ({ page }) => {
   await signIn(page);
   await expect(page).toHaveURL(householdUrl); // lands in the last household
-
-  await page.keyboard.press('ControlOrMeta+k');
-  await page.getByPlaceholder(/Go to/).fill('Budget');
+  // The URL can change before the household's shell mounts, and the shell is what listens for
+  // shortcuts: wait for it, then press until the palette opens (a slow CI runner).
+  await expect(page.getByRole('navigation', { name: 'Main' }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
+  const palette = page.getByPlaceholder(/Go to/);
+  await expect(async () => {
+    if (!(await palette.isVisible())) await page.keyboard.press('ControlOrMeta+k');
+    await expect(palette).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  await palette.fill('Budget');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { level: 1, name: 'Budget' })).toBeVisible();
 
