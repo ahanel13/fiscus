@@ -165,6 +165,8 @@ test('1. first run: setup, then the household', async ({ page }) => {
   await expect(page).toHaveURL(/\/h\/[0-9a-f-]{36}$/);
   home = new URL(page.url()).pathname;
   await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
+  // What to do next (#354).
+  await expect(page.getByRole('region', { name: /Get set up/ })).toBeVisible();
   await shot(page, '03-dashboard-empty');
 });
 

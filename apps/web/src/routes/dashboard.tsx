@@ -1,17 +1,35 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { CashFlow, CashFlowBucket, Household } from '@fiscus/shared';
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import type { CashFlow, CashFlowBucket, Household, HouseholdMember } from '@fiscus/shared';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { cashFlowQuery, householdQuery, membersQuery } from '../api/queries.js';
+import { CheckCircle2, Circle } from 'lucide-react';
+import { type ReactNode, useEffect } from 'react';
+import { api } from '../api/client.js';
+import {
+  accountsQuery,
+  cashFlowQuery,
+  householdQuery,
+  membersQuery,
+  preferencesQuery,
+  reviewCountQuery,
+} from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { CompareSelect, GranularityToggle, PeriodStepper } from '../components/RangeControls.js';
-import { Alert, Card, LoadingRegion, Skeleton } from '../components/ui.js';
+import { Alert, Button, ButtonLink, Card, LoadingRegion, Skeleton } from '../components/ui.js';
+import {
+  FIRST_RUN_KEY,
+  type FirstRun,
+  type FirstRunStepKey,
+  firstRunSteps,
+  parseFirstRun,
+} from '../lib/first-run.js';
 import { type Lens, lensVisible, parseLens } from '../lib/lens.js';
 import { bucketLabel, formatSpan, rangeParams } from '../lib/ranges.js';
 import { useRange } from '../lib/use-range.js';
 import { NetWorthCard } from './accounts.js';
+import { invitesQueryKey } from './invites.js';
 
 /** Where you stand (IA): cash flow over the chosen range, and net worth. Reports come in M7. */
 export function DashboardPage() {
@@ -27,10 +45,178 @@ export function DashboardPage() {
     <>
       <PageHeader title="Dashboard" range={range} showLens={showLens} members={members} />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
+        <FirstRunChecklist household={household} members={members} />
         <CashFlowCard household={household} lens={lens} range={range} />
         <NetWorthCard household={household} lens={lens} range={range} />
       </div>
     </>
+  );
+}
+
+const STEPS: Record<FirstRunStepKey, { title: string; detail: string }> = {
+  accounts: {
+    title: 'Add your accounts',
+    detail: 'Enter them yourself, or import a file from your bank or from Monarch.',
+  },
+  invite: {
+    title: 'Invite the people you share money with',
+    detail: 'Each gets their own sign-in. What’s yours stays yours; what’s shared, they see.',
+  },
+  review: {
+    title: 'Review what came in',
+    detail: 'Check each transaction’s category, and link transfers between your accounts.',
+  },
+};
+
+/**
+ * What to do after setup (#354, walkthrough F1): add or import accounts, invite the others, and
+ * review what came in, each ticked off as it's done. Only for households created with it (the
+ * `first-run` preference); it closes for good once every step is done, or when hidden.
+ */
+function FirstRunChecklist({
+  household,
+  members,
+}: {
+  household: Household;
+  members: HouseholdMember[];
+}) {
+  const id = household.id;
+  const owner = household.you.role === 'owner';
+  const queryClient = useQueryClient();
+  const prefs = useQuery(preferencesQuery(id));
+  const pref = parseFirstRun(prefs.data?.[FIRST_RUN_KEY]);
+  const open = pref !== null && !pref.closed && household.you.role !== 'viewer';
+  const accounts = useQuery({ ...accountsQuery(id, 'all'), enabled: open });
+  const review = useQuery({ ...reviewCountQuery(id), enabled: open });
+  // Whether anything has come in yet: one is enough.
+  const any = useQuery({
+    queryKey: ['households', id, 'transactions', 'any'],
+    queryFn: async () =>
+      (await api<{ data: unknown[] }>('GET', `/api/v1/households/${id}/transactions?limit=1`)).data
+        .length > 0,
+    enabled: open,
+  });
+  const invites = useQuery({
+    queryKey: invitesQueryKey(id),
+    queryFn: async () =>
+      (await api<{ data: unknown[] }>('GET', `/api/v1/households/${id}/invites`)).data,
+    enabled: open && owner && pref.shared,
+  });
+  const close = useMutation({
+    mutationFn: (value: FirstRun) =>
+      api('PUT', `/api/v1/households/${id}/preferences/${FIRST_RUN_KEY}`, { body: { value } }),
+    onMutate: (value) =>
+      queryClient.setQueryData(preferencesQuery(id).queryKey, (p) => ({
+        ...p,
+        [FIRST_RUN_KEY]: value,
+      })),
+  });
+  const steps =
+    open &&
+    accounts.data &&
+    review.data &&
+    any.data !== undefined &&
+    (!invites.isEnabled || invites.data)
+      ? firstRunSteps({
+          pref,
+          role: household.you.role,
+          accounts: accounts.data.length,
+          members: members.length,
+          pendingInvites: invites.data?.length ?? 0,
+          hasTransactions: any.data,
+          toReview: review.data.count,
+        })
+      : null;
+  const allDone = steps?.every((s) => s.done) ?? false;
+  // Done once is done: new transactions to review later don't bring it back.
+  useEffect(() => {
+    if (allDone && pref) close.mutate({ ...pref, closed: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the last step is done
+  }, [allDone]);
+  if (!steps || allDone) return null;
+
+  const done = steps.filter((s) => s.done).length;
+  const actions: Record<FirstRunStepKey, ReactNode> = {
+    accounts: (
+      <>
+        <ButtonLink size="sm" to="/h/$householdId/accounts" params={{ householdId: id }}>
+          Add an account
+        </ButtonLink>
+        <ButtonLink
+          size="sm"
+          variant="secondary"
+          to="/h/$householdId/import"
+          params={{ householdId: id }}
+        >
+          Import a file
+        </ButtonLink>
+      </>
+    ),
+    invite: (
+      <ButtonLink
+        size="sm"
+        to="/h/$householdId/settings/members"
+        params={{ householdId: id }}
+        search={{ invite: '1' }}
+      >
+        Invite someone
+      </ButtonLink>
+    ),
+    review: (
+      <ButtonLink size="sm" to="/h/$householdId/review" params={{ householdId: id }}>
+        {review.data?.count ? `Review ${review.data.count.toLocaleString()}` : 'Start reviewing'}
+      </ButtonLink>
+    ),
+  };
+  return (
+    <Card className="space-y-4">
+      <section aria-labelledby="first-run" className="space-y-4">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h2 id="first-run" className="mr-auto font-semibold">
+            Get set up{' '}
+            <span className="text-sm font-normal text-muted">
+              ({done} of {steps.length} done)
+            </span>
+          </h2>
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => pref && close.mutate({ ...pref, closed: true })}
+          >
+            Hide
+          </Button>
+        </div>
+        <ol className="space-y-3">
+          {steps.map((step, i) => {
+            // The first step not done yet is the one to do now; later ones wait for it.
+            const next = !step.done && steps.findIndex((s) => !s.done) === i;
+            return (
+              <li key={step.key} className="flex gap-3">
+                {step.done ? (
+                  <CheckCircle2 aria-hidden className="mt-0.5 size-5 shrink-0 text-positive" />
+                ) : (
+                  <Circle aria-hidden className="mt-0.5 size-5 shrink-0 text-muted" />
+                )}
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className={clsx('text-sm', step.done && 'text-muted line-through')}>
+                    <span className="font-medium">{STEPS[step.key].title}</span>
+                    <span className="sr-only">{step.done ? ' (done)' : ' (to do)'}</span>
+                  </p>
+                  {step.done ? null : (
+                    <>
+                      <p className="text-sm text-muted">{STEPS[step.key].detail}</p>
+                      {next ? (
+                        <div className="flex flex-wrap gap-2">{actions[step.key]}</div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+    </Card>
   );
 }
 

@@ -33,7 +33,7 @@ Findings are numbered (**F1**, **F2**, …) and collected in the [gap list](#gap
 households of more than one person. The time zone comes from the device.
 
 **Gets in the way.**
-- **F1.** You land on an empty dashboard: $0 net worth, and "No transactions in this range yet. Add
+- ~~**F1.**~~ *Fixed in #367: a "Get set up" checklist on the dashboard.* You land on an empty dashboard: $0 net worth, and "No transactions in this range yet. Add
   some." Nothing suggests the obvious next steps: add or import accounts, invite your partner,
   review what came in.
 - **F2.** The sidebar lists Budget, Goals, Planning, Reports, Investments, and Bills & recurring.
@@ -290,7 +290,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 | F18 | Applying a rule to past transactions is a second step | Medium | "Also apply to N existing" checkbox in the editor | Fixed (#350) |
 | F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | Fixed (#352) |
 | F2 | Six unbuilt sections in the navigation | — | Keep them: they show what Fiscus will have | Won't change |
-| F1 | Empty landing after setup | Medium | A first-run checklist on the dashboard (accounts, partner, review) until it's done | #354 |
+| F1 | Empty landing after setup | Medium | A first-run checklist on the dashboard (accounts, partner, review) until it's done | Fixed (#367) |
 | F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | Fixed (#353); groups in #48 |
 | F15 | Split is hard to find, and starts as two halves | Low | Split with the other actions; the second part takes the rest, uncategorized | Fixed (#350) |
 | F4 | "No transactions match" on a new account | Low | "No transactions yet", with Add and Import | Fixed (#350) |
