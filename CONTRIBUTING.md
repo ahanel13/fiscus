@@ -49,6 +49,7 @@ Every issue has: an `area:*` label, a `priority:*` label, a milestone, and **acc
 - [ ] New household-scoped tables follow [ADR 0012](docs/adr/0012-member-lifecycle.md): `household_id` on every row, no cross-household references, and covered by the move-out job
 - [ ] Docs updated (README, `.env.example`, ADR if an architectural decision was made)
 - [ ] No secrets, tokens, or real financial data committed
+- [ ] No financial data in logs, errors, or metrics (see [Logging](#logging))
 
 ## Releases
 
@@ -133,6 +134,15 @@ No Node 26 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
 - **Permissions:** every rule in [the permissions matrix](docs/design/permissions.md) is either tested for each actor (`[TXN-04/VIEW]` in the test name; most live in `apps/api/src/permissions.test.ts`) or listed as not built yet in `permissions-coverage.test.ts`. Building a rule means moving it from that list to tests; adding a rule to the matrix fails CI until it's covered.
 - `apps/api/src/architecture.test.ts` fails if any other file uses the raw DB handle. The allow-list there names each exception and its reason.
 - `apps/api/src/cross-tenant.test.ts` is **generated from the route table**: every household route is called with another household's ids and must be indistinguishable from "not found". New routes are covered automatically, and a new kind of path parameter needs a test value.
+
+### Logging
+
+**No financial data in logs, errors, or metrics** ([ADR 0014](docs/adr/0014-verifiable-confidentiality.md) §2.3): no amounts, balances, descriptions, merchant or account names, notes, or search terms. Operators read logs; they shouldn't be able to read anyone's money there.
+
+- Log ids, counts, route patterns, and codes, never values. `${req.method} ${req.routeOptions.url}` names a route without its ids or query string.
+- Log an error with `describeError(e)` from `@fiscus/env`, never `e.message`, `e.stack`, or the error itself. A failed query's message holds its SQL **and parameters**, and Postgres's `detail` quotes rows ("Key (name)=(…) already exists"). `describeError` keeps the class, the SQLSTATE code, the table and constraint, and the stack frames, for each `cause`.
+- The API's error filter and the API and worker's handlers for uncaught errors already do this; nginx logs the path without its query string or referrer.
+- `apps/api/src/no-financial-data-in-logs.test.ts` runs the app with every log level and stdout/stderr captured while it handles recognizable values, including a server error that carries them, and fails if any appear. Add a flow to it when a feature logs something new.
 
 ### Docker images
 

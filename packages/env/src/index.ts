@@ -20,3 +20,4 @@ export {
   type LogLevel,
 } from './common.js';
 export { databaseUrl } from './database.js';
+export { describeError, exitOnUnhandled } from './safe-error.js';
