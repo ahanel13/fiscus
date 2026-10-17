@@ -618,6 +618,12 @@ test('links a transfer between accounts, and works through the review queue by k
   const unmatched = page.getByRole('region', { name: 'No other side (1)' });
   await expect(unmatched).toContainText('Venmo Sam');
   expect(await axeViolations(page)).toEqual([]);
+  // The category is a plain button until pressed, then the picker, open (#332).
+  await unmatched.getByRole('button', { name: /Recategorize Venmo Sam/ }).click();
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  await expect(unmatched.getByRole('button', { name: /Recategorize Venmo Sam/ })).toBeFocused();
   await unmatched.getByRole('button', { name: 'Outside Fiscus' }).click();
   await expect(page.getByText('Transfers add up')).toBeVisible();
   await expect(nav.getByRole('link', { name: /Transactions/ })).not.toContainText('to review');

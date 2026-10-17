@@ -101,7 +101,7 @@ When the rule matches a transaction as it arrives:
 
 | Route | Who | Notes |
 |---|---|---|
-| `GET transactions/transfer-review` | Any member who can categorize | `{ suggested, unmatched }`, rows you can see in accounts you own or have full access to |
+| `GET transactions/transfer-review` | Any member who can categorize | `{ suggested, unmatched, counts }`, rows you can see in accounts you own or have full access to. Each row carries only what the list shows (name, date, amount, account, category, version); opening one loads the rest |
 | `POST transactions/transfer-review/link-all` | Owners of both sides (TXN-08) | Links every suggested pair with exactly one candidate each, as shown |
 | `PATCH transactions/:id` `{ transferExternal }` | Categorize access (TXN-04) | "The other account isn't in Fiscus" |
 | `GET transactions/review-count` | Any member | Now `{ count, transactions, transfers }` |

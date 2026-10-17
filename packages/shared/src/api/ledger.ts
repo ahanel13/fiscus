@@ -293,14 +293,30 @@ export interface ReviewCount {
   transfers: number;
 }
 
+/**
+ * A transaction as the transfer review lists it: only what its row shows, so a large import's
+ * review stays light (#332). Opening one loads the whole transaction.
+ */
+export interface TransferReviewTransaction {
+  id: string;
+  date: string;
+  amountMinor: number;
+  currency: string;
+  displayName: string;
+  categoryId: string | null;
+  /** The review only lists accounts you own, so the account is always named. */
+  account: { id: string; name: string };
+  version: number;
+}
+
 /** The transfer review (docs/design/transfers.md §2). */
 export interface TransferReview {
   /** Money out of one of your accounts, and the money coming into another that may be its other side. */
   suggested: {
-    transaction: Transaction;
-    candidates: Transaction[];
+    transaction: TransferReviewTransaction;
+    candidates: TransferReviewTransaction[];
     /** With one candidate: other transactions that could also be its other side. */
-    rivals: Transaction[];
+    rivals: TransferReviewTransaction[];
     /** "Link all" links it: one candidate either way, or identical transfers in step. */
     unique: boolean;
     /**
@@ -312,7 +328,7 @@ export interface TransferReview {
     reason: 'identical' | 'several' | 'rivals' | 'far_apart' | 'one_match';
   }[];
   /** In a transfer category, over a week old, and nothing that could be its other side. */
-  unmatched: Transaction[];
+  unmatched: TransferReviewTransaction[];
   /** The full counts: the lists stop at 1,000 each. */
   counts: { suggested: number; unmatched: number; unique: number };
 }

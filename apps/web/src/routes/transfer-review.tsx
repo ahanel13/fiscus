@@ -4,11 +4,11 @@ import type {
   CategoryGroup,
   HouseholdMember,
   LinkTransfersResult,
-  Transaction,
   TransferReview,
+  TransferReviewTransaction,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCheck, ChevronRight, Info, Link2 } from 'lucide-react';
+import { ArrowRight, CheckCheck, ChevronDown, ChevronRight, Info, Link2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { transferReviewQuery } from '../api/queries.js';
@@ -20,6 +20,7 @@ import {
   Button,
   Checkbox,
   ConfirmDialog,
+  controlStyles,
   DateText,
   LoadingRegion,
   Skeleton,
@@ -33,11 +34,12 @@ import {
   type SuggestionGroup,
   withoutTransactions,
 } from '../lib/transfers.js';
+import { categoryIndex } from '../lib/transactions.js';
 import { CategorySelect, TransactionDrawer, useInvalidateLedger } from './transactions.js';
 
 type Data<T> = { data: T };
 
-const accountOf = (t: Transaction) => t.account?.name ?? 'another account';
+const accountOf = (t: TransferReviewTransaction) => t.account.name;
 
 /** What this check is for: a reconciliation, so nothing falls through the cracks. */
 function WhyTransfers() {
@@ -112,7 +114,7 @@ const formatDay = (date: string) =>
 function mergeIdentical(list: SuggestionData[]): { suggestion: SuggestionData; count: number }[] {
   const key = (x: SuggestionData) =>
     x.reason === 'identical'
-      ? `${x.transaction.account?.id}|${x.transaction.date}|${x.transaction.amountMinor}|${x.transaction.displayName.toLowerCase()}`
+      ? `${x.transaction.account.id}|${x.transaction.date}|${x.transaction.amountMinor}|${x.transaction.displayName.toLowerCase()}`
       : x.transaction.id;
   return [...Map.groupBy(list, key).values()].map((group) => ({
     suggestion: group[0]!,
@@ -186,8 +188,8 @@ function Suggestion({
 }) {
   const [more, setMore] = useState(false);
   const out = suggestion.transaction;
-  const same = (c: Transaction) =>
-    `${c.account?.id}|${c.date}|${c.amountMinor}|${c.displayName.toLowerCase()}`;
+  const same = (c: TransferReviewTransaction) =>
+    `${c.account.id}|${c.date}|${c.amountMinor}|${c.displayName.toLowerCase()}`;
   // The hinted one first; the rest keep their order (nearest date first).
   const groups = [...Map.groupBy(suggestion.candidates, same).values()].sort(
     (a, b) => Number(b[0]!.id === hint?.id) - Number(a[0]!.id === hint?.id),
@@ -256,6 +258,50 @@ function Suggestion({
         {reasonText(suggestion, hint)}
       </p>
     </li>
+  );
+}
+
+/**
+ * A row's category: a plain button until it's pressed, then the picker, open (#332). Each picker
+ * holds every category, and an account's transfers with no other side can run to hundreds of rows.
+ */
+function RowCategory({
+  groups,
+  names,
+  t,
+  onChange,
+}: {
+  groups: CategoryGroup[];
+  names: Map<string, string>;
+  t: TransferReviewTransaction;
+  onChange: (categoryId: string) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const label = `Recategorize ${t.displayName}`;
+  if (picking) {
+    return (
+      <CategorySelect
+        groups={groups}
+        label={label}
+        hideLabel
+        value={t.categoryId}
+        onChange={onChange}
+        autoOpen
+      />
+    );
+  }
+  const name = names.get(t.categoryId ?? '') ?? 'Uncategorized';
+  return (
+    // Drawn like the picker's own button, so nothing moves when it takes over.
+    <button
+      type="button"
+      aria-label={`${name} ${label}`}
+      onClick={() => setPicking(true)}
+      className={`${controlStyles} flex items-center gap-2 text-left`}
+    >
+      <span className="min-w-0 flex-1 truncate">{name}</span>
+      <ChevronDown aria-hidden className="size-4 text-muted" />
+    </button>
   );
 }
 
@@ -362,7 +408,7 @@ export function TransferReviewList({
     onError,
   });
   const patch = useMutation({
-    mutationFn: ({ t, body }: { t: Transaction; body: Record<string, unknown> }) =>
+    mutationFn: ({ t, body }: { t: TransferReviewTransaction; body: Record<string, unknown> }) =>
       api('PATCH', `${base}/${t.id}`, { body, headers: { 'if-match': `"v${t.version}"` } }),
     // Outside Fiscus takes it off the list; a new category may too, which the refetch shows.
     onMutate: ({ t, body }) => (body.transferExternal ? drop([t.id]) : undefined),
@@ -408,6 +454,7 @@ export function TransferReviewList({
     );
   }
 
+  const { names } = categoryIndex(groups);
   const allSelected = unmatched.length > 0 && unmatched.every((t) => selected.has(t.id));
   return (
     <div className="space-y-8">
@@ -598,11 +645,10 @@ export function TransferReviewList({
                           <Amount minor={t.amountMinor} currency={t.currency} className="text-sm" />
                           <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
                             <div className="w-48">
-                              <CategorySelect
+                              <RowCategory
                                 groups={groups}
-                                label={`Recategorize ${t.displayName}`}
-                                hideLabel
-                                value={t.categoryId}
+                                names={names}
+                                t={t}
                                 onChange={(categoryId) =>
                                   categoryId !== t.categoryId &&
                                   patch.mutate({ t, body: { categoryId } })

@@ -121,6 +121,7 @@ export function CategorySelect({
   hideLabel,
   isDisabled,
   appearance,
+  autoOpen,
 }: {
   groups: CategoryGroup[];
   value: string | null;
@@ -129,12 +130,25 @@ export function CategorySelect({
   hideLabel?: boolean;
   isDisabled?: boolean;
   appearance?: 'field' | 'chip';
+  /** Focused and open from the start: it stood in for a plain button that was just pressed. */
+  autoOpen?: boolean;
 }) {
   const { uncategorized } = categoryIndex(groups);
+  // Opened the first time its button has focus, so closing it returns focus there.
+  const [open, setOpen] = useState(false);
+  const opened = useRef(false);
+  const openOnFocus = () => {
+    if (opened.current) return;
+    opened.current = true;
+    setOpen(true);
+  };
   return (
     <Select
       {...(hideLabel ? { 'aria-label': label } : { label })}
       {...(appearance ? { appearance } : {})}
+      {...(autoOpen
+        ? { autoFocus: true, onFocus: openOnFocus, isOpen: open, onOpenChange: setOpen }
+        : {})}
       value={value ?? uncategorized ?? null}
       onChange={(v) => v && onChange(String(v))}
       isDisabled={isDisabled}

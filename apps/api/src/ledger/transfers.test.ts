@@ -190,6 +190,17 @@ describe('transfers and the review queue', () => {
       [out1, [s1, c1].sort(), false],
     ]);
     expect(review.unmatched.map((t) => t.id)).toEqual([lonely]);
+    // Only what a row shows (#332): the drawer loads the rest.
+    expect(review.unmatched[0]).toEqual({
+      id: lonely,
+      date: day(-30),
+      amountMinor: -90000,
+      currency: expect.any(String),
+      displayName: expect.any(String),
+      categoryId: expect.any(String),
+      account: { id: checking, name: expect.any(String) },
+      version: expect.any(Number),
+    });
     expect((await A.get(`${base}/transactions/review-count`)).body.data.transfers).toBe(3);
 
     const linked = await A.post(`${base}/transactions/transfer-review/link-all`);
