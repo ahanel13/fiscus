@@ -17,6 +17,7 @@ const COMMON = new Set([
 ]);
 
 const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+const dayGap = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
 
 /**
  * The word of `account`'s name that `text` mentions, if any: "From Holiday Vault" names an account
@@ -30,20 +31,24 @@ export function namedAccount(text: string, account: string | undefined): string 
   return account.match(new RegExp(word, 'iu'))?.[0] ?? word;
 }
 
+/** One side of a possible transfer, as the review or the drawer has it. */
+type Side = { id: string; displayName: string; date: string; account: { name: string } | null };
+
 /**
  * The one candidate the names point to, and the account they name, or null. First a candidate
  * whose name says where it came from ("From Holiday Vault"), then one `out`'s name says it went to
- * ("To Roof Vault"), each only when it singles one out. It ranks the review; a person still
- * confirms it, since banks word transfers in many ways.
+ * ("To Roof Vault"), each only when it singles one out. Either way round works, so the drawer uses
+ * it for money coming in too. It ranks the candidates; a person still confirms it, since banks word
+ * transfers in many ways.
  */
 export function likelyOtherSide(
-  out: TransferReviewTransaction,
-  candidates: TransferReviewTransaction[],
+  out: Side,
+  candidates: Side[],
 ): { id: string; named: string } | null {
   if (candidates.length < 2) return null;
   for (const hint of [
-    (c: TransferReviewTransaction) => namedAccount(c.displayName, out.account.name),
-    (c: TransferReviewTransaction) => namedAccount(out.displayName, c.account.name),
+    (c: Side) => namedAccount(c.displayName, out.account?.name),
+    (c: Side) => namedAccount(out.displayName, c.account?.name),
   ]) {
     const hinted = candidates.flatMap((c) => {
       const named = hint(c);
@@ -52,6 +57,29 @@ export function likelyOtherSide(
     if (hinted.length === 1) return hinted[0]!;
   }
   return null;
+}
+
+/**
+ * The accounts of candidates nothing tells apart (#332), or null: the closest date has candidates
+ * in more than one account. A deposit that lands in Roth IRA and Brokerage on the same day, for the
+ * same amount; only a person knows which it went to. Ask it only when no hint points to one.
+ */
+export function lookAlikes(candidates: Side[], date: string): string[] | null {
+  let best = Infinity;
+  for (const c of candidates) best = Math.min(best, dayGap(c.date, date));
+  const accounts = new Set(
+    candidates
+      .filter((c) => dayGap(c.date, date) === best)
+      .map((c) => c.account?.name ?? 'another account'),
+  );
+  return accounts.size > 1 ? [...accounts] : null;
+}
+
+/** "Roth IRA and Brokerage", "A, B and C". */
+export function andList(items: string[]): string {
+  return items.length < 2
+    ? (items[0] ?? '')
+    : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
 }
 
 /**
@@ -103,8 +131,6 @@ export interface Hint {
   /** "names Holiday", or "closest date". */
   label: string;
 }
-
-const dayGap = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
 
 /** The one item of `items` strictly closest to `date`, or null on a tie. */
 function closest<T>(items: T[], date: (t: T) => string, to: string): T | null {

@@ -51,6 +51,11 @@ A **Transfers** section on the Review page, worked out when you open it (no back
   closest date both ways. A recurring transfer ($10 to investing every few days) has several
   same-amount candidates in range, but each one's other side is the deposit nearest to it, which
   is nearest to it in turn. A tie gives no hint.
+- **Linking by hand** from a transaction's drawer uses the name hint too: the candidate the names
+  point to comes first, chosen, with its **Likely** badge. You still press **Link**.
+- **Look-alikes:** when no hint points to one and the closest candidates are the same day and
+  amount in different accounts (a deposit that could be Roth IRA or Brokerage), both the review and
+  the drawer say so: nothing tells them apart, so it's yours to pick.
 
 ## 3. "Transfer to an account" (a rule action)
 

@@ -27,10 +27,12 @@ import {
   toast,
 } from '../components/ui.js';
 import {
+  andList,
   groupSuggestions,
   groupUnmatched,
   type Hint,
   hints,
+  lookAlikes,
   type SuggestionGroup,
   withoutTransactions,
 } from '../lib/transfers.js';
@@ -86,12 +88,18 @@ function reasonText(
   switch (reason) {
     case 'identical':
       return `Identical transfers, like round-ups: any pairing is right, so “Link the clear pairs” takes them.`;
-    case 'several':
+    case 'several': {
+      // Same day and amount in different accounts (Roth IRA, Brokerage): only you know (#332).
+      const alike = hint ? null : lookAlikes(candidates, out.date);
+      if (alike) {
+        return `The same amount on the same day into ${andList(alike)}. Nothing in the names says which it went to, so link the one it really did.`;
+      }
       return hint?.label === 'closest date'
         ? `${candidates.length} possible matches, like a recurring transfer; this one is the closest date both ways.`
         : hint
           ? `${candidates.length} possible matches, and the names point to this one. Linking one can settle others.`
           : `${candidates.length} possible matches: link the one that’s really the other side. Linking one can settle others.`;
+    }
     case 'rivals': {
       const r = rivals[0]!;
       const more = rivals.length > 1 ? ` and ${rivals.length - 1} more` : '';

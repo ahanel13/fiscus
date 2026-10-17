@@ -2,10 +2,12 @@
 import type { TransferReview, TransferReviewTransaction } from '@fiscus/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  andList,
   groupSuggestions,
   groupUnmatched,
   hints,
   likelyOtherSide,
+  lookAlikes,
   namedAccount,
   withoutTransactions,
 } from './transfers.js';
@@ -47,6 +49,50 @@ describe('transfer name hints', () => {
       likelyOtherSide(t('o', 'Checking', 'Move money'), [t('x', 'A1', 'In'), t('y', 'B1', 'In')]),
     ).toBeNull();
     expect(likelyOtherSide(t('o', 'Holiday', 'x'), [fromHoliday])).toBeNull();
+  });
+});
+
+describe('candidates nothing tells apart (#332)', () => {
+  const at = (id: string, account: string, date: string) =>
+    ({ id, account: { id: account, name: account }, displayName: 'Deposit', date }) as const;
+
+  it('names the accounts with a candidate on the closest day', () => {
+    expect(
+      lookAlikes(
+        [at('a', 'Roth IRA', '2026-03-02'), at('b', 'Brokerage', '2026-03-02')],
+        '2026-03-01',
+      ),
+    ).toEqual(['Roth IRA', 'Brokerage']);
+    // A day apart: the closer one stands out.
+    expect(
+      lookAlikes(
+        [at('a', 'Roth IRA', '2026-03-01'), at('b', 'Brokerage', '2026-03-02')],
+        '2026-03-01',
+      ),
+    ).toBeNull();
+    // The same account twice (a recurring transfer) isn't a choice between accounts.
+    expect(
+      lookAlikes(
+        [at('a', 'Roth IRA', '2026-03-02'), at('b', 'Roth IRA', '2026-03-02')],
+        '2026-03-01',
+      ),
+    ).toBeNull();
+  });
+
+  it('lists them in words', () => {
+    expect(andList(['Roth IRA'])).toBe('Roth IRA');
+    expect(andList(['Roth IRA', 'Brokerage'])).toBe('Roth IRA and Brokerage');
+    expect(andList(['A', 'B', 'C'])).toBe('A, B and C');
+  });
+
+  it('hints money coming in too, as the drawer does', () => {
+    const deposit = { ...at('d', 'Holiday', '2026-03-01'), displayName: 'From Checking' };
+    expect(
+      likelyOtherSide(deposit, [
+        at('x', 'Checking', '2026-03-01'),
+        at('y', 'Savings', '2026-03-01'),
+      ]),
+    ).toEqual({ id: 'x', named: 'Checking' });
   });
 });
 

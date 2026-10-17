@@ -94,6 +94,7 @@ import { RangeSelect } from '../components/RangeControls.js';
 import { rangeParams, selectionLabel } from '../lib/ranges.js';
 import { RuleEditor, RuleSuggestion, suggestMatchText, useRuleSuggestionContext } from './rules.js';
 import { type SuggestedRule, suggestRule } from '../lib/rules.js';
+import { andList, likelyOtherSide, lookAlikes } from '../lib/transfers.js';
 import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { SMALL, useMediaQuery, WIDE } from '../lib/media.js';
 import { useRange } from '../lib/use-range.js';
@@ -1807,7 +1808,16 @@ function TransferSection({
     );
   }
   if (!canLinkTransfer(t)) return null;
-  const list = candidates.data ?? [];
+  // The one the names point to goes first, chosen, as in the transfer review (#332); the rest stay
+  // closest date first. A person still presses Link.
+  const fetched = candidates.data ?? [];
+  const hint = likelyOtherSide(t, fetched);
+  const list = hint
+    ? [...fetched.filter((c) => c.id === hint.id), ...fetched.filter((c) => c.id !== hint.id)]
+    : fetched;
+  const picked = choice ?? hint?.id ?? null;
+  // Same day and amount in different accounts: nothing but you can tell which it went to.
+  const alike = hint ? null : lookAlikes(fetched, t.date);
   // Inline rather than a nested dialog, under the drawer's actions.
   return (
     <div className="space-y-2">
@@ -1830,28 +1840,41 @@ function TransferSection({
               about a week.
             </Alert>
           ) : (
-            <RadioGroup
-              aria-label="The other side"
-              value={choice}
-              onChange={setChoice}
-              className="gap-0 divide-y divide-border rounded-lg border border-border"
-            >
-              {list.map((c) => (
-                <Radio key={c.id} value={c.id} className="px-3 py-2">
-                  <span className="flex min-w-0 flex-1 items-center gap-3">
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
-                        {c.account?.name ?? c.displayName}
+            <>
+              {alike ? (
+                <Alert tone="info">
+                  The same amount on the same day in {andList(alike)}. Nothing in the names says
+                  which it went to, so pick the one it really did.
+                </Alert>
+              ) : null}
+              <RadioGroup
+                aria-label="The other side"
+                value={picked}
+                onChange={setChoice}
+                className="gap-0 divide-y divide-border rounded-lg border border-border"
+              >
+                {list.map((c) => (
+                  <Radio key={c.id} value={c.id} className="px-3 py-2">
+                    <span className="flex min-w-0 flex-1 items-center gap-3">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">
+                          {c.account?.name ?? c.displayName}
+                        </span>
+                        <span className="block truncate text-xs text-muted">
+                          <DateText value={c.date} /> · {c.displayName}
+                        </span>
+                        {c.id === hint?.id ? (
+                          <Badge tone="accent" className="mt-1">
+                            Likely: names {hint.named}
+                          </Badge>
+                        ) : null}
                       </span>
-                      <span className="block truncate text-xs text-muted">
-                        <DateText value={c.date} /> · {c.displayName}
-                      </span>
+                      <Amount minor={c.amountMinor} currency={c.currency} className="text-sm" />
                     </span>
-                    <Amount minor={c.amountMinor} currency={c.currency} className="text-sm" />
-                  </span>
-                </Radio>
-              ))}
-            </RadioGroup>
+                  </Radio>
+                ))}
+              </RadioGroup>
+            </>
           )}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onPress={() => setOpen(false)}>
@@ -1859,9 +1882,9 @@ function TransferSection({
             </Button>
             <Button
               size="sm"
-              isDisabled={!choice || !list.some((c) => c.id === choice)}
+              isDisabled={!picked || !list.some((c) => c.id === picked)}
               isPending={link.isPending}
-              onPress={() => choice && link.mutate(choice)}
+              onPress={() => picked && link.mutate(picked)}
             >
               Link
             </Button>
