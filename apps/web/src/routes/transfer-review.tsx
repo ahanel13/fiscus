@@ -165,7 +165,9 @@ function GroupToggle({
 /**
  * A suggested pair, flat enough to read on a phone (#332): the money going out, then its best
  * match (the one a hint points to, else the closest date) with the others a tap away, and why it
- * wasn't linked automatically. Accounts the group's heading names aren't repeated.
+ * wasn't linked automatically. Accounts the group's heading names aren't repeated. **Don't link**
+ * offers the ways out the rows with no other side have: it was spending, or its other side is in an
+ * account outside Fiscus.
  */
 function Suggestion({
   suggestion,
@@ -175,6 +177,10 @@ function Suggestion({
   to,
   onLink,
   linking,
+  groups: categories,
+  names,
+  onRecategorize,
+  onOutside,
 }: {
   suggestion: SuggestionData;
   /** Identical transfers out shown as this one. */
@@ -185,8 +191,13 @@ function Suggestion({
   to: string | null;
   onLink: (into: string) => void;
   linking: string | null;
+  groups: CategoryGroup[];
+  names: Map<string, string>;
+  onRecategorize: (categoryId: string) => void;
+  onOutside: () => void;
 }) {
   const [more, setMore] = useState(false);
+  const [declining, setDeclining] = useState(false);
   const out = suggestion.transaction;
   const same = (c: TransferReviewTransaction) =>
     `${c.account.id}|${c.date}|${c.amountMinor}|${c.displayName.toLowerCase()}`;
@@ -257,6 +268,31 @@ function Suggestion({
         <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
         {reasonText(suggestion, hint)}
       </p>
+      {declining ? (
+        <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
+          <p className="text-muted">
+            If it isn’t a transfer, give it its real category. If its other side is in an account
+            you don’t track here, it goes outside Fiscus, and the review stops asking.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-48">
+              <RowCategory groups={categories} names={names} t={out} onChange={onRecategorize} />
+            </div>
+            <Button size="sm" variant="secondary" onPress={onOutside}>
+              Outside Fiscus
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Don’t link ${out.displayName} ${out.date}`}
+          onPress={() => setDeclining(true)}
+        >
+          Don’t link
+        </Button>
+      )}
     </li>
   );
 }
@@ -440,6 +476,7 @@ export function TransferReviewList({
   const { suggested, unmatched, counts } = query.data;
   // What points to each pair's other side: the names, or the closest date both ways.
   const hinted = hints(suggested);
+  const { names } = categoryIndex(groups);
   if (suggested.length === 0 && unmatched.length === 0) {
     return (
       <div className="space-y-6">
@@ -454,7 +491,6 @@ export function TransferReviewList({
     );
   }
 
-  const { names } = categoryIndex(groups);
   const allSelected = unmatched.length > 0 && unmatched.every((t) => selected.has(t.id));
   return (
     <div className="space-y-8">
@@ -523,6 +559,15 @@ export function TransferReviewList({
                           to={g.to}
                           onLink={(into) => link.mutate({ out: s.transaction.id, into })}
                           linking={link.isPending ? (link.variables?.into ?? null) : null}
+                          groups={groups}
+                          names={names}
+                          onRecategorize={(categoryId) =>
+                            categoryId !== s.transaction.categoryId &&
+                            patch.mutate({ t: s.transaction, body: { categoryId } })
+                          }
+                          onOutside={() =>
+                            patch.mutate({ t: s.transaction, body: { transferExternal: true } })
+                          }
                         />
                       ))}
                     </ul>
