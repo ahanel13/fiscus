@@ -250,6 +250,11 @@ export interface TransferCounterpart {
 /** Link a transaction to the other leg of a transfer (TXN-08). */
 export const linkTransferSchema = z.object({ transactionId: z.uuid() });
 
+/** Undoes links made in the review: the transfer groups they made (#332). */
+export const unlinkTransferGroupsSchema = z.object({
+  groups: z.array(z.uuid()).min(1).max(1000),
+});
+
 /** Pairs a person confirmed in the transfer review, linked together (#332). */
 export const linkTransferPairsSchema = z.object({
   pairs: z
@@ -263,6 +268,8 @@ export interface LinkTransfersResult {
   linked: number;
   /** Other pairs the links left with only one possible match, so linked too. */
   settled: number;
+  /** Every transfer it made, settled ones too: what Undo unlinks. */
+  groups: string[];
   refused: {
     /** The pair's money-out leg. */
     id: string;

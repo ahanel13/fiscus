@@ -471,7 +471,9 @@ export class ImportsService {
           )
         : [];
       // Then transfers between your accounts (§5): unambiguous pairs only, both accounts yours.
-      const transfersLinked = await detectTransfers(tx, activity, inserted, await accessLevels(tx));
+      const transfersLinked = (
+        await detectTransfers(tx, activity, inserted, await accessLevels(tx))
+      ).length;
 
       const txnDays = new Set(await this.#transactionDays(tx, batch.accountId));
       const balances = this.#balancesToStore(input.balances, txnDays, today);

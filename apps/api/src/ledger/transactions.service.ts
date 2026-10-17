@@ -23,6 +23,7 @@ import type {
   linkTransferPairsSchema,
   linkTransferSchema,
   LinkTransfersResult,
+  unlinkTransferGroupsSchema,
   moveTransactionsSchema,
   NameCleanup,
   NameCleanupPreview,
@@ -385,13 +386,19 @@ export class TransactionsService {
   }
 
   /** "Link all": every suggested pair with exactly one candidate either way (TXN-08). */
-  async linkAllTransfers(ctx: HouseholdContext): Promise<{ linked: number }> {
+  async linkAllTransfers(ctx: HouseholdContext): Promise<{ linked: number; groups: string[] }> {
     return this.scope.run(ctx, async (tx, activity) => {
       const access = await this.#access(tx, ctx);
       if (access.viewer) throw forbidden('Viewers can’t link transfers.');
       const review = await this.#transferReview(tx, access);
-      await linkTransfers(tx, activity, review.unique, await transferCategories(tx), false);
-      return { linked: review.unique.length };
+      const groups = await linkTransfers(
+        tx,
+        activity,
+        review.unique,
+        await transferCategories(tx),
+        false,
+      );
+      return { linked: review.unique.length, groups };
     });
   }
 
@@ -1065,7 +1072,7 @@ export class TransactionsService {
     ctx: HouseholdContext,
     id: string,
     input: LinkInput,
-  ): Promise<{ transaction: Transaction; settled: number }> {
+  ): Promise<{ transaction: Transaction; settled: number; groups: string[] }> {
     return this.scope.run(ctx, async (tx, activity) => {
       const access = await this.#access(tx, ctx);
       const a = await this.#visible(tx, id, true);
@@ -1075,10 +1082,20 @@ export class TransactionsService {
         throw forbidden('Linking a transfer needs ownership of both accounts.');
       }
       if (refusal) throw LINK_PROBLEMS[refusal]();
-      await linkTransfers(tx, activity, [[a, b]], await transferCategories(tx), false);
+      const linked = await linkTransfers(
+        tx,
+        activity,
+        [[a, b]],
+        await transferCategories(tx),
+        false,
+      );
       const settled = await detectAround(tx, activity, [a, b], access.levels);
       const [transaction] = await this.#present(tx, ctx, access, [await this.#visible(tx, id)]);
-      return { transaction: transaction!, settled };
+      return {
+        transaction: transaction!,
+        settled: settled.length,
+        groups: [...linked, ...settled],
+      };
     });
   }
 
@@ -1122,9 +1139,14 @@ export class TransactionsService {
         taken.add(a.id).add(b.id);
         pairs.push([a, b]);
       }
-      await linkTransfers(tx, activity, pairs, await transferCategories(tx), false);
+      const linked = await linkTransfers(tx, activity, pairs, await transferCategories(tx), false);
       const settled = await detectAround(tx, activity, pairs.flat(), access.levels);
-      return { linked: pairs.length, settled, refused };
+      return {
+        linked: pairs.length,
+        settled: settled.length,
+        groups: [...linked, ...settled],
+        refused,
+      };
     });
   }
 
@@ -1138,6 +1160,35 @@ export class TransactionsService {
     if (a.accountId === b.accountId) return 'same_account';
     if (a.currency !== b.currency || a.amountMinor !== -b.amountMinor) return 'not_opposite';
     return null;
+  }
+
+  /**
+   * Undoes links made in the review (#332): unlinks the transfer groups they made, settled ones
+   * too, each leg back to the category it had. A group you couldn't unlink by hand (a leg you don't
+   * own, or no longer there) is left as it is; one already unlinked counts for nothing.
+   */
+  async unlinkTransferGroups(
+    ctx: HouseholdContext,
+    input: z.infer<typeof unlinkTransferGroupsSchema>,
+  ): Promise<{ unlinked: number }> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const access = await this.#access(tx, ctx);
+      if (access.viewer) throw forbidden('Viewers can’t unlink transfers.');
+      const legs = await tx
+        .select()
+        .from(transactions)
+        .where(
+          and(inArray(transactions.transferGroupId, input.groups), isNull(transactions.deletedAt)),
+        );
+      const allowed = [...Map.groupBy(legs, (l) => l.transferGroupId!)]
+        .filter(
+          ([, group]) =>
+            group.length === 2 && group.every((l) => this.#permissions(l, access).transfer),
+        )
+        .map(([id]) => id);
+      await unlinkTransfers(tx, activity, allowed, 'unlinked');
+      return { unlinked: allowed.length };
+    });
   }
 
   /** TXN-08: unlinks a transfer; each leg goes back to the category it had. */

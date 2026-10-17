@@ -254,15 +254,15 @@ export async function findTransfers(
 
 /**
  * Links the transfers among `ids` that are unambiguous (findTransfers). Anything else is left as
- * it is. Runs on import and on manual entry. Returns how many pairs it linked.
+ * it is. Runs on import and on manual entry. Returns the transfer groups it made, one per pair.
  */
 export async function detectTransfers(
   tx: Executor,
   activity: HouseholdActivity,
   ids: string[],
   levels: Map<string, AccessLevel>,
-): Promise<number> {
-  if (ids.length === 0) return 0;
+): Promise<string[]> {
+  if (ids.length === 0) return [];
   const cats = await transferCategories(tx);
   const owns = (accountId: string) => levels.get(accountId) === 'owner';
   const arrived = (
@@ -277,21 +277,20 @@ export async function detectTransfers(
   const done = new Set(awaited.flatMap(([a, b]) => [a.id, b.id]));
   const rows = arrived.filter((r) => !done.has(r.id) && detectable(r, cats));
   const { pairs } = await findTransfers(tx, rows, cats, owns);
-  await linkTransfers(tx, activity, [...awaited, ...pairs], cats, true);
-  return awaited.length + pairs.length;
+  return linkTransfers(tx, activity, [...awaited, ...pairs], cats, true);
 }
 
 /**
  * After a person links a transfer: what it settles. A deposit that could have come from either of
  * two accounts has only one left once the other is linked, so detection links that pair too, as it
- * would have if the choice had never been there. Returns how many pairs it linked.
+ * would have if the choice had never been there. Returns the transfer groups it made.
  */
 export async function detectAround(
   tx: Executor,
   activity: HouseholdActivity,
   linked: Leg[],
   levels: Map<string, AccessLevel>,
-): Promise<number> {
+): Promise<string[]> {
   const neighbours = await ledgerCandidates(tx, linked, await transferCategories(tx));
   return detectTransfers(
     tx,
@@ -485,6 +484,7 @@ export async function transferReview(
 /**
  * Links pairs of transactions as transfers. Each leg remembers its category and moves to Transfer,
  * unless it's in a transfer category already (Credit Card Payment stays Credit Card Payment).
+ * Returns the new transfer groups, one per pair, so a person can undo what they linked (#332).
  */
 export async function linkTransfers(
   tx: Executor,
@@ -492,15 +492,13 @@ export async function linkTransfers(
   pairs: [Pick<Row, 'id' | 'accountId'>, Pick<Row, 'id' | 'accountId'>][],
   cats: TransferCategories,
   automatic: boolean,
-): Promise<void> {
-  if (pairs.length === 0) return;
-  const legs = pairs.flatMap(([a, b]) => {
-    const group = uuidv7();
-    return [
-      { row: a, group },
-      { row: b, group },
-    ];
-  });
+): Promise<string[]> {
+  if (pairs.length === 0) return [];
+  const groups = pairs.map(() => uuidv7());
+  const legs = pairs.flatMap(([a, b], i) => [
+    { row: a, group: groups[i]! },
+    { row: b, group: groups[i]! },
+  ]);
   for (let i = 0; i < legs.length; i += 2000) {
     const part = legs.slice(i, i + 2000);
     await tx.execute(sql`
@@ -523,6 +521,7 @@ export async function linkTransfers(
     legs.map((l) => l.row),
     { automatic },
   );
+  return groups;
 }
 
 /**

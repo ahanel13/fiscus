@@ -381,12 +381,29 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
         { id: f.tPriv, code: 'not_found' },
       ],
     });
+    // Undoing from the review: a transfer with a leg they don't own stays linked.
+    const aOut = await txn(f.A, f.accA, -6666);
+    const aIn = await txn(f.A, f.accAview, 6666);
+    const made = await f.A.post(url('/transactions/transfer-review/link'), {
+      pairs: [{ out: aOut, into: aIn }],
+    });
+    const groups = made.body.data.groups as string[];
+    const undo = await f.B.post(url('/transactions/transfer-review/unlink'), {
+      groups: groups.length ? groups : [crypto.randomUUID()],
+    });
+    ok(undo);
+    expect(undo.body.data).toEqual({ unlinked: 0 });
   },
   'TXN-08/VIEW': async () => {
     refused(await f.V.post(url(`/transactions/${f.tA}/transfer`), { transactionId: f.tB }));
     refused(
       await f.V.post(url('/transactions/transfer-review/link'), {
         pairs: [{ out: f.tA, into: f.tB }],
+      }),
+    );
+    refused(
+      await f.V.post(url('/transactions/transfer-review/unlink'), {
+        groups: [crypto.randomUUID()],
       }),
     );
   },
