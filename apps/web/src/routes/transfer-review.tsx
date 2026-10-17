@@ -165,7 +165,8 @@ function GroupToggle({
 /**
  * A suggested pair, flat enough to read on a phone (#332): the money going out, then its best
  * match (the one a hint points to, else the closest date) with the others a tap away, and why it
- * wasn't linked automatically. Accounts the group's heading names aren't repeated. **Don't link**
+ * wasn't linked automatically. Each side names its account, since the group's heading scrolls away
+ * and banks name transfers after accounts ("From Checking Balance"). **Don't link**
  * offers the ways out the rows with no other side have: it was spending, or its other side is in an
  * account outside Fiscus.
  */
@@ -173,8 +174,6 @@ function Suggestion({
   suggestion,
   count,
   hint,
-  from,
-  to,
   onLink,
   linking,
   groups: categories,
@@ -186,9 +185,6 @@ function Suggestion({
   /** Identical transfers out shown as this one. */
   count: number;
   hint: Hint | null;
-  /** The group's accounts, which each row then leaves out. */
-  from: string;
-  to: string | null;
   onLink: (into: string) => void;
   linking: string | null;
   groups: CategoryGroup[];
@@ -215,8 +211,8 @@ function Suggestion({
             {count > 1 ? <span className="font-normal text-muted"> ×{count} identical</span> : null}
           </span>
           <span className="block text-xs text-muted">
+            Out of <span className="font-medium text-fg">{accountOf(out)}</span> ·{' '}
             <DateText value={out.date} />
-            {accountOf(out) !== from ? ` · ${accountOf(out)}` : ''}
           </span>
         </span>
         <Amount minor={out.amountMinor} currency={out.currency} className="shrink-0 font-medium" />
@@ -231,11 +227,9 @@ function Suggestion({
             >
               <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate">
-                  {to === null ? `${accountOf(c)} · ` : ''}
-                  {c.displayName}
-                </span>
+                <span className="block truncate">{c.displayName}</span>
                 <span className="block text-xs text-muted">
+                  Into <span className="font-medium text-fg">{accountOf(c)}</span> ·{' '}
                   <DateText value={c.date} /> · {apart(out.date, c.date)}
                   {group.length > 1 ? ` · ×${group.length} identical` : ''}
                 </span>
@@ -555,8 +549,6 @@ export function TransferReviewList({
                           suggestion={s}
                           count={count}
                           hint={hinted.get(s.transaction.id) ?? null}
-                          from={g.from}
-                          to={g.to}
                           onLink={(into) => link.mutate({ out: s.transaction.id, into })}
                           linking={link.isPending ? (link.variables?.into ?? null) : null}
                           groups={groups}
