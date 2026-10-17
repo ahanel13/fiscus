@@ -164,9 +164,7 @@ function FirstRunChecklist({
     ),
     review: (
       <ButtonLink size="sm" to="/h/$householdId/review" params={{ householdId: id }}>
-        {review.data?.count
-          ? `Review ${review.data.count.toLocaleString()}`
-          : 'Start reviewing'}
+        {review.data?.count ? `Review ${review.data.count.toLocaleString()}` : 'Start reviewing'}
       </ButtonLink>
     ),
   };
