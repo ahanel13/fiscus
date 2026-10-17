@@ -44,9 +44,13 @@ A **Transfers** section on the Review page, worked out when you open it (no back
 - The count of both lists joins the review badge.
 - **Grouped** (#332): suggestions by account pair ("SoFi Checking → House: 12") and rows with no
   other side by account, the biggest group first, so a large import reads as a few groups. A
-  group's **Link N** links its clear pairs and the ones the names point to ("Likely"), after you
+  group's **Link N** links its clear pairs and the likely ones, after you
   confirm; pairs with a real choice stay for you. Each link says how many other pairs it settled,
   and its message offers **Undo**, which unlinks everything it linked, settled pairs too.
+- **Likely** means a hint points to one candidate: the names ("From Holiday Vault"), or else the
+  closest date both ways. A recurring transfer ($10 to investing every few days) has several
+  same-amount candidates in range, but each one's other side is the deposit nearest to it, which
+  is nearest to it in turn. A tie gives no hint.
 
 ## 3. "Transfer to an account" (a rule action)
 
