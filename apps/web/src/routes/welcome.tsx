@@ -16,6 +16,7 @@ import {
   SelectItem,
   TextField,
 } from '../components/ui.js';
+import { FIRST_RUN_KEY, type FirstRun } from '../lib/first-run.js';
 
 // Interim first-household screen; the full onboarding flow is #234.
 
@@ -40,6 +41,12 @@ export function WelcomePage() {
     mutationFn: (body: Record<string, string>) =>
       api<{ data: Household }>('POST', '/api/v1/households', { body }),
     onSuccess: async (r) => {
+      // Turns on the dashboard's first-run checklist (#354). Without it, the dashboard just
+      // doesn't show one, so a failure here isn't worth stopping for.
+      const value: FirstRun = { shared: who === 'shared' };
+      await api('PUT', `/api/v1/households/${r.data.id}/preferences/${FIRST_RUN_KEY}`, {
+        body: { value },
+      }).catch(() => undefined);
       await queryClient.invalidateQueries({ queryKey: ['me'] });
       await navigate({ to: `/h/${r.data.id}` });
     },

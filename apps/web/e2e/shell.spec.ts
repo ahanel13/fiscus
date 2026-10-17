@@ -61,6 +61,12 @@ test('first run: setup creates the admin, then the first household', async ({ pa
   // Single-member household: no lens and no Shared costs (IA §5).
   await expect(page.getByRole('radiogroup', { name: 'Whose money' })).toHaveCount(0);
   await expect(nav.getByRole('link', { name: 'Shared costs' })).toHaveCount(0);
+  // What to do next (#354): accounts first; for "Me and others", inviting them; then a review.
+  const checklist = page.getByRole('region', { name: /Get set up/ });
+  await expect(checklist).toContainText('0 of 3 done');
+  await expect(checklist.getByRole('link', { name: 'Add an account' })).toBeVisible();
+  await expect(checklist.getByRole('link', { name: 'Import a file' })).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
 });
 
 test('navigates with the command palette, shortcuts, and the range control', async ({ page }) => {
@@ -205,6 +211,19 @@ test('adds an account, updates its balance, and shows net worth', async ({ page 
   await expect(page.getByRole('link', { name: /Everyday checking/ })).toContainText('$2,750.25');
   await expect(page.getByRole('link', { name: /Everyday checking/ })).toContainText('as of');
   expect(await axeViolations(page)).toEqual([]);
+
+  // The checklist ticks off the account. The invite sent earlier was cancelled, so that's next.
+  await page.goto(householdUrl);
+  const checklist = page.getByRole('region', { name: /Get set up/ });
+  await expect(checklist).toContainText('1 of 3 done');
+  await expect(checklist.getByRole('link', { name: 'Invite someone' })).toBeVisible();
+  // Hidden, it stays hidden.
+  await checklist.getByRole('button', { name: 'Hide' }).click();
+  await expect(checklist).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Cash flow/ })).toBeVisible();
+  await expect(checklist).toHaveCount(0);
 });
 
 test('records a transaction, categorizes and splits it, and the balance follows', async ({
