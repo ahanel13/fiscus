@@ -353,6 +353,18 @@ test('8. checking transfers', async ({ page }) => {
     await message.getByRole('button', { name: 'Undo' }).click();
     await expect(page.getByText(/^Undone: \d+ transfers? unlinked\.$/)).toBeVisible();
   }
+  // Not every suggestion is a pair: Don't link offers its category, or outside Fiscus.
+  const suggested = page.getByRole('region', { name: /^Suggested pairs/ });
+  const closed = suggested.locator('button[aria-expanded="false"]').first();
+  if (await closed.count()) await closed.click();
+  const decline = suggested.getByRole('button', { name: /^Don’t link/ }).first();
+  if (await decline.count()) {
+    const before = await suggested.getByRole('heading').textContent();
+    await decline.click();
+    await shot(page, '30c-dont-link');
+    await suggested.getByRole('button', { name: 'Outside Fiscus', exact: true }).click();
+    await expect(suggested.getByRole('heading')).not.toHaveText(before!);
+  }
 });
 
 test('9. people: a partner joins, and the lens appears', async ({ page, browser }) => {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { Transaction, TransferReview } from '@fiscus/shared';
+import type { TransferReview, TransferReviewTransaction } from '@fiscus/shared';
 import { describe, expect, it } from 'vitest';
 import {
   groupSuggestions,
@@ -11,7 +11,11 @@ import {
 } from './transfers.js';
 
 const t = (id: string, account: string, displayName: string) =>
-  ({ id, account: { id: account, name: account }, displayName }) as unknown as Transaction;
+  ({
+    id,
+    account: { id: account, name: account },
+    displayName,
+  }) as unknown as TransferReviewTransaction;
 
 describe('transfer name hints', () => {
   it('finds the account a transfer’s name mentions, ignoring common words', () => {
@@ -72,8 +76,8 @@ describe('withoutTransactions', () => {
 
 describe('grouping the review (#332)', () => {
   const s = (
-    out: Transaction,
-    candidates: Transaction[],
+    out: TransferReviewTransaction,
+    candidates: TransferReviewTransaction[],
     unique = false,
     reason: TransferReview['suggested'][number]['reason'] = 'several',
   ) => ({ transaction: out, candidates, rivals: [], unique, reason });
@@ -129,8 +133,8 @@ describe('grouping the review (#332)', () => {
 
 describe('closest-date hints (#332)', () => {
   const dated = (id: string, account: string, date: string) =>
-    ({ ...t(id, account, 'Transfer'), date }) as Transaction;
-  const within = (out: Transaction, ins: Transaction[]) =>
+    ({ ...t(id, account, 'Transfer'), date }) as TransferReviewTransaction;
+  const within = (out: TransferReviewTransaction, ins: TransferReviewTransaction[]) =>
     ins.filter((i) => Math.abs(Date.parse(i.date) - Date.parse(out.date)) <= 10 * 86_400_000);
 
   it('pairs a recurring transfer with the deposit closest to it both ways', () => {

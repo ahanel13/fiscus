@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { Transaction, TransferReview } from '@fiscus/shared';
+import type { TransferReview, TransferReviewTransaction } from '@fiscus/shared';
 
 // Words in account names too common to say which account a transfer names.
 const COMMON = new Set([
@@ -37,13 +37,13 @@ export function namedAccount(text: string, account: string | undefined): string 
  * confirms it, since banks word transfers in many ways.
  */
 export function likelyOtherSide(
-  out: Transaction,
-  candidates: Transaction[],
+  out: TransferReviewTransaction,
+  candidates: TransferReviewTransaction[],
 ): { id: string; named: string } | null {
   if (candidates.length < 2) return null;
   for (const hint of [
-    (c: Transaction) => namedAccount(c.displayName, out.account?.name),
-    (c: Transaction) => namedAccount(out.displayName, c.account?.name),
+    (c: TransferReviewTransaction) => namedAccount(c.displayName, out.account.name),
+    (c: TransferReviewTransaction) => namedAccount(out.displayName, c.account.name),
   ]) {
     const hinted = candidates.flatMap((c) => {
       const named = hint(c);
@@ -95,7 +95,7 @@ export interface SuggestionGroup {
   ready: { out: string; into: string }[];
 }
 
-const accountName = (t: Transaction) => t.account?.name ?? 'another account';
+const accountName = (t: TransferReviewTransaction) => t.account.name;
 
 /** What points to one candidate: the names, or the closest date both ways. */
 export interface Hint {
@@ -128,7 +128,7 @@ function closest<T>(items: T[], date: (t: T) => string, to: string): T | null {
 export function hints(list: Suggestion[]): Map<string, Hint> {
   const out = new Map<string, Hint>();
   // Each candidate's possible transfers out, across the review.
-  const outsOf = new Map<string, Transaction[]>();
+  const outsOf = new Map<string, TransferReviewTransaction[]>();
   for (const s of list) {
     for (const c of s.candidates) outsOf.set(c.id, [...(outsOf.get(c.id) ?? []), s.transaction]);
   }
@@ -158,14 +158,14 @@ export function groupSuggestions(list: Suggestion[]): SuggestionGroup[] {
   for (const s of list) {
     const out = s.transaction;
     const likely = hinted.get(out.id) ?? null;
-    const intoAccounts = new Set(s.candidates.map((c) => c.account?.id ?? ''));
+    const intoAccounts = new Set(s.candidates.map((c) => c.account.id));
     const pointed = likely
       ? s.candidates.find((c) => c.id === likely.id)!
       : s.unique || intoAccounts.size === 1
         ? s.candidates[0]!
         : null;
     const to = pointed ? accountName(pointed) : null;
-    const key = `${out.account?.id ?? ''}→${pointed?.account?.id ?? '*'}`;
+    const key = `${out.account.id}→${pointed?.account.id ?? '*'}`;
     const group = groups.get(key) ?? {
       key,
       from: accountName(out),
@@ -194,9 +194,9 @@ export function groupSuggestions(list: Suggestion[]): SuggestionGroup[] {
 
 /** Transfers with no other side, by account, the biggest first. */
 export function groupUnmatched(
-  list: Transaction[],
-): { key: string; account: string; items: Transaction[] }[] {
-  return [...Map.groupBy(list, (t) => t.account?.id ?? '').entries()]
+  list: TransferReviewTransaction[],
+): { key: string; account: string; items: TransferReviewTransaction[] }[] {
+  return [...Map.groupBy(list, (t) => t.account.id).entries()]
     .map(([key, items]) => ({ key, account: accountName(items[0]!), items }))
     .sort((a, b) => b.items.length - a.items.length);
 }

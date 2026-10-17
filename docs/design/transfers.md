@@ -34,7 +34,7 @@ A **Transfers** section on the Review page, worked out when you open it (no back
 
 | List | What's in it | You can |
 |---|---|---|
-| **Suggested pairs** | A transfer-category or uncategorized row with possible other sides that detection didn't link: two candidates, or 4–10 days apart | **Link** one; **Link all** the pairs with exactly one candidate each |
+| **Suggested pairs** | A transfer-category or uncategorized row with possible other sides that detection didn't link: two candidates, or 4–10 days apart | **Link** one; **Link all** the pairs with exactly one candidate each; **Don't link**: **Recategorize** it (it was spending) or **The other account isn't in Fiscus** (stops asking) |
 | **No other side** | A row in a transfer category, not linked, **more than 7 days old** (younger ones may be in transit), with no candidate | **Link** to a transaction you pick; **The other account isn't in Fiscus** (stops asking); **Recategorize** it (it was spending) |
 
 - This is also how history imported before detection existed gets linked: its pairs appear as
@@ -101,7 +101,7 @@ When the rule matches a transaction as it arrives:
 
 | Route | Who | Notes |
 |---|---|---|
-| `GET transactions/transfer-review` | Any member who can categorize | `{ suggested, unmatched }`, rows you can see in accounts you own or have full access to |
+| `GET transactions/transfer-review` | Any member who can categorize | `{ suggested, unmatched, counts }`, rows you can see in accounts you own or have full access to. Each row carries only what the list shows (name, date, amount, account, category, version); opening one loads the rest |
 | `POST transactions/transfer-review/link-all` | Owners of both sides (TXN-08) | Links every suggested pair with exactly one candidate each, as shown |
 | `PATCH transactions/:id` `{ transferExternal }` | Categorize access (TXN-04) | "The other account isn't in Fiscus" |
 | `GET transactions/review-count` | Any member | Now `{ count, transactions, transfers }` |

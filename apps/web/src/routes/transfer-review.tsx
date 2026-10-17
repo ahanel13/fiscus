@@ -4,11 +4,11 @@ import type {
   CategoryGroup,
   HouseholdMember,
   LinkTransfersResult,
-  Transaction,
   TransferReview,
+  TransferReviewTransaction,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCheck, ChevronRight, Info, Link2 } from 'lucide-react';
+import { ArrowRight, CheckCheck, ChevronDown, ChevronRight, Info, Link2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { transferReviewQuery } from '../api/queries.js';
@@ -20,6 +20,7 @@ import {
   Button,
   Checkbox,
   ConfirmDialog,
+  controlStyles,
   DateText,
   LoadingRegion,
   Skeleton,
@@ -33,11 +34,12 @@ import {
   type SuggestionGroup,
   withoutTransactions,
 } from '../lib/transfers.js';
+import { categoryIndex } from '../lib/transactions.js';
 import { CategorySelect, TransactionDrawer, useInvalidateLedger } from './transactions.js';
 
 type Data<T> = { data: T };
 
-const accountOf = (t: Transaction) => t.account?.name ?? 'another account';
+const accountOf = (t: TransferReviewTransaction) => t.account.name;
 
 /** What this check is for: a reconciliation, so nothing falls through the cracks. */
 function WhyTransfers() {
@@ -112,7 +114,7 @@ const formatDay = (date: string) =>
 function mergeIdentical(list: SuggestionData[]): { suggestion: SuggestionData; count: number }[] {
   const key = (x: SuggestionData) =>
     x.reason === 'identical'
-      ? `${x.transaction.account?.id}|${x.transaction.date}|${x.transaction.amountMinor}|${x.transaction.displayName.toLowerCase()}`
+      ? `${x.transaction.account.id}|${x.transaction.date}|${x.transaction.amountMinor}|${x.transaction.displayName.toLowerCase()}`
       : x.transaction.id;
   return [...Map.groupBy(list, key).values()].map((group) => ({
     suggestion: group[0]!,
@@ -163,31 +165,38 @@ function GroupToggle({
 /**
  * A suggested pair, flat enough to read on a phone (#332): the money going out, then its best
  * match (the one a hint points to, else the closest date) with the others a tap away, and why it
- * wasn't linked automatically. Accounts the group's heading names aren't repeated.
+ * wasn't linked automatically. Each side names its account, since the group's heading scrolls away
+ * and banks name transfers after accounts ("From Checking Balance"). **Don't link**
+ * offers the ways out the rows with no other side have: it was spending, or its other side is in an
+ * account outside Fiscus.
  */
 function Suggestion({
   suggestion,
   count,
   hint,
-  from,
-  to,
   onLink,
   linking,
+  groups: categories,
+  names,
+  onRecategorize,
+  onOutside,
 }: {
   suggestion: SuggestionData;
   /** Identical transfers out shown as this one. */
   count: number;
   hint: Hint | null;
-  /** The group's accounts, which each row then leaves out. */
-  from: string;
-  to: string | null;
   onLink: (into: string) => void;
   linking: string | null;
+  groups: CategoryGroup[];
+  names: Map<string, string>;
+  onRecategorize: (categoryId: string) => void;
+  onOutside: () => void;
 }) {
   const [more, setMore] = useState(false);
+  const [declining, setDeclining] = useState(false);
   const out = suggestion.transaction;
-  const same = (c: Transaction) =>
-    `${c.account?.id}|${c.date}|${c.amountMinor}|${c.displayName.toLowerCase()}`;
+  const same = (c: TransferReviewTransaction) =>
+    `${c.account.id}|${c.date}|${c.amountMinor}|${c.displayName.toLowerCase()}`;
   // The hinted one first; the rest keep their order (nearest date first).
   const groups = [...Map.groupBy(suggestion.candidates, same).values()].sort(
     (a, b) => Number(b[0]!.id === hint?.id) - Number(a[0]!.id === hint?.id),
@@ -202,8 +211,8 @@ function Suggestion({
             {count > 1 ? <span className="font-normal text-muted"> ×{count} identical</span> : null}
           </span>
           <span className="block text-xs text-muted">
+            Out of <span className="font-medium text-fg">{accountOf(out)}</span> ·{' '}
             <DateText value={out.date} />
-            {accountOf(out) !== from ? ` · ${accountOf(out)}` : ''}
           </span>
         </span>
         <Amount minor={out.amountMinor} currency={out.currency} className="shrink-0 font-medium" />
@@ -218,11 +227,9 @@ function Suggestion({
             >
               <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate">
-                  {to === null ? `${accountOf(c)} · ` : ''}
-                  {c.displayName}
-                </span>
+                <span className="block truncate">{c.displayName}</span>
                 <span className="block text-xs text-muted">
+                  Into <span className="font-medium text-fg">{accountOf(c)}</span> ·{' '}
                   <DateText value={c.date} /> · {apart(out.date, c.date)}
                   {group.length > 1 ? ` · ×${group.length} identical` : ''}
                 </span>
@@ -255,7 +262,76 @@ function Suggestion({
         <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
         {reasonText(suggestion, hint)}
       </p>
+      {declining ? (
+        <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
+          <p className="text-muted">
+            If it isn’t a transfer, give it its real category. If its other side is in an account
+            you don’t track here, it goes outside Fiscus, and the review stops asking.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-48">
+              <RowCategory groups={categories} names={names} t={out} onChange={onRecategorize} />
+            </div>
+            <Button size="sm" variant="secondary" onPress={onOutside}>
+              Outside Fiscus
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Don’t link ${out.displayName} ${out.date}`}
+          onPress={() => setDeclining(true)}
+        >
+          Don’t link
+        </Button>
+      )}
     </li>
+  );
+}
+
+/**
+ * A row's category: a plain button until it's pressed, then the picker, open (#332). Each picker
+ * holds every category, and an account's transfers with no other side can run to hundreds of rows.
+ */
+function RowCategory({
+  groups,
+  names,
+  t,
+  onChange,
+}: {
+  groups: CategoryGroup[];
+  names: Map<string, string>;
+  t: TransferReviewTransaction;
+  onChange: (categoryId: string) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const label = `Recategorize ${t.displayName}`;
+  if (picking) {
+    return (
+      <CategorySelect
+        groups={groups}
+        label={label}
+        hideLabel
+        value={t.categoryId}
+        onChange={onChange}
+        autoOpen
+      />
+    );
+  }
+  const name = names.get(t.categoryId ?? '') ?? 'Uncategorized';
+  return (
+    // Drawn like the picker's own button, so nothing moves when it takes over.
+    <button
+      type="button"
+      aria-label={`${name} ${label}`}
+      onClick={() => setPicking(true)}
+      className={`${controlStyles} flex items-center gap-2 text-left`}
+    >
+      <span className="min-w-0 flex-1 truncate">{name}</span>
+      <ChevronDown aria-hidden className="size-4 text-muted" />
+    </button>
   );
 }
 
@@ -362,7 +438,7 @@ export function TransferReviewList({
     onError,
   });
   const patch = useMutation({
-    mutationFn: ({ t, body }: { t: Transaction; body: Record<string, unknown> }) =>
+    mutationFn: ({ t, body }: { t: TransferReviewTransaction; body: Record<string, unknown> }) =>
       api('PATCH', `${base}/${t.id}`, { body, headers: { 'if-match': `"v${t.version}"` } }),
     // Outside Fiscus takes it off the list; a new category may too, which the refetch shows.
     onMutate: ({ t, body }) => (body.transferExternal ? drop([t.id]) : undefined),
@@ -394,6 +470,7 @@ export function TransferReviewList({
   const { suggested, unmatched, counts } = query.data;
   // What points to each pair's other side: the names, or the closest date both ways.
   const hinted = hints(suggested);
+  const { names } = categoryIndex(groups);
   if (suggested.length === 0 && unmatched.length === 0) {
     return (
       <div className="space-y-6">
@@ -472,10 +549,17 @@ export function TransferReviewList({
                           suggestion={s}
                           count={count}
                           hint={hinted.get(s.transaction.id) ?? null}
-                          from={g.from}
-                          to={g.to}
                           onLink={(into) => link.mutate({ out: s.transaction.id, into })}
                           linking={link.isPending ? (link.variables?.into ?? null) : null}
+                          groups={groups}
+                          names={names}
+                          onRecategorize={(categoryId) =>
+                            categoryId !== s.transaction.categoryId &&
+                            patch.mutate({ t: s.transaction, body: { categoryId } })
+                          }
+                          onOutside={() =>
+                            patch.mutate({ t: s.transaction, body: { transferExternal: true } })
+                          }
                         />
                       ))}
                     </ul>
@@ -598,11 +682,10 @@ export function TransferReviewList({
                           <Amount minor={t.amountMinor} currency={t.currency} className="text-sm" />
                           <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
                             <div className="w-48">
-                              <CategorySelect
+                              <RowCategory
                                 groups={groups}
-                                label={`Recategorize ${t.displayName}`}
-                                hideLabel
-                                value={t.categoryId}
+                                names={names}
+                                t={t}
                                 onChange={(categoryId) =>
                                   categoryId !== t.categoryId &&
                                   patch.mutate({ t, body: { categoryId } })

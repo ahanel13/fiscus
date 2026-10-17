@@ -33,6 +33,7 @@ import type {
   Transaction,
   TransferCounterpart,
   TransferReview,
+  TransferReviewTransaction,
   transactionsQuerySchema,
   TransactionSort,
   undoNameCleanupSchema,
@@ -356,7 +357,23 @@ export class TransactionsService {
       const rows = ids.length
         ? await tx.select().from(transactions).where(inArray(transactions.id, ids))
         : [];
-      const shown = new Map((await this.#present(tx, ctx, access, rows)).map((t) => [t.id, t]));
+      // Only what a row shows: a large review is about a thousand of them (#332).
+      const shown = new Map(
+        (await this.#present(tx, ctx, access, rows)).map((t) => [
+          t.id,
+          {
+            id: t.id,
+            date: t.date,
+            amountMinor: t.amountMinor,
+            currency: t.currency,
+            displayName: t.displayName,
+            categoryId: t.categoryId,
+            // Accounts you own, so always named.
+            account: { id: t.account!.id, name: t.account!.name },
+            version: t.version,
+          } satisfies TransferReviewTransaction,
+        ]),
+      );
       const unique = new Set(review.unique.map(([out]) => out.id));
       return {
         suggested: suggested.map(([out, intos]) => {
