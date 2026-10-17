@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomBytes } from 'node:crypto';
+import type { LoggerService } from '@nestjs/common';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../app.module.js';
@@ -9,6 +10,8 @@ import { configureApp } from '../configure-app.js';
 export async function createTestApp(
   databaseUrl: string,
   overrides: Partial<AppConfig> = {},
+  /** Receives everything the app logs, at every level (the no-financial-data test, #308). */
+  logger?: LoggerService,
 ): Promise<NestFastifyApplication> {
   const config: AppConfig = {
     databaseUrl,
@@ -24,7 +27,7 @@ export async function createTestApp(
   }).compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter(), {
     // FISCUS_TEST_LOG=1 shows server errors while debugging tests.
-    logger: process.env.FISCUS_TEST_LOG ? ['error'] : false,
+    logger: logger ?? (process.env.FISCUS_TEST_LOG ? ['error'] : false),
   });
   await configureApp(app);
   await app.init();

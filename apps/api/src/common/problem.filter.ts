@@ -6,6 +6,7 @@ import {
   HttpException,
   Logger,
 } from '@nestjs/common';
+import { describeError } from '@fiscus/env';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Problem } from './problem.js';
 
@@ -44,7 +45,12 @@ export class ProblemFilter implements ExceptionFilter {
       status = exception instanceof HttpException ? exception.getStatus() : exception.statusCode;
       [code, title] = CODES[status] ?? (status < 500 ? ['bad_request', title] : [code, title]);
     }
-    if (status >= 500) this.logger.error(exception instanceof Error ? exception.stack : exception);
+    // Only the route's pattern and the error's class, code, and frames: never the URL (search
+    // terms), the body, or the error's message, which can hold a failed query's values (#308).
+    if (status >= 500) {
+      const route = req.routeOptions?.url ?? 'unknown route';
+      this.logger.error(`${req.method} ${route} (${req.id}): ${describeError(exception)}`);
+    }
 
     void reply
       .status(status)

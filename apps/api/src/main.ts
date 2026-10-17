@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'reflect-metadata';
-import { loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
+import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module.js';
@@ -8,6 +9,8 @@ import { configureApp } from './configure-app.js';
 import apiEnv from './env.js';
 
 const env = loadEnvOrExit(apiEnv);
+// Without values: Node's own report prints the whole error (#308).
+exitOnUnhandled((message) => new Logger('Process').fatal(message));
 
 const app = await NestFactory.create<NestFastifyApplication>(
   AppModule.register({

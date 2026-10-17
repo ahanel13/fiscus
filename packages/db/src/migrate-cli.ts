@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { loadEnvOrExit } from '@fiscus/env';
+import { describeError, loadEnvOrExit } from '@fiscus/env';
 import migrateEnv from './env.js';
 import { runMigrations } from './migrate.js';
 
@@ -16,14 +16,15 @@ try {
     log: (message) => console.log(`[migrate] ${message}`),
   });
 } catch (err) {
-  console.error('[migrate] failed:', err instanceof Error ? err.message : err);
-  // The ORM's message is the SQL that failed; the database's reason is in the cause.
-  for (let cause = (err as { cause?: unknown }).cause; cause;) {
-    const c = cause as { message?: string; detail?: string; hint?: string; cause?: unknown };
-    console.error('[migrate] because:', c.message ?? cause);
-    if (c.detail) console.error('[migrate] detail:', c.detail);
-    if (c.hint) console.error('[migrate] hint:', c.hint);
-    cause = c.cause;
+  // The ORM's message is the migration's own SQL, from the repo. The database's reason is in the
+  // cause: its code, table, and constraint say what failed, but not its message or detail, which
+  // can quote the rows ("Key (name)=(…) is duplicated"): no financial data in logs (#308).
+  console.error('[migrate] failed:', err instanceof Error ? err.message : 'a thrown value');
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause) {
+    console.error('[migrate] because:', describeError(cause));
+    const hint = (cause as { hint?: unknown }).hint;
+    if (typeof hint === 'string') console.error('[migrate] hint:', hint);
   }
   process.exit(1);
 }

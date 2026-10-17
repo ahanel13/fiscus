@@ -2,7 +2,7 @@
 import 'reflect-metadata';
 import { MasterKey } from '@fiscus/crypto';
 import { createDb, pingDatabase } from '@fiscus/db';
-import { loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
+import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import workerEnv from './env.js';
@@ -10,6 +10,8 @@ import { startHealthServer } from './health-server.js';
 import { WorkerModule } from './worker.module.js';
 
 const env = loadEnvOrExit(workerEnv);
+// Without values: Node's own report prints the whole error (#308).
+exitOnUnhandled((message) => new Logger('Process').fatal(message));
 // Fail at startup, not at the first job, if the key is unusable. Jobs that decrypt use it in M2+.
 MasterKey.fromBase64(env.APP_ENCRYPTION_KEY, env.APP_ENCRYPTION_KEY_VERSION);
 const db = createDb(env.DATABASE_URL, { max: 5 });
