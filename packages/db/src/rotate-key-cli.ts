@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { envKeyProvider, KeyConfigError, type MasterKeys } from '@fiscus/crypto';
-import { describeError, exitOnUnhandled, loadEnvOrExit } from '@fiscus/env';
+import { envKeyProvider, masterKeysOrExit } from '@fiscus/crypto';
+import { exitOnUnhandled, loadEnvOrExit } from '@fiscus/env';
 import { masterKeyUsage, rewrapHouseholdKeys } from './household-key-store.js';
 import { runMaintenanceJob } from './maintenance.js';
 import rotateEnv from './rotate-env.js';
@@ -15,13 +15,9 @@ const env = loadEnvOrExit(rotateEnv);
 exitOnUnhandled((message) => console.error(`[rotate-key] ${message}`));
 const check = process.argv.includes('--check');
 
-let keys: MasterKeys;
-try {
-  keys = await envKeyProvider(env).masterKeys();
-} catch (err) {
-  console.error(`[rotate-key] ${err instanceof KeyConfigError ? err.message : describeError(err)}`);
-  process.exit(1);
-}
+const keys = await masterKeysOrExit(envKeyProvider(env), (message) =>
+  console.error(`[rotate-key] ${message}`),
+);
 const current = keys.current.version;
 
 const usage = (counts: Map<number, number>) =>

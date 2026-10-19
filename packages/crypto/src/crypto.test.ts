@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomBytes } from 'node:crypto';
 import { inspect } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DecryptionError, decrypt, encrypt, keyVersionOf } from './aead.js';
 import { type DataKeySource, FieldCrypto } from './field-crypto.js';
 import { encryptionKeyEnv, generateDataKey, MasterKey } from './master-key.js';
@@ -12,6 +12,7 @@ import {
   KeyConfigError,
   MasterKeyNotLoadedError,
   MasterKeys,
+  masterKeysOrExit,
 } from './master-keys.js';
 
 const masterB64 = () => randomBytes(32).toString('base64');
@@ -212,5 +213,42 @@ describe('master keys and the key provider (#25, #307)', () => {
     const after = new FieldCrypto(none, new MasterKeys(v2));
     expect(() => after.decryptInstance(userCtx, old)).toThrow(MasterKeyNotLoadedError);
     expect(() => after.decryptInstance(userCtx, old)).toThrow(/version 1 isn't loaded/);
+  });
+});
+
+describe('masterKeysOrExit: how the api, worker, and rotate-key start (#307)', () => {
+  const good = {
+    APP_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+    APP_ENCRYPTION_KEY_VERSION: 1,
+  };
+
+  it('returns the keys when they work', async () => {
+    const fatal = vi.fn();
+    const keys = await masterKeysOrExit(envKeyProvider(good), fatal);
+    expect(keys.versions).toEqual([1]);
+    expect(fatal).not.toHaveBeenCalled();
+  });
+
+  it('logs why and exits when they can’t, before anything else runs', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    const fatal = vi.fn();
+    try {
+      await masterKeysOrExit(
+        envKeyProvider({ ...good, APP_ENCRYPTION_KEY_PREVIOUS: good.APP_ENCRYPTION_KEY }),
+        fatal,
+      );
+      expect(fatal).toHaveBeenCalledWith(expect.stringMatching(/together, or neither/));
+      expect(fatal.mock.calls[0]![0]).not.toContain(good.APP_ENCRYPTION_KEY);
+      expect(exit).toHaveBeenCalledWith(1);
+    } finally {
+      exit.mockRestore();
+    }
+  });
+
+  it('lets other errors through, for the unhandled-error handler', async () => {
+    const boom = new Error('provider down');
+    await expect(
+      masterKeysOrExit({ masterKeys: () => Promise.reject(boom) }, vi.fn()),
+    ).rejects.toBe(boom);
   });
 });

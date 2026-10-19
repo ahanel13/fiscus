@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'reflect-metadata';
-import { KeyConfigError } from '@fiscus/crypto';
+import { masterKeysOrExit } from '@fiscus/crypto';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -26,13 +26,9 @@ const config: AppConfig = {
   cookieSecure: env.COOKIE_SECURE,
 };
 // Fail closed, and say why: keys that can't work stop the api before it serves anything (#307).
-try {
-  await masterKeysFrom(config);
-} catch (err) {
-  if (!(err instanceof KeyConfigError)) throw err;
-  new Logger('Keys').fatal(err.message);
-  process.exit(1);
-}
+await masterKeysOrExit({ masterKeys: () => masterKeysFrom(config) }, (message) =>
+  new Logger('Keys').fatal(message),
+);
 
 const app = await NestFactory.create<NestFastifyApplication>(
   AppModule.register(config),

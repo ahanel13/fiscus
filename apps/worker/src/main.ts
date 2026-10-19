@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'reflect-metadata';
-import { envKeyProvider, KeyConfigError } from '@fiscus/crypto';
+import { envKeyProvider, masterKeysOrExit } from '@fiscus/crypto';
 import { createDb, pingDatabase } from '@fiscus/db';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
@@ -13,13 +13,7 @@ const env = loadEnvOrExit(workerEnv);
 // Without values: Node's own report prints the whole error (#308).
 exitOnUnhandled((message) => new Logger('Process').fatal(message));
 // Fail at startup, not at the first job, if the key is unusable. Jobs that decrypt use it in M2+.
-try {
-  await envKeyProvider(env).masterKeys();
-} catch (err) {
-  if (!(err instanceof KeyConfigError)) throw err;
-  new Logger('Keys').fatal(err.message);
-  process.exit(1);
-}
+await masterKeysOrExit(envKeyProvider(env), (message) => new Logger('Keys').fatal(message));
 const db = createDb(env.DATABASE_URL, { max: 5 });
 
 const app = await NestFactory.createApplicationContext(WorkerModule, {

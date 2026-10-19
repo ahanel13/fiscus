@@ -5,7 +5,8 @@
 # alone, and check that every household's data key still opens, through the app's own code. Then
 # check the api refuses to start with the old key alone. CI runs it after the end-to-end tests.
 # It leaves the stack on the new key. Usage: scripts/rotation-drill.sh  (COMPOSE as in
-# backup-drill.sh; the stack's .env is read for the current key)
+# backup-drill.sh; the stack's .env is read for the current key; ROTATED_ENV_OUT, if set, is a
+# file the new key and version are written to, for checks that follow)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -70,4 +71,8 @@ echo "$out" | grep -q "Two master keys have version $new_version" || {
   echo "Expected the api to refuse two keys with one version; it said: $out" >&2
   exit 1
 }
+if [ -n "${ROTATED_ENV_OUT:-}" ]; then
+  (umask 077 && printf 'APP_ENCRYPTION_KEY=%s\nAPP_ENCRYPTION_KEY_VERSION=%s\n' "$new" "$new_version" \
+    > "$ROTATED_ENV_OUT")
+fi
 echo "Rotated to master key v$new_version; the stack now runs on it."

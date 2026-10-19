@@ -118,3 +118,20 @@ export function envKeyProvider(env: EnvKeys): KeyProvider {
     },
   };
 }
+
+/**
+ * The master keys, or exit: a KeyConfigError is logged with its reason (it holds no key) and the
+ * process stops before anything is read or written (#307). Other errors are thrown as they are.
+ */
+export async function masterKeysOrExit(
+  provider: KeyProvider,
+  fatal: (message: string) => void,
+): Promise<MasterKeys> {
+  try {
+    return await provider.masterKeys();
+  } catch (err) {
+    if (!(err instanceof KeyConfigError)) throw err;
+    fatal(err.message);
+    return process.exit(1);
+  }
+}

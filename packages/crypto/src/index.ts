@@ -21,5 +21,6 @@ export {
   type KeyProvider,
   MasterKeyNotLoadedError,
   MasterKeys,
+  masterKeysOrExit,
 } from './master-keys.js';
 export { SecretKey } from './secret-key.js';
