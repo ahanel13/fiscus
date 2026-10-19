@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { booleanFlag, defineEnv, logLevel } from '@fiscus/env';
 import { z } from 'zod';
+import { backupRecipients } from './backup-env.js';
 
 // The migrate and seed jobs connect as the schema owner, separately from the services'
 // DATABASE_URL (fiscus_app), so both can live in one .env file or compose stack.
@@ -35,5 +36,6 @@ export default defineEnv('migrate', {
     schema: z.coerce.number().int().min(1).max(100).default(5),
     description: 'How many pre-migration dumps to keep; older ones are deleted.',
   },
+  BACKUP_AGE_RECIPIENTS: backupRecipients,
   LOG_LEVEL: logLevel,
 });

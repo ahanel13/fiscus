@@ -11,7 +11,11 @@ try {
     appPassword: env.APP_DATABASE_PASSWORD,
     maintenancePassword: env.MAINTENANCE_DATABASE_PASSWORD,
     backup: env.MIGRATE_BACKUP
-      ? { dir: env.MIGRATE_BACKUP_DIR, keep: env.MIGRATE_BACKUP_KEEP }
+      ? {
+          dir: env.MIGRATE_BACKUP_DIR,
+          keep: env.MIGRATE_BACKUP_KEEP,
+          recipients: env.BACKUP_AGE_RECIPIENTS,
+        }
       : undefined,
     log: (message) => console.log(`[migrate] ${message}`),
   });

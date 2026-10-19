@@ -3,12 +3,18 @@
 // current. Run after `pnpm build`, since it imports the compiled definitions.
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const DEFINITIONS = ['apps/api', 'apps/worker', 'apps/mcp', 'packages/db'];
+const DEFINITIONS = [
+  'apps/api/dist/env.js',
+  'apps/worker/dist/env.js',
+  'apps/mcp/dist/env.js',
+  'packages/db/dist/env.js',
+  'packages/db/dist/backup-env.js',
+];
 const OUTPUT = new URL('../.env.example', import.meta.url);
 
 const vars = new Map();
-for (const dir of DEFINITIONS) {
-  const url = new URL(`../${dir}/dist/env.js`, import.meta.url);
+for (const file of DEFINITIONS) {
+  const url = new URL(`../${file}`, import.meta.url);
   const { default: def } = await import(url.href);
   for (const [name, spec] of Object.entries(def.vars)) {
     const entry = vars.get(name) ?? { spec, services: [] };

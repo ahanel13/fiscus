@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { backupDatabase } from './backup.js';
+import { backupDatabase, scheduledBackup } from './backup.js';
 import { MIGRATIONS_FOLDER, runMigrations } from './migrate.js';
 
 /** Pre-migration backups (docs/design/upgrades.md §5, #277), with a stand-in pg_dump. */
@@ -25,6 +25,9 @@ describe('backups before migrating', () => {
   let calls: string;
   let fakeDump: string;
   let failingDump: string;
+  let fakeAge: string;
+  let failingAge: string;
+  let ageCalls: string;
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:18-alpine')
@@ -49,7 +52,10 @@ describe('backups before migrating', () => {
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args, password: process.env.PGPASSWORD }) + '\\n');
-fs.writeFileSync(args[args.indexOf('--file') + 1], 'dump');
+// To its --file, or to stdout when piped into age.
+const file = args.indexOf('--file');
+if (file >= 0) fs.writeFileSync(args[file + 1], 'dump');
+else process.stdout.write('dump');
 `,
     );
     failingDump = join(work, 'pg_dump_failing');
@@ -57,13 +63,40 @@ fs.writeFileSync(args[args.indexOf('--file') + 1], 'dump');
       failingDump,
       `#!/usr/bin/env node
 const args = process.argv.slice(2);
-require('node:fs').writeFileSync(args[args.indexOf('--file') + 1], 'half a dump');
+const file = args.indexOf('--file');
+if (file >= 0) require('node:fs').writeFileSync(args[file + 1], 'half a dump');
+else process.stdout.write('half a dump');
 console.error('pg_dump: error: connection refused');
 process.exit(1);
 `,
     );
-    chmodSync(fakeDump, 0o755);
-    chmodSync(failingDump, 0o755);
+    // Records its arguments, then "encrypts" stdin into its -o file.
+    ageCalls = join(work, 'age-calls.jsonl');
+    fakeAge = join(work, 'age');
+    writeFileSync(
+      fakeAge,
+      `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(ageCalls)}, JSON.stringify(args) + '\\n');
+const chunks = [];
+process.stdin.on('data', (c) => chunks.push(c));
+process.stdin.on('end', () => {
+  fs.writeFileSync(args[args.indexOf('-o') + 1], 'age[' + Buffer.concat(chunks) + ']');
+});
+`,
+    );
+    failingAge = join(work, 'age_failing');
+    writeFileSync(
+      failingAge,
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+require('node:fs').writeFileSync(args[args.indexOf('-o') + 1], 'age[half');
+console.error('age: error: malformed recipient');
+process.exit(1);
+`,
+    );
+    for (const f of [fakeDump, failingDump, fakeAge, failingAge]) chmodSync(f, 0o755);
   }, 120_000);
 
   afterAll(async () => {
@@ -119,5 +152,56 @@ process.exit(1);
       expect.stringMatching(/-before-0002_b\.dump$/),
       expect.stringMatching(/-before-0003_c\.dump$/),
     ]);
+  });
+
+  it('encrypts to the recipients as it dumps, and keeps scheduled and pre-upgrade dumps apart (#306)', async () => {
+    const dir = join(work, 'encrypted');
+    const url = container.getConnectionUri();
+    const options = {
+      dir,
+      keep: 1,
+      recipients: ['age1first', 'age1second'],
+      pgDump: fakeDump,
+      age: fakeAge,
+    };
+    await backupDatabase(url, '0007_x', options);
+    await scheduledBackup(url, options);
+    await new Promise((r) => setTimeout(r, 1100));
+    await scheduledBackup(url, options);
+
+    // One of each kind: keeping the newest scheduled one doesn't remove the pre-upgrade one.
+    const files = readdirSync(dir).sort();
+    expect(files).toEqual([
+      expect.stringMatching(/^fiscus-\d{8}T\d{6}Z-before-0007_x\.dump\.age$/),
+      expect.stringMatching(/^fiscus-\d{8}T\d{6}Z-scheduled\.dump\.age$/),
+    ]);
+    // pg_dump's output went into age, never to a file of its own.
+    expect(readFileSync(join(dir, files[1]!), 'utf8')).toBe('age[dump]');
+    const ageArgs = readFileSync(ageCalls, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
+    expect(ageArgs.at(-1)).toEqual([
+      '-r',
+      'age1first',
+      '-r',
+      'age1second',
+      '-o',
+      expect.stringContaining('.partial'),
+    ]);
+    const dumpArgs = callLog().at(-1)!.args;
+    expect(dumpArgs).not.toContain('--file');
+
+    // Either side failing leaves nothing behind, and says which failed.
+    await expect(scheduledBackup(url, { ...options, age: failingAge })).rejects.toThrow(
+      /age failed: age: error: malformed recipient/,
+    );
+    await expect(scheduledBackup(url, { ...options, pgDump: failingDump })).rejects.toThrow(
+      /pg_dump failed: pg_dump: error: connection refused/,
+    );
+    await expect(scheduledBackup(url, { ...options, age: join(work, 'no-age') })).rejects.toThrow(
+      /no-age isn't installed here/,
+    );
+    expect(readdirSync(dir).sort()).toEqual(files);
   });
 });

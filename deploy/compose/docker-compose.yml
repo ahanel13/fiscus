@@ -53,13 +53,39 @@ services:
       # A pg_dump before each upgrade that has migrations to apply; the last 5 are kept.
       MIGRATE_BACKUP: ${MIGRATE_BACKUP:-true}
       MIGRATE_BACKUP_KEEP: ${MIGRATE_BACKUP_KEEP:-5}
+      # age public keys the dumps are encrypted to (docs/security/backups.md). Unset: unencrypted.
+      BACKUP_AGE_RECIPIENTS: ${BACKUP_AGE_RECIPIENTS:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      # Only this service mounts it, so the volume takes the image's /backups ownership (node).
+      # Only this image mounts it, so the volume takes its /backups ownership (node).
       - db-backups:/backups
     depends_on:
       db:
         condition: service_healthy
+
+  # A database dump every day, the last 7 kept, encrypted to BACKUP_AGE_RECIPIENTS
+  # (docs/security/backups.md). Copy the volume's .age files off the server: they're safe to.
+  backup:
+    image: ghcr.io/ahanel13/fiscus-api:${FISCUS_VERSION:-latest}
+    build:
+      <<: *build-args
+      dockerfile: apps/api/Dockerfile
+    command: ['node_modules/.bin/fiscus-backup']
+    restart: unless-stopped
+    # The image's check is the api's; this one serves nothing, and logs each backup.
+    healthcheck:
+      disable: true
+    environment:
+      MIGRATION_DATABASE_URL: postgres://fiscus_owner:${POSTGRES_PASSWORD}@db:5432/fiscus
+      BACKUP_AGE_RECIPIENTS: ${BACKUP_AGE_RECIPIENTS:-}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - db-backups:/backups
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   api:
     image: ghcr.io/ahanel13/fiscus-api:${FISCUS_VERSION:-latest}
@@ -122,6 +148,7 @@ services:
 
 volumes:
   db-data:
-  # Pre-upgrade database dumps (docs/design/upgrades.md §5). Back up APP_ENCRYPTION_KEY separately.
+  # Database dumps: before each upgrade (docs/design/upgrades.md §5) and daily
+  # (docs/security/backups.md). Back up APP_ENCRYPTION_KEY separately.
   db-backups:
   # Receipt storage (local-disk driver) is added with M9.

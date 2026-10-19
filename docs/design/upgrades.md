@@ -65,6 +65,9 @@ stopped using it, and must be labeled `migration:contract`.
 - **If the backup fails, nothing is migrated:** the job exits with pg_dump's error and the services
   keep running the version they had. A dump is written under a temporary name and renamed when
   complete, so a half-written one is never kept.
+- **Encrypted** to `BACKUP_AGE_RECIPIENTS` when it's set, as `….dump.age`, like the scheduled
+  backups ([backups](../security/backups.md)); restoring one then goes through `age -d` with the
+  private key.
 - **The encryption key is not in the dump.** Back up `APP_ENCRYPTION_KEY` separately
   ([encryption](../security/encryption.md)); a dump without its key can't decrypt protected fields.
 
@@ -82,6 +85,9 @@ $C run --rm --no-deps --entrypoint sh migrate -c \
   'pg_restore --exit-on-error --dbname "$MIGRATION_DATABASE_URL" /backups/<file>.dump'
 FISCUS_VERSION=<previous tag> $C up -d                         # the release that matches the dump
 ```
+
+For an encrypted `….dump.age`, decrypt it on the way in, with the private key mounted for that
+one command ([backups](../security/backups.md#restoring)).
 
 The restore must go into an **empty** database: restoring over the upgraded one would leave the
 newer release's objects behind, and its migrations would fail when you upgrade again.

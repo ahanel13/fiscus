@@ -108,6 +108,10 @@ jobs:
 
       - run: pnpm --filter @fiscus/web e2e
 
+      # On the data the e2e tests left: an encrypted backup restores to the same rows (#306).
+      - name: Backup and restore drill
+        run: scripts/backup-drill.sh
+
       - name: Collect logs
         if: failure()
         run: $COMPOSE logs --no-color > compose.log
