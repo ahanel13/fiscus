@@ -67,6 +67,31 @@ export function scheduledBackup(url: string, options: BackupOptions) {
   return dump(url, 'scheduled', options);
 }
 
+const HOUR = 3_600_000;
+
+/**
+ * How long until the next scheduled dump: the rest of the interval since the newest one in `dir`,
+ * or none if there isn't one, so a restart (or an upgrade) doesn't take another too soon.
+ */
+export async function nextScheduledBackupIn(
+  dir: string,
+  intervalMs: number,
+  now = Date.now(),
+): Promise<number> {
+  const stamps = (await readdir(dir).catch(() => [] as string[]))
+    .map((n) =>
+      /^fiscus-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-scheduled\.dump(\.age)?$/.exec(n),
+    )
+    .filter((m) => m !== null)
+    .map(([, y, mo, d, h, mi, s]) => Date.UTC(+y!, +mo! - 1, +d!, +h!, +mi!, +s!));
+  if (!stamps.length) return 0;
+  return Math.min(intervalMs, Math.max(0, Math.max(...stamps) + intervalMs - now));
+}
+
+/** How long to wait after a scheduled dump: the interval, or an hour (at most) after a failure. */
+export const waitAfterBackup = (ok: boolean, intervalMs: number) =>
+  ok ? intervalMs : Math.min(intervalMs, HOUR);
+
 /**
  * Dumps the database to `dir` (pg_dump's custom format, for pg_restore), then keeps only the
  * newest `keep` of the same kind. With recipients, pg_dump's output goes straight into age, so

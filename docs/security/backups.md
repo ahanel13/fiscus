@@ -98,6 +98,35 @@ $C up -d
 For an unencrypted `.dump`, leave out `age -d …|` and give `pg_restore` the file. Restore with the
 release that took the backup, or a newer one: its migrations bring the schema up to date.
 
+### Restoring on a new server
+
+When the old server is gone. You need the backup file, its private key, and the old
+`APP_ENCRYPTION_KEY` (and its version): without that key, notes and other encrypted fields can't
+be read. The database passwords can be new.
+
+1. Set up the compose file and `.env` as for a new install, but with the old `APP_ENCRYPTION_KEY`
+   and `APP_ENCRYPTION_KEY_VERSION`. Don't start the whole stack yet.
+2. Start only the database, and create Fiscus's roles: a backup refers to them, and they belong
+   to the database server, not to the backup.
+
+   ```bash
+   C="docker compose -f deploy/compose/docker-compose.yml"
+   $C up -d --wait db
+   $C exec db psql -U fiscus_owner -d fiscus -c 'CREATE ROLE fiscus_app NOLOGIN;
+     CREATE ROLE fiscus_maintenance NOLOGIN BYPASSRLS; CREATE ROLE fiscus_definer NOLOGIN BYPASSRLS;'
+   ```
+
+3. Restore the backup, with it and the private key mounted for the one command:
+
+   ```bash
+   $C run --rm --no-deps -v ~/fiscus-backup-key.txt:/run/key.txt:ro \
+     -v ./<file>.dump.age:/run/backup.dump.age:ro --entrypoint sh backup -c \
+     'age -d -i /run/key.txt /run/backup.dump.age | pg_restore --exit-on-error --dbname "$MIGRATION_DATABASE_URL"'
+   ```
+
+4. Start everything: `$C up -d --wait`. `migrate` gives the roles their new passwords and applies
+   any migrations newer than the backup.
+
 ### The restore drill
 
 A backup nobody has restored is a hope, not a backup. `scripts/backup-drill.sh` runs one against a

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { readdir } from 'node:fs/promises';
 import { describeError, exitOnUnhandled, loadEnvOrExit } from '@fiscus/env';
-import { scheduledBackup } from './backup.js';
+import { nextScheduledBackupIn, scheduledBackup, waitAfterBackup } from './backup.js';
 import backupEnv from './backup-env.js';
 
 // Scheduled backups (docs/security/backups.md, #306): a dump every BACKUP_INTERVAL_HOURS, the
@@ -37,29 +36,18 @@ async function backUp(): Promise<boolean> {
   }
 }
 
-/** When the newest scheduled dump was taken, so a restart doesn't take another too soon. */
-async function lastBackup(): Promise<number | null> {
-  const names = await readdir(options.dir).catch(() => [] as string[]);
-  const stamps = names
-    .map((n) => /^fiscus-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-scheduled\./.exec(n))
-    .filter((m) => m !== null)
-    .map(([, y, mo, d, h, mi, s]) => Date.UTC(+y!, +mo! - 1, +d!, +h!, +mi!, +s!));
-  return stamps.length ? Math.max(...stamps) : null;
-}
-
 if (env.BACKUP_INTERVAL_HOURS === 0) {
   process.exit((await backUp()) ? 0 : 1);
 }
 
 const interval = env.BACKUP_INTERVAL_HOURS * HOUR;
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => process.exit(0));
-const last = await lastBackup();
-let wait = last === null ? 0 : Math.max(0, last + interval - Date.now());
+let wait = await nextScheduledBackupIn(options.dir, interval);
 console.log(
   `[backup] every ${env.BACKUP_INTERVAL_HOURS} h, keeping ${options.keep}; next in ${Math.round(wait / 60_000)} min`,
 );
 for (;;) {
   await new Promise((r) => setTimeout(r, wait));
   // A failed backup is tried again in an hour, not a whole interval later.
-  wait = (await backUp()) ? interval : Math.min(interval, HOUR);
+  wait = waitAfterBackup(await backUp(), interval);
 }
