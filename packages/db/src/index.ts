@@ -22,6 +22,9 @@ export {
   HouseholdKeyNotFoundError,
   HouseholdKeyStore,
   type HouseholdKeyStoreOptions,
+  masterKeyUsage,
+  rewrapHouseholdKeys,
+  type RewrapResult,
 } from './household-key-store.js';
 export { MIGRATIONS_FOLDER, runMigrations, type MigrateOptions } from './migrate.js';
 export * as schema from './schema/index.js';

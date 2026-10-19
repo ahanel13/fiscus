@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { decrypt, encrypt, keyVersionOf } from './aead.js';
-import type { MasterKey } from './master-key.js';
+import type { MasterKeys } from './master-keys.js';
 import type { SecretKey } from './secret-key.js';
 
 /** Where an encrypted value lives. Ciphertext only decrypts in exactly this place. */
@@ -33,7 +33,7 @@ const instanceAad = (c: FieldContext) =>
 export class FieldCrypto {
   constructor(
     private readonly keys: DataKeySource,
-    private readonly master: MasterKey,
+    private readonly master: MasterKeys,
   ) {}
 
   async encrypt(context: HouseholdFieldContext, plaintext: string): Promise<Buffer> {
@@ -46,16 +46,20 @@ export class FieldCrypto {
     return decrypt(key, ciphertext, householdAad(context)).toString('utf8');
   }
 
+  /** With the current master key; its version goes in the header. */
   encryptInstance(context: FieldContext, plaintext: string): Buffer {
+    const { current } = this.master;
     return encrypt(
-      this.master.instanceKey,
-      this.master.version,
+      current.instanceKey,
+      current.version,
       Buffer.from(plaintext, 'utf8'),
       instanceAad(context),
     );
   }
 
+  /** With the master key version in its header: the previous one during a rotation. */
   decryptInstance(context: FieldContext, ciphertext: Buffer): string {
-    return decrypt(this.master.instanceKey, ciphertext, instanceAad(context)).toString('utf8');
+    const master = this.master.version(keyVersionOf(ciphertext));
+    return decrypt(master.instanceKey, ciphertext, instanceAad(context)).toString('utf8');
   }
 }

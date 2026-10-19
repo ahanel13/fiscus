@@ -50,6 +50,8 @@ services:
     environment:
       MIGRATION_DATABASE_URL: postgres://fiscus_owner:${POSTGRES_PASSWORD}@db:5432/fiscus
       APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?set APP_DATABASE_PASSWORD in .env}
+      # Set only to rotate the master key: enables the fiscus_maintenance login rotate-key uses.
+      MAINTENANCE_DATABASE_PASSWORD: ${MAINTENANCE_DATABASE_PASSWORD:-}
       # A pg_dump before each upgrade that has migrations to apply; the last 5 are kept.
       MIGRATE_BACKUP: ${MIGRATE_BACKUP:-true}
       MIGRATE_BACKUP_KEEP: ${MIGRATE_BACKUP_KEEP:-5}
@@ -98,6 +100,9 @@ services:
         DATABASE_URL: postgres://fiscus_app:${APP_DATABASE_PASSWORD}@db:5432/fiscus
         APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY in .env}
         APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
+        # Only while rotating the master key (docs/security/encryption.md): the key being replaced.
+        APP_ENCRYPTION_KEY_PREVIOUS: ${APP_ENCRYPTION_KEY_PREVIOUS:-}
+        APP_ENCRYPTION_KEY_PREVIOUS_VERSION: ${APP_ENCRYPTION_KEY_PREVIOUS_VERSION:-}
         LOG_LEVEL: ${LOG_LEVEL:-info}
       PUBLIC_URL: ${FISCUS_PUBLIC_URL:-http://localhost:8080}
       SIGNUP_MODE: ${FISCUS_SIGNUP_MODE:-invite_only}
@@ -134,6 +139,30 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  # Master key rotation, run by hand (docs/security/encryption.md):
+  #   docker compose --profile maintenance run --rm rotate-key [--check]
+  rotate-key:
+    image: ghcr.io/ahanel13/fiscus-api:${FISCUS_VERSION:-latest}
+    build:
+      <<: *build-args
+      dockerfile: apps/api/Dockerfile
+    # An entrypoint, so `run --rm rotate-key --check` passes --check to it.
+    entrypoint: ['node_modules/.bin/fiscus-rotate-key']
+    profiles: [maintenance]
+    restart: 'no'
+    healthcheck:
+      disable: true
+    environment:
+      MAINTENANCE_DATABASE_URL: postgres://fiscus_maintenance:${MAINTENANCE_DATABASE_PASSWORD:-}@db:5432/fiscus
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY in .env}
+      APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
+      APP_ENCRYPTION_KEY_PREVIOUS: ${APP_ENCRYPTION_KEY_PREVIOUS:-}
+      APP_ENCRYPTION_KEY_PREVIOUS_VERSION: ${APP_ENCRYPTION_KEY_PREVIOUS_VERSION:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   # MCP server over stdio: `docker compose --profile mcp run --rm -i mcp`
   mcp:

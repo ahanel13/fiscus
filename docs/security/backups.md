@@ -191,7 +191,7 @@ A key file on the same disk protects nothing.
 
 | Key | Where it lives | Not in |
 |---|---|---|
-| `APP_ENCRYPTION_KEY` (field encryption) | The server's `.env` or a Docker/Proxmox secret (`_FILE`); a copy in your password manager | The database, the image, the backups |
+| `APP_ENCRYPTION_KEY` (field encryption) | The server's `.env` or a Docker/Proxmox secret (`_FILE`); a copy in your password manager. After a [rotation](encryption.md#rotating-the-master-key), the old one too, while backups from before it are kept | The database, the image, the backups |
 | Backup **private** key | Your password manager, and an offline copy | The server, anywhere near the backups |
 | Backup **public** key (`BACKUP_AGE_RECIPIENTS`) | The server's `.env` | Nothing secret about it |
 | Volume key (LUKS/ZFS) | The host: typed, TPM, or a separate USB key | The volume itself, the stack, the backups |

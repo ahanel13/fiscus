@@ -9,6 +9,7 @@ const DEFINITIONS = [
   'apps/mcp/dist/env.js',
   'packages/db/dist/env.js',
   'packages/db/dist/backup-env.js',
+  'packages/db/dist/rotate-env.js',
 ];
 const OUTPUT = new URL('../.env.example', import.meta.url);
 

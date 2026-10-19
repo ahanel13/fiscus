@@ -1,9 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomBytes, randomUUID } from 'node:crypto';
-import { DecryptionError, FieldCrypto, MasterKey } from '@fiscus/crypto';
+import {
+  DecryptionError,
+  FieldCrypto,
+  MasterKey,
+  MasterKeyNotLoadedError,
+  MasterKeys,
+} from '@fiscus/crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle } from './client.js';
-import { HouseholdKeyNotFoundError, HouseholdKeyStore } from './household-key-store.js';
+import {
+  HouseholdKeyNotFoundError,
+  HouseholdKeyStore,
+  masterKeyUsage,
+  rewrapHouseholdKeys,
+} from './household-key-store.js';
+import { runMaintenanceJob } from './maintenance.js';
 import { systemContext, withContext } from './context.js';
 import { householdKeys } from './schema/household-keys.js';
 import { households } from './schema/households.js';
@@ -12,7 +24,10 @@ import { startTestDatabase, type TestDatabase } from './testing.js';
 describe('HouseholdKeyStore', () => {
   let tdb: TestDatabase;
   let handle: DbHandle;
-  const master = MasterKey.fromBase64(randomBytes(32).toString('base64'), 1);
+  const newKey = (version: number) =>
+    MasterKey.fromBase64(randomBytes(32).toString('base64'), version);
+  const v1 = newKey(1);
+  const master = new MasterKeys(v1);
   const ctx = (householdId: string) => ({
     householdId,
     table: 'transaction_notes',
@@ -61,7 +76,7 @@ describe('HouseholdKeyStore', () => {
   it('cannot unwrap with a different master key', async () => {
     const householdId = await newHousehold();
     await new HouseholdKeyStore(handle.db, master).createForHousehold(householdId);
-    const otherMaster = MasterKey.fromBase64(randomBytes(32).toString('base64'), 1);
+    const otherMaster = new MasterKeys(newKey(1));
     await expect(
       new HouseholdKeyStore(handle.db, otherMaster).activeKey(householdId),
     ).rejects.toThrow(DecryptionError);
@@ -100,6 +115,51 @@ describe('HouseholdKeyStore', () => {
   it('reports a missing household key clearly', async () => {
     await expect(new HouseholdKeyStore(handle.db, master).activeKey(randomUUID())).rejects.toThrow(
       HouseholdKeyNotFoundError,
+    );
+  });
+
+  // Last: it moves every household key in this database to the new master key.
+  it('rotates the master key: reads with either meanwhile, then only the new one (#25)', async () => {
+    const before = new HouseholdKeyStore(handle.db, master);
+    const householdId = await newHousehold();
+    await before.createForHousehold(householdId);
+    const c = ctx(householdId);
+    const ct = await new FieldCrypto(before, master).encrypt(c, 'kept through rotation');
+
+    // Mid-rotation: v2 is current, v1 still loaded. Existing keys unwrap with v1; new ones use v2.
+    const v2 = newKey(2);
+    const rotating = new MasterKeys(v2, [v1]);
+    const during = new HouseholdKeyStore(handle.db, rotating);
+    expect(await new FieldCrypto(during, rotating).decrypt(c, ct)).toBe('kept through rotation');
+    const later = await newHousehold();
+    await during.createForHousehold(later);
+
+    // A key wrapped with a master key nobody loaded (v9) is reported, not guessed at.
+    const lost = await newHousehold();
+    await new HouseholdKeyStore(handle.db, new MasterKeys(newKey(9))).createForHousehold(lost);
+
+    const rewrap = () =>
+      runMaintenanceJob(tdb.maintenanceUrl, { job: 'master-key-rewrap' }, (db) =>
+        rewrapHouseholdKeys(db, rotating),
+      );
+    const result = await rewrap();
+    expect(result.rewrapped).toBeGreaterThanOrEqual(1);
+    expect(result.missing).toEqual([{ version: 9, keys: 1 }]);
+    const usage = await runMaintenanceJob(tdb.maintenanceUrl, { job: 'master-key-rewrap' }, (db) =>
+      masterKeyUsage(db),
+    );
+    expect([...usage.keys()].sort()).toEqual([2, 9]);
+    // Again: nothing left to do but the lost one.
+    expect(await rewrap()).toEqual({ rewrapped: 0, missing: [{ version: 9, keys: 1 }] });
+
+    // Afterwards v1 can go: v2 alone reads what v1 wrapped, in a fresh process (empty cache).
+    const after = new MasterKeys(v2);
+    expect(
+      await new FieldCrypto(new HouseholdKeyStore(handle.db, after), after).decrypt(c, ct),
+    ).toBe('kept through rotation');
+    // Without the key that wrapped it, a household's data stays shut, with a clear reason.
+    await expect(new HouseholdKeyStore(handle.db, after).activeKey(lost)).rejects.toThrow(
+      MasterKeyNotLoadedError,
     );
   });
 });

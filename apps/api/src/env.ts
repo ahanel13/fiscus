@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { encryptionKeyEnv, encryptionKeyVersionEnv } from '@fiscus/crypto';
+import {
+  encryptionKeyEnv,
+  encryptionKeyVersionEnv,
+  previousEncryptionKeyEnv,
+  previousEncryptionKeyVersionEnv,
+} from '@fiscus/crypto';
 import { booleanFlag, databaseUrl, defineEnv, host, logLevel, nodeEnv, port } from '@fiscus/env';
 import { signupModeSchema } from '@fiscus/shared';
 import { z } from 'zod';
@@ -12,6 +17,8 @@ export default defineEnv('api', {
   DATABASE_URL: databaseUrl,
   APP_ENCRYPTION_KEY: encryptionKeyEnv,
   APP_ENCRYPTION_KEY_VERSION: encryptionKeyVersionEnv,
+  APP_ENCRYPTION_KEY_PREVIOUS: previousEncryptionKeyEnv,
+  APP_ENCRYPTION_KEY_PREVIOUS_VERSION: previousEncryptionKeyVersionEnv,
   PUBLIC_URL: {
     schema: z.url().default('http://localhost:8080'),
     description: 'Base URL people use to reach Fiscus. Used in links (invites, password resets).',
