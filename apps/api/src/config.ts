@@ -5,6 +5,9 @@ export interface AppConfig {
   databaseUrl: string;
   encryptionKey: string;
   encryptionKeyVersion: number;
+  /** During a key rotation: the previous master key and its version (#25). */
+  encryptionKeyPrevious?: string | undefined;
+  encryptionKeyPreviousVersion?: number | undefined;
   publicUrl: string;
   signupMode: SignupMode;
   cookieSecure: boolean;

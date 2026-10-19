@@ -11,5 +11,16 @@ export {
   encryptionKeyVersionEnv,
   generateDataKey,
   MasterKey,
+  previousEncryptionKeyEnv,
+  previousEncryptionKeyVersionEnv,
 } from './master-key.js';
+export {
+  envKeyProvider,
+  type EnvKeys,
+  KeyConfigError,
+  type KeyProvider,
+  MasterKeyNotLoadedError,
+  MasterKeys,
+  masterKeysOrExit,
+} from './master-keys.js';
 export { SecretKey } from './secret-key.js';

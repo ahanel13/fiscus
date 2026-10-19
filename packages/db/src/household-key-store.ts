@@ -2,10 +2,11 @@
 import {
   type DataKeySource,
   generateDataKey,
-  type MasterKey,
+  type MasterKeys,
+  MasterKeyNotLoadedError,
   type SecretKey,
 } from '@fiscus/crypto';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { Database, Executor } from './client.js';
 import { systemContext, withContext } from './context.js';
 import { householdKeys } from './schema/household-keys.js';
@@ -45,7 +46,7 @@ export class HouseholdKeyStore implements DataKeySource {
 
   constructor(
     private readonly db: Database,
-    private readonly master: MasterKey,
+    private readonly master: MasterKeys,
     { ttlMs = 5 * 60_000, maxEntries = 1000, now = Date.now }: HouseholdKeyStoreOptions = {},
   ) {
     this.#ttlMs = ttlMs;
@@ -61,8 +62,8 @@ export class HouseholdKeyStore implements DataKeySource {
       exec.insert(householdKeys).values({
         householdId,
         version: 1,
-        wrappedKey: this.master.wrapHouseholdKey(dek, householdId, 1),
-        masterKeyVersion: this.master.version,
+        wrappedKey: this.master.current.wrapHouseholdKey(dek, householdId, 1),
+        masterKeyVersion: this.master.current.version,
       });
     try {
       if (tx) await insert(tx);
@@ -93,14 +94,20 @@ export class HouseholdKeyStore implements DataKeySource {
 
     const [row] = await withContext(this.db, systemContext(householdId), (tx) =>
       tx
-        .select({ wrappedKey: householdKeys.wrappedKey })
+        .select({
+          wrappedKey: householdKeys.wrappedKey,
+          masterKeyVersion: householdKeys.masterKeyVersion,
+        })
         .from(householdKeys)
         .where(and(eq(householdKeys.householdId, householdId), eq(householdKeys.version, version)))
         .limit(1),
     );
     if (!row) throw new HouseholdKeyNotFoundError(householdId, version);
 
-    const key = this.master.unwrapHouseholdKey(row.wrappedKey, householdId, version);
+    // With whichever master key wrapped it: the previous one, until a rotation has re-wrapped it.
+    const key = this.master
+      .version(row.masterKeyVersion)
+      .unwrapHouseholdKey(row.wrappedKey, householdId, version);
     if (this.#cache.size >= this.#maxEntries) {
       const oldest = this.#cache.keys().next().value;
       if (oldest) this.#evict(oldest);
@@ -126,4 +133,75 @@ export class HouseholdKeyStore implements DataKeySource {
     this.#cache.get(cacheKey)?.key.destroy();
     this.#cache.delete(cacheKey);
   }
+}
+
+/** How many household data keys each master key version wraps. */
+export async function masterKeyUsage(db: Database): Promise<Map<number, number>> {
+  const rows = await db
+    .select({ version: householdKeys.masterKeyVersion, n: sql<number>`count(*)::int` })
+    .from(householdKeys)
+    .groupBy(householdKeys.masterKeyVersion);
+  return new Map(rows.map((r) => [r.version, r.n]));
+}
+
+export interface RewrapResult {
+  rewrapped: number;
+  /** Wrapped with a master key that isn't loaded: left as they are. */
+  missing: { version: number; keys: number }[];
+}
+
+/**
+ * Key rotation (#25): every household data key wrapped with an older master key is unwrapped
+ * with it and wrapped again with the current one. The data keys themselves don't change, so no
+ * encrypted field is touched. Each row is updated only if no one changed it meanwhile, so it's
+ * safe to run while Fiscus is up, and again. Runs as a maintenance job (`master-key-rewrap`),
+ * since it reaches every household.
+ */
+export async function rewrapHouseholdKeys(db: Database, keys: MasterKeys): Promise<RewrapResult> {
+  const current = keys.current;
+  const stale = await db
+    .select({
+      householdId: householdKeys.householdId,
+      version: householdKeys.version,
+      masterKeyVersion: householdKeys.masterKeyVersion,
+      wrappedKey: householdKeys.wrappedKey,
+    })
+    .from(householdKeys)
+    .where(ne(householdKeys.masterKeyVersion, current.version));
+  let rewrapped = 0;
+  const missing = new Map<number, number>();
+  for (const row of stale) {
+    let master;
+    try {
+      master = keys.version(row.masterKeyVersion);
+    } catch (err) {
+      if (!(err instanceof MasterKeyNotLoadedError)) throw err;
+      missing.set(row.masterKeyVersion, (missing.get(row.masterKeyVersion) ?? 0) + 1);
+      continue;
+    }
+    const dek = master.unwrapHouseholdKey(row.wrappedKey, row.householdId, row.version);
+    try {
+      const updated = await db
+        .update(householdKeys)
+        .set({
+          wrappedKey: current.wrapHouseholdKey(dek, row.householdId, row.version),
+          masterKeyVersion: current.version,
+        })
+        .where(
+          and(
+            eq(householdKeys.householdId, row.householdId),
+            eq(householdKeys.version, row.version),
+            eq(householdKeys.masterKeyVersion, row.masterKeyVersion),
+          ),
+        )
+        .returning({ version: householdKeys.version });
+      rewrapped += updated.length;
+    } finally {
+      dek.destroy();
+    }
+  }
+  return {
+    rewrapped,
+    missing: [...missing].map(([version, n]) => ({ version, keys: n })),
+  };
 }

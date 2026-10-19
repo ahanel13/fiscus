@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { encryptionKeyEnv, encryptionKeyVersionEnv } from '@fiscus/crypto';
+import {
+  encryptionKeyEnv,
+  encryptionKeyVersionEnv,
+  previousEncryptionKeyEnv,
+  previousEncryptionKeyVersionEnv,
+} from '@fiscus/crypto';
 import { databaseUrl, defineEnv, logLevel, nodeEnv, port } from '@fiscus/env';
 
 export default defineEnv('worker', {
@@ -9,4 +14,6 @@ export default defineEnv('worker', {
   DATABASE_URL: databaseUrl,
   APP_ENCRYPTION_KEY: encryptionKeyEnv,
   APP_ENCRYPTION_KEY_VERSION: encryptionKeyVersionEnv,
+  APP_ENCRYPTION_KEY_PREVIOUS: previousEncryptionKeyEnv,
+  APP_ENCRYPTION_KEY_PREVIOUS_VERSION: previousEncryptionKeyVersionEnv,
 });

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { MasterKey } from '@fiscus/crypto';
+import { MasterKeys } from '@fiscus/crypto';
 import { Injectable } from '@nestjs/common';
 
 /**
@@ -10,11 +10,11 @@ import { Injectable } from '@nestjs/common';
  */
 @Injectable()
 export class CsrfService {
-  constructor(private readonly master: MasterKey) {}
+  constructor(private readonly master: MasterKeys) {}
 
   issue(sessionId: string | null): string {
     const nonce = randomBytes(18).toString('base64url');
-    return `${nonce}.${this.#mac(sessionId, nonce)}`;
+    return `${nonce}.${this.#mac(this.master.current.csrfKey.bytes, sessionId, nonce)}`;
   }
 
   verify(
@@ -26,14 +26,17 @@ export class CsrfService {
     if (!timingSafeEqual(Buffer.from(header), Buffer.from(cookie))) return false;
     const [nonce, mac] = header.split('.');
     if (!nonce || !mac) return false;
-    const expected = this.#mac(sessionId, nonce);
-    return (
-      mac.length === expected.length && timingSafeEqual(Buffer.from(mac), Buffer.from(expected))
-    );
+    // During a key rotation, a token signed with the previous key still counts (#25).
+    return this.master.all.some((key) => {
+      const expected = this.#mac(key.csrfKey.bytes, sessionId, nonce);
+      return (
+        mac.length === expected.length && timingSafeEqual(Buffer.from(mac), Buffer.from(expected))
+      );
+    });
   }
 
-  #mac(sessionId: string | null, nonce: string): string {
-    return createHmac('sha256', this.master.csrfKey.bytes)
+  #mac(key: Buffer, sessionId: string | null, nonce: string): string {
+    return createHmac('sha256', key)
       .update(`${sessionId ?? 'anonymous'}.${nonce}`)
       .digest('base64url');
   }

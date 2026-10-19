@@ -43,7 +43,8 @@
   },
   "bin": {
     "fiscus-backup": "./dist/backup-cli.js",
-    "fiscus-migrate": "./dist/migrate-cli.js"
+    "fiscus-migrate": "./dist/migrate-cli.js",
+    "fiscus-rotate-key": "./dist/rotate-key-cli.js"
   },
   "dependencies": {
     "@fiscus/crypto": "workspace:*",

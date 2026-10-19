@@ -32,7 +32,7 @@ household_keys (one row per household per version)
   A value copied to another row, column, table, or household fails to decrypt.
 - The header is authenticated too, so the key version can't be altered.
 - The key version travels inside the ciphertext. No separate `key_version` column is needed,
-  and rotation (#25) can re-encrypt row by row.
+  and [rotation](#rotating-the-master-key) can re-wrap row by row.
 
 ## What is encrypted
 
@@ -58,5 +58,53 @@ Deleting a household deletes its `household_keys` rows. Everything encrypted wit
 3. **Encrypt the backups too**, to an age key whose private half is also kept off the server, and
    put the database volume on an encrypted disk ([backups](backups.md)).
 4. Every service that reads household data (api, worker) needs the **same** key and version.
-5. **Never change the key in place.** Rotation (#25) increments `APP_ENCRYPTION_KEY_VERSION`
-   and re-wraps data keys. Simply replacing the key makes existing data unreadable.
+5. **Never change the key in place.** Replacing it makes existing data unreadable. To change it,
+   [rotate](#rotating-the-master-key) it.
+
+## Where keys come from
+
+The master key comes from a **key provider** (`KeyProvider` in `packages/crypto`, ADR 0014 §2.2),
+never from the database or the image. Self-hosting uses the environment one: `APP_ENCRYPTION_KEY`,
+or `APP_ENCRYPTION_KEY_FILE` pointing to a Docker or Proxmox secret. A KMS-backed provider can be
+added behind the same interface when hosting needs it.
+
+Loading **fails closed**: the api and worker don't start, and say why, if a key is missing, isn't
+32 base64 bytes, or a rotation's settings can't work (a previous key without its version, two keys
+with one version, or the same key twice). Data wrapped with a master key version that isn't loaded
+is refused with a `MasterKeyNotLoadedError` naming the version, never read with another key.
+
+## Rotating the master key
+
+Rotation (#25) replaces the master key without re-encrypting any data: each household's data key
+is unwrapped with the old master key and wrapped again with the new one. Fiscus stays up
+throughout, reading with either key and writing with the new one.
+
+1. **Generate the new key**: `openssl rand -base64 32`, and store it as you did the first one.
+2. **Load both.** In `.env`, the new key takes the old one's place with a higher version, and the
+   old one moves to `_PREVIOUS`. Set a maintenance password too:
+
+   ```bash
+   APP_ENCRYPTION_KEY=<new key>
+   APP_ENCRYPTION_KEY_VERSION=2
+   APP_ENCRYPTION_KEY_PREVIOUS=<old key>
+   APP_ENCRYPTION_KEY_PREVIOUS_VERSION=1
+   MAINTENANCE_DATABASE_PASSWORD=<openssl rand -hex 24>
+   ```
+
+   `docker compose up -d --wait` restarts the services with both, and `migrate` enables the
+   `fiscus_maintenance` login.
+3. **Re-wrap**: `docker compose --profile maintenance run --rm rotate-key`. It re-wraps every
+   household key the old master key wraps, as an audited maintenance job
+   (`maintenance.master-key-rewrap`), and is safe to run again. It exits 0 once everything uses
+   the new key; `--check` reports without changing anything.
+4. **Remove the old key** from `.env` (`APP_ENCRYPTION_KEY_PREVIOUS*`, and
+   `MAINTENANCE_DATABASE_PASSWORD`), then `docker compose up -d --wait`.
+5. **Keep a copy of the old key while you keep backups from before the rotation.** Their household
+   keys are wrapped with it: restoring one needs it as `APP_ENCRYPTION_KEY_PREVIOUS` until
+   `rotate-key` has run on the restored database. Once those backups have aged out, destroy it.
+
+CSRF tokens signed with the old key keep working while it's loaded. Sessions aren't affected.
+
+`scripts/rotation-drill.sh` runs this against a stack, and CI runs it after the end-to-end tests:
+both keys loaded, `rotate-key`, then the new key alone opens every household's data key, and the
+old key alone opens none.

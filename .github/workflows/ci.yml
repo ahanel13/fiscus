@@ -112,6 +112,10 @@ jobs:
       - name: Backup and restore drill
         run: scripts/backup-drill.sh
 
+      # Then rotates the master key on it: re-wrapped, readable with the new key alone (#25).
+      - name: Master key rotation drill
+        run: scripts/rotation-drill.sh
+
       - name: Collect logs
         if: failure()
         run: $COMPOSE logs --no-color > compose.log

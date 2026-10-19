@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { hkdfSync, randomBytes } from 'node:crypto';
+import { hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { inspect } from 'node:util';
 import { z } from 'zod';
 import { decrypt, encrypt } from './aead.js';
@@ -27,6 +27,20 @@ export const encryptionKeyVersionEnv = {
   schema: z.coerce.number().int().min(1).max(0xffffffff).default(1),
   description: 'Version number of APP_ENCRYPTION_KEY. Increase it when rotating the key.',
   example: '1',
+};
+
+/** Env spec for APP_ENCRYPTION_KEY_PREVIOUS: the key being rotated away from (#25). */
+export const previousEncryptionKeyEnv = {
+  schema: encryptionKeyEnv.schema.optional(),
+  description:
+    'During a key rotation only: the previous APP_ENCRYPTION_KEY, so data it protects can still ' +
+    'be read until fiscus-rotate-key has moved it to the new key (docs/security/encryption.md).',
+  secret: true,
+};
+
+export const previousEncryptionKeyVersionEnv = {
+  schema: z.coerce.number().int().min(1).max(0xffffffff).optional(),
+  description: 'The version APP_ENCRYPTION_KEY_PREVIOUS had (set with it).',
 };
 
 /**
@@ -73,6 +87,11 @@ export class MasterKey {
   /** HMAC key for signed CSRF tokens. */
   get csrfKey(): SecretKey {
     return this.#csrfKey;
+  }
+
+  /** Whether `other` is the same key, whatever its version says. */
+  sameKeyAs(other: MasterKey): boolean {
+    return timingSafeEqual(this.#wrapKey.bytes, other.#wrapKey.bytes);
   }
 
   toString(): string {
