@@ -34,6 +34,9 @@ Edit `.env`:
 - `APP_ENCRYPTION_KEY`: `openssl rand -base64 32`. **Back it up somewhere other than your
   database backups.** Without it, encrypted data can't be recovered
   ([why](docs/security/encryption.md)).
+- `BACKUP_AGE_RECIPIENTS`: the public key (`age1…`) that daily backups are encrypted to. Make
+  the key pair **on your own computer** with `age-keygen -o fiscus-backup-key.txt`, and keep that
+  file off the server ([backups](docs/security/backups.md)).
 - `FISCUS_VERSION=0.1.0`, so upgrades happen when you choose.
 - `FISCUS_PUBLIC_URL`: the address people will use, e.g. `https://fiscus.example.com`.
 
@@ -50,6 +53,10 @@ your household's menu to share a household.
 
 By default Fiscus listens on `127.0.0.1:8080` only. Put it behind a reverse proxy with HTTPS
 (Caddy, nginx, Traefik), or see the comments in `.env` for LAN access over plain HTTP.
+
+**Backups:** the database is dumped daily into the `db-backups` volume. Copy the encrypted files
+off the server, put the volume itself on an encrypted disk, and try a restore now and then
+([backups](docs/security/backups.md)).
 
 **Upgrading:** set `FISCUS_VERSION` to the new release, then `docker compose pull && docker compose
 up -d --wait`. The database is backed up automatically before any migration runs

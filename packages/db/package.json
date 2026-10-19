@@ -42,6 +42,7 @@
     "vitest": "catalog:"
   },
   "bin": {
+    "fiscus-backup": "./dist/backup-cli.js",
     "fiscus-migrate": "./dist/migrate-cli.js"
   },
   "dependencies": {

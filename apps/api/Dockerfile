@@ -24,9 +24,9 @@ RUN pnpm deploy --filter=@fiscus/api --prod --legacy /out
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production
-# pg_dump for the migrate job's pre-upgrade backup (upgrades.md §5), matching the Postgres 18
-# server; /backups is where it writes, as the node user.
-RUN apk add --no-cache postgresql18-client && mkdir /backups && chown node:node /backups
+# pg_dump for the pre-upgrade and scheduled backups (upgrades.md §5, security/backups.md), matching
+# the Postgres 18 server, and age to encrypt them; /backups is where they go, as the node user.
+RUN apk add --no-cache postgresql18-client age && mkdir /backups && chown node:node /backups
 WORKDIR /app
 # Files stay root-owned; the app runs as the unprivileged node user and can't modify itself.
 COPY --from=build /out .

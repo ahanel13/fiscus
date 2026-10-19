@@ -55,6 +55,8 @@ Deleting a household deletes its `household_keys` rows. Everything encrypted wit
    - **Losing the key** = losing every encrypted field (bank connections must be re-linked, notes
      are gone).
    - **Storing it with the backups** = anyone who steals the backups can read those fields.
-3. Every service that reads household data (api, worker) needs the **same** key and version.
-4. **Never change the key in place.** Rotation (#25) increments `APP_ENCRYPTION_KEY_VERSION`
+3. **Encrypt the backups too**, to an age key whose private half is also kept off the server, and
+   put the database volume on an encrypted disk ([backups](backups.md)).
+4. Every service that reads household data (api, worker) needs the **same** key and version.
+5. **Never change the key in place.** Rotation (#25) increments `APP_ENCRYPTION_KEY_VERSION`
    and re-wraps data keys. Simply replacing the key makes existing data unreadable.
