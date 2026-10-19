@@ -8,9 +8,10 @@ yours / mine / ours shared finances with settle-up, bills, goals, investments, f
 FIRE planning, AI receipt scanning, reporting, notifications, and an optional AI assistant and
 MCP server that can run on a local model.
 
-**Status:** early. [v0.1.0](https://github.com/ahanel13/fiscus/releases/tag/v0.1.0) is the core
+**Status:** early. [v0.2.0](https://github.com/ahanel13/fiscus/releases/tag/v0.2.0) is the core
 ledger: households and invites, accounts and net worth, transactions with splits and tags,
-imports from Monarch and bank CSV files, rules, and transfers between your accounts. Bank sync,
+imports from Monarch and bank CSV files, rules, and transfers between your accounts, with daily
+encrypted backups and master key rotation. Bank sync,
 budgets, bills, and the rest follow in later milestones (see the roadmap). Expect breaking
 changes before 1.0.
 
@@ -25,8 +26,8 @@ You need Docker with Compose v2, on amd64 or arm64.
 
 ```sh
 mkdir fiscus && cd fiscus
-curl -fsSLO https://raw.githubusercontent.com/ahanel13/fiscus/v0.1.0/deploy/compose/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/ahanel13/fiscus/v0.1.0/deploy/compose/.env.example -o .env
+curl -fsSLO https://raw.githubusercontent.com/ahanel13/fiscus/v0.2.0/deploy/compose/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/ahanel13/fiscus/v0.2.0/deploy/compose/.env.example -o .env
 ```
 
 Edit `.env`:
@@ -37,7 +38,7 @@ Edit `.env`:
 - `BACKUP_AGE_RECIPIENTS`: the public key (`age1…`) that daily backups are encrypted to. Make
   the key pair **on your own computer** with `age-keygen -o fiscus-backup-key.txt`, and keep that
   file off the server ([backups](docs/security/backups.md)).
-- `FISCUS_VERSION=0.1.0`, so upgrades happen when you choose.
+- `FISCUS_VERSION=0.2.0`, so upgrades happen when you choose.
 - `FISCUS_PUBLIC_URL`: the address people will use, e.g. `https://fiscus.example.com`.
 
 Then start it and find the one-time setup token:
