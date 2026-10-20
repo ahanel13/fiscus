@@ -11,7 +11,10 @@ export interface DbContext {
   householdId: string | null;
   memberId: string | null;
   userId: string | null;
-  /** Worker jobs acting for the whole household (still limited to `householdId`). */
+  /**
+   * Worker jobs acting for the whole household (still limited to `householdId`). Honored only for
+   * a session logged in as fiscus_worker (#271): the api's is ignored.
+   */
   system: boolean;
 }
 
@@ -31,7 +34,23 @@ export async function withContext<T>(
   });
 }
 
-/** Context for worker jobs that act for a whole household. */
+/**
+ * Changes who the transaction runs for, part way through: after a definer function has made the
+ * caller a member (creating or joining a household), the rest runs as that member.
+ */
+export async function setContext(
+  tx: Executor,
+  ctx: Partial<Pick<DbContext, 'userId' | 'memberId'>>,
+): Promise<void> {
+  if (ctx.userId !== undefined) {
+    await tx.execute(sql`SELECT set_config('app.user_id', ${ctx.userId ?? ''}, true)`);
+  }
+  if (ctx.memberId !== undefined) {
+    await tx.execute(sql`SELECT set_config('app.member_id', ${ctx.memberId ?? ''}, true)`);
+  }
+}
+
+/** Context for worker jobs that act for a whole household. Works only as fiscus_worker (#271). */
 export const systemContext = (householdId: string): DbContext => ({
   householdId,
   memberId: null,

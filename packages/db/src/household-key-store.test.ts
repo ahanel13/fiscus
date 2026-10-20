@@ -23,7 +23,10 @@ import { startTestDatabase, type TestDatabase } from './testing.js';
 
 describe('HouseholdKeyStore', () => {
   let tdb: TestDatabase;
+  // Creating households and keys outside a request, and crypto-shredding, are worker jobs (system
+  // context, #271); the api reads keys as fiscus_app, through fiscus_household_key().
   let handle: DbHandle;
+  let app: DbHandle;
   const newKey = (version: number) =>
     MasterKey.fromBase64(randomBytes(32).toString('base64'), version);
   const v1 = newKey(1);
@@ -36,7 +39,7 @@ describe('HouseholdKeyStore', () => {
   });
 
   // household_keys references households, so each test needs a real household row.
-  // Row-level security requires the household's own context to create it.
+  // Row-level security requires the household's own (system) context to create it.
   const newHousehold = async () => {
     const id = randomUUID();
     await withContext(handle.db, systemContext(id), (tx) =>
@@ -47,11 +50,13 @@ describe('HouseholdKeyStore', () => {
 
   beforeAll(async () => {
     tdb = await startTestDatabase();
-    handle = createDb(tdb.appUrl);
+    handle = createDb(tdb.workerUrl);
+    app = createDb(tdb.appUrl);
   }, 120_000);
 
   afterAll(async () => {
     await handle?.close();
+    await app?.close();
     await tdb?.stop();
   });
 
@@ -60,7 +65,7 @@ describe('HouseholdKeyStore', () => {
     const householdId = await newHousehold();
     await store.createForHousehold(householdId);
 
-    const crypto = new FieldCrypto(store, master);
+    const crypto = new FieldCrypto(new HouseholdKeyStore(app.db, master), master);
     const c = ctx(householdId);
     const ct = await crypto.encrypt(c, 'note');
     expect(await crypto.decrypt(c, ct)).toBe('note');

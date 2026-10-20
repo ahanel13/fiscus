@@ -31,7 +31,8 @@ curl -fsSL https://raw.githubusercontent.com/ahanel13/fiscus/v0.2.0/deploy/compo
 ```
 
 Edit `.env`:
-- `POSTGRES_PASSWORD` and `APP_DATABASE_PASSWORD`: `openssl rand -hex 24` for each.
+- `POSTGRES_PASSWORD` and `APP_DATABASE_PASSWORD`: `openssl rand -hex 24` for each. Optionally
+  `WORKER_DATABASE_PASSWORD` too, for the worker's own database role; unset, it uses the app's.
 - `APP_ENCRYPTION_KEY`: `openssl rand -base64 32`. **Back it up somewhere other than your
   database backups.** Without it, encrypted data can't be recovered
   ([why](docs/security/encryption.md)).

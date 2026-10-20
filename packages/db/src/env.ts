@@ -17,6 +17,13 @@ export default defineEnv('migrate', {
     description: 'If set, migrate enables login for the fiscus_app role with this password.',
     secret: true,
   },
+  WORKER_DATABASE_PASSWORD: {
+    schema: z.string().min(12).optional(),
+    description:
+      'If set, migrate enables login for the fiscus_worker role with this password: the role the ' +
+      'worker connects as, the only one system context works for.',
+    secret: true,
+  },
   MAINTENANCE_DATABASE_PASSWORD: {
     schema: z.string().min(12).optional(),
     description:

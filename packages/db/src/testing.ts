@@ -5,14 +5,17 @@ import { runMigrations } from './migrate.js';
 export interface TestDatabase {
   /** Connects as the schema owner (bypasses nothing RLS-wise, but owns the tables). */
   ownerUrl: string;
-  /** Connects as fiscus_app, the role services use. */
+  /** Connects as fiscus_app, the role the api uses. */
   appUrl: string;
+  /** Connects as fiscus_worker: fiscus_app's privileges, plus system context (#271). */
+  workerUrl: string;
   /** Connects as fiscus_maintenance (BYPASSRLS). */
   maintenanceUrl: string;
   stop(): Promise<void>;
 }
 
 const APP_PASSWORD = 'test-app-password';
+const WORKER_PASSWORD = 'test-worker-password';
 const MAINTENANCE_PASSWORD = 'test-maintenance-password';
 
 /** Starts a throwaway Postgres 18 with all migrations applied. Requires Docker. */
@@ -26,6 +29,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
   const ownerUrl = container.getConnectionUri();
   await runMigrations(ownerUrl, {
     appPassword: APP_PASSWORD,
+    workerPassword: WORKER_PASSWORD,
     maintenancePassword: MAINTENANCE_PASSWORD,
   });
 
@@ -39,6 +43,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
   return {
     ownerUrl,
     appUrl: withRole('fiscus_app', APP_PASSWORD),
+    workerUrl: withRole('fiscus_worker', WORKER_PASSWORD),
     maintenanceUrl: withRole('fiscus_maintenance', MAINTENANCE_PASSWORD),
     stop: async () => {
       await container.stop();

@@ -5,7 +5,7 @@ import {
   auditEvents,
   type DbHandle,
   type Executor,
-  systemContext,
+  setContext,
   withContext,
 } from '@fiscus/db';
 import { Inject, Injectable } from '@nestjs/common';
@@ -122,14 +122,32 @@ export class HouseholdScope {
     );
   }
 
-  /** For acting in a household before a membership exists (creating it, joining it). */
-  asSystem<T>(
+  /**
+   * For becoming a member: creating a household, or joining one. `enter` runs in the household's
+   * context with the user (if known yet) and no member, and makes the membership through a
+   * definer function that checks that context (fiscus_create_household, fiscus_join_household;
+   * #271). Then `fn` runs as the new member, under the usual policies. The api never has system
+   * context: only the worker's database role does.
+   */
+  join<T>(
     householdId: string,
-    actor: Actor,
-    fn: (tx: Executor, activity: HouseholdActivity) => Promise<T>,
+    userId: string | null,
+    enter: (tx: Executor) => Promise<{ userId: string; memberId: string }>,
+    fn: (tx: Executor, activity: HouseholdActivity, member: { memberId: string }) => Promise<T>,
   ): Promise<T> {
-    return withContext(this.db.db, systemContext(householdId), (tx) =>
-      this.#guarded(tx, householdId, actor, fn),
+    return withContext(
+      this.db.db,
+      { householdId, memberId: null, userId, system: false },
+      async (tx) => {
+        const who = await enter(tx);
+        await setContext(tx, who);
+        return this.#guarded(
+          tx,
+          householdId,
+          { kind: 'user', userId: who.userId, memberId: who.memberId },
+          (tx, activity) => fn(tx, activity, { memberId: who.memberId }),
+        );
+      },
     );
   }
 

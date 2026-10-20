@@ -48,6 +48,22 @@ describe('architecture', () => {
     );
   });
 
+  // System context works only for the worker's database role (migration 0028), so the database
+  // would ignore it from the api anyway. This keeps code from relying on it (#271).
+  it('never asks for system context', () => {
+    const offenders = sources(SRC)
+      .map((path) => relative(SRC, path))
+      .filter((rel) =>
+        /\bsystemContext\b|\bsystem:\s*true\b|app\.system/.test(
+          readFileSync(join(SRC, rel), 'utf8'),
+        ),
+      );
+    expect(
+      offenders,
+      'Use a SECURITY DEFINER function that checks its context instead (see migration 0028)',
+    ).toEqual([]);
+  });
+
   it('keeps the allow-list honest (no stale entries)', () => {
     const files = new Set(sources(SRC).map((path) => relative(SRC, path)));
     expect(Object.keys(DIRECT_DB_ALLOWED).filter((rel) => !files.has(rel))).toEqual([]);

@@ -102,8 +102,8 @@ jobs:
 
       - name: Start a fresh stack
         run: |
-          printf 'POSTGRES_PASSWORD=%s\nAPP_DATABASE_PASSWORD=%s\nAPP_ENCRYPTION_KEY=%s\n' \
-            "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" "$(openssl rand -base64 32)" \
+          printf 'POSTGRES_PASSWORD=%s\nAPP_DATABASE_PASSWORD=%s\nWORKER_DATABASE_PASSWORD=%s\nAPP_ENCRYPTION_KEY=%s\n' \
+            "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" "$(openssl rand -base64 32)" \
             > deploy/compose/.env
           $COMPOSE up -d --build --wait
           token=$($COMPOSE logs api | grep -o 'setup token: [A-Za-z0-9_-]*' | tail -1 | cut -d' ' -f3)

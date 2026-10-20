@@ -47,21 +47,25 @@ describe('account visibility (RLS)', () => {
   let tdb: TestDatabase;
   let owner: pg.Client;
   let app: pg.Client;
+  let worker: pg.Client;
 
+  /** As fiscus_app; or as fiscus_worker, the only role system context works for (#271). */
   async function as<T>(
     ctx: { household?: string; member?: string; user?: string; system?: boolean },
     fn: (q: pg.Client) => Promise<T>,
+    client: 'app' | 'worker' = ctx.system ? 'worker' : 'app',
   ): Promise<T> {
-    await app.query('BEGIN');
+    const c = client === 'worker' ? worker : app;
+    await c.query('BEGIN');
     try {
-      await app.query(
+      await c.query(
         `SELECT set_config('app.household_id', $1, true), set_config('app.member_id', $2, true),
                 set_config('app.user_id', $3, true), set_config('app.system', $4, true)`,
         [ctx.household ?? '', ctx.member ?? '', ctx.user ?? '', ctx.system ? 'on' : 'off'],
       );
-      return await fn(app);
+      return await fn(c);
     } finally {
-      await app.query('ROLLBACK');
+      await c.query('ROLLBACK');
     }
   }
   const asMember = <T>(
@@ -92,7 +96,8 @@ describe('account visibility (RLS)', () => {
     tdb = await startTestDatabase();
     owner = new pg.Client({ connectionString: tdb.ownerUrl });
     app = new pg.Client({ connectionString: tdb.appUrl });
-    await Promise.all([owner.connect(), app.connect()]);
+    worker = new pg.Client({ connectionString: tdb.workerUrl });
+    await Promise.all([owner.connect(), app.connect(), worker.connect()]);
 
     await owner.query(
       `INSERT INTO households (id, name, base_currency, timezone) VALUES ($1, 'H', 'USD', 'UTC'), ($2, 'X', 'USD', 'UTC')`,
@@ -146,7 +151,7 @@ describe('account visibility (RLS)', () => {
   }, 120_000);
 
   afterAll(async () => {
-    await Promise.all([owner?.end(), app?.end()]);
+    await Promise.all([owner?.end(), app?.end(), worker?.end()]);
     await tdb?.stop();
   });
 
@@ -232,6 +237,17 @@ describe('account visibility (RLS)', () => {
       const levels = (await q.query('SELECT DISTINCT level FROM fiscus_account_access()')).rows;
       expect(levels).toEqual([{ level: 'owner' }]);
     });
+  });
+
+  it('ignores system context from the app role (#271)', async () => {
+    await as(
+      { household: H, system: true },
+      async (q) => {
+        expect((await q.query('SELECT 1 FROM accounts')).rowCount).toBe(0);
+        expect((await q.query('SELECT 1 FROM fiscus_account_access()')).rowCount).toBe(0);
+      },
+      'app',
+    );
   });
 
   it('evaluates access once per statement, not once per row', async () => {

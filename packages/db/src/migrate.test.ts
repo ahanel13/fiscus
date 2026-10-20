@@ -34,12 +34,24 @@ describe('migrations', () => {
     const rows = await query(
       tdb.ownerUrl,
       `SELECT rolname, rolcanlogin, rolbypassrls FROM pg_roles
-       WHERE rolname IN ('fiscus_app', 'fiscus_maintenance') ORDER BY rolname`,
+       WHERE rolname IN ('fiscus_app', 'fiscus_worker', 'fiscus_maintenance', 'fiscus_steward')
+       ORDER BY rolname`,
     );
     expect(rows).toEqual([
       { rolname: 'fiscus_app', rolcanlogin: true, rolbypassrls: false },
       { rolname: 'fiscus_maintenance', rolcanlogin: true, rolbypassrls: true },
+      { rolname: 'fiscus_steward', rolcanlogin: false, rolbypassrls: true },
+      { rolname: 'fiscus_worker', rolcanlogin: true, rolbypassrls: false },
     ]);
+  });
+
+  // A dump doesn't carry role memberships, so a restore into a fresh server loses this one.
+  it("gives the worker the app's privileges again on every run (#271)", async () => {
+    const member = `SELECT pg_has_role('fiscus_worker', 'fiscus_app', 'MEMBER') AS m`;
+    await query(tdb.ownerUrl, 'REVOKE fiscus_app FROM fiscus_worker');
+    expect(await query(tdb.ownerUrl, member)).toEqual([{ m: false }]);
+    await runMigrations(tdb.ownerUrl);
+    expect(await query(tdb.ownerUrl, member)).toEqual([{ m: true }]);
   });
 
   it('is idempotent and safe to run concurrently', async () => {
