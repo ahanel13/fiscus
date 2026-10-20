@@ -1,9 +1,12 @@
--- System context belongs to the worker (#271). Until now `app.system = on` was honored for any
--- connection as fiscus_app, so SQL injected into the api could claim to be a worker job and read
--- any household: row-level security guarded against logic bugs, not against arbitrary SQL. Now:
--- - fiscus_worker, a login role of its own, is the only session that system context works for;
--- - the api's few needs for it are narrow SECURITY DEFINER functions, each checking the context
---   it's called in.
+-- System context belongs to the worker (#271). `app.system = on` is honored for any connection as
+-- fiscus_app, so SQL injected into the api could claim to be a worker job and read any household:
+-- row-level security guards against logic bugs, not against arbitrary SQL. The fix, in two steps
+-- (expand, then contract: docs/design/upgrades.md §1.3, the previous release must still work):
+-- 1. This migration: fiscus_worker, a login role of its own; and narrow SECURITY DEFINER
+--    functions, each checking the context it's called in, for what the api used system context
+--    for. The api moves onto them and stops setting app.system.
+-- 2. In the next release: fiscus_is_system() also requires session_user = 'fiscus_worker' (#376),
+--    once no supported api relies on system context.
 -- Parameterized queries (Drizzle) remain the defense against SQL injection; this limits what one
 -- could do if it got through.
 DO $$
@@ -24,11 +27,12 @@ $$;
 GRANT fiscus_app TO fiscus_worker;
 --> statement-breakpoint
 
--- A worker job acting for the whole household: only in a session logged in as fiscus_worker.
--- session_user is the login role; neither SET ROLE nor SECURITY DEFINER changes it.
+-- A worker job acting for the whole household. Unchanged for now, since the previous release's api
+-- still uses it; step 2 adds `session_user = 'fiscus_worker'` (the login role, which neither SET
+-- ROLE nor SECURITY DEFINER changes).
 CREATE FUNCTION fiscus_is_system() RETURNS boolean
   LANGUAGE sql STABLE
-  AS $$ SELECT session_user = 'fiscus_worker' AND current_setting('app.system', true) = 'on' $$;
+  AS $$ SELECT current_setting('app.system', true) = 'on' $$;
 --> statement-breakpoint
 
 -- The three functions that honored app.system (0005, 0010), now through fiscus_is_system().

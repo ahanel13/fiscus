@@ -13,7 +13,7 @@ const MIGRATION_LOCK = 4_217_001;
 
 export interface MigrateOptions {
   appPassword?: string | undefined;
-  /** For fiscus_worker, the only role system context works for (#271). */
+  /** For fiscus_worker, the worker's login, which system context is for (#271). */
   workerPassword?: string | undefined;
   maintenancePassword?: string | undefined;
   log?: (message: string) => void;

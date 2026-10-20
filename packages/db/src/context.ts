@@ -12,8 +12,8 @@ export interface DbContext {
   memberId: string | null;
   userId: string | null;
   /**
-   * Worker jobs acting for the whole household (still limited to `householdId`). Honored only for
-   * a session logged in as fiscus_worker (#271): the api's is ignored.
+   * Worker jobs acting for the whole household (still limited to `householdId`). The worker's
+   * only: the api never sets it (#271), and from #376 only the fiscus_worker login gets it.
    */
   system: boolean;
 }
