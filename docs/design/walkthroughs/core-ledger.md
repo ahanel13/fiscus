@@ -308,9 +308,11 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 3. ~~**Merchant cleanup** (#42, F10, F20).~~ Done in #42.
 4. ~~**Transactions table** (F11), once editing is fast.~~ Done in #351.
 5. ~~**Settings sections** (F21)~~ (done in #352) and ~~**account page chart** (F5)~~ (done in #353; account groups stay with #48).
-6. **Transfer review follow-ups** (#332).
-7. Then the rest of M1.5, as planned: edit history (#46), OFX and YNAB/Actual imports (#74, #76),
-   multi-currency (#43), member-scoped rules (#58), member leaving (#62), and so on.
+6. ~~**Transfer review follow-ups** (#332).~~ Done.
+7. Then the rest of M1.5, as triaged in October 2026: the session expiry test (#379), the simpler
+   rule editor (#355, F19), account groups (#48), OFX import (#74), and the browser-side history
+   check (#264). Edit history (#46) and member-scoped rules (#58) moved to M2; the rest went to
+   later milestones ([roadmap](../../roadmap.md)).
 
 ## Decisions
 

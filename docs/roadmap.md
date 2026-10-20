@@ -53,13 +53,8 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P1] Transfers: detection and linking between accounts (excluded from spending)
 - [P1] Rules engine: conditions → actions, applied on ingest, with a "create rule from this transaction" option
 - [P1] Merchant name cleanup/normalization
-- [P1] Multi-currency: per-account currencies, daily FX rates (`FxRateProvider`), read-time conversion to the household base currency, original foreign amounts on converted purchases
 - [P0] Review workflow: "needs review" state on new transactions, mark reviewed (individually or in bulk), review queue
-- [P1] Assign a reviewer (e.g., a partner reviews shared-card transactions), plus review reminder notifications
-- [P1] Transaction edit history (per-transaction activity log, built on the audit log)
 - [P1] Edits to pending transactions carry over when they post (category, tags, notes, review state, attribution)
-- [P2] Account groups and custom ordering; account notes
-- [P3] Business tracking: mark accounts/transactions as business, with business-only reports (Schedule C-friendly export)
 
 **Epic: Shared finances core: yours / mine / ours** (`area:shared`), see [ADR 0006](adr/0006-shared-finances-yours-mine-ours.md)
 - [P0] Household members model: display name, color, avatar. N members, UI tuned for 2
@@ -70,11 +65,8 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P0] `VisibilityScope` + `lens` param (me / member / shared / all) on every read endpoint
 - [P0] Cross-member leakage test suite (private and balance-only accounts, transfers, aggregates)
 - [P1] Global lens switcher in the web shell, hidden for single-member households
-- [P1] Member-scoped rules
 - [P0] Shared purchases show the payer, never the account; transfers show the counterpart member (ADR 0006 F1)
-- [P1] Attribution activity feed with "flag change", plus a disputed state in settle-up (F6)
 - [P1] "Visible to you" labeling on all aggregates; `private` not offered on joint accounts in two-member households (F2, F3)
-- [P2] Member leaving / separation flow (account reassignment, final settle-up, personal export)
 
 **Epic: Time ranges & period navigation** (`area:web`), see [ADR 0011](adr/0011-time-ranges-and-periods.md)
 - [P0] `DateRangeSpec` / `Granularity` / `Comparison` zod schemas, plus the server-side `resolveRange()` with household timezone and an edge-case test suite
@@ -83,14 +75,24 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P0] Partial-period marking, and averages that skip empty periods
 - [P1] URL-synced state, plus a per-member remembered default per page (server preference)
 - [P1] Household settings: timezone, week start, fiscal year start month, posted vs transaction date basis
-- [P2] "Sync range across pages" member toggle
-- [P2] Budget month start day (mid-month pay cycles)
 
 **Epic: File import** (`area:aggregation`)
 - [P0] CSV import with column mapping, saved mapping profiles, and a dedupe preview
-- [P1] OFX/QFX import
 - [P1] **Import from Monarch** (transactions, accounts, categories, tags, balance history), for a smooth migration
-- [P2] Import from YNAB / Actual exports
+
+## M1.5 · Ledger polish
+Ledger features a usable first version doesn't need, split from M1 so M1 ends at a usable app.
+Triaged in October 2026: what M2 builds on moved there, and the rest went to the milestone it
+belongs to, or to the backlog.
+
+**Epic: File import** (`area:aggregation`)
+- [P1] OFX/QFX import (#74)
+
+**Polish** (`area:ledger`, `area:web`, `area:auth`)
+- [P1] The browser checks that the server's activity history extends what it last verified (ADR 0013 §4, #264)
+- [P2] Account groups and custom ordering; account notes (#48)
+- [P3] Rule editor: start simple, add conditions as needed (#355)
+- [P3] A test for session expiry: 7 days idle, 30 days absolute (#379)
 
 ## M2 · Bank aggregation
 **Epic: Plaid integration** (`area:aggregation`)
@@ -115,6 +117,10 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P2] Venmo / PayPal / Cash App statement import to enrich "VENMO *" transactions with counterparty and memo
 - [P3] Browser extension for live order sync
 
+**From the ledger, for synced transactions** (`area:ledger`, `area:shared`)
+- [P1] Transaction edit history (per-transaction activity log, built on the audit log) (#46)
+- [P1] Member-scoped rules (#58)
+
 ## M3 · Budgeting
 **Epic: Flexible budgeting** (`area:budget`)
 - [P0] Budget model: period, strategy, allocations, rollover. Strategy engine interface in `packages/domain`
@@ -126,6 +132,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P1] Switch strategy without data loss, with a preview of the effect
 - [P2] Budget templates and "copy last month" / "use 3-month average"
 - [P1] Annual budget view and yearly totals per category
+- [P2] Budget month start day (mid-month pay cycles) (#71)
 - [P0] Budget scope: shared (household) or personal (member), each with its own strategy
 
 **Epic: Couples & shared costs** (`area:shared`), see [ADR 0006](adr/0006-shared-finances-yours-mine-ours.md) §7
@@ -137,6 +144,8 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P1] Allowances / fun money: a shared budget line funds a personal budget. Others see the allocation only, with a setup notice that joint-account spending stays visible (F5)
 - [P1] "Ours" overview page: shared spending, split fairness, balances owed, funding status
 - [P2] Settle-up reminders and monthly settlement summary notification
+- [P1] Attribution activity feed with "flag change", plus a disputed state in settle-up (F6, #60)
+- [P2] Consent requests with a 14-day expiry and an archive fallback (ADR 0012, #265). Departures as a whole: [ADR 0012](adr/0012-member-lifecycle.md)
 
 ## M4 · Bills, recurring & notifications
 **Epic: Bill & recurring tracking** (`area:bills`)
@@ -146,6 +155,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P1] Responsible member per bill. Reminders go to that member
 - [P1] Credit card statement due dates (from Plaid liabilities)
 - [P2] Subscription audit view (price increases, unused subscriptions)
+- [P1] Assign a reviewer (e.g., a partner reviews shared-card transactions), plus review reminder notifications (#45)
 
 **Epic: Notifications** (`area:notifications`)
 - [P0] `NotificationChannel` interface, SMTP email channel, templated emails (MJML/React Email)
@@ -194,6 +204,7 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P1] Export: CSV/XLSX/PDF
 - [P2] Custom saved reports
 - [P2] Scheduled report emails
+- [P1] Multi-currency: daily FX rates (`FxRateProvider`), read-time conversion to the household base currency, original foreign amounts on converted purchases. Accounts and transactions already store their currency (#43)
 
 ## M8 · Forecasting, retirement & FIRE
 **Epic: Planning engine** (`area:planning`), see [ADR 0010](adr/0010-forecasting-retirement-fire.md)
@@ -261,6 +272,13 @@ issue, filed once this plan is approved. `[P0]`–`[P3]` = priority.
 - [P1] Reverse proxy examples (Caddy, Traefik, Nginx Proxy Manager)
 - [P1] Plaid setup guide (developer account, production access, webhooks via a public URL or tunnel)
 - [P2] Helm chart / Proxmox helper scripts
+- [P2] Import from YNAB / Actual exports, for people switching apps (#76)
+
+---
+
+## Backlog (no milestone)
+- [P2] "Sync range across pages" member toggle (#70)
+- [P3] Business tracking: mark accounts/transactions as business, with business-only reports (Schedule C-friendly export) (#49)
 
 ---
 
