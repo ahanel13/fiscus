@@ -239,6 +239,35 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     refused(await patch(f.B, `/accounts/${f.accA}`, { isBusiness: true }));
   },
   'ACC-11/VIEW': async () => refused(await patch(f.V, `/accounts/${f.accA}`, { isBusiness: true })),
+  // Your own arrangement of the accounts list: anyone arranges what they see, privately.
+  'ACC-12/OWN': async () => {
+    const layout = { groups: [{ name: 'Mine', accountIds: [f.accAprivate] }], ungrouped: [f.accB] };
+    ok(await f.A.request('PUT', url('/account-layout'), layout));
+    expect((await f.A.get(url('/account-layout'))).body.data).toMatchObject({
+      groups: [{ name: 'Mine', accountIds: [f.accAprivate] }],
+      ungrouped: [f.accB],
+    });
+  },
+  'ACC-12/MEM': async () => {
+    // Someone else's account is fine to arrange; one you can't see is "no such account".
+    ok(await f.B.request('PUT', url('/account-layout'), { groups: [], ungrouped: [f.accA] }));
+    refused(
+      await f.B.request('PUT', url('/account-layout'), { groups: [], ungrouped: [f.accAprivate] }),
+      422,
+      'unknown_account',
+    );
+    expect((await f.B.get(url('/account-layout'))).body.data).toEqual({
+      groups: [],
+      ungrouped: [f.accA],
+    });
+  },
+  'ACC-12/VIEW': async () => {
+    const layout = { groups: [{ name: 'Watching', accountIds: [f.accAview] }], ungrouped: [] };
+    ok(await f.V.request('PUT', url('/account-layout'), layout));
+    expect((await f.V.get(url('/account-layout'))).body.data.groups).toMatchObject([
+      { name: 'Watching', accountIds: [f.accAview] },
+    ]);
+  },
 
   // ── 4.3 Transactions ──
   'TXN-01/OWN': async () => ok(await f.A.get(url(`/transactions/${f.tPriv}`))),

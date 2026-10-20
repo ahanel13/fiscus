@@ -37,6 +37,8 @@ erDiagram
     households ||--o{ invites : issues
     household_members ||--o{ personal_access_tokens : owns
     household_members ||--o{ member_preferences : has
+    household_members ||--o{ account_groups : arranges
+    household_members ||--o{ account_placements : arranges
     households ||--o{ audit_events : "scoped to"
 
     households ||--o{ aggregation_credentials : "own Plaid keys"
@@ -200,10 +202,16 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 | balance_mode | enum `transactions`/`value` | Bank-style accounts follow transactions; assets (house, car) are valued by hand ([accounts and visibility §5](accounts-and-visibility.md#5-balances)) |
 | include_in_net_worth | bool | |
 | is_business | bool default false | Default business flag for the account's transactions |
-| sort_order | int | |
+| sort_order | int | The household's default order. Each member's own order is in `account_placements` (#48) |
 | notes_enc | bytea null | |
 | closed_at | timestamptz null | |
 | version | int | |
+
+**`account_groups`** and **`account_placements`**: how a member arranges their accounts list (#48). Private to that member under RLS, like `member_preferences`, so an arrangement never changes anyone's access.
+- `account_groups`: `id`, `household_id`, `member_id`, `name` (1–60 characters), `sort_order`.
+- `account_placements`: `(member_id, account_id)` PK, `household_id`, `group_id` null, `sort_order`. With no group, the account stays in its type's section, in the member's order. Deleting a group clears only `group_id` (`ON DELETE SET NULL (group_id)`), so its accounts go back to their sections.
+- A placement is kept while the account is hidden from its member, so the account comes back where they put it.
+- The accounts list orders by the member's groups, then their placements, then `accounts.sort_order`, then name.
 
 **`account_owners`**: `(account_id, member_id)` PK, `household_id`, `share_bps`. Deferred triggers enforce **≥1 owner** and **Σ share_bps = 10 000** per account at commit. Owners must be active, non-viewer members, and a member who owns accounts can't become a viewer or leave until they're handed over.
 

@@ -286,6 +286,56 @@ describe('transaction visibility (RLS)', () => {
     });
   });
 
+  it('keeps a member’s account layout private to them, and cleans it up (#48)', async () => {
+    const acct = accounts[0]!.id;
+    const group = randomUUID();
+    await owner.query(
+      `INSERT INTO account_groups (id, household_id, member_id, name, sort_order) VALUES ($1, $2, $3, 'Everyday', 0)`,
+      [group, H, people.A.member],
+    );
+    await owner.query(
+      `INSERT INTO account_placements (household_id, member_id, account_id, group_id, sort_order) VALUES ($1, $2, $3, $4, 0)`,
+      [H, people.A.member, acct, group],
+    );
+    await asMember('A', async (q) => {
+      expect((await q.query('SELECT name FROM account_groups')).rows).toEqual([
+        { name: 'Everyday' },
+      ]);
+      expect((await q.query('SELECT 1 FROM account_placements')).rowCount).toBe(1);
+    });
+    await asMember('B', async (q) => {
+      expect((await q.query('SELECT 1 FROM account_groups')).rowCount).toBe(0);
+      expect((await q.query('SELECT 1 FROM account_placements')).rowCount).toBe(0);
+      const err = await errorOf(() =>
+        q.query(
+          `INSERT INTO account_groups (id, household_id, member_id, name, sort_order) VALUES ($1, $2, $3, 'Mine', 0)`,
+          [randomUUID(), H, people.A.member],
+        ),
+      );
+      expect(err?.message).toMatch(/row-level security/);
+    });
+    // Nobody else's group: B can't place an account in A's.
+    const crossed = await errorOf(() =>
+      owner.query(
+        `INSERT INTO account_placements (household_id, member_id, account_id, group_id, sort_order) VALUES ($1, $2, $3, $4, 0)`,
+        [H, people.B.member, acct, group],
+      ),
+    );
+    expect(crossed?.message).toMatch(/account_placements_group_fk/);
+
+    // Deleting the group sends the account back to its type's section, keeping its place.
+    await owner.query('DELETE FROM account_groups WHERE id = $1', [group]);
+    expect(
+      (
+        await owner.query(
+          'SELECT group_id, sort_order FROM account_placements WHERE account_id = $1',
+          [acct],
+        )
+      ).rows,
+    ).toEqual([{ group_id: null, sort_order: 0 }]);
+    await owner.query('DELETE FROM account_placements WHERE account_id = $1', [acct]);
+  });
+
   it('dates transactions by the authorized date when the household prefers it (#69)', async () => {
     const { rows } = await owner.query(
       `INSERT INTO transactions (id, household_id, account_id, amount_minor, currency, authorized_date, posted_date,

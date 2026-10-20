@@ -2,6 +2,8 @@
 import { etagFor, parseIfMatch } from '@fiscus/domain';
 import {
   type Account,
+  type AccountLayout,
+  accountLayoutSchema,
   accountsQuerySchema,
   type BalancePoint,
   createAccountSchema,
@@ -38,6 +40,7 @@ import {
   HouseholdGuard,
   HouseholdRoles,
 } from '../households/household-context.js';
+import { AccountLayoutService } from './account-layout.service.js';
 import { AccountsService } from './accounts.service.js';
 
 /**
@@ -47,7 +50,25 @@ import { AccountsService } from './accounts.service.js';
 @Controller('api/v1/households/:householdId')
 @UseGuards(HouseholdGuard)
 export class AccountsController {
-  constructor(private readonly accounts: AccountsService) {}
+  constructor(
+    private readonly accounts: AccountsService,
+    private readonly layout: AccountLayoutService,
+  ) {}
+
+  /** ACC-12: your own arrangement of the accounts list: groups and order, for accounts you see. */
+  @Get('account-layout')
+  async getLayout(@Household() ctx: HouseholdContext): Promise<{ data: AccountLayout }> {
+    return { data: await this.layout.get(ctx) };
+  }
+
+  /** ACC-12: replaces your arrangement. Anyone in the household arranges their own, viewers too. */
+  @Put('account-layout')
+  async setLayout(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(accountLayoutSchema)) body: z.infer<typeof accountLayoutSchema>,
+  ): Promise<{ data: AccountLayout }> {
+    return { data: await this.layout.set(ctx, body) };
+  }
 
   /** ACC-05: every visible account, narrowed by the lens. */
   @Get('accounts')
