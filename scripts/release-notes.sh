@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Writes the top of a release's notes (docs/design/upgrades.md §7): how to upgrade, the migrations
-# since the previous release and whether rolling back needs a restore, and each image's digest.
+# since the previous release and whether rolling back needs a restore, and each image's digest
+# (what `docker pull` resolves the tag to, and what a rebuild from the tag reproduces).
 # GitHub's generated changelog follows it. Usage: release-notes.sh <tag> <owner> <digests dir>
 set -euo pipefail
 
@@ -52,7 +53,9 @@ fi
 echo
 echo "## Images"
 echo
-echo "Multi-arch (amd64, arm64), with build provenance and an SBOM attached."
+echo "Multi-arch (amd64, arm64). Each one is reproducible from this tag, signed with cosign, and has"
+echo "an SBOM per platform, attested to the image and attached below. To check that what you run is"
+echo "exactly this release, see [verifying a release](https://github.com/${GITHUB_REPOSITORY:-$owner/fiscus}/blob/$tag/docs/security/verify-releases.md)."
 echo
 echo "| Service | Image | Digest |"
 echo "|---|---|---|"

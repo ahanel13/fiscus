@@ -56,7 +56,7 @@ jobs:
   images:
     name: Docker image (${{ matrix.app }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -66,15 +66,21 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      # PRs verify the amd64 build only; the release workflow (#12) builds amd64 + arm64.
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: apps/${{ matrix.app }}/Dockerfile
-          platforms: linux/amd64
-          push: false
-          cache-from: type=gha,scope=${{ matrix.app }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+      # Builds twice, the second time from scratch, and fails if the digests differ: images must be
+      # reproducible (ADR 0014 §4). PRs check amd64; the release workflow rebuilds both platforms
+      # on a second runner.
+      - name: Build twice and compare
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          first=$(scripts/build-image.sh "$APP" --platform linux/amd64 --oci "$RUNNER_TEMP/first.tar")
+          second=$(scripts/build-image.sh "$APP" --platform linux/amd64 --oci "$RUNNER_TEMP/second.tar" --no-cache)
+          echo "first:  $first"
+          echo "second: $second"
+          if [ "$first" != "$second" ]; then
+            echo "::error::fiscus-$APP built differently twice. See docs/security/verify-releases.md for finding the difference."
+            exit 1
+          fi
 
   e2e:
     name: End-to-end (compose + Playwright)
