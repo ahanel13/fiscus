@@ -143,7 +143,7 @@ export function applyMapping(
       ...(get(row, mapping.category) ? { category: get(row, mapping.category).slice(0, 100) } : {}),
       ...(tags.length ? { tags: tags.slice(0, 20) } : {}),
       ...(get(row, mapping.notes) ? { note: get(row, mapping.notes).slice(0, 5000) } : {}),
-      ...(get(row, mapping.id) ? { externalId: get(row, mapping.id).slice(0, 100) } : {}),
+      ...(get(row, mapping.id) ? { externalId: get(row, mapping.id).slice(0, 255) } : {}),
     });
   });
   return { transactions, problems };

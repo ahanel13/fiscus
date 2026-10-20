@@ -7,12 +7,13 @@ import {
   isoDateSchema,
   minorUnitsSchema,
 } from './accounts.js';
+import { currencyCodeSchema } from './households.js';
 import { categoryKindSchema } from './ledger.js';
 
 // File imports (docs/design/imports.md, permissions TXN-09/10). The browser parses the file; the
 // server receives these rows, checks every one, and stores only the resulting transactions.
 
-export const importFormatSchema = z.enum(['csv', 'monarch']);
+export const importFormatSchema = z.enum(['csv', 'ofx', 'qfx', 'monarch']);
 export type ImportFormat = z.infer<typeof importFormatSchema>;
 
 export const IMPORT_LIMITS = {
@@ -40,8 +41,11 @@ export const importRowSchema = z.object({
   tags: z.array(z.string().max(100)).max(20).optional(),
   /** Becomes the shared note. */
   note: z.string().max(5000).optional(),
-  /** The bank's or Monarch's own id: the dedupe key when present. */
-  externalId: z.string().min(1).max(100).optional(),
+  /**
+   * The bank's or Monarch's own id (OFX's FITID, up to 255 characters): the dedupe key when
+   * present.
+   */
+  externalId: z.string().min(1).max(255).optional(),
   /** Imported as reviewed (Monarch) or needing review (default). */
   reviewed: z.boolean().optional(),
   /** A person's name (Monarch's Owner column), mapped to a member in `members`. */
@@ -73,6 +77,13 @@ export const importAccountSchema = z
         type: accountTypeSchema,
         balanceMode: balanceModeSchema.optional(),
         visibility: accountVisibilitySchema.optional(),
+        /** The last 4 digits of the account number (OFX): never the whole number. */
+        mask: z
+          .string()
+          .regex(/^\d{4}$/, 'Four digits')
+          .optional(),
+        /** The statement's currency (OFX's CURDEF); otherwise the household's. */
+        currency: currencyCodeSchema.optional(),
         owners: z
           .array(z.object({ memberId: z.uuid() }))
           .min(1)
@@ -258,7 +269,7 @@ export interface ImportBatch {
   /** Null when the account is hidden from you or was removed. */
   accountName: string | null;
   memberId: string;
-  format: ImportFormat | 'ofx' | 'qfx';
+  format: ImportFormat;
   filename: string;
   transactionCount: number;
   balanceCount: number;
