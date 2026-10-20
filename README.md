@@ -8,7 +8,7 @@ yours / mine / ours shared finances with settle-up, bills, goals, investments, f
 FIRE planning, AI receipt scanning, reporting, notifications, and an optional AI assistant and
 MCP server that can run on a local model.
 
-**Status:** early. [v0.3.0](https://github.com/ahanel13/fiscus/releases/tag/v0.3.0) is the core
+**Status:** early. The [latest release](https://github.com/ahanel13/fiscus/releases/latest) is the core
 ledger: households and invites, accounts and net worth, transactions with splits and tags,
 imports from Monarch and bank CSV files, rules, and transfers between your accounts, with daily
 encrypted backups and master key rotation. Its images are reproducible and signed
@@ -27,9 +27,12 @@ You need Docker with Compose v2, on amd64 or arm64.
 
 ```sh
 mkdir fiscus && cd fiscus
-curl -fsSLO https://raw.githubusercontent.com/ahanel13/fiscus/v0.3.0/deploy/compose/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/ahanel13/fiscus/v0.3.0/deploy/compose/.env.example -o .env
+curl -fsSLO https://github.com/ahanel13/fiscus/releases/latest/download/docker-compose.yml
+curl -fsSL https://github.com/ahanel13/fiscus/releases/latest/download/env.example -o .env
 ```
+
+Both come from the latest release, and `.env` is already pinned to it (`FISCUS_VERSION`), so
+upgrades happen when you choose.
 
 Edit `.env`:
 - `POSTGRES_PASSWORD` and `APP_DATABASE_PASSWORD`: `openssl rand -hex 24` for each. Optionally
@@ -40,7 +43,6 @@ Edit `.env`:
 - `BACKUP_AGE_RECIPIENTS`: the public key (`age1…`) that daily backups are encrypted to. Make
   the key pair **on your own computer** with `age-keygen -o fiscus-backup-key.txt`, and keep that
   file off the server ([backups](docs/security/backups.md)).
-- `FISCUS_VERSION=0.3.0`, so upgrades happen when you choose.
 - `FISCUS_PUBLIC_URL`: the address people will use, e.g. `https://fiscus.example.com`.
 
 Then start it and find the one-time setup token:
@@ -61,9 +63,10 @@ By default Fiscus listens on `127.0.0.1:8080` only. Put it behind a reverse prox
 off the server, put the volume itself on an encrypted disk, and try a restore now and then
 ([backups](docs/security/backups.md)).
 
-**Upgrading:** set `FISCUS_VERSION` to the new release, then `docker compose pull && docker compose
-up -d --wait`. The database is backed up automatically before any migration runs
-([upgrades](docs/design/upgrades.md)). Read the release notes first.
+**Upgrading:** download the new release's `docker-compose.yml` (the first `curl` above), set
+`FISCUS_VERSION` in `.env` to it, then `docker compose pull && docker compose up -d --wait`. The
+database is backed up automatically before any migration runs ([upgrades](docs/design/upgrades.md)).
+Read the release notes first.
 
 **Checking what you run:** every release's images are signed, come with SBOMs, and rebuild from
 the source to the same digest. The release notes list the digests;
