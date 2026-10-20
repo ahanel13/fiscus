@@ -4,5 +4,5 @@
     "types": ["vite/client", "@testing-library/jest-dom"]
   },
   "include": ["src"],
-  "exclude": ["src/styles/tokens.test.ts"]
+  "exclude": ["src/styles/tokens.test.ts", "src/security-txt.test.ts"]
 }
