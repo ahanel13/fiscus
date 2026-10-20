@@ -16,6 +16,25 @@ json_escape() {
 printf 'window.__FISCUS_CONFIG__ = {"apiUrl":"%s","sourceUrl":"%s"};\n' \
   "$(json_escape "${API_URL:-}")" "$(json_escape "${SOURCE_URL:-}")" > /tmp/fiscus-env.js
 
+# The Content-Security-Policy lets the app call this origin; when API_URL is on another one, it
+# needs that origin too (nginx.conf). Only scheme, host, and port are written into nginx config,
+# after a strict format check.
+api_origin=''
+case "${API_URL:-}" in
+  '' | /*) ;;
+  *)
+    api_origin=$(printf '%s' "$API_URL" | sed -nE 's#^(https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?)(/.*)?$#\1#p')
+    # One line only: sed would otherwise pass along each line that matches.
+    if [ -z "$api_origin" ] || [ "$(printf '%s' "$API_URL" | wc -l)" -ne 0 ]; then
+      echo "API_URL must be a path or look like https://host[:port][/path] (got an invalid value)" >&2
+      exit 1
+    fi
+    api_origin=" $api_origin"
+    ;;
+esac
+# shellcheck disable=SC2016 # an nginx variable, not a shell one
+printf 'set $fiscus_api_origin "%s";\n' "$api_origin" > /tmp/fiscus-csp.conf
+
 rm -f /tmp/fiscus-proxy.conf
 if [ -n "${API_UPSTREAM:-}" ]; then
   # Strict format check: the value is written into nginx config.

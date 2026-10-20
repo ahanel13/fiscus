@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test.js';
 import { axeViolations } from './axe.js';
 
 // Automated accessibility checks (#32): every component is on /styleguide, so scanning it in both

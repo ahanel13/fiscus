@@ -5,17 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Fiscus</title>
-    <script>
-      // Apply the theme before first paint to avoid a flash (see src/lib/theme.ts).
-      try {
-        var t = localStorage.getItem('fiscus.theme');
-        var dark =
-          t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-        if (dark) document.documentElement.classList.add('dark');
-        if (localStorage.getItem('fiscus.density') === 'compact')
-          document.documentElement.dataset.density = 'compact';
-      } catch (e) {}
-    </script>
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" id="react-aria-pressable-style" href="/react-aria-pressable.css" />
   </head>
   <body>
     <div id="root"></div>
