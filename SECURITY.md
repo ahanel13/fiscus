@@ -46,5 +46,7 @@ Not vulnerabilities:
 ## How Fiscus is built to be safe
 
 - [Encryption at rest](docs/security/encryption.md)
+- [Backups and encrypted storage](docs/security/backups.md)
+- [Verifying a release](docs/security/verify-releases.md): reproducible, signed images with SBOMs.
 - [Tenancy and trust model](docs/adr/0005-tenancy-and-trust-model.md)
 - [Permissions matrix](docs/design/permissions.md): every rule is tested for each role.

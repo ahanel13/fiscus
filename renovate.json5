@@ -69,6 +69,14 @@
     // @types/node follows the Node runtime major in .nvmrc, which is upgraded deliberately.
     { matchPackageNames: ['@types/node'], matchUpdateTypes: ['major'], enabled: false },
 
+    // Repology gives no release dates, so the minimum release age would hold these back forever;
+    // and a pinned Alpine package that's been replaced already fails the build.
+    { matchDatasources: ['repology'], minimumReleaseAge: null },
+
+    // Base images are pinned by digest in the Dockerfiles (ADR 0014); Renovate keeps the digests
+    // current, and a new digest means a new release's images differ, as they should.
+    { matchManagers: ['dockerfile'], pinDigests: true },
+
     // Low-risk updates merge themselves once CI is green. Runtime dependencies and anything
     // affecting images or the database still get human review.
     {
@@ -90,6 +98,17 @@
       managerFilePatterns: ['/(^|/)Dockerfile$/'],
       matchStrings: ['(?<depName>turbo|corepack)@(?<currentValue>\\d+\\.\\d+\\.\\d+)'],
       datasourceTemplate: 'npm',
+    },
+    {
+      // Alpine packages pinned in Dockerfile apk add lines (postgresql18-client=18.6-r0), so a
+      // commit always installs the same ones (ADR 0014). Alpine drops old versions, which breaks
+      // the build until this bumps them. Keep the branch in step with the node image's Alpine.
+      customType: 'regex',
+      managerFilePatterns: ['/(^|/)Dockerfile$/'],
+      matchStrings: ['\\s(?<depName>[a-z0-9][a-z0-9.+_-]*)=(?<currentValue>\\d[^\\s\\\\]*-r\\d+)'],
+      datasourceTemplate: 'repology',
+      packageNameTemplate: 'alpine_3_24/{{depName}}',
+      versioningTemplate: 'loose',
     },
   ],
 }

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # Build from the repository root: docker build -f apps/worker/Dockerfile .
-ARG NODE_IMAGE=node:26-alpine
+ARG NODE_IMAGE=node:26-alpine@sha256:6f08a523443ddedf52941874c203475b0ad503e859ad70cb26ab8be9a517dbd5
 
 FROM ${NODE_IMAGE} AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH TURBO_TELEMETRY_DISABLED=1 COREPACK_ENABLE_DOWNLOAD_PROMPT=0
@@ -12,6 +12,10 @@ RUN npm install -g corepack@0.36.0 && corepack enable pnpm
 FROM base AS prune
 WORKDIR /repo
 COPY . .
+# File modes and times come from the checkout: the umask of whoever cloned it, and when. Normalize
+# them so the image doesn't depend on either (ADR 0014): times are set to now, which the build then
+# clamps to the commit's time (SOURCE_DATE_EPOCH, scripts/build-image.sh).
+RUN chmod -R u=rwX,go=rX . && find . -exec touch -h {} +
 RUN pnpm dlx turbo@2.11.3 prune @fiscus/worker --docker
 
 FROM base AS build
@@ -20,7 +24,9 @@ COPY --from=prune /repo/out/json/ .
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
 COPY --from=prune /repo/out/full/ .
 RUN pnpm turbo run build --filter=@fiscus/worker
-RUN pnpm deploy --filter=@fiscus/worker --prod --legacy /out
+# pnpm's install metadata records when it ran (prunedAt); the app doesn't need it, and the image
+# must build identically twice (ADR 0014).
+RUN pnpm deploy --filter=@fiscus/worker --prod --legacy /out && rm /out/node_modules/.modules.yaml
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production

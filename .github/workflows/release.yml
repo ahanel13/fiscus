@@ -2,8 +2,10 @@ name: Release
 
 # A SemVer tag on main (vX.Y.Z, or vX.Y.Z-rc.N for a pre-release) publishes every service's image to
 # GHCR for amd64 and arm64 (ADR 0003) and a GitHub Release (docs/design/upgrades.md §2, §7).
-# Reproducible double builds and cosign signatures follow in M2 (ADR 0014); each image already
-# carries build provenance and an SBOM, and the notes list its digest.
+# Images are verifiable (ADR 0014 §4, docs/security/verify-releases.md): each is built, pushed
+# untagged, rebuilt from scratch on another runner, and only tagged if both builds have the same
+# digest. Then it's signed with cosign (keyless, recorded in Sigstore's public log), and its SBOMs
+# are attested to it and attached to the release.
 on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+-*']
@@ -35,7 +37,7 @@ jobs:
     name: Image (${{ matrix.app }})
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -45,6 +47,8 @@ jobs:
         app: [api, worker, mcp, web]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
@@ -56,43 +60,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1.2.3 always. Unless it's a pre-release: 1.2, latest, and 1 from 1.0 on (before 1.0,
-      # minor releases may break things).
-      - id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/fiscus-${{ matrix.app }}
-          flavor: latest=false
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
-            type=semver,pattern={{major}},enable=${{ !contains(github.ref_name, '-') && !startsWith(github.ref_name, 'v0.') }}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-          labels: |
-            org.opencontainers.image.title=fiscus-${{ matrix.app }}
-            org.opencontainers.image.licenses=AGPL-3.0-or-later
-
-      - id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: apps/${{ matrix.app }}/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          provenance: mode=max
-          sbom: true
-          cache-from: type=gha,scope=release-${{ matrix.app }}
-          cache-to: type=gha,mode=max,scope=release-${{ matrix.app }}
-
-      - name: Record the digest for the release notes
+      # Untagged: nobody pulls it by a tag until it's reproduced. No build cache, so nothing from an
+      # earlier build ends up in a release.
+      - name: Build and push by digest
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
           APP: ${{ matrix.app }}
+          REPOSITORY: ghcr.io/${{ github.repository_owner }}/fiscus-${{ matrix.app }}
         run: |
           mkdir -p digests
-          echo "$DIGEST" > "digests/$APP"
+          scripts/build-image.sh "$APP" --push "$REPOSITORY" --no-cache > "digests/$APP"
+          echo "$APP: $(cat "digests/$APP")"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -100,9 +77,128 @@ jobs:
           path: digests/${{ matrix.app }}
           retention-days: 1
 
+  reproduce:
+    name: Reproduce (${{ matrix.app }})
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [api, worker, mcp, web]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: digest-${{ matrix.app }}
+          path: digests
+
+      # A fresh runner, a fresh builder, no cache: the same commit has to give the same digest.
+      - name: Rebuild and compare
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          published=$(cat "digests/$APP")
+          rebuilt=$(scripts/build-image.sh "$APP" --oci "$RUNNER_TEMP/$APP.tar")
+          echo "published: $published"
+          echo "rebuilt:   $rebuilt"
+          if [ "$published" != "$rebuilt" ]; then
+            echo "::error::fiscus-$APP didn't reproduce. See docs/security/verify-releases.md for finding the difference."
+            exit 1
+          fi
+
+  publish:
+    name: Tag, sign, SBOM (${{ matrix.app }})
+    needs: reproduce
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless signing: Sigstore issues a certificate for this workflow's identity
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, worker, mcp, web]
+    env:
+      APP: ${{ matrix.app }}
+      REPOSITORY: ghcr.io/${{ github.repository_owner }}/fiscus-${{ matrix.app }}
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: digest-${{ matrix.app }}
+          path: digests
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        id: syft
+
+      # 1.2.3 always. Unless it's a pre-release: 1.2, latest, and 1 from 1.0 on (before 1.0,
+      # minor releases may break things).
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REPOSITORY }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
+            type=semver,pattern={{major}},enable=${{ !contains(github.ref_name, '-') && !startsWith(github.ref_name, 'v0.') }}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+      - name: Tag the reproduced image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          digest=$(cat "digests/$APP")
+          args=()
+          while read -r tag; do [ -n "$tag" ] && args+=(--tag "$tag"); done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" "$REPOSITORY@$digest"
+
+      - name: Sign
+        run: cosign sign --yes "$REPOSITORY@$(cat "digests/$APP")"
+
+      # One SBOM per platform, attested to that platform's image and attached to the release.
+      - name: SBOMs
+        env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
+        run: |
+          digest=$(cat "digests/$APP")
+          mkdir -p sboms
+          for arch in amd64 arm64; do
+            platform_digest=$(docker buildx imagetools inspect --raw "$REPOSITORY@$digest" \
+              | jq -r --arg arch "$arch" '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest')
+            sbom="sboms/fiscus-$APP-${VERSION#v}-linux-$arch.spdx.json"
+            "$SYFT" scan "registry:$REPOSITORY@$platform_digest" -o "spdx-json=$sbom"
+            cosign attest --yes --type spdxjson --predicate "$sbom" "$REPOSITORY@$platform_digest"
+          done
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-${{ matrix.app }}
+          path: sboms/
+          retention-days: 1
+
   release:
     name: GitHub Release
-    needs: images
+    needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -116,6 +212,12 @@ jobs:
         with:
           pattern: digest-*
           path: digests
+          merge-multiple: true
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sbom-*
+          path: sboms
           merge-multiple: true
 
       - name: Write the release notes
@@ -132,4 +234,4 @@ jobs:
           pre=()
           if [[ "$TAG" == *-* ]]; then pre=(--prerelease --latest=false); fi
           gh release create "$TAG" --verify-tag --title "$TAG" \
-            --notes-file notes.md --generate-notes "${pre[@]}"
+            --notes-file notes.md --generate-notes "${pre[@]}" sboms/*.spdx.json

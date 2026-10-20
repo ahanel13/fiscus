@@ -63,6 +63,10 @@ off the server, put the volume itself on an encrypted disk, and try a restore no
 up -d --wait`. The database is backed up automatically before any migration runs
 ([upgrades](docs/design/upgrades.md)). Read the release notes first.
 
+**Checking what you run:** every release's images are signed, come with SBOMs, and rebuild from
+the source to the same digest. The release notes list the digests;
+[verifying a release](docs/security/verify-releases.md) shows how to check yours.
+
 ## Security
 To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a public issue.
 
