@@ -54,7 +54,7 @@ flowchart LR
 | Section | Path | Contains | Milestone |
 |---|---|---|---|
 | **Dashboard** | `/h/:id` | Net worth, cash flow, budget summary, upcoming bills, review count, recent transactions (customizable later) | M1/M7 |
-| **Accounts** | `/h/:id/accounts` | Grouped by type, balances and sparklines; detail shows history, ownership, visibility, connection health | M1 |
+| **Accounts** | `/h/:id/accounts` | Your own groups, then grouped by type (#48); balances and sparklines; detail shows history, ownership, visibility, connection health | M1 |
 | **Transactions** | `/h/:id/transactions` | The register: filters, search, bulk edit, splits, attribution, notes. Tabs: *All · Needs review · Receipts* | M1/M9 |
 | **Bills & recurring** | `/h/:id/recurring` | Calendar and list of upcoming bills, subscriptions, credit card due dates | M4 |
 | **Budget** | `/h/:id/budget` | Month view (period stepper), strategy-specific UI, shared and personal budgets | M3 |

@@ -90,7 +90,7 @@ belongs to, or to the backlog.
 
 **Polish** (`area:ledger`, `area:web`, `area:auth`)
 - [P1] The browser checks that the server's activity history extends what it last verified (ADR 0013 §4, #264)
-- [P2] Account groups and custom ordering; account notes (#48)
+- [P2] Account groups and custom ordering; account notes (#48, done)
 - [P3] Rule editor: start simple, add conditions as needed (#355)
 - [P3] A test for session expiry: 7 days idle, 30 days absolute (#379)
 

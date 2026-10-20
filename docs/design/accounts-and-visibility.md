@@ -102,6 +102,7 @@ All routes live under `/api/v1/households/:householdId/`. **Not visible ⇒ 404*
 | `GET accounts/:id/balances?range=` | vis | Snapshots for the range (ADR 0011 carry-forward) |
 | `PUT accounts/:id/balances/:date` | owner | Set a balance for a day (`value` mode, or an anchor in `transactions` mode) |
 | `GET net-worth?lens=&range=` | vis | `{ assets, liabilities, netWorth, series }`, labeled with `meta.scope = "visible_to_you"` (F3) |
+| `GET account-layout`, `PUT account-layout` | anyone, their own (ACC-12) | Your own groups and order (#48), over the accounts you can see. Private to you, like preferences; never changes access. An account you can't see → the same `422 unknown_account` as one that doesn't exist. `GET accounts` follows your order |
 
 ### Lens for money views (ADR 0006 §5, F6)
 Built once in a `VisibilityScope` (`apps/api/src/visibility/`) from the request context and `lens`.
@@ -169,8 +170,11 @@ encrypted `changes`), `account.visibility_changed`, `account.owners_changed`, `a
 
 ## 8. Web
 
-- **Accounts page:** grouped by type (cash, credit, loans, investments, property, other), with
-  totals per group and net worth "visible to you". Each account shows the viewer-relative owner
+- **Accounts page:** your own groups first (#48), then the type sections (cash, credit, loans,
+  investments, property, other), with totals per section (a mixed group nets liabilities against
+  assets, as net worth does) and net worth "visible to you". **Arrange** lets you make, rename,
+  delete and reorder groups, move accounts into them or back, and up or down; each change saves
+  at once, and only you see it. Each account shows the viewer-relative owner
   label (*Mine* · *Alex's* · *Ours*) and a visibility badge on accounts you own. It follows the lens.
 - **Add account:** name, type (subtype optional), currency, opening balance and date. Owner and
   visibility come from the finance style and can be changed in the dialog.

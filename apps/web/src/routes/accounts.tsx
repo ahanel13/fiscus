@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
   Account,
+  AccountLayout,
+  AccountLayoutInput,
   AccountType,
   AccountVisibility,
   Household,
@@ -15,7 +17,10 @@ import {
 } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import {
+  ArrowDown,
   ArrowDownRight,
+  ArrowUp,
+  ArrowUpDown,
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
@@ -29,6 +34,7 @@ import { useLocale } from 'react-aria-components';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
+  accountLayoutQuery,
   accountQuery,
   accountsQuery,
   balancesQuery,
@@ -80,13 +86,23 @@ import {
 } from '../components/ui.js';
 import {
   balanceKind,
+  buildSections,
   DEFAULT_VISIBILITY,
+  deleteGroup,
   GROUPS,
   isLiability,
+  layoutFrom,
+  moveGroup,
+  moveTo,
+  moveWithin,
   ownerLabel,
   privateAllowed,
+  renameGroup,
+  type Section,
+  sectionTotal,
   trend,
   TYPE_LABELS,
+  typeSectionKey,
   VISIBILITY,
 } from '../lib/accounts.js';
 import { type Lens, lensVisible, parseLens } from '../lib/lens.js';
@@ -130,6 +146,7 @@ export function AccountsPage() {
   });
   const [adding, setAdding] = useState(false);
   const canAdd = household.you.role !== 'viewer';
+  const arrange = useArrange(householdId);
   // One way in, which asks how: by hand, or from a file (bank connections join it in M2).
   // In the header it's an icon on a phone, as on Transactions; the empty state keeps its label.
   const addMenu = (compact: boolean) => (
@@ -181,23 +198,62 @@ export function AccountsPage() {
         ) : (
           <>
             <NetWorthCard household={household} lens={lens} range={range} />
-            {GROUPS.map((g) => {
-              const items = accounts.data.filter((a) => g.types.includes(a.type));
-              return items.length ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {arrange.draft ? (
+                <>
+                  <p className="mr-auto text-sm text-muted" role="status">
+                    Only you see how you arrange your list. It doesn’t change what anyone else can
+                    see.
+                  </p>
+                  <Button variant="secondary" size="sm" onPress={() => arrange.name(null)}>
+                    <Plus aria-hidden className="size-4" /> New group
+                  </Button>
+                  <Button size="sm" onPress={arrange.stop}>
+                    Done
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onPress={() =>
+                    arrange.start(
+                      buildSections(accounts.data, arrange.layout, { keepEmptyGroups: true }),
+                    )
+                  }
+                >
+                  <ArrowUpDown aria-hidden className="size-4" /> Arrange
+                </Button>
+              )}
+            </div>
+            {(arrange.draft ?? buildSections(accounts.data, arrange.layout)).map(
+              (section, _, all) => (
                 <AccountGroup
-                  key={g.id}
-                  label={g.label}
-                  accounts={items}
+                  key={section.key}
+                  section={section}
                   members={members}
                   householdId={householdId}
                   currency={household.baseCurrency}
                   range={{ from: range.resolved.from, label: selectionLabel(range.selection) }}
+                  arrange={arrange.draft ? { sections: all, ...arrange } : undefined}
                 />
-              ) : null;
-            })}
+              ),
+            )}
           </>
         )}
       </div>
+      {arrange.naming ? (
+        <GroupNameDialog
+          initial={arrange.naming.label}
+          onClose={() => arrange.name(undefined)}
+          onSave={(name) => {
+            const naming = arrange.naming!;
+            arrange.name(undefined);
+            if (naming.groupId) arrange.change(renameGroup(arrange.draft!, naming.groupId, name));
+            else arrange.change(arrange.draft!, name);
+          }}
+        />
+      ) : null}
       {canAdd ? (
         <AddAccountDialog
           isOpen={adding}
@@ -282,103 +338,335 @@ export function NetWorthCard({
   );
 }
 
+/** Arranging your accounts list (#48): a draft of the sections, saved as you change it. */
+function useArrange(householdId: string) {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateAccounts(householdId);
+  const layout = useQuery(accountLayoutQuery(householdId)).data;
+  const [draft, setDraft] = useState<Section[] | null>(null);
+  /** The group being named: `null` for a new one. */
+  const [naming, setNaming] = useState<{ groupId: string | null; label: string } | undefined>();
+  const save = useMutation({
+    mutationFn: async (body: AccountLayoutInput) =>
+      (await api<Data<AccountLayout>>('PUT', `${base(householdId)}/account-layout`, { body })).data,
+    onSuccess: (saved) => {
+      queryClient.setQueryData(accountLayoutQuery(householdId).queryKey, saved);
+      // A new group gets its id from the api: add it to the draft.
+      setDraft((d) => {
+        if (!d) return d;
+        const added = saved.groups
+          .filter((g) => !d.some((s) => s.groupId === g.id))
+          .map((g) => ({ key: `group:${g.id}`, label: g.name, groupId: g.id, accounts: [] }));
+        const groups = d.filter((s) => s.groupId !== null);
+        return [...groups, ...added, ...d.filter((s) => s.groupId === null)];
+      });
+      void invalidate();
+    },
+    onError: (e) => {
+      toast((e as ApiError).title, { tone: 'error' });
+      setDraft(null);
+    },
+  });
+  return {
+    layout,
+    draft,
+    naming,
+    pending: save.isPending,
+    start: (sections: Section[]) => setDraft(sections),
+    stop: () => setDraft(null),
+    name: (group: Section | null | undefined) =>
+      setNaming(
+        group === undefined
+          ? undefined
+          : { groupId: group?.groupId ?? null, label: group?.label ?? '' },
+      ),
+    change: (next: Section[], newGroup?: string) => {
+      setDraft(next);
+      save.mutate(layoutFrom(next, layout, newGroup));
+    },
+  };
+}
+
+type Arrange = ReturnType<typeof useArrange> & { sections: Section[] };
+
+function GroupNameDialog({
+  initial,
+  onClose,
+  onSave,
+}: {
+  initial: string;
+  onClose: () => void;
+  onSave: (name: string) => void;
+}) {
+  const [name, setName] = useState(initial);
+  return (
+    <Dialog
+      title={initial ? 'Rename group' : 'New group'}
+      size="sm"
+      isOpen
+      onOpenChange={(open) => !open && onClose()}
+    >
+      <Form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) onSave(name.trim());
+        }}
+        className="space-y-4"
+      >
+        <TextField
+          label="Name"
+          value={name}
+          onChange={setName}
+          maxLength={60}
+          isRequired
+          autoFocus
+          placeholder="Everyday"
+          description="Only you see your groups."
+        />
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" isDisabled={!name.trim()}>
+            {initial ? 'Rename' : 'Add group'}
+          </Button>
+        </DialogActions>
+      </Form>
+    </Dialog>
+  );
+}
+
 function AccountGroup({
-  label,
-  accounts,
+  section,
   members,
   householdId,
   currency,
   range,
+  arrange,
 }: {
-  label: string;
-  accounts: Account[];
+  section: Section;
   members: HouseholdMember[];
   householdId: string;
   currency: string;
   /** The page's range, for each account's change over it. */
   range: { from: string; label: string };
+  /** While you arrange the list. */
+  arrange?: Arrange;
 }) {
+  const { accounts, label } = section;
   const sameCurrency = accounts.every((a) => a.currency === currency);
-  const total = accounts.reduce((sum, a) => sum + (a.balance?.amountMinor ?? 0), 0);
+  const total = sectionTotal(section);
+  const headingId = `section-${section.key}`;
+  const groupIndex = arrange
+    ? arrange.sections.filter((s) => s.groupId !== null).findIndex((s) => s.key === section.key)
+    : -1;
+  const groupCount = arrange?.sections.filter((s) => s.groupId !== null).length ?? 0;
   return (
-    <section aria-labelledby={`group-${label}`}>
-      <div className="mb-2 flex items-baseline justify-between px-1">
-        <h2 id={`group-${label}`} className="font-semibold">
+    <section aria-labelledby={headingId}>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 px-1">
+        <h2 id={headingId} className="font-semibold">
           {label}
         </h2>
-        {sameCurrency ? (
+        {arrange && section.groupId ? (
+          <div className="flex flex-wrap items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Move group ${label} up`}
+              isDisabled={arrange.pending || groupIndex === 0}
+              onPress={() => arrange.change(moveGroup(arrange.sections, section.groupId!, -1))}
+            >
+              <ArrowUp aria-hidden className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Move group ${label} down`}
+              isDisabled={arrange.pending || groupIndex === groupCount - 1}
+              onPress={() => arrange.change(moveGroup(arrange.sections, section.groupId!, 1))}
+            >
+              <ArrowDown aria-hidden className="size-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => arrange.name(section)}>
+              Rename
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              isDisabled={arrange.pending}
+              onPress={() => {
+                arrange.change(deleteGroup(arrange.sections, section.groupId!));
+                toast(`Group “${label}” deleted.`, {
+                  description: accounts.length
+                    ? 'Its accounts are back in their sections.'
+                    : undefined,
+                });
+              }}
+            >
+              Delete
+            </Button>
+          </div>
+        ) : accounts.length && sameCurrency ? (
           <Amount
-            minor={total}
+            minor={total.minor}
             currency={currency}
-            kind={balanceKind(accounts[0]!.type)}
+            kind={total.kind}
             className="text-sm text-muted"
           />
         ) : null}
       </div>
+      {arrange && accounts.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted">
+          Empty. Use “Move to” on an account to put it here.
+        </p>
+      ) : null}
       {/* Not a Card: its padding would double the rows' own and squeeze the names. */}
-      <div className="rounded-xl border border-border bg-surface">
-        <ul className="divide-y divide-border">
-          {accounts.map((a) => (
-            <li key={a.id}>
-              <Link
-                to={`/h/${householdId}/accounts/${a.id}`}
-                className="flex items-center gap-3 hover:bg-surface-2"
-                style={{ minHeight: 'var(--row-h)', paddingInline: 'var(--cell-px)' }}
-              >
-                <span className="min-w-0 flex-1 py-2">
-                  {/* Long bank names wrap to a second line on a phone rather than cutting off. */}
-                  <span className="line-clamp-2 text-sm font-medium break-words sm:line-clamp-1">
-                    {a.name}
-                  </span>
-                  <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
-                    {members.length > 1 ? <span>{ownerLabel(a, members)}</span> : null}
-                    {a.mask ? <span>•••• {a.mask}</span> : null}
-                    {a.yourAccess === 'owner' && a.visibility !== 'full' ? (
-                      <Badge>{VISIBILITY[a.visibility].label}</Badge>
+      {accounts.length ? (
+        <div className="rounded-xl border border-border bg-surface">
+          <ul className="divide-y divide-border">
+            {accounts.map((a, i) => (
+              <li key={a.id}>
+                {arrange ? (
+                  <ArrangeRow
+                    account={a}
+                    section={section}
+                    first={i === 0}
+                    last={i === accounts.length - 1}
+                    arrange={arrange}
+                  />
+                ) : (
+                  <Link
+                    to={`/h/${householdId}/accounts/${a.id}`}
+                    className="flex items-center gap-3 hover:bg-surface-2"
+                    style={{ minHeight: 'var(--row-h)', paddingInline: 'var(--cell-px)' }}
+                  >
+                    <span className="min-w-0 flex-1 py-2">
+                      {/* Long bank names wrap to a second line on a phone rather than cutting off. */}
+                      <span className="line-clamp-2 text-sm font-medium break-words sm:line-clamp-1">
+                        {a.name}
+                      </span>
+                      <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+                        {members.length > 1 ? <span>{ownerLabel(a, members)}</span> : null}
+                        {a.mask ? <span>•••• {a.mask}</span> : null}
+                        {a.yourAccess === 'owner' && a.visibility !== 'full' ? (
+                          <Badge>{VISIBILITY[a.visibility].label}</Badge>
+                        ) : null}
+                        {a.closedAt ? <Badge>Closed</Badge> : null}
+                      </span>
+                    </span>
+                    {/* The change over the page's range, then the balance and when it's from. */}
+                    {a.change && a.change.amountMinor !== 0 ? (
+                      <span className="hidden text-right text-xs sm:block">
+                        <Amount minor={a.change.amountMinor} currency={a.currency} />
+                        {/* An account that began during the range counts from its first balance. */}
+                        <span className="block text-muted">
+                          {a.change.from === range.from ? (
+                            range.label
+                          ) : (
+                            <>
+                              since <DateText value={a.change.from} format="short" />
+                            </>
+                          )}
+                        </span>
+                      </span>
                     ) : null}
-                    {a.closedAt ? <Badge>Closed</Badge> : null}
-                  </span>
-                </span>
-                {/* The change over the page's range, then the balance and when it's from. */}
-                {a.change && a.change.amountMinor !== 0 ? (
-                  <span className="hidden text-right text-xs sm:block">
-                    <Amount minor={a.change.amountMinor} currency={a.currency} />
-                    {/* An account that began during the range counts from its first balance. */}
-                    <span className="block text-muted">
-                      {a.change.from === range.from ? (
-                        range.label
-                      ) : (
+                    <span className="shrink-0 text-right sm:w-32">
+                      {a.balance ? (
                         <>
-                          since <DateText value={a.change.from} format="short" />
+                          <Amount
+                            minor={a.balance.amountMinor}
+                            currency={a.currency}
+                            kind={balanceKind(a.type)}
+                            className="block text-sm font-medium"
+                          />
+                          <span className="block text-xs text-muted">
+                            as of <DateText value={a.balance.asOf} format="short" />
+                          </span>
                         </>
+                      ) : (
+                        <span className="block text-sm text-muted">No balance</span>
                       )}
                     </span>
-                  </span>
-                ) : null}
-                <span className="shrink-0 text-right sm:w-32">
-                  {a.balance ? (
-                    <>
-                      <Amount
-                        minor={a.balance.amountMinor}
-                        currency={a.currency}
-                        kind={balanceKind(a.type)}
-                        className="block text-sm font-medium"
-                      />
-                      <span className="block text-xs text-muted">
-                        as of <DateText value={a.balance.asOf} format="short" />
-                      </span>
-                    </>
-                  ) : (
-                    <span className="block text-sm text-muted">No balance</span>
-                  )}
-                </span>
-                <ChevronRight aria-hidden className="hidden size-4 shrink-0 text-muted sm:block" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
+                    <ChevronRight
+                      aria-hidden
+                      className="hidden size-4 shrink-0 text-muted sm:block"
+                    />
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+/** An account while you arrange: up, down, and "Move to" another section. */
+function ArrangeRow({
+  account: a,
+  section,
+  first,
+  last,
+  arrange,
+}: {
+  account: Account;
+  section: Section;
+  first: boolean;
+  last: boolean;
+  arrange: Arrange;
+}) {
+  const home = typeSectionKey(a);
+  const targets = [
+    ...arrange.sections
+      .filter((s) => s.groupId !== null && s.key !== section.key)
+      .map((s) => ({ key: s.key, label: s.label })),
+    ...(section.groupId !== null
+      ? [{ key: home, label: `Back to ${GROUPS.find((g) => `type:${g.id}` === home)!.label}` }]
+      : []),
+  ];
+  return (
+    <div
+      className="flex items-center gap-2"
+      style={{ minHeight: 'var(--row-h)', paddingInline: 'var(--cell-px)' }}
+    >
+      <span className="min-w-0 flex-1 py-2 text-sm font-medium break-words">{a.name}</span>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Move ${a.name} up`}
+        isDisabled={arrange.pending || first}
+        onPress={() => arrange.change(moveWithin(arrange.sections, a.id, -1))}
+      >
+        <ArrowUp aria-hidden className="size-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Move ${a.name} down`}
+        isDisabled={arrange.pending || last}
+        onPress={() => arrange.change(moveWithin(arrange.sections, a.id, 1))}
+      >
+        <ArrowDown aria-hidden className="size-4" />
+      </Button>
+      {targets.length ? (
+        <MenuTrigger>
+          <Button variant="secondary" size="sm" isDisabled={arrange.pending}>
+            Move to…
+          </Button>
+          <Menu placement="bottom end" aria-label={`Move ${a.name} to`}>
+            {targets.map((t) => (
+              <MenuItem
+                key={t.key}
+                onAction={() => arrange.change(moveTo(arrange.sections, a.id, t.key))}
+              >
+                {t.label}
+              </MenuItem>
+            ))}
+          </Menu>
+        </MenuTrigger>
+      ) : null}
+    </div>
   );
 }
 
@@ -967,7 +1255,7 @@ function OwnersList({ account, members }: { account: Account; members: Household
   );
 }
 
-/** What a non-owner sees: who owns it and how it's shared, plus notes at view-only and above. */
+/** Who owns it and how it's shared, plus its notes for owners and at view-only and above. */
 function AccountDetails({ account, members }: { account: Account; members: HouseholdMember[] }) {
   const owner = account.yourAccess === 'owner';
   return (

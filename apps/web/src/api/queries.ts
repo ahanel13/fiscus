@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
   Account,
+  AccountLayout,
   AuthStatus,
   BalancePoint,
   CashFlow,
@@ -72,6 +73,13 @@ export const serverInvitesQuery = queryOptions({
 const hh = (id: string) => `/api/v1/households/${id}`;
 
 /** With range parameters (rangeParams()), each account carries its change over the range (#353). */
+/** Your own arrangement of the accounts list: groups and order (#48). */
+export const accountLayoutQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'account-layout'],
+    queryFn: async () => (await api<Data<AccountLayout>>('GET', `${hh(id)}/account-layout`)).data,
+  });
+
 export const accountsQuery = (
   id: string,
   lens: Lens,

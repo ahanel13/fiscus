@@ -291,7 +291,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 | F21 | One long settings page | Medium | Sections: General, Members, Categories, Rules (moved from Transactions) | Fixed (#352) |
 | F2 | Six unbuilt sections in the navigation | — | Keep them: they show what Fiscus will have | Won't change |
 | F1 | Empty landing after setup | Medium | A first-run checklist on the dashboard (accounts, partner, review) until it's done | Fixed (#367) |
-| F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | Fixed (#353); groups in #48 |
+| F5 | No balance chart on account pages | Medium | Chart at the top of the account page; change and "updated" on the list | Fixed (#353); groups in #48 (done) |
 | F15 | Split is hard to find, and starts as two halves | Low | Split with the other actions; the second part takes the rest, uncategorized | Fixed (#350) |
 | F4 | "No transactions match" on a new account | Low | "No transactions yet", with Add and Import | Fixed (#350) |
 | F3 | Two time controls; empty months on the dashboard | Low | Net worth follows the page range; start cash flow at the first transaction | Fixed (#350) |
@@ -310,7 +310,7 @@ import. **Medium** means it confuses or slows down a common task. **Low** is pol
 5. ~~**Settings sections** (F21)~~ (done in #352) and ~~**account page chart** (F5)~~ (done in #353; account groups stay with #48).
 6. ~~**Transfer review follow-ups** (#332).~~ Done.
 7. Then the rest of M1.5, as triaged in October 2026: the session expiry test (#379), the simpler
-   rule editor (#355, F19), account groups (#48), OFX import (#74), and the browser-side history
+   rule editor (#355, F19, done), account groups (#48, done), OFX import (#74), and the browser-side history
    check (#264). Edit history (#46) and member-scoped rules (#58) moved to M2; the rest went to
    later milestones ([roadmap](../../roadmap.md)).
 
