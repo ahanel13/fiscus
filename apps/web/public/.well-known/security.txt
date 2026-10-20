@@ -1,0 +1,6 @@
+# Security contact for Fiscus, the software (RFC 9116). Every Fiscus server serves this file.
+# It's for problems in Fiscus itself; a problem with one particular server goes to whoever runs it.
+Contact: https://github.com/ahanel13/fiscus/security/advisories/new
+Policy: https://github.com/ahanel13/fiscus/blob/main/SECURITY.md
+Preferred-Languages: en
+Expires: 2027-10-01T00:00:00Z
