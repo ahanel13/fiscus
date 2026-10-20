@@ -50,7 +50,7 @@ services:
     environment:
       MIGRATION_DATABASE_URL: postgres://fiscus_owner:${POSTGRES_PASSWORD}@db:5432/fiscus
       APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?set APP_DATABASE_PASSWORD in .env}
-      # The worker's own role, which system context is for (#271, #376). Defaults to the app's
+      # The worker's own role, the only one system context works for (#271). Defaults to the app's
       # password: what keeps the api out of system context is the role, not the password.
       WORKER_DATABASE_PASSWORD: ${WORKER_DATABASE_PASSWORD:-${APP_DATABASE_PASSWORD}}
       # Set only to rotate the master key: enables the fiscus_maintenance login rotate-key uses.

@@ -49,7 +49,7 @@ describe('account visibility (RLS)', () => {
   let app: pg.Client;
   let worker: pg.Client;
 
-  /** As fiscus_app; or as fiscus_worker, whose system context is (#271, #376). */
+  /** As fiscus_app; or as fiscus_worker, the only role system context works for (#376). */
   async function as<T>(
     ctx: { household?: string; member?: string; user?: string; system?: boolean },
     fn: (q: pg.Client) => Promise<T>,
@@ -237,6 +237,17 @@ describe('account visibility (RLS)', () => {
       const levels = (await q.query('SELECT DISTINCT level FROM fiscus_account_access()')).rows;
       expect(levels).toEqual([{ level: 'owner' }]);
     });
+  });
+
+  it('ignores system context from the app role (#376)', async () => {
+    await as(
+      { household: H, system: true },
+      async (q) => {
+        expect((await q.query('SELECT 1 FROM accounts')).rowCount).toBe(0);
+        expect((await q.query('SELECT 1 FROM fiscus_account_access()')).rowCount).toBe(0);
+      },
+      'app',
+    );
   });
 
   it('evaluates access once per statement, not once per row', async () => {

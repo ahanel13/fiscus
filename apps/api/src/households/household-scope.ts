@@ -126,8 +126,8 @@ export class HouseholdScope {
    * For becoming a member: creating a household, or joining one. `enter` runs in the household's
    * context with the user (if known yet) and no member, and makes the membership through a
    * definer function that checks that context (fiscus_create_household, fiscus_join_household;
-   * #271). Then `fn` runs as the new member, under the usual policies. The api never uses system
-   * context: that's the worker's (#376).
+   * #271). Then `fn` runs as the new member, under the usual policies. The api never has system
+   * context: only the worker's database role does.
    */
   join<T>(
     householdId: string,
