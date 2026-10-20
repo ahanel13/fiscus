@@ -36,7 +36,8 @@ deployment gets; "Tier 2" is for hosted deployments (confidential VMs, #305) and
 | Anyone who takes a running server | A seizure, a stolen unlocked machine | Not protected, by choice: background sync, rules, and alerts need the data readable while nobody is signed in | Disclosed |
 | Plaid, banks, email providers, cloud AI providers | | Not protectable: they see what they send or receive | Disclosed |
 
-A full threat model, attack by attack with its mitigation and test, is #235.
+The full threat model, attack by attack with its mitigation, what remains, and the test that
+holds it: [threat model](../design/threat-model.md).
 
 ## Where your data goes
 
