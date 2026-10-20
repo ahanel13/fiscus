@@ -305,6 +305,41 @@ describe('system context belongs to the worker', () => {
     );
   });
 
+  it("gives a member the chain's hashes for a proof (#264), and nothing else about its events", async () => {
+    await as(app, member(people.b), async (q) => {
+      const { rows, fields } = await q.query(
+        'SELECT * FROM fiscus_household_chain_leaves(0, 10, 10)',
+      );
+      expect(fields.map((f) => f.name)).toEqual(['seq', 'entry_hash', 'leaf', 'hash_version']);
+      expect(rows.map((r) => Number(r.seq))).toEqual([1, 2]); // 2 is about a hidden account
+      const range = async (after: number, until: number, limit: number) =>
+        (
+          await q.query('SELECT seq FROM fiscus_household_chain_leaves($1, $2, $3)', [
+            after,
+            until,
+            limit,
+          ])
+        ).rows.map((r) => Number(r.seq));
+      expect(await range(2, 10, 10)).toEqual([2]);
+      expect(await range(0, 1, 10)).toEqual([1]);
+      expect(await range(0, 10, 1)).toEqual([1]);
+    });
+    await as(app, { household: H }, async (q) =>
+      expect(
+        (await q.query('SELECT 1 FROM fiscus_household_chain_leaves(0, 10, 10)')).rowCount,
+      ).toBe(0),
+    );
+    await as(app, member(people.z), async (q) =>
+      expect(
+        (await q.query('SELECT 1 FROM fiscus_household_chain_leaves(0, 10, 10)')).rowCount,
+      ).toBe(0),
+    );
+    const { rows } = await owner.query(`
+      SELECT r.rolname FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
+      WHERE p.proname = 'fiscus_household_chain_leaves'`);
+    expect(rows).toEqual([{ rolname: 'fiscus_definer' }]);
+  });
+
   it('reads wrapped household keys by household (useless without the master key)', async () => {
     await as(app, {}, async (q) => {
       const { rows } = await q.query('SELECT version FROM fiscus_household_key($1, NULL)', [X]);

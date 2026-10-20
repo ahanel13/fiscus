@@ -157,7 +157,7 @@ Deleting all rows for a household is the **crypto-shred**.
 | metadata | jsonb | **No financial plaintext.** IDs, field names, old/new *category ids*, never notes or amounts of hidden rows |
 | ip | inet null | |
 
-Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plus `changes_enc` (encrypted before/after values) per [ADR 0013](../adr/0013-tamper-evident-activity-history.md). The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. Per-transaction edit history (M1) is a filtered view over `audit_events`.
+Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plus `changes_enc` (encrypted before/after values) per [ADR 0013](../adr/0013-tamper-evident-activity-history.md). The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. `hash_version` (smallint, default 1) says how `entry_hash` was computed, and version 2 entries also store their `leaf`, SHA-256 of the canonical entry, which history proofs are made of (#264). A check constraint ties the two: version 1 has no leaf, version 2 has a 32-byte one. Per-transaction edit history (M1) is a filtered view over `audit_events`.
 
 ### 3.2 Aggregation
 
@@ -405,6 +405,7 @@ relied on it. Rolling back past 0.3.0 after that means restoring the pre-upgrade
 | `fiscus_join_household(token_hash, colors)` | steward | Accepting an invite | The token, live, for the context's household, and the user's email is the invited one |
 | `fiscus_category_in_use(category)`, `fiscus_reassign_category(from, to)` | definer, steward | Deleting a category whose transactions the caller can't all see | A valid member context; to move, an owner or member, between the household's own categories |
 | `fiscus_household_chain()` | definer | Verifying the activity history (ADR 0013) | A valid member context; the API reports only intact or not |
+| `fiscus_household_chain_leaves(after, until, limit)` | definer | History proofs (ADR 0013, #264): `(seq, entry_hash, leaf, hash_version)` only, hidden events included | A valid member context; the API returns only leaves and the head (accounts-and-visibility §6) |
 | `fiscus_household_key(household, version)` | definer | FieldCrypto's key reads | None: keys are wrapped with the master key, which is never in the database |
 
 Creating and joining make the membership, then the transaction sets `app.member_id` to it and does

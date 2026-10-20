@@ -100,6 +100,23 @@ const attribute = (c: TestClient, id: string, members: string[]) =>
     attribution: members.map((memberId) => ({ memberId })),
   });
 
+/** HH-19: the server's check, a proof from the current head (empty), and a report. */
+const checkHistory = async (c: TestClient) => {
+  ok(await c.get(url('/activity/verify')));
+  const head = (await c.get(url('/activity/proof'))).body.data.head;
+  const r = await c.get(url(`/activity/proof?after=${head.seq}&hash=${head.hash}`));
+  ok(r);
+  expect(r.body.data.leaves).toEqual([]);
+  expect(JSON.stringify(r.body)).not.toContain(f.accAprivate);
+  ok(
+    await c.post(url('/activity/integrity-reports'), {
+      lastVerified: head,
+      observed: { seq: head.seq },
+      reason: 'fold_mismatch',
+    }),
+  );
+};
+
 /** Every built cell. Rows not built yet are listed in permissions-coverage.test.ts. */
 const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   // ── 4.1 Household and membership ──
@@ -175,6 +192,10 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     ok(r);
     expect(JSON.stringify(r.body)).not.toContain(f.accAprivate);
   },
+  // Anyone checks the history for themselves, and reports a failed check (#264).
+  'HH-19/OWN': async () => checkHistory(f.A),
+  'HH-19/MEM': async () => checkHistory(f.B),
+  'HH-19/VIEW': async () => checkHistory(f.V),
 
   // ── 4.2 Accounts ──
   'ACC-04/OWN': async () => expect(await account(f.A)).toBeTruthy(),

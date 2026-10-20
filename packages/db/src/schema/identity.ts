@@ -129,8 +129,15 @@ export const auditEvents = pgTable(
       .generatedAlwaysAs(sql`coalesce(household_id, '00000000-0000-0000-0000-000000000000'::uuid)`),
     /** Position in the scope's hash chain (null only for events recorded before chaining). */
     seq: bigint({ mode: 'number' }),
-    /** SHA-256(previous entry hash ‖ canonical entry). */
+    /**
+     * The chain link (ADR 0013 §4). Version 1: SHA-256(previous entry hash ‖ canonical entry).
+     * Version 2: SHA-256(previous entry hash ‖ leaf), so a proof can be made of hashes alone (#264).
+     */
     entryHash: bytea('entry_hash'),
+    /** How entry_hash was computed. Entries from before #264 stay 1: rehashing would rewrite them. */
+    hashVersion: smallint().notNull().default(1),
+    /** Version 2 only: SHA-256(canonical entry), what a proof of the chain's growth is made of. */
+    leaf: bytea(),
     /**
      * The account an event concerns, if any. Members see such events only if they can see the
      * account (accounts-and-visibility §6). No foreign key: events outlive deleted accounts.
@@ -146,6 +153,10 @@ export const auditEvents = pgTable(
     uniqueIndex('audit_events_scope_seq')
       .on(t.scopeId, t.seq)
       .where(sql`${t.seq} IS NOT NULL`),
+    check(
+      'audit_events_hash_version',
+      sql`(${t.hashVersion} = 1 AND ${t.leaf} IS NULL) OR (${t.hashVersion} = 2 AND ${t.leaf} IS NOT NULL AND octet_length(${t.leaf}) = 32 AND ${t.seq} IS NOT NULL)`,
+    ),
   ],
 );
 

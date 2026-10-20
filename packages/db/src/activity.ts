@@ -5,11 +5,18 @@ import type { Executor } from './client.js';
 import { auditChainHeads, auditEvents } from './schema/identity.js';
 
 // Tamper-evident activity history (ADR 0013 §4). Each scope (a household, or the instance) is a
-// hash chain: entry_hash(n) = SHA-256(entry_hash(n-1) ‖ canonical(entry n)). Changing, inserting,
-// reordering, or deleting any past entry breaks every later hash.
+// hash chain. Changing, inserting, reordering, or deleting any past entry breaks every later hash.
+// - Version 1: entry_hash(n) = SHA-256(entry_hash(n-1) ‖ canonical(entry n)).
+// - Version 2 (#264): entry_hash(n) = SHA-256(entry_hash(n-1) ‖ leaf(n)), leaf(n) =
+//   SHA-256(canonical(entry n)). Given the leaves, anyone can check that one head extends another
+//   without seeing the entries (foldLeaves), which is what a member's browser does.
+// New entries are version 2. Older ones stay version 1: rehashing them would rewrite history.
 
 export const INSTANCE_SCOPE = '00000000-0000-0000-0000-000000000000';
 const GENESIS = Buffer.alloc(32);
+/** The chain's starting point, as hex: what entry 0's hash would be. */
+export const GENESIS_HASH = GENESIS.toString('hex');
+export const HASH_VERSION = 2;
 
 type ActorKind = (typeof auditEvents.$inferInsert)['actorKind'];
 
@@ -64,8 +71,38 @@ interface HashedFields {
   changesEnc: Buffer | null;
 }
 
+/** Version 1: the link hashes the previous hash and the canonical entry together. */
 export function entryHash(previous: Buffer, fields: HashedFields): Buffer {
   return createHash('sha256').update(previous).update(canonical(fields)).digest();
+}
+
+/** Version 2's leaf: the canonical entry, version included, hashed on its own. */
+export function leafHash(fields: HashedFields): Buffer {
+  return createHash('sha256')
+    .update(canonical({ ...fields, hashVersion: 2 }))
+    .digest();
+}
+
+/** Version 2's link: SHA-256(previous hash ‖ leaf), 64 bytes in. */
+export function linkHash(previous: Buffer, leaf: Buffer): Buffer {
+  return createHash('sha256').update(previous).update(leaf).digest();
+}
+
+const HEX_HASH = /^[0-9a-f]{64}$/;
+
+/**
+ * The hash a chain reaches from `fromHex` after the given version 2 leaves, all lowercase hex.
+ * This is the whole of checking a proof (GET …/activity/proof): the browser does the same with
+ * crypto.subtle (#264), and the test vectors in activity.test.ts hold both to it.
+ */
+export function foldLeaves(fromHex: string, leavesHex: readonly string[]): string {
+  if (!HEX_HASH.test(fromHex)) throw new Error('foldLeaves: the starting hash is not 32-byte hex');
+  let hash: Buffer = Buffer.from(fromHex, 'hex');
+  for (const leaf of leavesHex) {
+    if (!HEX_HASH.test(leaf)) throw new Error('foldLeaves: a leaf is not 32-byte hex');
+    hash = linkHash(hash, Buffer.from(leaf, 'hex'));
+  }
+  return hash.toString('hex');
 }
 
 /**
@@ -113,9 +150,12 @@ export async function appendActivity(
     ip,
     changesEnc: encryptChanges ? await encryptChanges(`${scopeId}:${seq}`) : null,
   };
-  const hash = entryHash(head.headHash, fields);
+  const leaf = leafHash(fields);
+  const hash = linkHash(head.headHash, leaf);
   const { scopeId: _scope, ...columns } = fields;
-  await tx.insert(auditEvents).values({ ...columns, entryHash: hash });
+  await tx
+    .insert(auditEvents)
+    .values({ ...columns, entryHash: hash, hashVersion: HASH_VERSION, leaf });
   await tx
     .update(auditChainHeads)
     .set({ seq, headHash: hash, updatedAt: new Date() })
@@ -181,6 +221,8 @@ export async function verifyHouseholdChain(
       entryHash: r.entry_hash,
       accountId: r.account_id,
       changesEnc: r.changes_enc,
+      hashVersion: r.hash_version,
+      leaf: r.leaf,
     })),
   );
 }
@@ -204,6 +246,8 @@ interface AuditEventRow extends Record<string, unknown> {
   entry_hash: Buffer | null;
   account_id: string | null;
   changes_enc: Buffer | null;
+  hash_version: number;
+  leaf: Buffer | null;
 }
 
 type AuditEvent = typeof auditEvents.$inferSelect;
@@ -225,7 +269,7 @@ async function checkChain(
 
   for (const row of rows) {
     if (row.seq !== expected) return result({ ok: false, brokenAt: expected, reason: 'gap' });
-    const hash = entryHash(previous, {
+    const fields: HashedFields = {
       scopeId,
       seq: row.seq,
       occurredAt: row.occurredAt,
@@ -241,7 +285,20 @@ async function checkChain(
       metadata: row.metadata,
       ip: row.ip,
       changesEnc: row.changesEnc,
-    });
+    };
+    let hash: Buffer;
+    if (row.hashVersion === 2) {
+      // The stored leaf is what proofs are made of, so it must be this entry's.
+      const leaf = leafHash(fields);
+      if (!row.leaf || !leaf.equals(row.leaf)) {
+        return result({ ok: false, brokenAt: row.seq, reason: 'hash_mismatch' });
+      }
+      hash = linkHash(previous, leaf);
+    } else if (row.hashVersion === 1 && row.leaf === null) {
+      hash = entryHash(previous, fields);
+    } else {
+      return result({ ok: false, brokenAt: row.seq, reason: 'hash_mismatch' });
+    }
     if (!row.entryHash || !hash.equals(row.entryHash)) {
       return result({ ok: false, brokenAt: row.seq, reason: 'hash_mismatch' });
     }
@@ -258,4 +315,76 @@ async function checkChain(
     return result({ ok: false, brokenAt: expected, reason: 'head_mismatch' });
   }
   return result();
+}
+
+/** The most leaves one proof page carries (#264). */
+export const PROOF_PAGE_SIZE = 5000;
+
+export type HouseholdProof =
+  | {
+      ok: true;
+      head: { seq: number; hash: string };
+      /** Version 2 leaves of the entries after `from`, in order, as hex. */
+      leaves: string[];
+      /** More leaves follow: ask again from this seq, with the hash the fold reached. */
+      next?: number;
+    }
+  | { ok: false; reason: 'history_diverged' | 'proof_unavailable' };
+
+/**
+ * A proof that the household's chain extends `from` (a member's last verified point): the leaves
+ * of every entry after it, hidden ones included, and the head. Only hashes and positions, never
+ * what the entries were (accounts-and-visibility §6). Without `from`, just the head: the starting
+ * point for a device that has none. Runs in the member's own context, through
+ * fiscus_household_chain_leaves() (migration 0033).
+ */
+export async function householdProof(
+  tx: Executor,
+  householdId: string,
+  from?: { seq: number; hash: string },
+  pageSize = PROOF_PAGE_SIZE,
+): Promise<HouseholdProof> {
+  // The head first, then leaves only up to it: an entry appended meanwhile can't make the proof
+  // overshoot its own head.
+  const [row] = await tx
+    .select()
+    .from(auditChainHeads)
+    .where(eq(auditChainHeads.scopeId, householdId));
+  const head = { seq: row?.seq ?? 0, hash: (row?.headHash ?? GENESIS).toString('hex') };
+  if (!from) return { ok: true, head, leaves: [] };
+
+  const diverged = { ok: false, reason: 'history_diverged' } as const;
+  if (from.seq > head.seq) return diverged;
+  if (from.seq === 0 && from.hash !== GENESIS_HASH) return diverged;
+  const { rows } = await tx.execute<{
+    seq: string;
+    entry_hash: Buffer | null;
+    leaf: Buffer | null;
+    hash_version: number;
+  }>(sql`SELECT * FROM fiscus_household_chain_leaves(${from.seq}, ${head.seq}, ${pageSize + 1})`);
+  let after = rows;
+  if (from.seq > 0) {
+    // The entry at `from` must be the one the member verified.
+    const [anchor, ...rest] = rows;
+    if (
+      !anchor ||
+      Number(anchor.seq) !== from.seq ||
+      !anchor.entry_hash?.equals(Buffer.from(from.hash, 'hex'))
+    ) {
+      return diverged;
+    }
+    after = rest;
+  }
+  after = after.slice(0, pageSize);
+  // Version 1 entries have no leaf: their links need the whole entry.
+  if (after.some((r) => r.hash_version !== 2 || !r.leaf)) {
+    return { ok: false, reason: 'proof_unavailable' };
+  }
+  const last = after.length ? Number(after[after.length - 1]!.seq) : from.seq;
+  return {
+    ok: true,
+    head,
+    leaves: after.map((r) => r.leaf!.toString('hex')),
+    ...(after.length === pageSize && last < head.seq ? { next: last } : {}),
+  };
 }

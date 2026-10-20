@@ -225,6 +225,20 @@
       "when": 1792529753470,
       "tag": "0031_account_layout_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792531803303,
+      "tag": "0032_activity_hash_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792531804451,
+      "tag": "0033_activity_proof",
+      "breakpoints": true
     }
   ]
 }

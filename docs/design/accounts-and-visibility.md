@@ -144,6 +144,14 @@ account" leaks that a private account exists (F3).
 - **Cursors become opaque.** Today the feed exposes `seq`, and gaps in it would reveal that hidden
   events exist. Chain verification still checks every event, but members see only `ok` or `broken`,
   without counts or positions of events they can't see.
+- **Accepted disclosure: history proofs (#264).** So each member's browser can check the history
+  for itself (ADR 0013 §4), `GET …/activity/proof` gives any member the head's `seq` and hash, and
+  one leaf (a SHA-256 hash) for every event since their last check, hidden ones included. That
+  reveals **how many** events happened between checks, and the head seq. It never reveals **what**
+  they were: no ids, actions, metadata, IPs, actors, or which leaves belong to hidden events
+  (tested). A member who sees fewer events in the feed than the proof has leaves can infer that
+  events about accounts hidden from them exist, and roughly when. We accept that: the alternative is
+  a history check that only the server can do, which a server that rewrote history would pass.
 
 Account events: `account.created`, `account.updated` (field names in metadata, values in the
 encrypted `changes`), `account.visibility_changed`, `account.owners_changed`, `account.closed`,

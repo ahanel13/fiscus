@@ -86,6 +86,30 @@ time, for everyone.
 - Endpoints: `GET /api/v1/households/:id/activity` (household-visible events, decrypted changes, `before` cursor) and `GET …/activity/verify`.
 - Events recorded before this change have no `seq` and are outside the chain.
 
+## As built (#264): proofs the history only grew
+`GET …/activity/verify` is the server saying the chain is intact, and a modified server can just say yes. So a member's browser checks for itself that the chain extends the last head it verified. Under the format above that would take every entry's content, hidden ones included. Hence a second format, for new entries only.
+
+- **Chain format v2.** `audit_events.hash_version` (migration `0032`) says how each entry was hashed:
+  ```
+  v1: entry_hash(n) = SHA-256( entry_hash(n-1) ‖ canonical(entry n) )
+  v2: entry_hash(n) = SHA-256( entry_hash(n-1) ‖ leaf(n) ),  leaf(n) = SHA-256( canonical(entry n) )
+  ```
+  `canonical(entry)` for v2 includes `hashVersion: 2`. New entries are v2. Existing entries stay v1, and the previous release keeps writing v1 (the column defaults to 1) while an upgrade rolls out. Rehashing old entries would itself be a rewrite of history. A chain can mix both. Verification follows each entry's version, and the genesis is still 32 zero bytes.
+- **The leaf is stored** (`audit_events.leaf`), not recomputed. Canonical JSON can't be rebuilt reliably in SQL, and storing it keeps the proof a plain index range scan. Verification recomputes every v2 leaf from the entry and compares it with the stored one, so a leaf that isn't its entry's is caught like an edited entry. A check constraint ties the two together: v1 has no leaf, and v2 has a 32-byte leaf and a `seq`.
+- **Append-only, still.** `fiscus_app` has no `UPDATE` on `audit_events` at all (`0003`), so it can't change the new columns either (tested). It can insert, as before. The api writes the chain, so a modified api could write anything, and that's what the witness is for.
+- **Proof:** `GET /api/v1/households/:id/activity/proof?after=<seq>&hash=<hex>` returns `{ head: { seq, hash }, leaves, next? }`, with the leaves of every entry after `after`, hidden ones included, as hex. The browser folds them from its stored hash (`foldLeaves` in `@fiscus/db`, with fixed test vectors for the browser's `crypto.subtle` version to match) and must reach `head.hash`.
+  - At most 5 000 leaves per page. `next` is the seq to continue from, with the hash the fold reached.
+  - `409 history_diverged`: the entry at `after` doesn't have that `hash`, or `after` is beyond the head (history shrank). `seq 0` is genesis.
+  - `409 proof_unavailable`: the range includes v1 entries. A device's witness is set after this ships, from the head at the time, so in practice its proofs only cover v2 entries.
+  - Without `after` and `hash`, it returns just the head, the starting point for a device that has none.
+  - The api reads the head first and the leaves only up to it, through `fiscus_household_chain_leaves(after, until, limit)` (`0033`). That SECURITY DEFINER function is owned by `fiscus_definer`, read-only, and returns only `(seq, entry_hash, leaf, hash_version)` for a valid member's household.
+  - **Disclosure, accepted:** a proof reveals how many events happened between checks, hidden ones included, and the head seq. It never reveals what they were (accounts-and-visibility §6).
+- **Report:** `POST …/activity/integrity-reports` with `{ lastVerified: { seq, hash }, observed?: { seq?, hash? }, reason }` records `history.integrity_check_failed`, a household-visible event labelled as a device's claim (`metadata.claim = 'device'`), with the server's own check attached (`metadata.serverCheck`). Any member can report (HH-19), 5 an hour per member. The device's warning never waits for this.
+- **Limits, stated plainly:**
+  - Trust on first use: a new device, or one with cleared storage, starts from whatever head the server shows it. The browser witness and its UI come with the second part of #264.
+  - The server also serves the web app. An operator who changes the JavaScript can skip the check. The answer is a verifier outside the served app (#387).
+  - The chain covers history, not current data. A direct edit to a transaction that records no activity isn't caught by this (#388).
+
 ## Consequences
 - Disputes become resolvable: "who changed this, and from what?" always has an answer.
 - Sneaky edits are visible to the other members, and edits made outside the app (directly in the

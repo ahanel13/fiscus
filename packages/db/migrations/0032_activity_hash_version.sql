@@ -1,0 +1,3 @@
+ALTER TABLE "audit_events" ADD COLUMN "hash_version" smallint DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "audit_events" ADD COLUMN "leaf" "bytea";--> statement-breakpoint
+ALTER TABLE "audit_events" ADD CONSTRAINT "audit_events_hash_version" CHECK (("audit_events"."hash_version" = 1 AND "audit_events"."leaf" IS NULL) OR ("audit_events"."hash_version" = 2 AND "audit_events"."leaf" IS NOT NULL AND octet_length("audit_events"."leaf") = 32 AND "audit_events"."seq" IS NOT NULL));
