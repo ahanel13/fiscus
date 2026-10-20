@@ -226,6 +226,12 @@ jobs:
           OWNER: ${{ github.repository_owner }}
         run: scripts/release-notes.sh "$TAG" "$OWNER" digests > notes.md
 
+      # What the README's install downloads, from the latest release (scripts/release-install-files.sh).
+      - name: Write the install files
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/release-install-files.sh "$TAG" install
+
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -234,4 +240,5 @@ jobs:
           pre=()
           if [[ "$TAG" == *-* ]]; then pre=(--prerelease --latest=false); fi
           gh release create "$TAG" --verify-tag --title "$TAG" \
-            --notes-file notes.md --generate-notes "${pre[@]}" sboms/*.spdx.json
+            --notes-file notes.md --generate-notes "${pre[@]}" sboms/*.spdx.json \
+            install/docker-compose.yml install/env.example
