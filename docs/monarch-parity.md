@@ -17,7 +17,7 @@ Milestones refer to [roadmap.md](roadmap.md).
 | Plaid / MX / Finicity aggregation, switch per institution | Plaid + SimpleFIN + file import. MX/Finicity need business contracts | 🟡 | M2 |
 | Manual accounts, CSV import, Mint import | Manual, CSV/OFX/QFX, **Monarch import** (P1), YNAB/Actual (Mint shut down in 2024) | ✅ | M1 |
 | Real-time refresh with per-account status | Refresh now, connection health panel, polling + optional webhooks | ✅ | M2 (ADR 0008) |
-| Account groups, ordering, account notes | Planned | ✅ | M1 (P2) |
+| Account groups, ordering, account notes | Your own groups and order, arranged with up/down and "Move to" (drag and drop later); notes on each account | ✅ | M1.5 (#48) |
 | Zillow home value, vehicle value | Manual value + appreciation curve, pluggable valuation provider (Zillow's API is closed) | 🟡 | M6 |
 | Coinbase / crypto | Exchange read-only keys or public wallet addresses | ✅ | M6 (P2) |
 | Equity compensation (RSU/ISO/NSO/RSA, vesting) | Planned. AI document extraction later via receipt pipeline | ✅ | M6 |

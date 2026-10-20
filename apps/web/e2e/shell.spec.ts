@@ -704,6 +704,44 @@ test('only the content scrolls: the page and sidebar stay put on a long list', a
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
 
+test('you arrange your own accounts list, and it stays arranged (#48)', async ({ page }) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/accounts`);
+  await page.getByRole('button', { name: 'Arrange' }).click();
+  await page.getByRole('button', { name: 'New group' }).click();
+  const naming = page.getByRole('dialog', { name: 'New group' });
+  await naming.getByLabel('Name').fill('Everyday');
+  await naming.getByRole('button', { name: 'Add group' }).click();
+  const group = page.getByRole('region', { name: 'Everyday', exact: true });
+  await expect(group).toContainText('Empty');
+  expect(await axeViolations(page)).toEqual([]);
+
+  const row = page.locator('li', { hasText: 'Everyday checking' });
+  await row.getByRole('button', { name: 'Move to…' }).click();
+  await page.getByRole('menuitem', { name: 'Everyday', exact: true }).click();
+  await expect(group).toContainText('Everyday checking');
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // Saved: after a reload the account is in the group, as a link again.
+  await page.reload();
+  await expect(group.getByRole('link', { name: /Everyday checking/ })).toBeVisible();
+
+  // Back to its section, and the group goes.
+  await page.getByRole('button', { name: 'Arrange' }).click();
+  await row.getByRole('button', { name: 'Move to…' }).click();
+  await page.getByRole('menuitem', { name: 'Back to Cash' }).click();
+  await expect(group).toContainText('Empty');
+  await group.getByRole('button', { name: 'Delete' }).click();
+  await expect(group).toHaveCount(0);
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Cash', exact: true })
+      .getByRole('link', { name: /Everyday checking/ }),
+  ).toBeVisible();
+});
+
 test('dark mode, sign out, and back', async ({ page }) => {
   await signIn(page);
   await page.goto('/settings');
