@@ -2,6 +2,7 @@
 import {
   chunkRowsByDate,
   type ImportBalance,
+  type ImportFormat,
   type ImportPreview,
   type ImportRowResult,
   type ImportRun,
@@ -12,7 +13,7 @@ import type { TestClient } from './test-app.js';
 type Res = Awaited<ReturnType<TestClient['request']>>;
 
 export interface ImportBody {
-  format: 'csv' | 'monarch';
+  format: ImportFormat;
   filename: string;
   accounts: { key: string; [k: string]: unknown }[];
   categories?: { name: string; categoryId?: string; kind?: string }[];
