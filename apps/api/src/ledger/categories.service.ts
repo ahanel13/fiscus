@@ -230,43 +230,35 @@ export class CategoriesService {
         .where(eq(transactions.categoryId, id))) as [{ n: number }];
       return { row, visible: n };
     });
-    // Reassigning everything needs the household (system) context: some rows may be hidden from
-    // the caller. The activity still records the caller as the actor.
-    await this.scope.asSystem(
-      ctx.householdId,
-      { kind: 'user', userId: ctx.userId, memberId: ctx.memberId },
-      async (tx, activity) => {
-        const [{ n }] = (await tx
-          .select({ n: count() })
-          .from(transactions)
-          .where(eq(transactions.categoryId, id))) as [{ n: number }];
-        if (n > 0 && !replaceWith) {
-          throw new Problem(
-            409,
-            'category_in_use',
-            'Choose a category to move its transactions to',
-            undefined,
-            undefined,
-            {},
-            { visibleTransactions: visible },
-          );
-        }
-        if (n > 0) {
-          await tx
-            .update(transactions)
-            .set({ categoryId: replaceWith!, version: sql`${transactions.version} + 1` })
-            .where(eq(transactions.categoryId, id));
-        }
-        await tx.delete(categories).where(eq(categories.id, id));
-        await activity.record({
-          action: 'category.deleted',
-          targetType: 'category',
-          targetId: id,
-          metadata: { replacedWith: replaceWith ?? null },
-          changes: { before: { name: row.name } },
-        });
-      },
-    );
+    // Reassigning everything reaches rows hidden from the caller, through definer functions that
+    // check they're a member who may (#271). The activity records the caller as the actor.
+    await this.scope.run(ctx, async (tx, activity) => {
+      const { rows } = await tx.execute<{ used: boolean }>(
+        sql`SELECT fiscus_category_in_use(${id}) AS used`,
+      );
+      if (rows[0]?.used && !replaceWith) {
+        throw new Problem(
+          409,
+          'category_in_use',
+          'Choose a category to move its transactions to',
+          undefined,
+          undefined,
+          {},
+          { visibleTransactions: visible },
+        );
+      }
+      if (rows[0]?.used) {
+        await tx.execute(sql`SELECT fiscus_reassign_category(${id}, ${replaceWith!})`);
+      }
+      await tx.delete(categories).where(eq(categories.id, id));
+      await activity.record({
+        action: 'category.deleted',
+        targetType: 'category',
+        targetId: id,
+        metadata: { replacedWith: replaceWith ?? null },
+        changes: { before: { name: row.name } },
+      });
+    });
     return { moved: visible };
   }
 

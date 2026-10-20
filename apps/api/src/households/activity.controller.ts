@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { FieldCrypto } from '@fiscus/crypto';
-import { auditEvents, verifyChain } from '@fiscus/db';
+import { auditEvents, verifyHouseholdChain } from '@fiscus/db';
 import type { ActivityItem, ActivityVerification } from '@fiscus/shared';
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { and, desc, eq, isNotNull, lt } from 'drizzle-orm';
@@ -84,16 +84,12 @@ export class ActivityController {
   }
 
   /**
-   * Recomputes the household's whole hash chain. It runs in system context, since members can't
-   * see events about accounts hidden from them, and it reports only whether the history is intact.
+   * Recomputes the household's whole hash chain, including events about accounts hidden from the
+   * caller (through fiscus_household_chain(), #271), and reports only whether it's intact.
    */
   @Get('verify')
   async verify(@Household() ctx: HouseholdContext): Promise<{ data: ActivityVerification }> {
-    const result = await this.scope.asSystem(
-      ctx.householdId,
-      { kind: 'user', userId: ctx.userId, memberId: ctx.memberId },
-      (tx) => verifyChain(tx, ctx.householdId),
-    );
+    const result = await this.scope.run(ctx, (tx) => verifyHouseholdChain(tx, ctx.householdId));
     return { data: { ok: result.ok, checkedAt: new Date().toISOString() } };
   }
 

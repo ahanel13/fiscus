@@ -13,6 +13,8 @@ const MIGRATION_LOCK = 4_217_001;
 
 export interface MigrateOptions {
   appPassword?: string | undefined;
+  /** For fiscus_worker, the worker's login, which system context is for (#271). */
+  workerPassword?: string | undefined;
   maintenancePassword?: string | undefined;
   log?: (message: string) => void;
   /**
@@ -32,6 +34,7 @@ export async function runMigrations(
   url: string,
   {
     appPassword,
+    workerPassword,
     maintenancePassword,
     log = () => {},
     backup,
@@ -54,10 +57,18 @@ export async function runMigrations(
     }
     await migrate(drizzle(client), { migrationsFolder });
     log('Migrations applied');
+    // The worker has the app's privileges through membership (migration 0028). A dump keeps grants
+    // but not memberships, so after a restore into a fresh server it would have none: re-assert it.
+    await client.query(`DO $$ BEGIN
+      IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'fiscus_worker') THEN
+        GRANT fiscus_app TO fiscus_worker;
+      END IF;
+    END $$`);
 
     // Role passwords can't be bind parameters, so they are escaped as literals.
     for (const [role, password] of [
       ['fiscus_app', appPassword],
+      ['fiscus_worker', workerPassword],
       ['fiscus_maintenance', maintenancePassword],
     ] as const) {
       if (!password) continue;

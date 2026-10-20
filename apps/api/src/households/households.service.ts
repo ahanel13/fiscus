@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { householdMembers, households, HouseholdKeyStore } from '@fiscus/db';
+import { households, HouseholdKeyStore } from '@fiscus/db';
 import { planVersionedPatch } from '@fiscus/domain';
 import type { CurrentUser, Household, updateHouseholdSchema } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
@@ -68,29 +68,27 @@ export class HouseholdsService {
   ) {}
 
   /**
-   * Creates a household with the caller as owner and generates its data key, atomically. The id
-   * is generated up front so the whole transaction already runs in the new household's context.
+   * Creates a household with the caller as owner and generates its data key, atomically. A
+   * definer function adds the household and its owner (#271); everything else runs as that owner.
    */
   async create(user: CurrentUser, input: HouseholdInput): Promise<Household> {
-    const { displayName, ...settings } = input;
+    const { displayName, name, baseCurrency, timezone, ...settings } = input;
     const id = uuidv7();
-    const { household, member } = await this.scope.asSystem(
+    const { household, memberId } = await this.scope.join(
       id,
-      { kind: 'user', userId: user.id, memberId: null },
-      async (tx, activity) => {
+      user.id,
+      async (tx) => {
+        const { rows } = await tx.execute<{ member_id: string }>(
+          sql`SELECT fiscus_create_household(${name}, ${baseCurrency}, ${timezone},
+                ${displayName ?? null}, ${MEMBER_COLORS[0]!}) AS member_id`,
+        );
+        return { userId: user.id, memberId: rows[0]!.member_id };
+      },
+      async (tx, activity, { memberId }) => {
         const [household] = await tx
-          .insert(households)
-          .values({ id, ...settings })
-          .returning();
-        const [member] = await tx
-          .insert(householdMembers)
-          .values({
-            householdId: id,
-            userId: user.id,
-            role: 'owner',
-            displayName: displayName ?? user.displayName,
-            color: MEMBER_COLORS[0]!,
-          })
+          .update(households)
+          .set(settings)
+          .where(eq(households.id, id))
           .returning();
         await this.keys.createForHousehold(id, tx);
         // Default categories (transactions design §1), defined once in migration 0012.
@@ -99,12 +97,11 @@ export class HouseholdsService {
           action: 'household.created',
           targetType: 'household',
           targetId: id,
-          actorMemberId: member!.id,
         });
-        return { household: household!, member: member! };
+        return { household: household!, memberId };
       },
     );
-    return toHousehold(household, { memberId: member.id, role: 'owner' });
+    return toHousehold(household, { memberId, role: 'owner' });
   }
 
   async get(ctx: HouseholdContext): Promise<Household> {

@@ -113,7 +113,9 @@ be read. The database passwords can be new.
    C="docker compose -f deploy/compose/docker-compose.yml"
    $C up -d --wait db
    $C exec db psql -U fiscus_owner -d fiscus -c 'CREATE ROLE fiscus_app NOLOGIN;
-     CREATE ROLE fiscus_maintenance NOLOGIN BYPASSRLS; CREATE ROLE fiscus_definer NOLOGIN BYPASSRLS;'
+     CREATE ROLE fiscus_worker NOLOGIN IN ROLE fiscus_app;
+     CREATE ROLE fiscus_maintenance NOLOGIN BYPASSRLS; CREATE ROLE fiscus_definer NOLOGIN BYPASSRLS;
+     CREATE ROLE fiscus_steward NOLOGIN BYPASSRLS;'
    ```
 
 3. Restore the backup, with it and the private key mounted for the one command:

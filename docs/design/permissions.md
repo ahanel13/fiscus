@@ -32,7 +32,7 @@ allowed = role permits the action
 | MEM | Household member with role `member` | |
 | VIEW | Household member with role `viewer` | Read-only. **Cannot own accounts** |
 | PAT-R / PAT-W | Personal access token, scope `read` / `write` | Acts as the issuing member. **Never exceeds** that member's role; a viewer's PAT is read-only regardless of scope |
-| SYS | Worker in system context (`app.system = on`) | Household-scoped. Anything it surfaces to people is filtered for the recipient |
+| SYS | Worker in system context (`app.system = on`; from #376 honored only for the `fiscus_worker` login) | Household-scoped. Anything it surfaces to people is filtered for the recipient |
 | AI | Assistant acting as a member | Same as that member. Writes only via change sets, and only if the household allows AI write tools (ADR 0009) |
 
 An instance admin who is also a household member has **two separate identities**: the admin

@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { type DbHandle, type Executor, householdMembers, invites, users } from '@fiscus/db';
+import {
+  type DbHandle,
+  type Executor,
+  householdMembers,
+  invites,
+  setContext,
+  users,
+} from '@fiscus/db';
 import type { CurrentUser, InvitePreview } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { MEMBER_COLORS } from '@fiscus/shared';
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import { hashPassword } from '../auth/password.js';
 import { sha256 } from '../auth/tokens.js';
@@ -21,14 +28,15 @@ interface FoundInvite {
   email: string;
   role: (typeof invites.$inferSelect)['role'];
   invitedByMemberId: string | null;
+  invitedByName: string | null;
   householdName: string;
 }
 
 /**
  * Invite-token flows. The caller holds a token but isn't a member yet, so the invite must be found
- * across households: the token lookup is the one deliberately cross-household query (allow-listed
- * in architecture.test.ts; a SECURITY DEFINER function replaces it under row-level security, #19).
- * Everything after the lookup runs in the invite's household context.
+ * across households: the token lookup is the one deliberately cross-household query, through a
+ * SECURITY DEFINER function (allow-listed in architecture.test.ts). Joining is another
+ * (fiscus_join_household, #271), which needs the token too; the rest runs as the new member.
  *
  * Until email delivery exists (M4), owners share the link themselves. The token travels in the URL
  * fragment and request bodies, never in paths, so it stays out of server and proxy logs.
@@ -45,29 +53,17 @@ export class InviteTokensService {
   /** What the invitee sees before accepting. Reveals nothing without a valid token. */
   async preview(token: string): Promise<InvitePreview> {
     const { invite, householdName } = await this.#find(token);
-    return this.scope.asSystem(
-      invite.householdId,
-      { kind: 'anonymous', userId: null, memberId: null },
-      async (tx) => {
-        const [inviter] = invite.invitedByMemberId
-          ? await tx
-              .select({ name: householdMembers.displayName })
-              .from(householdMembers)
-              .where(eq(householdMembers.id, invite.invitedByMemberId))
-          : [];
-        const [account] = await this.db.db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.email, invite.email));
-        return {
-          householdName,
-          invitedBy: inviter?.name ?? null,
-          email: invite.email,
-          role: invite.role,
-          accountExists: Boolean(account),
-        };
-      },
-    );
+    const [account] = await this.db.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, invite.email));
+    return {
+      householdName,
+      invitedBy: invite.invitedByName,
+      email: invite.email,
+      role: invite.role,
+      accountExists: Boolean(account),
+    };
   }
 
   /** A signed-in user accepts; their account email must match the invite. */
@@ -84,7 +80,7 @@ export class InviteTokensService {
         `Sign in as ${invite.email} to accept it.`,
       );
     }
-    return this.#join(invite, async () => user);
+    return this.#join(token, invite, async () => user);
   }
 
   /**
@@ -99,7 +95,7 @@ export class InviteTokensService {
     const passwordHash = await hashPassword(password);
     let created: CurrentUser | undefined;
     // Account creation and joining commit together: no account without its membership.
-    await this.#join(invite, async (tx) => {
+    await this.#join(token, invite, async (tx) => {
       const [user] = await tx
         .insert(users)
         .values({ email: invite.email, displayName, passwordHash })
@@ -145,6 +141,7 @@ export class InviteTokensService {
       role: FoundInvite['role'];
       invited_by_member_id: string | null;
       household_name: string;
+      invited_by_name: string | null;
     }>(sql`SELECT * FROM fiscus_find_invite(${sha256(token)})`);
     const row = result.rows[0];
     if (!row) throw invalidInvite();
@@ -154,35 +151,29 @@ export class InviteTokensService {
       email: row.email,
       role: row.role,
       invitedByMemberId: row.invited_by_member_id,
+      invitedByName: row.invited_by_name,
       householdName: row.household_name,
     };
     return { invite, householdName: invite.householdName };
   }
 
-  /** Joins in the invite's household context, re-checking the invite under a row lock. */
+  /**
+   * Joins as the token's holder: fiscus_join_household re-checks the invite under a row lock, and
+   * that the user's email is the one invited, before adding the membership (#271).
+   */
   async #join(
+    token: string,
     invite: FoundInvite,
     resolveUser: (tx: Executor) => Promise<CurrentUser>,
   ): Promise<{ householdId: string; memberId: string }> {
-    let user: CurrentUser | undefined;
-    const memberId = await this.scope.asSystem(
+    return this.scope.join(
       invite.householdId,
-      { kind: 'user', userId: null, memberId: null },
-      async (tx, activity) => {
-        const [fresh] = await tx
-          .select()
-          .from(invites)
-          .where(
-            and(
-              eq(invites.id, invite.id),
-              isNull(invites.acceptedAt),
-              isNull(invites.revokedAt),
-              gt(invites.expiresAt, new Date()),
-            ),
-          )
-          .for('update');
-        if (!fresh) throw invalidInvite();
-        user = await resolveUser(tx);
+      null,
+      async (tx) => {
+        const user = await resolveUser(tx);
+        await setContext(tx, { userId: user.id });
+        // A user sees their own memberships anywhere, so this is a clear error before the
+        // function's own check.
         const [already] = await tx
           .select({ id: householdMembers.id })
           .from(householdMembers)
@@ -194,46 +185,25 @@ export class InviteTokensService {
             ),
           );
         if (already) throw new Problem(409, 'already_member', 'You are already a member');
-
-        const used = await tx
-          .select({ color: householdMembers.color })
-          .from(householdMembers)
-          .where(
-            and(
-              eq(householdMembers.householdId, invite.householdId),
-              isNull(householdMembers.leftAt),
-            ),
-          );
-        const taken = new Set(used.map((u) => u.color));
-        const color =
-          MEMBER_COLORS.find((c) => !taken.has(c)) ??
-          MEMBER_COLORS[used.length % MEMBER_COLORS.length]!;
-
-        const [member] = await tx
-          .insert(householdMembers)
-          .values({
-            householdId: invite.householdId,
-            userId: user.id,
-            role: invite.role,
-            displayName: user.displayName,
-            color,
-          })
-          .returning({ id: householdMembers.id });
-        await tx
-          .update(invites)
-          .set({ acceptedAt: new Date(), acceptedByUserId: user.id })
-          .where(eq(invites.id, invite.id));
+        const colors = sql.join(
+          MEMBER_COLORS.map((c) => sql`${c}`),
+          sql`, `,
+        );
+        const { rows } = await tx.execute<{ member_id: string }>(
+          sql`SELECT member_id FROM fiscus_join_household(${sha256(token)}, ARRAY[${colors}]::text[])`,
+        );
+        if (!rows[0]) throw invalidInvite();
+        return { userId: user.id, memberId: rows[0].member_id };
+      },
+      async (_tx, activity, { memberId }) => {
         await activity.record({
           action: 'member.joined',
           targetType: 'household_member',
-          targetId: member!.id,
-          actorMemberId: member!.id,
-          actorUserId: user.id,
+          targetId: memberId,
           metadata: { inviteId: invite.id },
         });
-        return member!.id;
+        return { householdId: invite.householdId, memberId };
       },
     );
-    return { householdId: invite.householdId, memberId };
   }
 }

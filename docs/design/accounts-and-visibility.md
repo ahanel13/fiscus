@@ -152,7 +152,7 @@ encrypted `changes`), `account.visibility_changed`, `account.owners_changed`, `a
 ## 7. Tests (#56)
 
 1. **Database level** (as in #19): raw SQL under forged contexts for every (actor × account) pair. A
-   member sees exactly the rows their level allows, and system context sees everything.
+   member sees exactly the rows their level allows, and system context (the worker's) sees everything.
 2. **API level, generated**: one fixture household with members **A** (owner), **B** (member),
    **C** (member), and **V** (viewer), and accounts in every combination of
    {personal A, joint A+B, joint A+B+C} × {full, view_only, balance_only, private}. A table of

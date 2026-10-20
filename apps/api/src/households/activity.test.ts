@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { households, INSTANCE_SCOPE, verifyChain } from '@fiscus/db';
+import {
+  createDb,
+  type DbHandle,
+  households,
+  INSTANCE_SCOPE,
+  systemContext,
+  verifyChain,
+  withContext,
+} from '@fiscus/db';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { eq } from 'drizzle-orm';
@@ -15,6 +23,7 @@ describe('activity history', () => {
   let tdb: TestDatabase;
   let app: NestFastifyApplication;
   let owner: pg.Client; // superuser: plays the operator editing the database directly
+  let worker: DbHandle; // verifies the whole chain as a worker job would (system context, #271)
   let ann: TestClient;
   let ben: TestClient;
   let hid: string;
@@ -26,11 +35,7 @@ describe('activity history', () => {
   const verifyApi = async () =>
     (await ann.get(`/api/v1/households/${hid}/activity/verify`)).body.data;
   const verify = async () =>
-    app
-      .get(HouseholdScope)
-      .asSystem(hid, { kind: 'system', userId: null, memberId: null }, (tx) =>
-        verifyChain(tx, hid),
-      );
+    withContext(worker.db, systemContext(hid), (tx) => verifyChain(tx, hid));
   const feed = async () => (await ann.get(`/api/v1/households/${hid}/activity`)).body.data;
   const ifMatch = (v: number) => ({ headers: { 'if-match': `"v${v}"` } });
 
@@ -38,6 +43,7 @@ describe('activity history', () => {
     tdb = await startTestDatabase();
     owner = new pg.Client({ connectionString: tdb.ownerUrl });
     await owner.connect();
+    worker = createDb(tdb.workerUrl, { max: 1 });
     app = await createTestApp(tdb.appUrl, { signupMode: 'open' });
     const signup = async (name: string) => {
       const c = new TestClient(app);
@@ -76,7 +82,7 @@ describe('activity history', () => {
   }, 180_000);
 
   afterAll(async () => {
-    await Promise.all([app?.close(), owner?.end()]);
+    await Promise.all([app?.close(), owner?.end(), worker?.close()]);
     await tdb?.stop();
   });
 

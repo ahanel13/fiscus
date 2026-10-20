@@ -327,16 +327,19 @@ The effective date for ranges, budgets, and reports is `date_override` if set, e
 | Role | RLS | Used by |
 |---|---|---|
 | `fiscus_owner` | Bypass (owns the tables) | Migrations only |
-| `fiscus_app` | **Enforced** | API and worker, for all normal work |
+| `fiscus_app` | **Enforced** | The API, for all its work. It never sets `app.system`, and from #376 the database ignores it if it does |
+| `fiscus_worker` | **Enforced** | The worker. A member of `fiscus_app`, so the same privileges; from #376, the only login system context works for |
 | `fiscus_maintenance` | `BYPASSRLS` | A short allow-list of jobs: crypto-shred, KEK re-wrap, backups. Every use is audit-logged |
-| `fiscus_definer` | `BYPASSRLS`, NOLOGIN, **read-only** on 3 tables | Owns the SECURITY DEFINER functions (`fiscus_context_valid`, `fiscus_find_invite`), so a bug in one can never write data |
+| `fiscus_definer` | `BYPASSRLS`, NOLOGIN, **read-only** | Owns the SECURITY DEFINER functions that read (`fiscus_context_valid`, `fiscus_find_invite`, `fiscus_household_chain`, …), so a bug in one can never write data |
+| `fiscus_steward` | `BYPASSRLS`, NOLOGIN, column-level writes | Owns the few definer functions that write (`fiscus_create_household`, `fiscus_join_household`, `fiscus_reassign_category`), each checking the context it's called in (§4.3c) |
 
 ### 4.2 Session context
-Every transaction opened by `fiscus_app` sets:
+Every transaction opened by `fiscus_app` or `fiscus_worker` sets:
 ```sql
 SET LOCAL app.household_id = '<uuid>';
 SET LOCAL app.member_id    = '<uuid>';   -- or '' for system context
-SET LOCAL app.system       = 'off';      -- 'on' only in worker jobs acting for the whole household
+SET LOCAL app.system       = 'off';      -- 'on' only in worker jobs acting for the whole household;
+                                         -- from #376, honored only for the fiscus_worker login
 ```
 `SET LOCAL` scopes to the transaction, which keeps it safe with connection pooling. If the
 settings are missing, policies evaluate to false and the query returns **nothing**. It fails closed.
@@ -374,8 +377,32 @@ settings are missing, policies evaluate to false and the query returns **nothing
 - `runMaintenanceJob()` is the only way to use `fiscus_maintenance`. It accepts only allow-listed jobs and records each run in the audit log first.
 - A test lists every table with a `household_id` column and fails if any lacks ENABLE + FORCE RLS and a policy.
 
+### 4.3c System context is the worker's (#271, #376)
+RLS guards against application bugs that set the wrong context. Against SQL that reaches the
+database some other way (an injection bug), it holds only if that SQL can't claim to be a system
+job. So, in two steps (expand, then contract: [upgrades](upgrades.md) §1.3):
+1. **0.3.0 (#271):** the worker logs in as `fiscus_worker`, and the API never sets `app.system`
+   (an architecture test checks). What the API used it for is a definer function each, which
+   checks its context (below).
+2. **The release after (#376):** `fiscus_is_system()` is true only when `app.system = 'on'` **and**
+   the session logged in as `fiscus_worker` (`session_user`, which neither `SET ROLE` nor
+   SECURITY DEFINER changes). Not sooner: 0.2.0's API still relies on system context, and must
+   keep working against the new schema during a rollout or rollback.
+
+
+| Function | Owner | For | Checks |
+|---|---|---|---|
+| `fiscus_create_household(...)` | steward | Creating a household and its owner | A new household id and a user in context; an existing id fails on the key |
+| `fiscus_join_household(token_hash, colors)` | steward | Accepting an invite | The token, live, for the context's household, and the user's email is the invited one |
+| `fiscus_category_in_use(category)`, `fiscus_reassign_category(from, to)` | definer, steward | Deleting a category whose transactions the caller can't all see | A valid member context; to move, an owner or member, between the household's own categories |
+| `fiscus_household_chain()` | definer | Verifying the activity history (ADR 0013) | A valid member context; the API reports only intact or not |
+| `fiscus_household_key(household, version)` | definer | FieldCrypto's key reads | None: keys are wrapped with the master key, which is never in the database |
+
+Creating and joining make the membership, then the transaction sets `app.member_id` to it and does
+the rest as that member. Parameterized queries remain the defense against injection itself.
+
 ### 4.3b As built (M1 Phase 1)
-- **`fiscus_account_access()`** (SECURITY DEFINER, owned by the read-only `fiscus_definer`) returns `(account_id, level)` for the context member, or every account at `owner` for system context.
+- **`fiscus_account_access()`** (SECURITY DEFINER, owned by the read-only `fiscus_definer`) returns `(account_id, level)` for the context member, or every account at `owner` for system context (the worker's, §4.3c).
 - Policies use it in an uncorrelated `IN (SELECT …)`, which Postgres runs **once per statement** as a hashed subplan. A test checks the plan.
 - `fiscus_can_manage_owners(account)` lets owners, system jobs, or the creator of a not-yet-owned account change `account_owners`.
 - `audit_events` rows with an `account_id` are visible only to members who can see that account.

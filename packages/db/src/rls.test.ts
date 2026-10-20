@@ -200,6 +200,7 @@ describe('row-level security', () => {
            unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) p`);
     const granted = rows.filter((r) => r.granted).map((r) => `${r.p} ${r.t}`);
     expect(granted.sort()).toEqual([
+      'SELECT household_keys', // wrapped with the master key (fiscus_household_key, #271)
       'SELECT household_members',
       'SELECT households',
       'SELECT invites',

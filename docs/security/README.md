@@ -30,6 +30,7 @@ deployment gets; "Tier 2" is for hosted deployments (confidential VMs, #305) and
 | Other household members | A partner reading a private account | Row-level security in Postgres ([ADR 0005](../adr/0005-tenancy-and-trust-model.md), [ADR 0006](../adr/0006-shared-finances-yours-mine-ours.md)), tested per role ([permissions](../design/permissions.md)) | In place |
 | Someone rewriting history | Deleting the record of a change | Hash-chained activity history ([ADR 0013](../adr/0013-tamper-evident-activity-history.md)); a check in your browser follows (#264) | Partly |
 | A malicious release | A backdoor in a published image | Reproducible, signed images in a public log ([verifying a release](verify-releases.md)): a changed image is visible | In place |
+| A SQL-injection bug in the api | Injected SQL claiming to be a background job | Parameterized queries. Row-level security will hold even then: only the worker's database role will be able to act for a whole household ([data model §4.3c](../design/data-model.md#43c-system-context-is-the-workers-271-376)) | Partly: the api no longer needs it; the database stops allowing it in the release after 0.3.0 (#376) |
 | Logs and error reports | A log shipped to a third party | No financial data in logs or errors, enforced by a test (#308) | In place |
 | The instance operator | Whoever runs a server for others | Self-hosted: that's you. Hosted: Tier 2, so the operator never holds the key | Tier 2 not built |
 | Host, hypervisor, or cloud staff | Root on the machine, a memory dump | Tier 2 | Not built |

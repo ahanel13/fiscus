@@ -6,7 +6,7 @@ import {
   MasterKeyNotLoadedError,
   type SecretKey,
 } from '@fiscus/crypto';
-import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import type { Database, Executor } from './client.js';
 import { systemContext, withContext } from './context.js';
 import { householdKeys } from './schema/household-keys.js';
@@ -35,8 +35,9 @@ export interface HouseholdKeyStoreOptions {
 
 /**
  * Household data keys backed by the household_keys table, unwrapped with the master key and
- * cached briefly in memory. Keys are never logged (SecretKey redacts itself). Reads run in the
- * household's system context, which row-level security requires.
+ * cached briefly in memory. Keys are never logged (SecretKey redacts itself). Reads go through
+ * fiscus_household_key() (migration 0028), since the api has no system context (#271): the rows
+ * are wrapped with the master key, which is never in the database.
  */
 export class HouseholdKeyStore implements DataKeySource {
   readonly #cache = new Map<string, CachedKey>();
@@ -54,8 +55,11 @@ export class HouseholdKeyStore implements DataKeySource {
     this.#now = now;
   }
 
-  /** Generates and stores version 1 of a new household's data key. */
-  /** Pass the caller's transaction (already in the household's context) when there is one. */
+  /**
+   * Generates and stores version 1 of a new household's data key. Pass the caller's transaction,
+   * in the household's context as its owner; without one it uses system context, which only the
+   * worker has.
+   */
   async createForHousehold(householdId: string, tx?: Executor): Promise<void> {
     const dek = generateDataKey();
     const insert = (exec: Executor) =>
@@ -74,14 +78,7 @@ export class HouseholdKeyStore implements DataKeySource {
   }
 
   async activeKey(householdId: string): Promise<{ version: number; key: SecretKey }> {
-    const [row] = await withContext(this.db, systemContext(householdId), (tx) =>
-      tx
-        .select({ version: householdKeys.version })
-        .from(householdKeys)
-        .where(and(eq(householdKeys.householdId, householdId), isNull(householdKeys.retiredAt)))
-        .orderBy(desc(householdKeys.version))
-        .limit(1),
-    );
+    const row = await this.#read(householdId, null);
     if (!row) throw new HouseholdKeyNotFoundError(householdId);
     return { version: row.version, key: await this.keyVersion(householdId, row.version) };
   }
@@ -92,16 +89,7 @@ export class HouseholdKeyStore implements DataKeySource {
     if (cached && cached.expiresAt > this.#now()) return cached.key;
     if (cached) this.#evict(cacheKey);
 
-    const [row] = await withContext(this.db, systemContext(householdId), (tx) =>
-      tx
-        .select({
-          wrappedKey: householdKeys.wrappedKey,
-          masterKeyVersion: householdKeys.masterKeyVersion,
-        })
-        .from(householdKeys)
-        .where(and(eq(householdKeys.householdId, householdId), eq(householdKeys.version, version)))
-        .limit(1),
-    );
+    const row = await this.#read(householdId, version);
     if (!row) throw new HouseholdKeyNotFoundError(householdId, version);
 
     // With whichever master key wrapped it: the previous one, until a rotation has re-wrapped it.
@@ -116,8 +104,28 @@ export class HouseholdKeyStore implements DataKeySource {
     return key;
   }
 
+  /** The active version (null) or a given one. */
+  async #read(
+    householdId: string,
+    version: number | null,
+  ): Promise<{ version: number; wrappedKey: Buffer; masterKeyVersion: number } | undefined> {
+    const { rows } = await this.db.execute<{
+      version: number;
+      wrapped_key: Buffer;
+      master_key_version: number;
+    }>(sql`SELECT * FROM fiscus_household_key(${householdId}, ${version}::integer)`);
+    const row = rows[0];
+    return row
+      ? {
+          version: row.version,
+          wrappedKey: row.wrapped_key,
+          masterKeyVersion: row.master_key_version,
+        }
+      : undefined;
+  }
+
   /**
-   * Destroys every data key for the household. Its encrypted data, including copies in old
+   * Destroys every data key for the household. A worker job (system context). Its encrypted data, including copies in old
    * backups, becomes permanently unreadable (ADR 0005).
    */
   async cryptoShred(householdId: string): Promise<void> {

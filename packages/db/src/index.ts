@@ -11,10 +11,11 @@ export {
   canonical,
   INSTANCE_SCOPE,
   verifyChain,
+  verifyHouseholdChain,
   type ActivityEntry,
   type ChainVerification,
 } from './activity.js';
-export { systemContext, userContext, withContext, type DbContext } from './context.js';
+export { setContext, systemContext, userContext, withContext, type DbContext } from './context.js';
 export { MAINTENANCE_JOBS, runMaintenanceJob, type MaintenanceJob } from './maintenance.js';
 export { pingDatabase } from './health.js';
 export { bytea, householdId, id, money, timestamps, versioning } from './columns.js';

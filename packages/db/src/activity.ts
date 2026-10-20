@@ -136,7 +136,8 @@ export interface ChainVerification {
 
 /**
  * Recomputes a chain from genesis and compares every entry and the stored head. Run it in system
- * context: a member can't see events about accounts hidden from them, which would look like gaps.
+ * context (the worker, or a maintenance job): a member can't see events about accounts hidden from
+ * them, which would look like gaps. For a member, use verifyHouseholdChain.
  */
 export async function verifyChain(tx: Executor, scopeId: string): Promise<ChainVerification> {
   const rows = await tx
@@ -144,6 +145,74 @@ export async function verifyChain(tx: Executor, scopeId: string): Promise<ChainV
     .from(auditEvents)
     .where(and(eq(auditEvents.scopeId, scopeId), isNotNull(auditEvents.seq)))
     .orderBy(asc(auditEvents.seq));
+  return checkChain(tx, scopeId, rows);
+}
+
+/**
+ * The same check for a member of the household, in their own context: the whole chain comes from
+ * fiscus_household_chain() (migration 0028), hidden events included, since the api has no system
+ * context (#271). Callers report only whether it's intact.
+ */
+export async function verifyHouseholdChain(
+  tx: Executor,
+  householdId: string,
+): Promise<ChainVerification> {
+  const { rows } = await tx.execute<AuditEventRow>(sql`SELECT * FROM fiscus_household_chain()`);
+  return checkChain(
+    tx,
+    householdId,
+    rows.map((r) => ({
+      id: Number(r.id),
+      // Drizzle reads timestamps as text and maps them per column: the same here, so the hash
+      // input matches verifyChain's exactly.
+      occurredAt: auditEvents.occurredAt.mapFromDriverValue(r.occurred_at) as Date,
+      actorKind: r.actor_kind,
+      actorUserId: r.actor_user_id,
+      actorMemberId: r.actor_member_id,
+      householdId: r.household_id,
+      action: r.action,
+      targetType: r.target_type,
+      targetId: r.target_id,
+      visibleToHousehold: r.visible_to_household,
+      metadata: r.metadata,
+      ip: r.ip,
+      scopeId: r.scope_id,
+      seq: r.seq === null ? null : Number(r.seq),
+      entryHash: r.entry_hash,
+      accountId: r.account_id,
+      changesEnc: r.changes_enc,
+    })),
+  );
+}
+
+/** audit_events as Postgres returns it through Drizzle: bigints and timestamps as strings. */
+interface AuditEventRow extends Record<string, unknown> {
+  id: string;
+  occurred_at: string;
+  actor_kind: AuditEvent['actorKind'];
+  actor_user_id: string | null;
+  actor_member_id: string | null;
+  household_id: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  visible_to_household: boolean;
+  metadata: Record<string, unknown>;
+  ip: string | null;
+  scope_id: string;
+  seq: string | null;
+  entry_hash: Buffer | null;
+  account_id: string | null;
+  changes_enc: Buffer | null;
+}
+
+type AuditEvent = typeof auditEvents.$inferSelect;
+
+async function checkChain(
+  tx: Executor,
+  scopeId: string,
+  rows: AuditEvent[],
+): Promise<ChainVerification> {
   let previous: Buffer = GENESIS;
   let expected = 1;
   const result = (extra: Partial<ChainVerification> = {}): ChainVerification => ({
