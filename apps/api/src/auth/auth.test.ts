@@ -2,10 +2,10 @@
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import pg from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp, TestClient } from '../testing/test-app.js';
 import { RateLimiter } from './rate-limiter.js';
-import { SessionService } from './session.service.js';
+import { SESSION_IDLE_MS, SESSION_TTL_MS, SessionService } from './session.service.js';
 import { SetupService } from './setup.service.js';
 
 const ADMIN = {
@@ -246,6 +246,64 @@ describe('authentication', () => {
       const laptopId = list.find((s) => s.current)!.id;
       expect((await bea.delete(`/api/v1/me/sessions/${laptopId}`)).status).toBe(404);
       expect((await laptop.get('/api/v1/me')).status).toBe(200);
+    });
+
+    describe('expiry (#379)', () => {
+      const SECOND = 1000;
+      const DAY = 24 * 60 * 60 * SECOND;
+      let sessions: SessionService;
+      let realNow: () => Date;
+      let t0: number;
+      /** Moves the sessions' clock to `ms` after t0. */
+      const at = (ms: number) => {
+        sessions.now = () => new Date(t0 + ms);
+      };
+      const currentId = async (c: TestClient) =>
+        (await c.get('/api/v1/me/sessions')).body.data.find((s: { current: boolean }) => s.current)
+          .id as string;
+      const stored = async (id: string) =>
+        (await sql('SELECT 1 FROM sessions WHERE id = $1', [id])).length === 1;
+
+      beforeEach(() => {
+        sessions = app.get(SessionService);
+        realNow = sessions.now;
+        t0 = Date.now();
+        at(0);
+      });
+      afterEach(() => {
+        sessions.now = realNow;
+      });
+
+      it('ends a session after 7 days without use, and use keeps it going', async () => {
+        const used = await signedInAdmin();
+        const idle = await signedInAdmin();
+        const idleId = await currentId(idle);
+
+        at(SESSION_IDLE_MS - SECOND);
+        expect((await used.get('/api/v1/me')).status).toBe(200);
+
+        at(SESSION_IDLE_MS + SECOND);
+        expect((await idle.get('/api/v1/me')).status).toBe(401);
+        expect(await stored(idleId)).toBe(false);
+        // Seen a second short of 7 days in: idle for two seconds, not seven days.
+        expect((await used.get('/api/v1/me')).status).toBe(200);
+      });
+
+      it('ends a session 30 days after sign-in, however much it is used', async () => {
+        const c = await signedInAdmin();
+        const id = await currentId(c);
+
+        for (let day = 6; day < 30; day += 6) {
+          at(day * DAY);
+          expect((await c.get('/api/v1/me')).status).toBe(200);
+        }
+        at(SESSION_TTL_MS - SECOND);
+        expect((await c.get('/api/v1/me')).status).toBe(200);
+
+        at(SESSION_TTL_MS + SECOND);
+        expect((await c.get('/api/v1/me')).status).toBe(401);
+        expect(await stored(id)).toBe(false);
+      });
     });
 
     it('requires authentication for /me', async () => {
