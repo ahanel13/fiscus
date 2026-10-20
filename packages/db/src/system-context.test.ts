@@ -8,9 +8,10 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest();
 const COLORS = ['#111111', '#222222', '#333333'];
 
 /**
- * #271: what the api used system context for is a handful of definer functions (migration 0028),
- * each checking the context it's called in, and the worker has a login of its own. That system
- * context then works only for that login is the contract step, #376, with its tests.
+ * System context works only for a session logged in as fiscus_worker (migration 0029, #376), so
+ * SQL that reaches the database as fiscus_app (the api) can't claim to be a worker job. What the api
+ * needed it for is a handful of definer functions (migration 0028, #271), each checking the context
+ * it's called in.
  */
 describe('system context belongs to the worker', () => {
   let tdb: TestDatabase;
@@ -155,6 +156,25 @@ describe('system context belongs to the worker', () => {
   afterAll(async () => {
     await Promise.all([owner?.end(), app?.end(), worker?.end()]);
     await tdb?.stop();
+  });
+
+  const TABLES = [
+    'households',
+    'household_members',
+    'invites',
+    'household_keys',
+    'accounts',
+    'transactions',
+  ];
+
+  it('gives the app role nothing for system context', async () => {
+    await as(app, { household: H, system: true }, async (q) => {
+      for (const table of TABLES) expect([table, await count(q, table)]).toEqual([table, 0]);
+      // audit_events also shows instance-level events (no household) to anyone: none of H's.
+      expect(
+        (await q.query('SELECT 1 FROM audit_events WHERE household_id = $1', [H])).rowCount,
+      ).toBe(0);
+    });
   });
 
   it("gives the worker the whole household in system context, and only that household's", async () => {

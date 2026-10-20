@@ -48,8 +48,8 @@ describe('architecture', () => {
     );
   });
 
-  // System context is for the worker's database role (#271); the database stops honoring it from
-  // the api in #376. This keeps api code from relying on it.
+  // System context works only for the worker's database role (migration 0029), so the database
+  // would ignore it from the api anyway. This keeps code from relying on it (#271, #376).
   it('never asks for system context', () => {
     const offenders = sources(SRC)
       .map((path) => relative(SRC, path))

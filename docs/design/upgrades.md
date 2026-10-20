@@ -40,7 +40,9 @@ Classify every schema change:
 | New row-level security policy or trigger on a household table | ✅ | Required for household tables (ADR 0005/0013, enforced by tests) |
 
 A PR that **contracts** (drops or narrows anything) must reference the earlier release that
-stopped using it, and must be labeled `migration:contract`.
+stopped using it, and must be labeled `migration:contract`. A hand-written migration that narrows
+something without dropping it (a function or policy that allows less) starts a comment line with
+`-- Contract:`, so the release notes flag it (§7).
 
 ## 4. Writing migrations
 - Generate with `pnpm db:generate`. Hand-written SQL (policies, triggers, functions) goes in custom

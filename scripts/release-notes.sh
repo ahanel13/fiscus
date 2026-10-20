@@ -19,9 +19,10 @@ else
   migrations=$(git ls-tree -r --name-only "$tag" -- packages/db/migrations | grep '\.sql$' || true)
 fi
 # Contract changes (upgrades.md §3) drop or narrow something the previous release may still use.
+# A hand-written one the pattern can't see (a narrowed function or policy) says so: `-- Contract:`.
 contracts=""
 for f in $migrations; do
-  if git show "$tag:$f" | grep -qiE 'DROP (TABLE|COLUMN|TYPE)|ALTER TABLE .* DROP COLUMN|SET NOT NULL'; then
+  if git show "$tag:$f" | grep -qiE 'DROP (TABLE|COLUMN|TYPE)|ALTER TABLE .* DROP COLUMN|SET NOT NULL|^-- Contract:'; then
     contracts+="$f"$'\n'
   fi
 done
