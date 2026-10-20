@@ -12,8 +12,8 @@ import type {
 import { MEMBER_COLORS, TRANSFER_RULE_DEFAULT_DAYS } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
-import { ArrowDown, ArrowUp, Wand2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, Plus, Wand2, X } from 'lucide-react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
   accountsQuery,
@@ -36,6 +36,9 @@ import {
   DateText,
   Dialog,
   DialogActions,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Select,
   SelectItem,
   SelectSection,
@@ -312,6 +315,123 @@ function fromDraft(d: Draft): { conditions: RuleConditions; actions: RuleActions
   return { conditions, actions };
 }
 
+/** The conditions and actions beyond the two every rule starts with. */
+type Part =
+  | 'direction'
+  | 'amount'
+  | 'account'
+  | 'category'
+  | 'rename'
+  | 'tags'
+  | 'members'
+  | 'transfer'
+  | 'reviewed'
+  | 'exclude';
+
+const CONDITIONS: { key: Part; label: string }[] = [
+  { key: 'direction', label: 'Money in or out' },
+  { key: 'amount', label: 'Amount' },
+  { key: 'account', label: 'Account' },
+  { key: 'category', label: 'Category now' },
+];
+const ACTIONS: { key: Part; label: string }[] = [
+  { key: 'rename', label: 'Rename' },
+  { key: 'tags', label: 'Add tags' },
+  { key: 'members', label: 'Who it’s for' },
+  { key: 'transfer', label: 'Transfer to an account' },
+  { key: 'reviewed', label: 'Mark reviewed' },
+  { key: 'exclude', label: 'Exclude from reports and budgets' },
+];
+
+/** What a part goes back to when it's removed, so the rule no longer uses it. */
+const CLEARED: Record<Part, Partial<Draft>> = {
+  direction: { direction: 'any' },
+  amount: { min: null, max: null },
+  account: { accountId: ANY },
+  category: { category: ANY },
+  rename: { rename: '' },
+  tags: { addTagIds: [] },
+  members: { forMembers: [] },
+  transfer: { transferTo: '', withinDays: TRANSFER_RULE_DEFAULT_DAYS, recordIfMissing: false },
+  reviewed: { markReviewed: false },
+  exclude: { exclude: false },
+};
+
+function partsInUse(d: Draft): Set<Part> {
+  const used: [Part, boolean][] = [
+    ['direction', d.direction !== 'any'],
+    ['amount', d.min !== null || d.max !== null],
+    ['account', d.accountId !== ANY],
+    ['category', d.category !== ANY],
+    ['rename', d.rename !== ''],
+    ['tags', d.addTagIds.length > 0],
+    ['members', d.forMembers.length > 0],
+    ['transfer', d.transferTo !== ''],
+    ['reviewed', d.markReviewed],
+    ['exclude', d.exclude],
+  ];
+  return new Set(used.filter(([, on]) => on).map(([part]) => part));
+}
+
+/** A transfer needs two accounts you own: the one it's from and the one it goes to. */
+const canTransfer = (accounts: Pick<Account, 'yourAccess' | 'closedAt'>[]) =>
+  accounts.filter((a) => a.yourAccess === 'owner' && !a.closedAt).length >= 2;
+
+/** An added condition or action, with a button that takes it out again. */
+function RemovablePart({
+  label,
+  labelled = false,
+  onRemove,
+  children,
+}: {
+  label: string;
+  /** Its control has a label above it: line the button up with the control, not the label. */
+  labelled?: boolean;
+  onRemove: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <div className="min-w-0 flex-1">{children}</div>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Remove: ${label}`}
+        onPress={onRemove}
+        className={labelled ? 'mt-6 shrink-0' : 'shrink-0'}
+      >
+        <X aria-hidden className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
+function AddPart({
+  label,
+  parts,
+  onAdd,
+}: {
+  label: string;
+  parts: { key: Part; label: string }[];
+  onAdd: (part: Part) => void;
+}) {
+  if (!parts.length) return null;
+  return (
+    <MenuTrigger>
+      <Button variant="secondary" size="sm">
+        <Plus aria-hidden className="size-4" /> {label}
+      </Button>
+      <Menu placement="bottom start" aria-label={label}>
+        {parts.map((p) => (
+          <MenuItem key={p.key} onAction={() => onAdd(p.key)}>
+            {p.label}
+          </MenuItem>
+        ))}
+      </Menu>
+    </MenuTrigger>
+  );
+}
+
 export function RuleEditor({
   householdId,
   rule,
@@ -341,6 +461,22 @@ export function RuleEditor({
     toDraft(rule ?? { name: null, ...(initial ?? { conditions: {}, actions: {} }) }),
   );
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
+  // Starts with a description and a category (F19); the rest is added as needed, and an existing
+  // rule shows every part it uses.
+  const [shown, setShown] = useState(() => partsInUse(d));
+  const add = (part: Part) => {
+    setShown((x) => new Set(x).add(part));
+    if (part === 'reviewed') set({ markReviewed: true });
+    if (part === 'exclude') set({ exclude: true });
+  };
+  const remove = (part: Part) => {
+    setShown((x) => {
+      const next = new Set(x);
+      next.delete(part);
+      return next;
+    });
+    set(CLEARED[part]);
+  };
   const body = fromDraft(d);
   const valid =
     Object.keys(body.conditions).length > 0 &&
@@ -447,125 +583,177 @@ export function RuleEditor({
               description="Matches the bank’s description or the name, ignoring case."
             />
           </div>
-          <SegmentedControl
-            aria-label="Money in or out"
-            options={[
-              { value: 'any', label: 'In or out' },
-              { value: 'out', label: 'Money out' },
-              { value: 'in', label: 'Money in' },
-            ]}
-            value={d.direction}
-            onChange={(direction) => set({ direction })}
+          {shown.has('direction') ? (
+            <RemovablePart label="Money in or out" onRemove={() => remove('direction')}>
+              <SegmentedControl
+                aria-label="Money in or out"
+                options={[
+                  { value: 'any', label: 'In or out' },
+                  { value: 'out', label: 'Money out' },
+                  { value: 'in', label: 'Money in' },
+                ]}
+                value={d.direction}
+                onChange={(direction) => set({ direction })}
+              />
+            </RemovablePart>
+          ) : null}
+          {shown.has('amount') ? (
+            <RemovablePart label="Amount" labelled onRemove={() => remove('amount')}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <AmountInput
+                  label="Amount at least"
+                  currency={currency}
+                  value={d.min}
+                  onChange={(min) => set({ min })}
+                />
+                <AmountInput
+                  label="Amount at most"
+                  currency={currency}
+                  value={d.max}
+                  onChange={(max) => set({ max })}
+                />
+              </div>
+            </RemovablePart>
+          ) : null}
+          {shown.has('account') ? (
+            <RemovablePart label="Account" labelled onRemove={() => remove('account')}>
+              <Select
+                label="Account"
+                value={d.accountId}
+                onChange={(v) => set({ accountId: String(v) })}
+              >
+                {[
+                  <SelectItem key={ANY} id={ANY}>
+                    Any account
+                  </SelectItem>,
+                  ...accounts.map((a) => (
+                    <SelectItem key={a.id} id={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  )),
+                ]}
+              </Select>
+            </RemovablePart>
+          ) : null}
+          {shown.has('category') ? (
+            <RemovablePart label="Category now" labelled onRemove={() => remove('category')}>
+              <Select
+                label="Category now"
+                value={d.category}
+                onChange={(v) => set({ category: String(v) })}
+              >
+                <SelectItem id={ANY}>Any category</SelectItem>
+                <SelectItem id="none">Uncategorized</SelectItem>
+                {allCategories}
+              </Select>
+            </RemovablePart>
+          ) : null}
+          <AddPart
+            label="Add condition"
+            parts={CONDITIONS.filter((c) => !shown.has(c.key))}
+            onAdd={add}
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <AmountInput
-              label="Amount at least"
-              currency={currency}
-              value={d.min}
-              onChange={(min) => set({ min })}
-            />
-            <AmountInput
-              label="Amount at most"
-              currency={currency}
-              value={d.max}
-              onChange={(max) => set({ max })}
-            />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Select
-              label="Account"
-              value={d.accountId}
-              onChange={(v) => set({ accountId: String(v) })}
-            >
-              {[
-                <SelectItem key={ANY} id={ANY}>
-                  Any account
-                </SelectItem>,
-                ...accounts.map((a) => (
-                  <SelectItem key={a.id} id={a.id}>
-                    {a.name}
-                  </SelectItem>
-                )),
-              ]}
-            </Select>
-            <Select
-              label="Category now"
-              value={d.category}
-              onChange={(v) => set({ category: String(v) })}
-            >
-              <SelectItem id={ANY}>Any category</SelectItem>
-              <SelectItem id="none">Uncategorized</SelectItem>
-              {allCategories}
-            </Select>
-          </div>
         </fieldset>
 
         <fieldset className="space-y-3">
           <legend className="mb-1 text-sm font-semibold">…then</legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextField
-              label="Rename to"
-              value={d.rename}
-              onChange={(rename) => set({ rename })}
-              maxLength={200}
-              placeholder="Trader Joe’s"
-            />
-            <Select
-              label="Set category"
-              value={d.setCategory || '__keep'}
-              onChange={(v) => set({ setCategory: v === '__keep' ? '' : String(v) })}
-            >
-              <SelectItem id="__keep">Leave as is</SelectItem>
-              {allCategories}
-            </Select>
-          </div>
-          <TagPicker
-            label="Add tags"
-            tags={tags}
-            value={d.addTagIds}
-            onChange={(addTagIds) => set({ addTagIds })}
-            onCreate={async (name) => {
-              const r = await api<Data<Tag>>('POST', `${base(householdId)}/tags`, {
-                body: { name, color: MEMBER_COLORS[tags.length % MEMBER_COLORS.length] },
-              });
-              await queryClient.invalidateQueries({ queryKey: tagsQuery(householdId).queryKey });
-              return r.data;
-            }}
-          />
-          {members.length > 1 ? (
-            <fieldset>
-              <legend className="mb-1 text-sm font-medium">Who it’s for</legend>
-              <div className="flex flex-wrap gap-x-4">
-                {members.map((m) => (
-                  <Checkbox
-                    key={m.id}
-                    isSelected={d.forMembers.includes(m.id)}
-                    onChange={(on) =>
-                      set({
-                        forMembers: on
-                          ? [...d.forMembers, m.id]
-                          : d.forMembers.filter((x) => x !== m.id),
-                      })
-                    }
-                  >
-                    {m.isYou ? 'Me' : m.displayName}
-                  </Checkbox>
-                ))}
-              </div>
-              <p className="text-xs text-muted">
-                Leave empty to keep the account’s owners. Only on accounts the rule’s author owns.
-              </p>
-            </fieldset>
+          <Select
+            label="Set category"
+            value={d.setCategory || '__keep'}
+            onChange={(v) => set({ setCategory: v === '__keep' ? '' : String(v) })}
+          >
+            <SelectItem id="__keep">Leave as is</SelectItem>
+            {allCategories}
+          </Select>
+          {shown.has('rename') ? (
+            <RemovablePart label="Rename" labelled onRemove={() => remove('rename')}>
+              <TextField
+                label="Rename to"
+                value={d.rename}
+                onChange={(rename) => set({ rename })}
+                maxLength={200}
+                placeholder="Trader Joe’s"
+              />
+            </RemovablePart>
           ) : null}
-          <TransferAction d={d} set={set} accounts={accounts} />
-          <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <Switch isSelected={d.markReviewed} onChange={(markReviewed) => set({ markReviewed })}>
-              Mark reviewed
-            </Switch>
-            <Switch isSelected={d.exclude} onChange={(exclude) => set({ exclude })}>
-              Exclude from reports and budgets
-            </Switch>
-          </div>
+          {shown.has('tags') ? (
+            <RemovablePart label="Add tags" labelled onRemove={() => remove('tags')}>
+              <TagPicker
+                label="Add tags"
+                tags={tags}
+                value={d.addTagIds}
+                onChange={(addTagIds) => set({ addTagIds })}
+                onCreate={async (name) => {
+                  const r = await api<Data<Tag>>('POST', `${base(householdId)}/tags`, {
+                    body: { name, color: MEMBER_COLORS[tags.length % MEMBER_COLORS.length] },
+                  });
+                  await queryClient.invalidateQueries({
+                    queryKey: tagsQuery(householdId).queryKey,
+                  });
+                  return r.data;
+                }}
+              />
+            </RemovablePart>
+          ) : null}
+          {shown.has('members') ? (
+            <RemovablePart label="Who it’s for" labelled onRemove={() => remove('members')}>
+              <fieldset>
+                <legend className="mb-1 text-sm font-medium">Who it’s for</legend>
+                <div className="flex flex-wrap gap-x-4">
+                  {members.map((m) => (
+                    <Checkbox
+                      key={m.id}
+                      isSelected={d.forMembers.includes(m.id)}
+                      onChange={(on) =>
+                        set({
+                          forMembers: on
+                            ? [...d.forMembers, m.id]
+                            : d.forMembers.filter((x) => x !== m.id),
+                        })
+                      }
+                    >
+                      {m.isYou ? 'Me' : m.displayName}
+                    </Checkbox>
+                  ))}
+                </div>
+                <p className="text-xs text-muted">
+                  Leave empty to keep the account’s owners. Only on accounts the rule’s author owns.
+                </p>
+              </fieldset>
+            </RemovablePart>
+          ) : null}
+          {shown.has('transfer') ? (
+            <RemovablePart label="Transfer" labelled onRemove={() => remove('transfer')}>
+              <TransferAction d={d} set={set} accounts={accounts} />
+            </RemovablePart>
+          ) : null}
+          {shown.has('reviewed') ? (
+            <RemovablePart label="Mark reviewed" onRemove={() => remove('reviewed')}>
+              <Switch
+                isSelected={d.markReviewed}
+                onChange={(markReviewed) => set({ markReviewed })}
+              >
+                Mark reviewed
+              </Switch>
+            </RemovablePart>
+          ) : null}
+          {shown.has('exclude') ? (
+            <RemovablePart label="Exclude" onRemove={() => remove('exclude')}>
+              <Switch isSelected={d.exclude} onChange={(exclude) => set({ exclude })}>
+                Exclude from reports and budgets
+              </Switch>
+            </RemovablePart>
+          ) : null}
+          <AddPart
+            label="Add action"
+            parts={ACTIONS.filter(
+              (a) =>
+                !shown.has(a.key) &&
+                (a.key !== 'members' || members.length > 1) &&
+                (a.key !== 'transfer' || canTransfer(accounts)),
+            )}
+            onAdd={add}
+          />
         </fieldset>
 
         <div className="rounded-lg border border-border bg-surface-2 p-3 text-sm" role="status">

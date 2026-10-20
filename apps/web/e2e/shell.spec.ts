@@ -449,7 +449,15 @@ test('creates a rule with a live preview, and applies it to existing transaction
 
   await page.getByRole('button', { name: 'New rule' }).click();
   const editor = page.getByRole('dialog', { name: 'New rule' });
+  // It starts with a description and a category; the rest is added as needed (#355).
+  await expect(editor.getByRole('textbox', { name: 'Rename to' })).toHaveCount(0);
   await editor.getByRole('textbox', { name: 'Text' }).fill('coffee');
+  await editor.getByRole('button', { name: 'Add condition' }).click();
+  await page.getByRole('menuitem', { name: 'Money in or out' }).click();
+  await editor.getByRole('button', { name: 'Remove: Money in or out' }).click();
+  await expect(editor.getByRole('radiogroup', { name: 'Money in or out' })).toHaveCount(0);
+  await editor.getByRole('button', { name: 'Add action' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
   await editor.getByRole('textbox', { name: 'Rename to' }).fill('Coffee');
   await editor.getByRole('button', { name: /Set category/ }).click();
   await page.getByRole('option', { name: 'Coffee', exact: true }).click();
@@ -464,6 +472,11 @@ test('creates a rule with a live preview, and applies it to existing transaction
   await expect(page.getByText('Rule created.')).toBeVisible();
   await expect(page.getByText(/Applied to 1 existing transaction/)).toBeVisible();
   await expect(page.getByText('When: Description contains “coffee”')).toBeVisible();
+  // Opened again, it shows the parts it uses.
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit rule' });
+  await expect(edit.getByRole('textbox', { name: 'Rename to' })).toHaveValue('Coffee');
+  await page.keyboard.press('Escape');
 
   // Nothing left for "Apply to existing" to do.
   await page.getByRole('button', { name: 'Apply to existing' }).click();
@@ -656,6 +669,8 @@ test('a rule can treat payments as transfers to another account, recording the o
   await page.getByRole('button', { name: 'New rule' }).click();
   const editor = page.getByRole('dialog', { name: 'New rule' });
   await editor.getByRole('textbox', { name: 'Text' }).fill('payment to pocket');
+  await editor.getByRole('button', { name: 'Add action' }).click();
+  await page.getByRole('menuitem', { name: 'Transfer to an account' }).click();
   await editor.getByRole('button', { name: /Transfer to/ }).click();
   await page.getByRole('option', { name: 'Pocket' }).click();
   await editor.getByRole('button', { name: /Look for the other side within/ }).click();
