@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import './zod-config.js';
 import '@fontsource-variable/inter';
 import './app.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

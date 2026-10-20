@@ -1,0 +1,11 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/*
+ * React Aria's press handling adds this rule as an inline <style id="react-aria-pressable-style">,
+ * which the Content-Security-Policy blocks (#378). It skips that when an element with the id
+ * exists, so index.html links this copy with it. Keep it in step with react-aria's usePress.
+ */
+@layer {
+  [data-react-aria-pressable] {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+}
