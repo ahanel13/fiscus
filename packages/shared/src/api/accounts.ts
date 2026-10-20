@@ -142,6 +142,40 @@ export const balancesQuerySchema = z
   })
   .and(dateWindowSchema);
 
+/**
+ * How a member arranges their accounts list (#48): their own groups, in order, and their order
+ * for the accounts left in their type's section. Private to them, and never changes access.
+ */
+export const accountLayoutSchema = z
+  .object({
+    groups: z
+      .array(
+        z.object({
+          /** Absent for a new group. */
+          id: z.uuid().optional(),
+          name: z.string().trim().min(1).max(60),
+          accountIds: z.array(z.uuid()).max(1000),
+        }),
+      )
+      .max(50),
+    ungrouped: z.array(z.uuid()).max(1000),
+  })
+  .refine((l) => {
+    const ids = [...l.groups.flatMap((g) => g.accountIds), ...l.ungrouped];
+    return new Set(ids).size === ids.length;
+  }, 'An account can be in only one place')
+  .refine((l) => {
+    const ids = l.groups.flatMap((g) => (g.id ? [g.id] : []));
+    return new Set(ids).size === ids.length;
+  }, 'A group can appear only once');
+export type AccountLayoutInput = z.infer<typeof accountLayoutSchema>;
+
+export interface AccountLayout {
+  groups: { id: string; name: string; accountIds: string[] }[];
+  /** Accounts placed in their type's section, in order. Accounts in neither come after. */
+  ungrouped: string[];
+}
+
 export interface AccountOwner {
   memberId: string;
   shareBps: number;

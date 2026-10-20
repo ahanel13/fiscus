@@ -108,6 +108,7 @@ caller can't see ("Transfer to Anthony").
 | ACC-09 | Close / archive / delete account | acct-own | acct-own | ❌ | **Close or archive** (history kept) needs one owner and notifies the others. **Permanent delete** of a joint account needs every co-owner's approval; requests expire after 14 days, leaving archive as the fallback (ADR 0012). Delete requires re-authentication. Blocked under departure protection |
 | ACC-10 | Read account number | acct-own | acct-own | ❌ | |
 | ACC-11 | Mark account as business | acct-own | acct-own | ❌ | |
+| ACC-12 | Arrange your own accounts list (groups, order) | own | own | own | Private to you, like preferences (HH-10). Only accounts you can see; an arrangement never changes anyone's access (#48) |
 
 ### 4.3 Transactions
 | ID | Action | OWN | MEM | VIEW | Notes |

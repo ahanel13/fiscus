@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { FieldCrypto } from '@fiscus/crypto';
 import {
+  accountGroups,
+  accountPlacements,
   accountOwners,
   accounts,
   balanceSnapshots,
@@ -25,7 +27,19 @@ import type {
   updateAccountSchema,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  sql,
+} from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { addDays, daysBetween, todayIn } from '../common/dates.js';
@@ -117,16 +131,25 @@ export class AccountsService {
     return this.scope.run(ctx, async (tx) => {
       const scoped = await moneyScope(tx, ctx, lens);
       if (scoped.size === 0) return [];
+      // In the caller's own order (#48): their groups, then what they placed in a type's section,
+      // then the household's order. Row-level security joins only their own placements.
       const rows = await tx
-        .select()
+        .select(getTableColumns(accounts))
         .from(accounts)
+        .leftJoin(accountPlacements, eq(accountPlacements.accountId, accounts.id))
+        .leftJoin(accountGroups, eq(accountGroups.id, accountPlacements.groupId))
         .where(
           and(
             inArray(accounts.id, [...scoped.keys()]),
             include === 'open' ? isNull(accounts.closedAt) : undefined,
           ),
         )
-        .orderBy(asc(accounts.sortOrder), asc(accounts.name));
+        .orderBy(
+          sql`${accountGroups.sortOrder} ASC NULLS LAST`,
+          sql`${accountPlacements.sortOrder} ASC NULLS LAST`,
+          asc(accounts.sortOrder),
+          asc(accounts.name),
+        );
       const levels = new Map([...scoped].map(([id, s]) => [id, s.level]));
       const list = await this.#present(tx, ctx, rows, levels);
       if (!window) return list;

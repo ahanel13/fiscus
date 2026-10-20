@@ -18,6 +18,8 @@ describe('row-level security', () => {
   const TABLES = ['households', 'household_members', 'invites', 'household_keys', 'audit_events'];
   // Household tables with their own visibility suites (accounts.test.ts, ledger.test.ts).
   const COVERED_ELSEWHERE = [
+    'account_groups',
+    'account_placements',
     'accounts',
     'account_owners',
     'balance_snapshots',
