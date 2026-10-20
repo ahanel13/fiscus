@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Applies the theme before first paint to avoid a flash (see src/lib/theme.ts). A file, not an
 // inline script, so the Content-Security-Policy can allow scripts from this origin only (#378).
 try {
