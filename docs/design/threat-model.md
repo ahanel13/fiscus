@@ -54,7 +54,7 @@ disclosure, **D**enial of service, **E**levation of privilege.
 | # | Threat | STRIDE | Mitigation | Residual risk | Held by |
 |---|---|---|---|---|---|
 | T1 | Guessing passwords | S | argon2id (OWASP parameters); 10 failures per account and 30 per IP per 15 minutes; identical answers for an unknown email and a wrong password | Limits are per api process, in memory; a slow, distributed guess still gets through. No second factor yet | `auth.test.ts` (rate limits, identical answers, argon2id); 2FA #27, passkeys #227; shared limits #377 |
-| T2 | A stolen session cookie | S, I | `HttpOnly`, `Secure`, `SameSite=Lax`; only its hash is stored; rotated at login; ends after 7 days idle or 30 days; a password reset signs out everywhere; you can list and revoke your sessions; sensitive actions need re-authentication | A cookie taken from an unlocked device works until it expires or is revoked | `auth.test.ts` (rotation, revocation, reset, re-auth, hashes stored); expiry untested: #379 |
+| T2 | A stolen session cookie | S, I | `HttpOnly`, `Secure`, `SameSite=Lax`; only its hash is stored; rotated at login; ends after 7 days idle or 30 days; a password reset signs out everywhere; you can list and revoke your sessions; sensitive actions need re-authentication | A cookie taken from an unlocked device works until it expires or is revoked | `auth.test.ts` (rotation, revocation, reset, re-auth, hashes stored, idle and absolute expiry) |
 | T3 | Cross-site request forgery | S, T | Signed double-submit token in `X-CSRF-Token`, HMAC-bound to the session; `SameSite=Lax` | None known | `csrf.service.test.ts`, `auth.test.ts` |
 | T4 | Cross-site scripting: a merchant name or note that runs as script | E, I | React escapes everything it renders; no `dangerouslySetInnerHTML`; a strict Content-Security-Policy on every response: scripts and styles from this origin only, nothing inline, no `eval`, requests only to this origin (or `API_URL`'s); `Permissions-Policy` off for camera, microphone, location, and payment; `X-Content-Type-Options`, `X-Frame-Options: DENY`, `frame-ancestors 'none'` | Injected markup could still change the page's look (no script, no requests out) | `e2e/headers.spec.ts` (headers on pages, assets, errors, and api responses; an injected script is blocked); every e2e test fails on any CSP violation (`e2e/test.ts`) |
 | T5 | SQL injection | T, I, E | Parameterized queries everywhere (Drizzle); row-level security on every household table, failing closed | Injected SQL acts as the api's role: what the session's member can see, nothing more. A bug in the worker isn't covered | `rls.test.ts`, `system-context.test.ts` (the app role gets nothing from system context, and can't become the worker); `accounts.test.ts`; architecture test keeps the api off system context |
@@ -111,6 +111,5 @@ Each is an issue:
 | Gap | Issue |
 |---|---|
 | Rate limits are in memory per process, and not on signup or imports (T1, T9) | #377 |
-| Session expiry has no test (T2) | #379 |
 | No witness outside the database for the history (T13, T17) | #264 |
 | No second factor (T1) | #27, #227 |
