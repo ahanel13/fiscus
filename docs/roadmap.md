@@ -86,7 +86,7 @@ Triaged in October 2026: what M2 builds on moved there, and the rest went to the
 belongs to, or to the backlog.
 
 **Epic: File import** (`area:aggregation`)
-- [P1] OFX/QFX import (#74)
+- [P1] OFX/QFX import (#74, done)
 
 **Polish** (`area:ledger`, `area:web`, `area:auth`)
 - [P1] The browser checks that the server's activity history extends what it last verified (ADR 0013 §4, #264)
