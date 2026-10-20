@@ -4,6 +4,8 @@ import {
   type ImportBatch,
   type ImportPreview,
   type ImportProfile,
+  type ImportFormat,
+  importFormatSchema,
   importRequestSchema,
   importRowsSchema,
   type ImportRowsResult,
@@ -57,8 +59,8 @@ export class ImportsController {
   @Get('imports/category-map')
   async categoryMap(
     @Household() ctx: HouseholdContext,
-    @Query(new ZodPipe(z.object({ format: z.enum(['csv', 'monarch']).optional() })))
-    query: { format?: 'csv' | 'monarch' },
+    @Query(new ZodPipe(z.object({ format: importFormatSchema.optional() })))
+    query: { format?: ImportFormat },
   ): Promise<{ data: Record<string, string> }> {
     return { data: await this.imports.categoryMap(ctx, query.format) };
   }

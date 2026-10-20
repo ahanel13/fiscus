@@ -23,6 +23,7 @@ import {
   type CsvMapping,
   type ImportAccountSummary,
   type ImportBatch,
+  type ImportFormat,
   type ImportPreview,
   type ImportProfile,
   type importRequestSchema,
@@ -76,6 +77,11 @@ const CHUNK = 1000;
 interface Planned {
   row: ImportRow;
   dedupeKey: string;
+  /**
+   * For a row with the bank's id: its hash key, used instead when another row of the same file
+   * has that id with other details (a bank reusing a FITID, #74).
+   */
+  fallbackKey?: string;
 }
 
 interface Resolved {
@@ -89,6 +95,14 @@ const chunks = <T>(items: T[], size = CHUNK): T[][] =>
   );
 
 const lower = (s: string) => s.trim().toLowerCase();
+
+/** What tells two rows with one bank id apart: the reported date, amount, and description. */
+const details = (t: { date: string; amountMinor: number; description: string }) =>
+  [t.date, t.amountMinor, normalizeDescription(t.description)].join('|');
+
+/** A file row's details, as #insertTransactions stores them. */
+const rowDetails = (row: ImportRow) =>
+  details({ ...row, description: row.description.trim() || (row.name?.trim() ?? '') });
 
 const days = (a: string, b: string) =>
   Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
@@ -143,7 +157,7 @@ export class ImportsService {
             tx,
             accountId,
             null,
-            await this.#removeDuplicates(tx, accountId, planned, results),
+            await this.#removeDuplicates(tx, accountId, null, planned, results),
             results,
             include,
           );
@@ -362,6 +376,8 @@ export class ImportsService {
             ...(a.create!.balanceMode ? { balanceMode: a.create!.balanceMode } : {}),
             ...(a.create!.visibility ? { visibility: a.create!.visibility } : {}),
             ...(a.create!.owners ? { owners: a.create!.owners } : {}),
+            ...(a.create!.mask ? { mask: a.create!.mask } : {}),
+            ...(a.create!.currency ? { currency: a.create!.currency } : {}),
           }));
         ids.set(a.key, accountId);
         const close = !combined && !!a.closeOn && !existing?.closedAt;
@@ -440,7 +456,7 @@ export class ImportsService {
         tx,
         batch.accountId,
         batch.id,
-        await this.#removeDuplicates(tx, batch.accountId, planned, results),
+        await this.#removeDuplicates(tx, batch.accountId, batch.runId, planned, results),
         results,
         new Set(input.includeOverlaps),
       );
@@ -566,7 +582,7 @@ export class ImportsService {
    */
   async categoryMap(
     ctx: HouseholdContext,
-    format: 'csv' | 'monarch' | undefined,
+    format: ImportFormat | undefined,
   ): Promise<Record<string, string>> {
     return this.scope.run(ctx, async (tx) => {
       const rows = await tx
@@ -775,32 +791,63 @@ export class ImportsService {
    * The bank's or Monarch's own id when there is one; otherwise a hash of the reported date,
    * amount, description, and how many identical rows came before it, so two $4.50 coffees on one
    * day stay two (data model §5). Rows arrive a day at a time at most, so the count is stable.
+   * A row with an id also gets a hash key of its details and id, for when the id turns out to be
+   * another row's (#removeDuplicates).
    */
   #dedupeKeys(rows: ImportRow[]): Planned[] {
     const seen = new Map<string, number>();
+    const hash = (s: string) => `h:${createHash('sha256').update(s).digest('base64url')}`;
     return rows.map((row) => {
-      if (row.externalId) return { row, dedupeKey: `x:${row.externalId}` };
+      if (row.externalId) {
+        return {
+          row,
+          dedupeKey: `x:${row.externalId}`,
+          fallbackKey: hash(`${rowDetails(row)}|x:${row.externalId}`),
+        };
+      }
       const base = [row.date, row.amountMinor, normalizeDescription(row.description)].join('|');
       const occurrence = seen.get(base) ?? 0;
       seen.set(base, occurrence + 1);
-      const hash = createHash('sha256').update(`${base}|${occurrence}`).digest('base64url');
-      return { row, dedupeKey: `h:${hash}` };
+      return { row, dedupeKey: hash(`${base}|${occurrence}`) };
     });
   }
 
-  /** Rows imported before (same key in the same account, even if since deleted): skipped. */
+  /**
+   * Rows imported before (same key in the same account, even if since deleted): skipped. A
+   * bank's id seen in an earlier file means imported before, whatever the details. Within one
+   * file (this run, or this request), the same id with the same details is one transaction
+   * listed twice; with other details it's a bank reusing a FITID, and the row is kept under its
+   * hash key instead (#74). `runId` is null for a preview, which has the whole file at once.
+   */
   async #removeDuplicates(
     tx: Executor,
     accountId: string | null,
+    runId: string | null,
     planned: Planned[],
     results: ImportRowResult[],
   ): Promise<Planned[]> {
-    const existing = new Set<string>();
+    const taken = new Set<string>();
+    /** Ids an earlier file brought. */
+    const before = new Set<string>();
+    /** Each id's rows in this file so far, by their details. */
+    const inFile = new Map<string, Set<string>>();
+    const sawInFile = (key: string, rowDetails: string) => {
+      const set = inFile.get(key) ?? new Set<string>();
+      inFile.set(key, set.add(rowDetails));
+    };
     if (accountId) {
-      for (const part of chunks(planned.map((p) => p.dedupeKey))) {
+      const keys = planned.flatMap((p) => [p.dedupeKey, ...(p.fallbackKey ? [p.fallbackKey] : [])]);
+      for (const part of chunks(keys)) {
         const found = await tx
-          .select({ key: transactions.dedupeKey })
+          .select({
+            key: transactions.dedupeKey,
+            runId: importBatches.runId,
+            date: transactions.authorizedDate,
+            amountMinor: transactions.amountMinor,
+            description: transactions.originalDescription,
+          })
           .from(transactions)
+          .leftJoin(importBatches, eq(importBatches.id, transactions.importBatchId))
           .where(
             and(
               // Also rows imported here and since moved to another account (TXN-12).
@@ -812,16 +859,36 @@ export class ImportsService {
               inArray(transactions.dedupeKey, part),
             ),
           );
-        for (const f of found) existing.add(f.key!);
+        for (const f of found) {
+          taken.add(f.key!);
+          if (!f.key!.startsWith('x:')) continue;
+          if (runId && f.runId === runId) sawInFile(f.key!, details(f));
+          else before.add(f.key!);
+        }
       }
     }
     const kept: Planned[] = [];
     for (const p of planned) {
-      if (existing.has(p.dedupeKey)) {
+      let duplicate: boolean;
+      let key = p.dedupeKey;
+      if (p.fallbackKey) {
+        const mine = rowDetails(p.row);
+        duplicate =
+          before.has(p.dedupeKey) ||
+          taken.has(p.fallbackKey) ||
+          (inFile.get(p.dedupeKey)?.has(mine) ?? false);
+        if (!duplicate) {
+          sawInFile(p.dedupeKey, mine);
+          if (taken.has(key)) key = p.fallbackKey;
+        }
+      } else {
+        duplicate = taken.has(key);
+      }
+      if (duplicate) {
         results.push({ line: p.row.line, status: 'duplicate', message: 'Already imported' });
       } else {
-        existing.add(p.dedupeKey); // the same id twice in one file
-        kept.push(p);
+        taken.add(key); // the same key twice in one file
+        kept.push(key === p.dedupeKey ? p : { ...p, dedupeKey: key });
       }
     }
     return kept;

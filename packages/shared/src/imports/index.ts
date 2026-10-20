@@ -3,4 +3,5 @@ export * from './account-names.js';
 export * from './csv.js';
 export * from './mapping.js';
 export * from './monarch.js';
+export * from './ofx.js';
 export * from './values.js';

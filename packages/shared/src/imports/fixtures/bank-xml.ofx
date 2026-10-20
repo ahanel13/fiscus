@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
+<!-- Synthetic: the same statement as bank-sgml-1252.ofx, as OFX 2.x XML. -->
+<OFX>
+  <SIGNONMSGSRSV1>
+    <SONRS>
+      <STATUS>
+        <CODE>0</CODE>
+        <SEVERITY>INFO</SEVERITY>
+      </STATUS>
+      <DTSERVER>20261006120000.000[-5:EST]</DTSERVER>
+      <LANGUAGE>ENG</LANGUAGE>
+      <FI>
+        <ORG>Example Credit Union</ORG>
+        <FID>99999</FID>
+      </FI>
+    </SONRS>
+  </SIGNONMSGSRSV1>
+  <BANKMSGSRSV1>
+    <STMTTRNRS>
+      <TRNUID>1</TRNUID>
+      <STATUS>
+        <CODE>0</CODE>
+        <SEVERITY>INFO</SEVERITY>
+      </STATUS>
+      <STMTRS>
+        <CURDEF>USD</CURDEF>
+        <BANKACCTFROM>
+          <BANKID>999999999</BANKID>
+          <ACCTID>000111221234</ACCTID>
+          <ACCTTYPE>CHECKING</ACCTTYPE>
+        </BANKACCTFROM>
+        <BANKTRANLIST>
+          <DTSTART>20260901</DTSTART>
+          <DTEND>20261006</DTEND>
+          <STMTTRN>
+            <TRNTYPE>DEBIT</TRNTYPE>
+            <DTPOSTED>20260915</DTPOSTED>
+            <TRNAMT>-4.50</TRNAMT>
+            <FITID>202609150001</FITID>
+            <NAME>Caf&#233; Façade</NAME>
+            <MEMO>Joe’s &#x201C;latte&#x201D;</MEMO>
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>DEBIT</TRNTYPE>
+            <DTPOSTED>20261001</DTPOSTED>
+            <TRNAMT>-23.10</TRNAMT>
+            <FITID>202610010001</FITID>
+            <NAME>AT&amp;T WIRELESS</NAME>
+            <MEMO>Bill pay</MEMO>
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>CHECK</TRNTYPE>
+            <DTPOSTED>20261006120000.000[-5:EST]</DTPOSTED>
+            <TRNAMT>-1250.00</TRNAMT>
+            <FITID>202610060001</FITID>
+            <CHECKNUM>1043</CHECKNUM>
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>CREDIT</TRNTYPE>
+            <DTPOSTED>20261006000000[0:GMT]</DTPOSTED>
+            <TRNAMT>2500.00</TRNAMT>
+            <FITID>202610060002</FITID>
+            <PAYEE>
+              <NAME>PAYROLL EXAMPLE CO</NAME>
+              <ADDR1>1 Example Way</ADDR1>
+              <CITY>Springfield</CITY>
+              <STATE>CO</STATE>
+              <POSTALCODE>80000</POSTALCODE>
+              <PHONE>5550100</PHONE>
+            </PAYEE>
+            <MEMO>PAYROLL</MEMO>
+          </STMTTRN>
+        </BANKTRANLIST>
+        <LEDGERBAL>
+          <BALAMT>3222.40</BALAMT>
+          <DTASOF>20261006120000.000[-5:EST]</DTASOF>
+        </LEDGERBAL>
+        <AVAILBAL>
+          <BALAMT>3200.00</BALAMT>
+          <DTASOF>20261006</DTASOF>
+        </AVAILBAL>
+      </STMTRS>
+    </STMTTRNRS>
+  </BANKMSGSRSV1>
+</OFX>

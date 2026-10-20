@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { readFileSync } from 'node:fs';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
-import { parseCsv, readMonarch } from '@fiscus/shared';
+import { decodeOfx, ofxFormat, parseCsv, parseOfx, readMonarch, readOfx } from '@fiscus/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type ImportBody, runImport } from '../testing/imports.js';
 import { createTestApp, TestClient } from '../testing/test-app.js';
 
-/** File imports (docs/design/imports.md, #73, #75). */
+/** File imports (docs/design/imports.md, #73, #74, #75). */
 describe('imports', () => {
   let tdb: TestDatabase;
   let app: NestFastifyApplication;
@@ -476,6 +477,197 @@ describe('imports', () => {
       expect(after).toContain('Ally Checking'); // the later import is still in it
       expect(after).not.toContain('Truck');
       expect(after).not.toContain('Old Savings');
+    });
+  });
+
+  describe('OFX and QFX (#74)', () => {
+    // Synthetic statements, shared with the parser's tests.
+    const statement = (name: string) => {
+      const bytes = readFileSync(
+        new URL(`../../../../packages/shared/src/imports/fixtures/${name}`, import.meta.url),
+      );
+      const parsed = parseOfx(decodeOfx(new Uint8Array(bytes)));
+      return { parsed, ...readOfx(parsed, { currency: 'USD' }) };
+    };
+    /** A body the way the wizard builds one: every account new, or the ones given. */
+    const ofxBody = (
+      name: string,
+      existing: Record<string, string> = {},
+      filename = name,
+    ): ImportBody => {
+      const s = statement(name);
+      return {
+        format: ofxFormat(s.parsed, filename),
+        filename,
+        accounts: s.accounts.map((a) =>
+          existing[a.key]
+            ? { key: a.key, accountId: existing[a.key] }
+            : {
+                key: a.key,
+                create: {
+                  name: `${a.org ?? 'Bank'} ••${a.mask}`,
+                  type: a.suggestedType,
+                  ...(a.mask ? { mask: a.mask } : {}),
+                  ...(a.currency ? { currency: a.currency } : {}),
+                },
+              },
+        ),
+        transactions: s.transactions,
+        balances: s.balances,
+      };
+    };
+    const accountsNamed = async (prefix: string) =>
+      (
+        (await A.get(url('/accounts'))).body.data as {
+          id: string;
+          name: string;
+          type: string;
+          mask: string | null;
+          currency: string;
+        }[]
+      ).filter((a) => a.name.startsWith(prefix));
+
+    it('imports a statement into a new account with its last 4 and currency, and its balance', async () => {
+      const body = ofxBody('bank-sgml-1252.ofx');
+      const r = await run(body);
+      expect(r.res.status, JSON.stringify(r.res.body)).toBe(200);
+      expect(r.preview.totals).toMatchObject({ new: 4, duplicates: 0, errors: 0 });
+      expect(r.added).toBe(4);
+      expect(r.balances).toBe(1);
+      const [acc] = await accountsNamed('Example Credit Union ••1234');
+      expect(acc).toMatchObject({ type: 'depository', mask: '1234', currency: 'USD' });
+      const rows = await list(acc!.id);
+      expect(rows.map((t) => [t.date, t.amountMinor, t.originalDescription]).sort()).toEqual(
+        [
+          ['2026-09-15', -450, 'Café Façade Joe’s “latte”'],
+          ['2026-10-01', -2310, 'AT&T WIRELESS Bill pay'],
+          ['2026-10-06', -125000, 'Check 1043'],
+          ['2026-10-06', 250000, 'PAYROLL EXAMPLE CO'],
+        ].sort(),
+      );
+      // The name comes from cleanup, as for CSV.
+      expect(rows.every((t) => t.reviewStatus === 'needs_review')).toBe(true);
+      // LEDGERBAL: one entered balance, on its day.
+      const balances = (await A.get(url(`/accounts/${acc!.id}/balances`))).body.data as {
+        asOf: string;
+        amountMinor: number;
+      }[];
+      expect(balances.find((b) => b.asOf === '2026-10-06')).toMatchObject({ amountMinor: 322240 });
+      const batches = (await A.get(url('/imports'))).body.data as {
+        accountId: string;
+        format: string;
+        runId: string;
+      }[];
+      const batch = batches.find((b) => b.accountId === acc!.id)!;
+      expect(batch.format).toBe('ofx');
+
+      // The same statement again, as QFX: nothing new, by FITID.
+      const again = await run(ofxBody('bank.qfx', { 'checking-1234': acc!.id }));
+      expect(again.preview.totals).toMatchObject({ new: 0, duplicates: 4 });
+      expect(again.added).toBe(0);
+      expect(
+        ((await A.get(url('/imports'))).body.data as { format: string; filename: string }[]).find(
+          (b) => b.filename === 'bank.qfx',
+        )!.format,
+      ).toBe('qfx');
+
+      // Undo takes the transactions and the balance away (the account stays: the second import
+      // went into it).
+      expect((await A.post(url(`/import-runs/${batch.runId}/revert`))).status).toBe(204);
+      expect(await list(acc!.id)).toEqual([]);
+      expect(
+        ((await A.get(url(`/accounts/${acc!.id}/balances`))).body.data as { asOf: string }[]).map(
+          (b) => b.asOf,
+        ),
+      ).not.toContain('2026-10-06');
+    });
+
+    it('never sends the full account number', () => {
+      for (const name of ['bank-sgml-1252.ofx', 'bank-xml.ofx', 'multi-account.ofx', 'card.qfx']) {
+        const sent = JSON.stringify(ofxBody(name));
+        for (const n of ['000111221234', '000555661234', '000555665678', '4000000000009012']) {
+          expect(sent, name).not.toContain(n);
+        }
+      }
+    });
+
+    it('imports checking, savings, and a card from one file, and links the transfer', async () => {
+      const r = await run(ofxBody('multi-account.ofx'));
+      expect(r.res.status, JSON.stringify(r.res.body)).toBe(200);
+      expect(r.preview.totals).toMatchObject({ new: 5, transfers: 1 });
+      expect(r.run!.batches).toHaveLength(3);
+      expect(
+        (await accountsNamed('Example Bank ••')).map((a) => [a.name, a.type, a.mask]).sort(),
+      ).toEqual([
+        ['Example Bank ••1234', 'depository', '1234'],
+        ['Example Bank ••5678', 'depository', '5678'],
+        ['Example Bank ••9012', 'credit', '9012'],
+      ]);
+    });
+
+    it('imports both rows that share a FITID with different details, and only new ones later', async () => {
+      const acc = await account('FITID checking');
+      // Rows go up a day at a time, so the reused FITID arrives in two requests.
+      const r = await run(ofxBody('duplicate-fitid.ofx', { 'checking-4321': acc }), 1);
+      expect(r.res.status, JSON.stringify(r.res.body)).toBe(200);
+      expect(r.preview.totals).toMatchObject({ new: 3, duplicates: 1 });
+      expect(r.added).toBe(3);
+      // The exact repeat of the first row is the one left out.
+      expect(r.rows).toEqual([{ line: 57, status: 'duplicate', message: 'Already imported' }]);
+      expect((await list(acc)).map((t) => [t.date, t.amountMinor]).sort()).toEqual([
+        ['2026-09-10', -1000],
+        ['2026-09-12', -4200],
+        ['2026-09-14', -725],
+      ]);
+
+      // The same file again, whole or a day at a time: nothing new.
+      for (const part of [5_000, 1]) {
+        const again = await run(ofxBody('duplicate-fitid.ofx', { 'checking-4321': acc }), part);
+        expect(again.preview.totals).toMatchObject({ new: 0, duplicates: 4 });
+        expect(again.added).toBe(0);
+      }
+
+      // A later file that overlaps it: only the new row.
+      const later = ofxBody('duplicate-fitid.ofx', { 'checking-4321': acc });
+      later.transactions = [
+        ...later.transactions!,
+        {
+          line: 99,
+          account: 'checking-4321',
+          date: '2026-09-20',
+          amountMinor: -300,
+          description: 'NEWSSTAND',
+          externalId: '1003',
+        },
+      ];
+      const r3 = await run(later);
+      expect(r3.preview.totals).toMatchObject({ new: 1, duplicates: 4 });
+      expect(r3.added).toBe(1);
+    });
+
+    it('flags rows already entered by hand or from a CSV as possible duplicates', async () => {
+      const acc = await account('OFX after CSV');
+      await run(csv(acc, [row(2, '2026-09-11', -1000, 'Coffee House')]));
+      const r = await run(ofxBody('duplicate-fitid.ofx', { 'checking-4321': acc }));
+      expect(r.preview.totals).toMatchObject({ new: 2, overlaps: 1, duplicates: 1 });
+      expect(r.rows).toContainEqual(expect.objectContaining({ line: 43, status: 'overlap' }));
+    });
+
+    it('checks the new fields', async () => {
+      const acc = await account('OFX limits');
+      const body = (externalId: string) =>
+        csv(acc, [{ ...row(2, '2026-09-01', -100, 'X'), externalId }], { format: 'ofx' });
+      expect((await A.post(url('/imports/preview'), body('f'.repeat(255)))).status).toBe(200);
+      expect((await A.post(url('/imports/preview'), body('f'.repeat(256)))).status).toBe(422);
+      const create = (extra: Record<string, unknown>) =>
+        A.post(url('/imports/preview'), {
+          ...csv(acc, [], { format: 'qfx' }),
+          accounts: [{ key: 'file', create: { name: 'New', type: 'depository', ...extra } }],
+        });
+      expect((await create({ mask: '1234', currency: 'EUR' })).status).toBe(200);
+      expect((await create({ mask: '12345' })).status).toBe(422);
+      expect((await create({ mask: '12ab' })).status).toBe(422);
+      expect((await create({ currency: 'ZZZ' })).status).toBe(422);
     });
   });
 });
