@@ -68,6 +68,7 @@ the source to the same digest. The release notes list the digests;
 [verifying a release](docs/security/verify-releases.md) shows how to check yours.
 
 ## Security
+What Fiscus protects, from whom, and where your data goes: [security](docs/security/README.md).
 To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a public issue.
 
 ## Trust model

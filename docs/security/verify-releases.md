@@ -55,7 +55,8 @@ cosign verify \
 ```
 
 It succeeds only for an image signed by `release.yml` running on a version tag of this repository.
-The certificate it prints also names the exact commit (`githubWorkflowSha`). Releases are signed
+To also require the tag's exact commit, add `--certificate-github-workflow-sha "$(git rev-parse
+v0.3.0^{commit})"` (from a clone); the certificate records it. Releases are signed
 keylessly: no key is kept anywhere to steal. Each signature is recorded in Sigstore's public
 transparency log ([Rekor](https://search.sigstore.dev)), so a signature can't be made quietly,
 even by someone who got into the workflow.

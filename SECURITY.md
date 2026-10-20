@@ -1,6 +1,7 @@
 # Security policy
 
 Fiscus holds people's financial data, so security reports are welcome and taken seriously.
+What Fiscus protects, from whom, and where your data goes: [the security page](docs/security/README.md).
 
 ## Reporting a vulnerability
 
@@ -23,7 +24,8 @@ Fiscus is before 1.0. Only the latest release gets security fixes. Upgrade to it
 
 | Version | Supported |
 | ------- | --------- |
-| 0.1.x   | Yes       |
+| 0.2.x   | Yes       |
+| 0.1.x   | No        |
 
 ## Scope
 
@@ -45,6 +47,8 @@ Not vulnerabilities:
 
 ## How Fiscus is built to be safe
 
+- [Security overview](docs/security/README.md): the threat model, where data goes, and what isn't
+  protected.
 - [Encryption at rest](docs/security/encryption.md)
 - [Backups and encrypted storage](docs/security/backups.md)
 - [Verifying a release](docs/security/verify-releases.md): reproducible, signed images with SBOMs.
