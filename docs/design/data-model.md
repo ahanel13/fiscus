@@ -94,6 +94,8 @@ erDiagram
 
 **`instance_setup`**: a single row holding the hash of the one-time first-run setup token. Deleted when the first account is created.
 
+**`instance_settings`** (#400): `key` (text PK), `value` (jsonb), `updated_at`, `updated_by_user_id` (FK users, null on delete). One row per setting an instance admin has changed; the registry in `@fiscus/shared` (`INSTANCE_SETTINGS`) defines each setting, its schema and its default, and a missing or no-longer-valid row reads as the default. `fiscus_app` (and so the worker) may only read it: an admin's change goes through `fiscus_set_instance_setting()` (§4.3c), and is on the instance activity chain with its old and new values. Settings never hold secrets.
+
 **`households`**
 
 | Column | Type | Notes |
@@ -409,6 +411,7 @@ relied on it. Rolling back past 0.3.0 after that means restoring the pre-upgrade
 | `fiscus_household_chain()` | definer | Verifying the activity history (ADR 0013) | A valid member context; the API reports only intact or not |
 | `fiscus_household_chain_leaves(after, until, limit)` | definer | History proofs (ADR 0013, #264): `(seq, entry_hash, leaf, hash_version)` only, hidden events included | A valid member context; the API returns only leaves and the head (accounts-and-visibility §6) |
 | `fiscus_household_key(household, version)` | definer | FieldCrypto's key reads | None: keys are wrapped with the master key, which is never in the database |
+| `fiscus_set_instance_setting(key, value)` | steward | An instance admin changing an instance setting (#400); returns the old value for the audit entry | The context's user is an enabled instance admin, outside any household, and the session isn't the worker's |
 
 Creating and joining make the membership, then the transaction sets `app.member_id` to it and does
 the rest as that member. Parameterized queries remain the defense against injection itself.
