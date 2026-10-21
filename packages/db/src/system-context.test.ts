@@ -350,26 +350,33 @@ describe('system context belongs to the worker', () => {
   it('runs the writing functions as a role that can change only what they need', async () => {
     const { rows: owners } = await owner.query(`
       SELECT p.proname, r.rolname FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
-      WHERE p.proname IN ('fiscus_create_household', 'fiscus_join_household', 'fiscus_reassign_category')
+      WHERE p.proname IN ('fiscus_create_household', 'fiscus_join_household', 'fiscus_reassign_category',
+                          'fiscus_set_instance_setting')
       ORDER BY 1`);
     expect(owners.map((o) => o.rolname)).toEqual([
+      'fiscus_steward',
       'fiscus_steward',
       'fiscus_steward',
       'fiscus_steward',
     ]);
     const { rows } = await owner.query(`
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
-                                    'categories', 'household_keys', 'audit_events', 'users']) t,
+                                    'categories', 'household_keys', 'audit_events', 'users',
+                                    'instance_settings']) t,
                        unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) p
       WHERE has_table_privilege('fiscus_steward', t, p)`);
     expect(rows.map((r) => `${r.p} ${r.t}`).sort()).toEqual([
       'INSERT household_members',
       'INSERT households',
+      'INSERT instance_settings',
     ]);
     const { rows: columns } = await owner.query(`
       SELECT table_name || '.' || column_name AS c FROM information_schema.column_privileges
       WHERE grantee = 'fiscus_steward' AND privilege_type = 'UPDATE' ORDER BY 1`);
     expect(columns.map((r) => r.c)).toEqual([
+      'instance_settings.updated_at',
+      'instance_settings.updated_by_user_id',
+      'instance_settings.value',
       'invites.accepted_at',
       'invites.accepted_by_user_id',
       'transactions.category_id',
