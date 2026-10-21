@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { accountGroups, accountPlacements, type Executor } from '@fiscus/db';
+import { accessLevels } from '@fiscus/ledger';
 import type { AccountLayout, AccountLayoutInput } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import { asc, eq, inArray, notInArray } from 'drizzle-orm';
@@ -7,7 +8,6 @@ import { v7 as uuidv7 } from 'uuid';
 import { Problem } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
-import { accessLevels } from '../visibility/visibility-scope.js';
 
 /** Same answer for an account that doesn't exist and one you can't see (permissions §3). */
 const unknownAccount = () =>

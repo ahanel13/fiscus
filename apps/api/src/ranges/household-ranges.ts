@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { type Executor, households, transactions } from '@fiscus/db';
+import type { HouseholdRanges } from '@fiscus/ledger';
 import {
   autoGranularity,
   comparisonRange,
@@ -8,42 +8,13 @@ import {
   type Granularity,
   PRESETS,
   type RangeMeta,
-  type RangeSettings,
   type ResolvedRange,
   resolveRange,
-  todayIn,
 } from '@fiscus/shared';
-import { eq } from 'drizzle-orm';
 import { Problem } from '../common/problem.js';
 
-// Resolving time ranges for a household (ADR 0011): its time zone, week start, fiscal year, and
-// date basis. Every time-based endpoint goes through here, so they all agree.
-
-export interface HouseholdRanges {
-  settings: RangeSettings;
-  /** Which date transactions count on: posted (default) or authorized (#69). */
-  dateBasis: 'posted' | 'authorized';
-  today: string;
-}
-
-export async function householdRanges(tx: Executor, householdId: string): Promise<HouseholdRanges> {
-  const [h] = await tx
-    .select({
-      timeZone: households.timezone,
-      weekStart: households.weekStart,
-      fiscalYearStartMonth: households.fiscalYearStartMonth,
-      dateBasis: households.dateBasis,
-    })
-    .from(households)
-    .where(eq(households.id, householdId));
-  if (!h) throw new Problem(404, 'not_found', 'Not found');
-  const { dateBasis, ...settings } = h;
-  return { settings, dateBasis, today: todayIn(settings.timeZone) };
-}
-
-/** The transaction date column for the household's date basis. */
-export const transactionDate = (basis: HouseholdRanges['dateBasis']) =>
-  basis === 'authorized' ? transactions.effectiveAuthorizedDate : transactions.effectiveDate;
+// Resolving the time range a request asks for (ADR 0011), in the household's settings
+// (householdRanges, @fiscus/ledger). Every time-based endpoint goes through here, so they all agree.
 
 export interface RangeParams {
   range?: (typeof PRESETS)[number] | 'custom' | undefined;

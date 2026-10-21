@@ -3,7 +3,7 @@ import { categories, categoryGroups, type Executor, transactions } from '@fiscus
 import type { AccessLevel } from '@fiscus/shared';
 import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import type { HouseholdActivity } from '../households/household-scope.js';
+import type { HouseholdActivity } from './activity.js';
 
 // Transfers between your own accounts (#40, docs/design/imports.md §5). Two transactions linked by
 // `transfer_group_id`, both in a transfer category, so cash flow leaves them out. Linking needs

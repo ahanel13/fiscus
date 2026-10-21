@@ -20,12 +20,11 @@ import {
 } from '@fiscus/shared';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { recomputeBalances } from '../accounts/balances.js';
-import type { HouseholdContext } from '../households/household-context.js';
-import type { HouseholdActivity } from '../households/household-scope.js';
-import { linkTransfers, transferCategories } from '../ledger/transfers.js';
-import { householdRanges } from '../ranges/household-ranges.js';
-import { accessLevels } from '../visibility/visibility-scope.js';
+import { accessLevels } from './access.js';
+import type { HouseholdActivity } from './activity.js';
+import { recomputeBalances } from './balances.js';
+import { householdRanges } from './ranges.js';
+import { linkTransfers, transferCategories } from './transfers.js';
 
 // The rules engine (docs/design/imports.md §3, permissions RULE-05). Given transactions and
 // rules, it works out what each rule may change and, when asked, changes it:
@@ -96,7 +95,7 @@ export async function activeRules(tx: Executor): Promise<EngineRule[]> {
  */
 export async function runRules(
   tx: Executor,
-  ctx: HouseholdContext,
+  householdId: string,
   rows: Row[],
   ruleList: EngineRule[],
   caller: Map<string, AccessLevel> | null,
@@ -147,9 +146,7 @@ export async function runRules(
       await tx
         .select({ id: householdMembers.id })
         .from(householdMembers)
-        .where(
-          and(eq(householdMembers.householdId, ctx.householdId), isNull(householdMembers.leftAt)),
-        )
+        .where(and(eq(householdMembers.householdId, householdId), isNull(householdMembers.leftAt)))
     ).map((m) => m.id),
   );
   const existingTags = new Map<string, string[]>();
@@ -236,7 +233,7 @@ export async function runRules(
 
   const transfers = await resolveTransfers(
     tx,
-    ctx,
+    householdId,
     plans.filter((p) => p.transfer),
     caller ?? (await accessLevels(tx)),
     caller === null,
@@ -289,10 +286,17 @@ export async function runRules(
   if (activity) {
     await write(
       tx,
-      ctx,
+      householdId,
       out.map((o) => o.plan),
     );
-    await writeTransfers(tx, activity, ctx, transfers, candidates, uncategorized?.id ?? null);
+    await writeTransfers(
+      tx,
+      activity,
+      householdId,
+      transfers,
+      candidates,
+      uncategorized?.id ?? null,
+    );
   }
   return out.map((o) => o.change);
 }
@@ -306,7 +310,7 @@ export async function runRules(
  */
 async function resolveTransfers(
   tx: Executor,
-  ctx: HouseholdContext,
+  householdId: string,
   plans: Plan[],
   me: Map<string, AccessLevel>,
   onArrival: boolean,
@@ -328,7 +332,7 @@ async function resolveTransfers(
         .where(inArray(accounts.id, targetIds))
     ).map((a) => [a.id, a]),
   );
-  const { today } = await householdRanges(tx, ctx.householdId);
+  const { today } = await householdRanges(tx, householdId);
   const taken = new Set<string>();
   for (const { row, transfer: t } of plans) {
     const target = targets.get(t!.accountId);
@@ -398,7 +402,7 @@ async function resolveTransfers(
 async function writeTransfers(
   tx: Executor,
   activity: HouseholdActivity,
-  ctx: HouseholdContext,
+  householdId: string,
   plans: Map<string, TransferPlan>,
   rows: Row[],
   uncategorized: string | null,
@@ -415,7 +419,7 @@ async function writeTransfers(
       const id = uuidv7();
       await tx.insert(transactions).values({
         id,
-        householdId: ctx.householdId,
+        householdId,
         accountId: plan.accountId,
         amountMinor: -row.amountMinor,
         currency: row.currency,
@@ -464,7 +468,7 @@ async function writeTransfers(
 }
 
 /** Applies plans in as few statements as it can: rows with the same changes go together. */
-async function write(tx: Executor, ctx: HouseholdContext, plans: Plan[]) {
+async function write(tx: Executor, householdId: string, plans: Plan[]) {
   const groups = Map.groupBy(
     plans.filter((p) => Object.keys(p.set).length),
     (p) => JSON.stringify(p.set),
@@ -484,7 +488,7 @@ async function write(tx: Executor, ctx: HouseholdContext, plans: Plan[]) {
     [...p.addTags].map((tagId) => ({
       transactionId: p.row.id,
       tagId,
-      householdId: ctx.householdId,
+      householdId,
     })),
   );
   for (let i = 0; i < tagRows.length; i += 1000) {
@@ -508,7 +512,7 @@ async function write(tx: Executor, ctx: HouseholdContext, plans: Plan[]) {
       return list.map((a, i) => ({
         transactionId: p.row.id,
         memberId: a.memberId,
-        householdId: ctx.householdId,
+        householdId,
         shareBps: equal ? (i === 0 ? 10000 - base * (list.length - 1) : base) : a.shareBps!,
       }));
     });
