@@ -86,6 +86,14 @@ const RULE = {
   conditions: { description: { op: 'contains', value: 'zzz-never' } },
   actions: { markReviewed: true },
 };
+/** A rule of the client's own (#58). */
+const ownRule = async (c: TestClient) => {
+  const r = await c.post(url('/rules'), { scope: 'mine', ...RULE });
+  ok(r);
+  return r.body.data.id as string;
+};
+const ruleIds = async (c: TestClient) =>
+  ((await c.get(url('/rules'))).body.data as { id: string }[]).map((r) => r.id);
 /** Categorizes every uncategorized transaction in the fixture ("Item"). */
 const PREVIEW = () => ({
   conditions: { description: { op: 'contains', value: 'item' }, categoryId: null },
@@ -446,6 +454,42 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     ok(await f.B.request('PATCH', url(`/rules/${r.body.data.id}`), { enabled: false }));
   },
   'RULE-03/VIEW': async () => refused(await f.V.post(url('/rules'), RULE)),
+  // Rules of your own (#58): only you see them, and only you change them; viewers make none.
+  'RULE-02/OWN': async () => {
+    const id = await ownRule(f.A);
+    expect(await ruleIds(f.A)).toContain(id);
+    expect(await ruleIds(f.B)).not.toContain(id);
+    expect(await ruleIds(f.V)).not.toContain(id);
+  },
+  'RULE-02/MEM': async () => {
+    const id = await ownRule(f.B);
+    expect(await ruleIds(f.B)).toContain(id);
+    expect(await ruleIds(f.A)).not.toContain(id);
+  },
+  'RULE-02/VIEW': async () => {
+    const theirs = [await ownRule(f.A), await ownRule(f.B)];
+    const r = await f.V.get(url('/rules'));
+    ok(r);
+    const seen = r.body.data as { id: string; scope: string }[];
+    expect(seen.filter((x) => x.scope === 'mine')).toEqual([]);
+    for (const id of theirs) expect(seen.map((x) => x.id)).not.toContain(id);
+  },
+  'RULE-04/OWN': async () => {
+    const id = await ownRule(f.A);
+    ok(await f.A.request('PATCH', url(`/rules/${id}`), { enabled: false }));
+    ok(await f.A.request('DELETE', url(`/rules/${id}`)));
+    refused(
+      await f.A.request('PATCH', url(`/rules/${await ownRule(f.B)}`), { enabled: false }),
+      404,
+    );
+  },
+  'RULE-04/MEM': async () => {
+    const id = await ownRule(f.B);
+    ok(await f.B.request('PATCH', url(`/rules/${id}`), { enabled: false }));
+    ok(await f.B.request('DELETE', url(`/rules/${id}`)));
+    refused(await f.B.request('DELETE', url(`/rules/${await ownRule(f.A)}`)), 404);
+  },
+  'RULE-04/VIEW': async () => refused(await f.V.post(url('/rules'), { scope: 'mine', ...RULE })),
   // The preview lists only rows the caller can see: B never sees A's private account's rows.
   'RULE-06/OWN': async () => {
     const r = await f.A.post(url('/rules/preview'), PREVIEW());

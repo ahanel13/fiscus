@@ -6,6 +6,7 @@ import {
   ruleActionsSchema,
   ruleConditionsSchema,
   type RulePreview,
+  ruleScopeSchema,
   updateRuleSchema,
 } from '@fiscus/shared';
 import {
@@ -31,9 +32,16 @@ import {
 } from '../households/household-context.js';
 import { RulesService } from './rules.service.js';
 
-const draftSchema = z.object({ conditions: ruleConditionsSchema, actions: ruleActionsSchema });
+const draftSchema = z.object({
+  scope: ruleScopeSchema.default('household'),
+  conditions: ruleConditionsSchema,
+  actions: ruleActionsSchema,
+});
 
-/** Rules (RULE-01/03/06): everyone reads; owners and members change and apply them. */
+/**
+ * Rules (RULE-01–04/06): everyone reads the household's and their own; owners and members change
+ * and apply them. Row-level security keeps each member's rules to them.
+ */
 @Controller('api/v1/households/:householdId/rules')
 @UseGuards(HouseholdGuard)
 export class RulesController {

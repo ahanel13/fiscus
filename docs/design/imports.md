@@ -193,9 +193,16 @@ A rule is **conditions → actions**, run on transactions as they arrive (import
 | Category: is (e.g. "Uncategorized") | Set who it's for (attribution) |
 | | Mark reviewed · Exclude from reports and budgets |
 
-- **Household-wide rules** in M1; member-scoped rules are #58 (M1.5).
-- **Order:** rules run top to bottom; every matching rule applies, and a later one overrides an
-  earlier one for the same field. Drag to reorder.
+- **Household rules and your own (#58):** a rule is the household's, which everyone sees, or
+  yours ("Just me", chosen when you create it), which only you see (RULE-02/04). Yours run only on
+  the accounts you own, joint ones included. In a household of one, every rule is the household's.
+- **Order:** on each transaction, the household's rules run first, top to bottom, then the rules
+  of each of its account's owners: on a joint account every owner's, the largest share first, ties
+  by member id. Every matching rule applies, and a later one overrides an earlier one for the same
+  field, so on your own account your rules win over the household's. Each list is reordered on its
+  own. Imports, bank sync (which runs as the system, seeing every member's rules), and "apply to
+  existing" all follow this order; importing into a joint account runs the other owners' rules
+  too, without showing them to you (`fiscus_owner_rules()`).
 - **Reach (RULE-05):** each action applies only where the rule's creator could do it by hand,
   checked at run time: categorize, rename, and tag on accounts they own or have full access to;
   attribution and exclusion only on accounts they own. A rule never reaches further than its
@@ -208,8 +215,8 @@ A rule is **conditions → actions**, run on transactions as they arrive (import
   existing" runs one rule over the transactions you can see, with a preview first (RULE-06); it
   reaches only where both the rule's author and you could act by hand.
 - **Editing a rule makes you its author,** so its reach becomes yours: nobody can borrow another
-  member's access by editing their rule. A rule whose author left doesn't run until someone edits
-  it (RULE-07).
+  member's access by editing their rule. A household rule whose author left doesn't run until
+  someone edits it; a member's own rules are deleted when they leave (RULE-07).
 - **Create from a transaction:** "Always categorize Trader Joe's as Groceries" in the drawer
   creates a rule pre-filled from it.
 
@@ -260,7 +267,7 @@ linked by `transfer_group_id`, both in the **Transfer** category (left out of ca
 | `POST imports/:batchId/rows` | The member who started the run, still an owner | One part of one account's rows |
 | `GET imports`, `POST imports/:batchId/revert`, `POST import-runs/:runId/revert` | Importer or account owner (TXN-10) | |
 | `GET`/`POST`/`PATCH`/`DELETE import-profiles` | OWN, MEM | Saved mappings, household-wide |
-| `GET`/`POST`/`PATCH`/`DELETE rules`, `PUT rules/order` | RULE-01/03 | |
+| `GET`/`POST`/`PATCH`/`DELETE rules`, `PUT rules/order` | RULE-01–04 | `scope: household \| mine` on create; the list is the household's rules and yours |
 | `POST rules/:id/preview`, `POST rules/:id/apply` | RULE-06 | Apply to existing, visible rows only |
 | `GET transactions/:id/transfer-candidates` | Owner of the transaction's account | Possible other legs in your accounts, closest date first |
 | `POST transactions/:id/transfer`, `DELETE …/transfer` | TXN-08 | Link to a given transaction, or unlink |

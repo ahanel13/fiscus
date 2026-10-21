@@ -846,6 +846,51 @@ test('you choose how you appear; a household that shares everything makes accoun
   await expect(offer).toHaveCount(0);
 });
 
+test('a rule of your own: just for you, on your accounts, after the household’s (#58)', async ({
+  page,
+  browser,
+}) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/settings/rules`);
+  const yours = page.getByRole('region', { name: 'Your rules' });
+  await expect(page.getByRole('region', { name: 'Household rules' })).toBeVisible();
+  await expect(yours).toContainText('None yet');
+
+  await page.getByRole('button', { name: 'New rule' }).click();
+  const editor = page.getByRole('dialog', { name: 'New rule' });
+  await editor.getByRole('radio', { name: 'Just me' }).click();
+  await expect(editor.getByText('Only you see it.')).toBeVisible();
+  await editor.getByRole('textbox', { name: 'Text' }).fill('coffee');
+  await editor.getByRole('button', { name: 'Add action' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  await editor.getByRole('textbox', { name: 'Rename to' }).fill('Morning coffee');
+  // The Wallet's coffee from earlier: joint now, and Ada is one of its owners.
+  await expect(editor.getByText(/Would change \d+ transactions? you can see/)).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await editor.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page.getByText('Rule created.')).toBeVisible();
+  await expect(page.getByText(/Applied to \d+ existing transactions?/)).toBeVisible();
+  await expect(yours).toContainText('When: Description contains “coffee”');
+  expect(await axeViolations(page)).toEqual([]);
+
+  await page.goto(`${householdUrl}/transactions?range=all_time`);
+  await expect(page.getByRole('rowheader', { name: /^Morning coffee/ }).first()).toBeVisible();
+
+  // Bea doesn't see it.
+  const partner = await browser.newContext();
+  const bea = await partner.newPage();
+  await bea.goto('/login');
+  await bea.getByLabel('Email').fill('bea@e2e.test');
+  await bea.getByLabel('Password').fill('e2e partner Password1!');
+  await bea.getByRole('button', { name: 'Sign in' }).click();
+  await expect(bea).not.toHaveURL(/\/login/);
+  await bea.goto(`${householdUrl}/settings/rules`);
+  await expect(bea.getByRole('region', { name: 'Household rules' })).toBeVisible();
+  await expect(bea.getByRole('region', { name: 'Your rules' })).toContainText('None yet');
+  await expect(bea.getByText('Morning coffee')).toHaveCount(0);
+  await partner.close();
+});
+
 test('imports an OFX file, and finds its accounts by their last 4 digits the next time', async ({
   page,
 }) => {

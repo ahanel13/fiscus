@@ -471,14 +471,16 @@ export class ImportsService {
         accepted,
         tagIds.ids,
       );
-      // Rules run on what arrived, within each rule's author's reach (RULE-05). They leave alone
-      // what the file supplied: its names, categories, and tags (marked in #insertTransactions).
+      // Rules run on what arrived, within each rule's author's reach (RULE-05): the household's,
+      // then every owner's own, the other owners' included on a joint account (#58). They leave
+      // alone what the file supplied: its names, categories, and tags (marked in
+      // #insertTransactions).
       const ruled = inserted.length
         ? await runRules(
             tx,
             ctx.householdId,
             await tx.select().from(transactions).where(inArray(transactions.id, inserted)),
-            await activeRules(tx),
+            await activeRules(tx, [batch.accountId]),
             null,
             activity,
           )

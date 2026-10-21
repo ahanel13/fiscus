@@ -18,7 +18,7 @@ import {
   type RuleConditions,
   ruleMatches,
 } from '@fiscus/shared';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { accessLevels } from './access.js';
 import type { HouseholdActivity } from './activity.js';
@@ -28,7 +28,9 @@ import { linkTransfers, transferCategories } from './transfers.js';
 
 // The rules engine (docs/design/imports.md §3, permissions RULE-05). Given transactions and
 // rules, it works out what each rule may change and, when asked, changes it:
-// - rules run in order; every matching rule applies; a later one wins for the same field;
+// - rules run in order: the household's, then the rules of each of the account's owners (#58),
+//   owners by share, largest first, then by member id; every matching rule applies; a later one
+//   wins for the same field;
 // - a field a person set (or a file they imported supplied) is never changed: field_versions
 //   records those (transactions.service.ts, markPersonSet);
 // - each action reaches only where the rule's author could act by hand, re-checked every run,
@@ -36,6 +38,8 @@ import { linkTransfers, transferCategories } from './transfers.js';
 
 export interface EngineRule {
   id: string;
+  /** Whose rule it is (null: the household's); it runs only on accounts they own. */
+  memberId: string | null;
   conditions: RuleConditions;
   actions: RuleActions;
   authorMemberId: string;
@@ -65,26 +69,66 @@ interface TransferPlan {
 const canCategorize = (l: AccessLevel | undefined) => l === 'owner' || l === 'full';
 const canEdit = (l: AccessLevel | undefined) => l === 'owner';
 
-/** The household's enabled rules, in order, whose authors are still current non-viewers. */
-export async function activeRules(tx: Executor): Promise<EngineRule[]> {
-  const rows = await tx
+/**
+ * The enabled rules that may run, in order, whose authors are still current non-viewers: the
+ * household's and the ones the caller can see (their own; every member's in system context). With
+ * `accountIds`, also the other owners' rules for those of these accounts the caller owns, so an
+ * import into a joint account runs every owner's rules (fiscus_owner_rules()).
+ */
+export async function activeRules(tx: Executor, accountIds: string[] = []): Promise<EngineRule[]> {
+  const found = await tx
     .select({
       id: rules.id,
+      memberId: rules.memberId,
+      position: rules.position,
+      createdAt: rules.createdAt,
       conditions: rules.conditions,
       actions: rules.actions,
       authorMemberId: rules.authorMemberId,
     })
     .from(rules)
-    .innerJoin(householdMembers, eq(householdMembers.id, rules.authorMemberId))
-    .where(
-      and(
-        eq(rules.enabled, true),
-        isNull(householdMembers.leftAt),
-        sql`${householdMembers.role} <> 'viewer'`,
-      ),
-    )
-    .orderBy(asc(rules.position), asc(rules.createdAt));
-  return rows as EngineRule[];
+    .where(eq(rules.enabled, true));
+  if (accountIds.length) {
+    const { rows } = await tx.execute<{
+      id: string;
+      member_id: string;
+      position: number;
+      created_at: string;
+      conditions: RuleConditions;
+      actions: RuleActions;
+      author_member_id: string;
+    }>(sql`SELECT * FROM fiscus_owner_rules(${`{${accountIds.join(',')}}`}::uuid[])`);
+    const seen = new Set(found.map((r) => r.id));
+    for (const r of rows.filter((r) => !seen.has(r.id))) {
+      found.push({
+        id: r.id,
+        memberId: r.member_id,
+        position: r.position,
+        createdAt: new Date(r.created_at),
+        conditions: r.conditions,
+        actions: r.actions,
+        authorMemberId: r.author_member_id,
+      });
+    }
+  }
+  const authors = new Set(
+    (
+      await tx
+        .select({ id: householdMembers.id })
+        .from(householdMembers)
+        .where(and(isNull(householdMembers.leftAt), sql`${householdMembers.role} <> 'viewer'`))
+    ).map((m) => m.id),
+  );
+  return found
+    .filter((r) => authors.has(r.authorMemberId))
+    .sort((a, b) => a.position - b.position || a.createdAt.getTime() - b.createdAt.getTime())
+    .map((r) => ({
+      id: r.id,
+      memberId: r.memberId,
+      conditions: r.conditions as RuleConditions,
+      actions: r.actions as RuleActions,
+      authorMemberId: r.authorMemberId,
+    }));
 }
 
 /**
@@ -116,7 +160,8 @@ export async function runRules(
   const owners = await tx
     .select({ accountId: accountOwners.accountId, memberId: accountOwners.memberId })
     .from(accountOwners)
-    .where(inArray(accountOwners.accountId, accountIds));
+    .where(inArray(accountOwners.accountId, accountIds))
+    .orderBy(desc(accountOwners.shareBps), asc(accountOwners.memberId));
   const authorLevel = (memberId: string, accountId: string): AccessLevel | undefined => {
     if (owners.some((o) => o.accountId === accountId && o.memberId === memberId)) return 'owner';
     const v = acctRows.find((a) => a.id === accountId)?.visibility;
@@ -128,6 +173,28 @@ export async function runRules(
       check(authorLevel(rule.authorMemberId, accountId)) &&
       (caller === null || check(caller.get(accountId)))
     );
+  };
+
+  // The order rules run in on an account: the household's, then each owner's, largest share
+  // first, then by member id. A member's rules run only on accounts they own.
+  const household = ruleList.filter((r) => r.memberId === null);
+  const byMember = Map.groupBy(
+    ruleList.filter((r) => r.memberId !== null),
+    (r) => r.memberId!,
+  );
+  const ordered = new Map<string, EngineRule[]>();
+  const rulesFor = (accountId: string) => {
+    let list = ordered.get(accountId);
+    if (!list) {
+      list = [
+        ...household,
+        ...owners
+          .filter((o) => o.accountId === accountId)
+          .flatMap((o) => byMember.get(o.memberId) ?? []),
+      ];
+      ordered.set(accountId, list);
+    }
+    return list;
   };
 
   // What actions may refer to: live categories, tags, and current members.
@@ -184,7 +251,7 @@ export async function runRules(
   for (const row of candidates) {
     const personSet = new Set(Object.keys(row.fieldVersions));
     const plan: Plan = { row, set: {}, addTags: new Set(), attribution: null, transfer: null };
-    for (const rule of ruleList) {
+    for (const rule of rulesFor(row.accountId)) {
       if (!ruleMatches(rule.conditions, row, uncategorized?.id ?? null)) continue;
       const a = rule.actions;
       const categorize = allowed(rule, row.accountId, 'categorize');
