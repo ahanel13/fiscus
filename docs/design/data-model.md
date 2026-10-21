@@ -163,28 +163,43 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 
 ### 3.2 Aggregation
 
-The provider interface these tables serve, and the conformance suite every adapter passes, are in [aggregation](aggregation.md).
+The provider interface these tables serve, and the conformance suite every adapter passes, are in [aggregation](aggregation.md). Built in #78 (migrations `0036`, `0037`).
 
-**`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id`, `name`, `logo_url`, `url`.
+**`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id` (UNIQUE with `provider`), `name`, `url`. No logo: showing one would need the provider's image host in the Content-Security-Policy.
 
-**`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008): `household_id`, `provider`, `client_id`, `secret_enc`, `env`, `created_by_member_id`, `revoked_at`.
+**`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008; schema only until #83): `household_id`, `provider` (`plaid` only), `client_id`, `secret_enc`, `env`, `created_by_member_id`, `revoked_at`. Readable in the household (the api never returns the secret, HH-08), changed by household owners or the worker.
 
-**`connections`**: one per Plaid Item / SimpleFIN token / manual group.
+**`connections`**: one per Plaid Item or SimpleFIN access URL. File imports and manual accounts don't need one.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | uuid PK | |
+| id | uuid PK | `(household_id, id)` UNIQUE, the target of composite foreign keys |
 | household_id | uuid FK | |
-| owner_member_id | uuid FK | The member who linked it (ADR 0006 §2) |
-| provider | enum `plaid`/`simplefin`/`manual` | File imports don't need a connection |
+| owner_member_id | uuid FK | The member who linked it (ADR 0006 §2); `(household_id, owner_member_id)` references `household_members` |
+| provider | text + check `plaid`/`simplefin` | |
 | institution_id | uuid FK null | |
-| credential_set_id | uuid FK null | **Null = instance default keys.** Immutable after creation; switching means re-linking (ADR 0008) |
-| provider_item_id | text | UNIQUE per provider |
-| access_token_enc | bytea | |
+| credential_set_id | uuid FK null | **Null = the server's keys.** `(household_id, credential_set_id)` references `aggregation_credentials`. Immutable after creation; switching means re-linking (ADR 0008) |
+| provider_item_id | text | UNIQUE `(provider, provider_item_id)` |
+| provider_env, provider_client_id | text null | The Plaid environment and client id the Item was made with (#82) |
+| status | text + check `setup`/`ok`/`login_required`/`error`/`disconnected` | `setup` until owners and visibility are confirmed: visible only to its owner, never synced (D4) |
+| last_error_code | text null | The provider's code, never its message (untrusted text) |
+| first_failed_at | timestamptz null | Start of the current run of failures (the 3-day rule, D10) |
+| last_synced_at, next_sync_at | timestamptz null | `next_sync_at` is when the worker next syncs it; null = never |
+| lease_until | timestamptz null | Held by a worker until then (`fiscus_claim_due_connections`) |
+| historical_complete | bool | The provider says all older history has arrived |
+| webhook_enabled, new_accounts_available | bool | Plaid (#82, #84) |
+| disconnect_requested | bool | Disconnected, and the worker still has to end it at the provider and delete its secret (D14) |
 | sync_cursor | text null | Plaid `/transactions/sync` cursor |
-| status | enum `ok`/`login_required`/`error`/`disconnected` | |
-| last_synced_at, last_error_code | | |
-| webhook_enabled | bool | |
+
+**`connection_secrets`**: `connection_id` PK, `household_id` (composite FK to `connections`, cascading), `secret_enc`: the access token or access URL, encrypted with the household key, with associated data binding it to `connection_secrets.secret_enc` and the connection id. Kept apart from `connections` so that RLS can let only the connection's owner and the worker read it: other members, household owners included, can't read even the ciphertext. Never returned, logged, or in activity metadata.
+
+`accounts.sync_from` (date) is the first day sync asks for (D6). `accounts.connection_id` gets its foreign key to `connections` by `(household_id, connection_id)` a release later, as a new constraint ([upgrades](upgrades.md) §3): the previous release's api tests set connection ids that name no connection, and must still pass on this schema. Until then, an account pointing at a connection elsewhere shows nothing of it, since a connection is visible only in its own household.
+
+**Who sees and changes them (RLS, migration `0037`).**
+- A connection is visible to its owner, and to anyone who sees at least one of its accounts through `fiscus_account_access()` (ACC-02), except in `setup`, when only its owner sees it. Only its owner, or the worker in system context, inserts, changes, or deletes it.
+- `connection_secrets`: the connection's owner and the worker only, for reads and writes.
+- **Disconnecting** (D14, ACC-03) goes through `fiscus_disconnect_connection(id)` (steward): its owner may, or a household owner once its owner has left. It sets `disconnected` and `disconnect_requested`, and clears `connection_id` on its accounts, including ones the caller doesn't own, which keep their history and `provider_account_id` for relinking. The worker then calls the provider's `remove` and deletes the secret.
+- **Scheduling** is in Postgres: the worker claims due connections with `fiscus_claim_due_connections(limit, lease)` (§4.3c).
 
 ### 3.3 Accounts and ownership
 
@@ -194,8 +209,9 @@ The provider interface these tables serve, and the conformance suite every adapt
 |---|---|---|
 | id | uuid PK | |
 | household_id | uuid FK | |
-| connection_id | uuid FK null | Null = manual or import-only |
-| provider_account_id | text null | UNIQUE `(connection_id, provider_account_id)` |
+| connection_id | uuid FK null | Null = manual or import-only. Cleared on disconnecting (D14) |
+| provider_account_id | text null | UNIQUE `(connection_id, provider_account_id)`. Kept on disconnecting, for relinking |
+| sync_from | date null | The first day sync asks the provider for (D6) |
 | name, official_name | text | |
 | type | enum `depository`/`credit`/`loan`/`investment`/`property`/`vehicle`/`crypto`/`other` | |
 | subtype | text | Provider-specific (checking, 401k, …) |
@@ -359,7 +375,7 @@ settings are missing, policies evaluate to false and the query returns **nothing
 ### 4.3 Policies
 1. **Household isolation** (every household-scoped table):
    `USING (household_id = current_setting('app.household_id', true)::uuid)`.
-2. **Account visibility** (`accounts`, `account_owners`, `balance_snapshots`, `connections`):
+2. **Account visibility** (`accounts`, `account_owners`, `balance_snapshots`; `connections` as in §3.2):
    ```sql
    account_id IN (SELECT account_id FROM fiscus_account_access())
    ```
@@ -412,6 +428,8 @@ relied on it. Rolling back past 0.3.0 after that means restoring the pre-upgrade
 | `fiscus_household_chain_leaves(after, until, limit)` | definer | History proofs (ADR 0013, #264): `(seq, entry_hash, leaf, hash_version)` only, hidden events included | A valid member context; the API returns only leaves and the head (accounts-and-visibility §6) |
 | `fiscus_household_key(household, version)` | definer | FieldCrypto's key reads | None: keys are wrapped with the master key, which is never in the database |
 | `fiscus_set_instance_setting(key, value)` | steward | An instance admin changing an instance setting (#400); returns the old value for the audit entry | The context's user is an enabled instance admin, outside any household, and the session isn't the worker's |
+| `fiscus_claim_due_connections(limit, lease)` | steward | The worker's sync queue (#78): due connections (`ok`, `error` backing off through `next_sync_at`, and disconnected ones still to end at the provider; never `setup` or `login_required`) in active households, `FOR UPDATE SKIP LOCKED`, leased; `(connection_id, household_id)` only | The session logged in as `fiscus_worker`; anyone else gets nothing |
+| `fiscus_disconnect_connection(connection)` | steward | Disconnecting (D14, ACC-03), which lets go of accounts the caller may not own | The connection's owner, or a household owner once its owner has left, in a valid member context; or the worker |
 
 Creating and joining make the membership, then the transaction sets `app.member_id` to it and does
 the rest as that member. Parameterized queries remain the defense against injection itself.
@@ -471,7 +489,7 @@ otherwise, the function can be backed by a table without changing any policy.
 ## 8. Encrypted columns summary
 
 `users.totp_secret_enc` (instance KEK) · `aggregation_credentials.secret_enc` ·
-`connections.access_token_enc` · `accounts.account_number_enc` · `accounts.notes_enc` ·
+`connection_secrets.secret_enc` · `accounts.account_number_enc` · `accounts.notes_enc` ·
 `transaction_notes.body_enc`. Receipt files and conversation history are encrypted the same way when
 they arrive in M9/M10.
 

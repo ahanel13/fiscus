@@ -243,7 +243,13 @@ describe('ledger', () => {
         openingBalance: { amountMinor: 500000, asOf: '2026-03-10' },
       });
       // Simulate a bank connection (M2): the reported balance is the truth.
-      await sql('UPDATE accounts SET connection_id = gen_random_uuid() WHERE id = $1', [acct]);
+      const connection = crypto.randomUUID();
+      await sql(
+        `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id, status)
+         VALUES ($1, $2, $3, 'plaid', $4, 'ok')`,
+        [connection, hh, member.A, `item-${connection}`],
+      );
+      await sql('UPDATE accounts SET connection_id = $1 WHERE id = $2', [connection, acct]);
       await txn(A, acct, '2026-03-12', -2000);
       await txn(A, acct, '2026-03-01', -1000);
       expect(await balances(acct)).toEqual({ '2026-03-10': 500000 });

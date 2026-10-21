@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TestClient } from './testing/test-app.js';
 
@@ -37,6 +38,10 @@ interface Fixture {
   tB: string;
   uncategorized: string;
   firstGroup: string;
+  connA: string; // A's, behind accA
+  connAprivate: string; // A's, behind accAprivate
+  connB: string; // B's, behind accB
+  db: pg.Client; // as the schema owner
   signup: (name: string) => Promise<TestClient>;
   join: (role: 'member' | 'viewer') => Promise<TestClient>;
 }
@@ -61,6 +66,22 @@ const txn = async (c: TestClient, accountId: string, amountMinor = -1500) =>
 const account = async (c: TestClient, visibility = 'full') =>
   (await c.post(url('/accounts'), { name: 'Extra', type: 'depository', visibility })).body.data
     .id as string;
+/** A bank connection owned by `memberId`, syncing these accounts. */
+const connection = async (memberId: string, accountIds: string[]) => {
+  const id = crypto.randomUUID();
+  await f.db.query(
+    `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id, status)
+     VALUES ($1, $2, $3, 'plaid', $4, 'ok')`,
+    [id, f.hh, memberId, `item-${id}`],
+  );
+  await f.db.query('UPDATE accounts SET connection_id = $1 WHERE id = ANY($2)', [id, accountIds]);
+  return id;
+};
+const connectionIds = async (c: TestClient) => {
+  const r = await c.get(url('/connections'));
+  ok(r);
+  return r.body.data.map((x: { id: string }) => x.id) as string[];
+};
 const RULE = {
   conditions: { description: { op: 'contains', value: 'zzz-never' } },
   actions: { markReviewed: true },
@@ -198,6 +219,49 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'HH-19/VIEW': async () => checkHistory(f.V),
 
   // ── 4.2 Accounts ──
+  // Connections are made by the link flow (ACC-01, #79); here, straight in the database.
+  // Visible to their owner and to anyone who sees one of their accounts.
+  'ACC-02/OWN': async () => {
+    const ids = await connectionIds(f.A);
+    expect(ids).toContain(f.connA);
+    expect(ids).toContain(f.connB); // B's, behind B's full account
+  },
+  'ACC-02/MEM': async () => {
+    const r = await f.B.get(url('/connections'));
+    ok(r);
+    expect(r.body.data.map((c: { id: string }) => c.id)).not.toContain(f.connAprivate);
+    expect(r.body.data.find((c: { id: string }) => c.id === f.connA)).toMatchObject({
+      owner: { memberId: f.member.A, name: 'Ada' },
+      accountCount: 1,
+      status: 'ok',
+      provider: 'plaid',
+    });
+  },
+  'ACC-02/VIEW': async () => {
+    const ids = await connectionIds(f.V);
+    expect(ids).toEqual(expect.arrayContaining([f.connA, f.connB]));
+    expect(ids).not.toContain(f.connAprivate);
+  },
+  // Its owner disconnects it; a household owner may once its owner has left.
+  'ACC-03/OWN': async () => {
+    const acc = await account(f.A);
+    ok(await f.A.delete(url(`/connections/${await connection(f.member.A, [acc])}`)));
+    ok(await f.A.get(url(`/accounts/${acc}`))); // the account stays (D14)
+    refused(await f.A.delete(url(`/connections/${f.connB}`)));
+    const leaver = await f.join('member');
+    const leaverId = (await leaver.get(url())).body.data.you.memberId as string;
+    const theirs = await connection(leaverId, [await account(f.A)]);
+    refused(await f.A.delete(url(`/connections/${theirs}`)));
+    ok(await leaver.post(url('/leave')));
+    refused(await f.B.delete(url(`/connections/${theirs}`)));
+    ok(await f.A.delete(url(`/connections/${theirs}`)));
+  },
+  'ACC-03/MEM': async () => {
+    ok(await f.B.delete(url(`/connections/${await connection(f.member.B, [])}`)));
+    refused(await f.B.delete(url(`/connections/${f.connA}`)));
+    refused(await f.B.delete(url(`/connections/${f.connAprivate}`)), 404);
+  },
+  'ACC-03/VIEW': async () => refused(await f.V.delete(url(`/connections/${f.connA}`))),
   'ACC-04/OWN': async () => expect(await account(f.A)).toBeTruthy(),
   'ACC-04/MEM': async () => expect(await account(f.B)).toBeTruthy(),
   'ACC-04/VIEW': async () =>
@@ -726,6 +790,11 @@ describe('permissions matrix', () => {
     f.tAview = await txn(A, f.accAview);
     f.tPriv = await txn(A, f.accAprivate);
     f.tB = await txn(B, f.accB);
+    f.db = new pg.Client({ connectionString: tdb.ownerUrl });
+    await f.db.connect();
+    f.connA = await connection(f.member.A, [f.accA]);
+    f.connAprivate = await connection(f.member.A, [f.accAprivate]);
+    f.connB = await connection(f.member.B, [f.accB]);
     const groups = (await A.get(url('/categories'))).body.data;
     f.firstGroup = groups[0].id;
     f.uncategorized = groups
@@ -735,6 +804,7 @@ describe('permissions matrix', () => {
   }, 180_000);
 
   afterAll(async () => {
+    await f?.db?.end();
     await app?.close();
     await tdb?.stop();
   });

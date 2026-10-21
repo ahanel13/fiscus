@@ -3,6 +3,7 @@ import { type DynamicModule, Global, Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { AccountsModule } from './accounts/accounts.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { ConnectionsModule } from './connections/connections.module.js';
 import { ProblemFilter } from './common/problem.filter.js';
 import { APP_CONFIG, type AppConfig } from './config.js';
 import { CryptoModule } from './crypto/crypto.module.js';
@@ -38,6 +39,7 @@ export class AppModule {
         AuthModule,
         HouseholdsModule,
         AccountsModule,
+        ConnectionsModule,
         LedgerModule,
         ImportsModule,
         RulesModule,
