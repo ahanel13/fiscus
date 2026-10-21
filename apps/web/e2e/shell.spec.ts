@@ -166,6 +166,21 @@ test('the admin invites someone to the server, who makes an account and their ow
   await page.reload();
   await expect(page.getByRole('heading', { level: 1, name: 'Server' })).toBeVisible();
   await expect(waiting).toHaveCount(0);
+
+  // Server → Bank connections (#400): no Plaid keys on this server, SimpleFIN on, every 4 hours.
+  const banks = page.getByRole('region', { name: 'Bank connections' });
+  await expect(banks.getByText('Not configured')).toBeVisible();
+  await expect(banks.getByText('Sandbox: no real banks')).toHaveCount(0);
+  await expect(banks.getByRole('switch', { name: /through SimpleFIN/ })).toBeChecked();
+  await expect(banks.getByRole('switch', { name: /their own Plaid keys/ })).toBeChecked();
+  await expect(banks.getByRole('switch', { name: /Refresh now/ })).toBeChecked();
+  expect(await axeViolations(page)).toEqual([]);
+  await banks.getByRole('button', { name: /Sync every/ }).click();
+  await page.getByRole('option', { name: 'Every 6 hours' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  await page.reload();
+  await expect(banks.getByRole('button', { name: /Sync every/ })).toContainText('Every 6 hours');
+
   await page.getByRole('link', { name: 'Back' }).click();
   await expect(page).toHaveURL(/\/h\/[0-9a-f-]{36}$/);
 });
