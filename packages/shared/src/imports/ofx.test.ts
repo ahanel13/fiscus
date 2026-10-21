@@ -404,62 +404,105 @@ describe('reading OFX and QFX files', () => {
 
 describe('pathological OFX', () => {
   // Each must finish in well under a second; the bound leaves room for a slow CI machine.
+  // Linear time, not fast time: a quadratic parser would take hours on 20 MB, so a generous bound
+  // still catches one, without failing on a busy CI runner or laptop.
   const quick = <T>(fn: () => T): T => {
     const start = performance.now();
     const out = fn();
-    expect(performance.now() - start).toBeLessThan(3_000);
+    expect(performance.now() - start).toBeLessThan(15_000);
     return out;
   };
+  const SLOW = 30_000;
   const near20MB = OFX_LIMITS.bytes - 1024;
 
-  it('stops at 32 elements deep', () => {
-    const deep = `${HEADER}<OFX>${'<A>'.repeat(1_000_000)}`;
-    const e = quick(() => failure(deep));
-    expect(e.message).toBe('Elements nest too deeply');
-  });
+  it(
+    'stops at 32 elements deep',
+    () => {
+      const deep = `${HEADER}<OFX>${'<A>'.repeat(1_000_000)}`;
+      const e = quick(() => failure(deep));
+      expect(e.message).toBe('Elements nest too deeply');
+    },
+    SLOW,
+  );
 
-  it('refuses a file over 20 MB before reading it', () => {
-    const big = new Uint8Array(OFX_LIMITS.bytes + 1);
-    expect(() => decodeOfx(big)).toThrow('The file is over 20 MB');
-    expect(failure(`${HEADER}<OFX>${' '.repeat(OFX_LIMITS.bytes)}`).message).toBe(
-      'The file is over 20 MB',
-    );
-  });
+  it(
+    'refuses a file over 20 MB before reading it',
+    () => {
+      const big = new Uint8Array(OFX_LIMITS.bytes + 1);
+      expect(() => decodeOfx(big)).toThrow('The file is over 20 MB');
+      expect(failure(`${HEADER}<OFX>${' '.repeat(OFX_LIMITS.bytes)}`).message).toBe(
+        'The file is over 20 MB',
+      );
+    },
+    SLOW,
+  );
 
-  it('reads 20 MB inputs in linear time and fails cleanly', () => {
-    const cases: [string, string][] = [
-      // A sea of "<" that start no tag.
-      [`${HEADER}<OFX>${'<'.repeat(near20MB)}`, 'The file ends early'],
-      // One tag that never ends.
-      [`${HEADER}<OFX><${'A'.repeat(near20MB)}`, 'The file ends early'],
-      // A comment that never ends.
-      [`${HEADER}<OFX><!--${'-'.repeat(near20MB)}`, 'The file ends early'],
-      // A processing instruction that never ends.
-      [`${HEADER}<OFX><?${'?'.repeat(near20MB)}`, 'The file ends early'],
-      // Ampersands with no ";" in one enormous value.
-      [`${HEADER}<OFX><NAME>${'&'.repeat(near20MB)}`, 'The file ends early'],
-      // Closing tags for nothing.
-      [`${HEADER}<OFX>${'</A>'.repeat(near20MB / 4)}`, 'A closing tag has no opening tag'],
-    ];
-    for (const [text, message] of cases) {
-      expect(quick(() => failure(text)).message).toBe(message);
-    }
-  });
+  // One test per input, so each gets its own time.
+  it.each([
+    [
+      'a sea of "<" that start no tag',
+      () => `${HEADER}<OFX>${'<'.repeat(near20MB)}`,
+      'The file ends early',
+    ],
+    [
+      'one tag that never ends',
+      () => `${HEADER}<OFX><${'A'.repeat(near20MB)}`,
+      'The file ends early',
+    ],
+    [
+      'a comment that never ends',
+      () => `${HEADER}<OFX><!--${'-'.repeat(near20MB)}`,
+      'The file ends early',
+    ],
+    [
+      'a processing instruction that never ends',
+      () => `${HEADER}<OFX><?${'?'.repeat(near20MB)}`,
+      'The file ends early',
+    ],
+    [
+      'ampersands with no ";" in one enormous value',
+      () => `${HEADER}<OFX><NAME>${'&'.repeat(near20MB)}`,
+      'The file ends early',
+    ],
+    [
+      'closing tags for nothing',
+      () => `${HEADER}<OFX>${'</A>'.repeat(near20MB / 4)}`,
+      'A closing tag has no opening tag',
+    ],
+  ])(
+    'reads 20 MB of %s in linear time and fails cleanly',
+    (_, text, message) => {
+      expect(quick(() => failure(text())).message).toBe(message);
+    },
+    SLOW,
+  );
 
-  it('reads a well-formed 20 MB file of noise to nothing', () => {
-    const noise = `${HEADER}<OFX>${'<X>a&amp;b</X><Y/>\n'.repeat(near20MB / 20)}</OFX>`;
-    const file = quick(() => parseOfx(noise));
-    expect(file.statements).toEqual([]);
-  });
+  it(
+    'reads a well-formed 20 MB file of noise to nothing',
+    () => {
+      const noise = `${HEADER}<OFX>${'<X>a&amp;b</X><Y/>\n'.repeat(near20MB / 20)}</OFX>`;
+      const file = quick(() => parseOfx(noise));
+      expect(file.statements).toEqual([]);
+    },
+    SLOW,
+  );
 
-  it('keeps a huge value to a bounded length', () => {
-    const r = quick(() =>
-      read(
-        sgml(
-          bankStatement('1234', 'CHECKING', trn('1', '20260901', '-1', 'N'.repeat(near20MB - 500))),
+  it(
+    'keeps a huge value to a bounded length',
+    () => {
+      const r = quick(() =>
+        read(
+          sgml(
+            bankStatement(
+              '1234',
+              'CHECKING',
+              trn('1', '20260901', '-1', 'N'.repeat(near20MB - 500)),
+            ),
+          ),
         ),
-      ),
-    );
-    expect(r.transactions[0]!.description).toHaveLength(500);
-  });
+      );
+      expect(r.transactions[0]!.description).toHaveLength(500);
+    },
+    SLOW,
+  );
 });
