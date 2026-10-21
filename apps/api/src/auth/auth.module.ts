@@ -29,6 +29,6 @@ import { SignInService } from './sign-in.service.js';
     SignInService,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
-  exports: [AuditService, SessionService, SignInService],
+  exports: [AuditService, RateLimiter, SessionService, SignInService],
 })
 export class AuthModule {}

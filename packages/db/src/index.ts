@@ -9,11 +9,17 @@ export {
 export {
   appendActivity,
   canonical,
+  foldLeaves,
+  GENESIS_HASH,
+  HASH_VERSION,
+  householdProof,
   INSTANCE_SCOPE,
+  PROOF_PAGE_SIZE,
   verifyChain,
   verifyHouseholdChain,
   type ActivityEntry,
   type ChainVerification,
+  type HouseholdProof,
 } from './activity.js';
 export { setContext, systemContext, userContext, withContext, type DbContext } from './context.js';
 export { MAINTENANCE_JOBS, runMaintenanceJob, type MaintenanceJob } from './maintenance.js';
