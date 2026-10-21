@@ -1,5 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 export {
+  isProviderError,
+  PROVIDER_ERROR_KINDS,
+  ProviderError,
+  type AggregationProvider,
+  type ProviderAccount,
+  type ProviderAccountType,
+  type ProviderBalance,
+  type ProviderCapabilities,
+  type ProviderConnectFlow,
+  type ProviderConnection,
+  type ProviderErrorKind,
+  type ProviderErrorOptions,
+  type ProviderInstitution,
+  type ProviderLiability,
+  type ProviderLiabilityKind,
+  type ProviderRemovedTransaction,
+  type ProviderSecret,
+  type ProviderTransaction,
+  type SyncPage,
+  type SyncRequest,
+  type SyncWindow,
+} from './aggregation.js';
+export {
   etagFor,
   parseIfMatch,
   planVersionedPatch,

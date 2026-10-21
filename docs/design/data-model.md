@@ -161,6 +161,8 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 
 ### 3.2 Aggregation
 
+The provider interface these tables serve, and the conformance suite every adapter passes, are in [aggregation](aggregation.md).
+
 **`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id`, `name`, `logo_url`, `url`.
 
 **`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008): `household_id`, `provider`, `client_id`, `secret_enc`, `env`, `created_by_member_id`, `revoked_at`.
