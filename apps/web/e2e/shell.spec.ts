@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from './test.js';
 import { axeViolations } from './axe.js';
+import { rewriteHistory } from './database.js';
 
 // One journey through a fresh instance: setup → household → navigate → sign out → sign in.
 test.describe.configure({ mode: 'serial' });
@@ -906,4 +907,87 @@ test('imports an OFX file, and finds its accounts by their last 4 digits the nex
   await expect(page.getByText('3 new transactions.')).toBeVisible();
   await page.getByRole('button', { name: 'Import 3 transactions' }).click();
   await expect(page.getByRole('heading', { name: 'Imported' })).toBeVisible();
+});
+
+// Last, since it rewrites the household's history in the database. It needs the docker CLI, for
+// the compose project in E2E_COMPOSE_PROJECT (default `fiscus`, as CI runs it): e2e/database.ts.
+test('your browser notices when the history was rewritten, even consistently (#264)', async ({
+  page,
+}) => {
+  const householdId = householdUrl.split('/h/')[1]!;
+  const activity = `/api/v1/households/${householdId}/activity`;
+  const check = page.getByRole('region', { name: 'History check' });
+  await signIn(page);
+  // A new browser: trust on first use, from the check when the household loaded.
+  await page.getByRole('link', { name: 'Household settings' }).click();
+  await expect(check).toContainText('History checks on this device start now.');
+
+  // Some activity, then a reload: verified, with a fingerprint of the head to compare.
+  await page
+    .getByRole('navigation', { name: 'Settings sections' })
+    .getByRole('link', { name: 'Members' })
+    .click();
+  await page.getByLabel('Your name here').fill('Ada Lovelace');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Ada Lovelace (you)')).toBeVisible();
+  await page.goto(`${householdUrl}/settings`);
+  const proof = (await (await page.request.get(`${activity}/proof`)).json()) as {
+    data: { head: { seq: number; hash: string } };
+  };
+  const head = proof.data.head;
+  const print = `${head.hash.slice(0, 4)} ${head.hash.slice(4, 8)}`;
+  await expect(check).toContainText('Verified on');
+  await expect(check).toContainText(`at entry ${head.seq}, fingerprint ${print}`);
+  expect(await axeViolations(page)).toEqual([]);
+
+  // An operator edits an old entry and recomputes the whole chain: the server's own check passes.
+  const rewritten = rewriteHistory(householdId);
+  expect(rewritten.seq).toBe(head.seq);
+  expect(rewritten.hash).not.toBe(head.hash);
+  const verify = (await (await page.request.get(`${activity}/verify`)).json()) as {
+    data: { ok: boolean };
+  };
+  expect(verify.data.ok).toBe(true);
+
+  // This browser still remembers the old head, so it warns, on every page of the household.
+  await page.reload();
+  const banner = page.getByRole('alert').filter({ hasText: 'The history check failed' });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(`at entry ${head.seq}, fingerprint ${print}`);
+  await expect(banner).toContainText('An entry this device verified has changed, or is gone.');
+  await expect(check).toContainText('The history check failed.');
+  expect(await axeViolations(page)).toEqual([]);
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .first()
+    .getByRole('link', { name: 'Accounts' })
+    .click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Accounts' })).toBeVisible();
+  await expect(banner).toBeVisible();
+
+  // The report is recorded, as this device's claim, next to the server's (fooled) check.
+  await expect(banner).toContainText('This device reported it');
+  const feed = (await (await page.request.get(activity)).json()) as {
+    data: { action: string; metadata: Record<string, unknown> }[];
+  };
+  expect(feed.data.find((e) => e.action === 'history.integrity_check_failed')?.metadata).toEqual({
+    claim: 'device',
+    reason: 'history_diverged',
+    lastVerified: { seq: head.seq, hash: head.hash },
+    observed: {},
+    serverCheck: { ok: true, checkedAt: expect.any(String) },
+  });
+
+  // It stays across reloads, until someone here accepts the current history.
+  await page.reload();
+  await expect(banner).toBeVisible();
+  await banner.getByRole('button', { name: 'Accept current history as the new baseline' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Accept the current history?' })
+    .getByRole('button', { name: 'Accept as the new baseline' })
+    .click();
+  await expect(banner).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1, name: 'Accounts' })).toBeVisible();
+  await expect(banner).toHaveCount(0);
 });

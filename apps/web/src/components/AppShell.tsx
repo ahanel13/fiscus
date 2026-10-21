@@ -25,6 +25,7 @@ import { GROUP_LABELS, phoneTabs, type Section, sectionPath, visibleSections } f
 import { useShortcuts } from '../lib/shortcuts.js';
 import { applyTheme } from '../lib/theme.js';
 import { CommandPalette } from './CommandPalette.js';
+import { HistoryBanner } from './HistoryCheck.js';
 import {
   Avatar,
   Badge,
@@ -205,6 +206,8 @@ export function AppShell() {
             clipped by this scroll area instead of making the whole page scroll. */}
         <main id="main" className="relative flex-1 overflow-y-auto pb-20 md:pb-0">
           <TimeZoneProvider timeZone={household.timezone}>
+            {/* This device's check of the household's history (#264), on every page. */}
+            <HistoryBanner householdId={householdId} />
             <Outlet />
           </TimeZoneProvider>
         </main>
