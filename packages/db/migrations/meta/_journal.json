@@ -239,6 +239,20 @@
       "when": 1792531804451,
       "tag": "0033_activity_proof",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792561839497,
+      "tag": "0034_instance_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792561847219,
+      "tag": "0035_instance_settings_access",
+      "breakpoints": true
     }
   ]
 }
