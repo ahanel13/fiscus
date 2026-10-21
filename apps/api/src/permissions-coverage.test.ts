@@ -47,9 +47,11 @@ const NOT_BUILT: Record<string, string> = {
   'ADM-02': 'Instance admin console',
   'ADM-03': 'Instance admin console',
   'ADM-04': 'Instance admin console',
-  'ADM-05': 'Instance admin console',
+  // Bank connection settings are built (#400, admin/admin-settings.test.ts); signup mode, LLM,
+  // FX and SMTP providers, webhooks and usage caps aren't yet, so the rule isn't claimed.
+  'ADM-05': 'Instance settings beyond bank connections (#22, #84, M10)',
   'ADM-06': 'Instance admin console',
-  'ADM-07': 'Instance admin console',
+  'ADM-07': 'Usage: Plaid item counts (#400 part 2, after #78 and #81), AI usage (M10)',
   'EDGE-01': 'Departure flow (#62)',
   'EDGE-02': 'Departure flow (#62)',
   'EDGE-03': 'Departure flow (#62)',

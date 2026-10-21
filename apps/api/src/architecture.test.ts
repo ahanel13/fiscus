@@ -24,6 +24,8 @@ const DIRECT_DB_ALLOWED: Record<string, string> = {
   'auth/setup.service.ts': 'first-run setup is instance-level',
   'auth/server-invites.service.ts':
     'server invites (ADM-08) are instance-level, before any household',
+  'admin/instance-settings.service.ts':
+    'instance settings are instance-level; writes through a definer function (#400)',
   'audit/audit.service.ts': 'moves into the household transaction with #263',
 };
 

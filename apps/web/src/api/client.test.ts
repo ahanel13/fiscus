@@ -86,4 +86,16 @@ describe('api client', () => {
     off();
     expect(seen).toHaveBeenCalledOnce();
   });
+
+  it('stays signed in after a wrong password when confirming it', async () => {
+    const seen = vi.fn();
+    const off = onUnauthenticated(seen);
+    replies = [
+      { status: 200, body: { data: { csrfToken: 't' } } },
+      { status: 401, body: { code: 'invalid_credentials', title: 'Password is incorrect' } },
+    ];
+    await api('POST', '/api/v1/auth/reauth', { body: { password: 'nope' } }).catch(() => undefined);
+    off();
+    expect(seen).not.toHaveBeenCalled();
+  });
 });

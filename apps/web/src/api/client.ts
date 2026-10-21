@@ -97,7 +97,11 @@ export async function api<T>(
   const text = await res.text();
   const json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
   if (!res.ok) {
-    if (res.status === 401) unauthenticatedListeners.forEach((l) => l());
+    // A wrong password when confirming it (re-authentication) is a 401 too, but the session is
+    // still good: stay where you are.
+    if (res.status === 401 && json.code !== 'invalid_credentials') {
+      unauthenticatedListeners.forEach((l) => l());
+    }
     throw new ApiError(
       res.status,
       String(json.code ?? 'unknown_error'),
