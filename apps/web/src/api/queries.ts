@@ -4,6 +4,7 @@ import type {
   AccountLayout,
   AuthStatus,
   BalancePoint,
+  BankConnectionsOverview,
   CashFlow,
   CategoryGroup,
   Household,
@@ -68,6 +69,13 @@ export const lookupServerInvite = async (token: string) =>
 export const serverInvitesQuery = queryOptions({
   queryKey: ['admin', 'invites'],
   queryFn: async () => (await api<Data<ServerInvite[]>>('GET', '/api/v1/admin/invites')).data,
+});
+
+/** Server → Bank connections: Plaid's status and the bank settings (instance admins, #400). */
+export const bankConnectionsQuery = queryOptions({
+  queryKey: ['admin', 'bank-connections'],
+  queryFn: async () =>
+    (await api<Data<BankConnectionsOverview>>('GET', '/api/v1/admin/bank-connections')).data,
 });
 
 const hh = (id: string) => `/api/v1/households/${id}`;
