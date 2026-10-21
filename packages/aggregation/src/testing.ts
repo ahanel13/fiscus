@@ -35,3 +35,12 @@ export {
   type StubRoutes,
   type StubServer,
 } from './testing/stub-server.js';
+export {
+  plaidAccount,
+  plaidCreditLiability,
+  plaidTransaction,
+  startFakePlaid,
+  type FakePlaid,
+  type FakePlaidError,
+  type FakePlaidOptions,
+} from './testing/fake-plaid.js';

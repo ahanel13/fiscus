@@ -358,6 +358,9 @@ importers:
       '@fastify/cookie':
         specifier: 'catalog:'
         version: 11.1.2
+      '@fiscus/aggregation':
+        specifier: workspace:*
+        version: link:../../packages/aggregation
       '@fiscus/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
@@ -550,6 +553,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@fiscus/aggregation':
+        specifier: workspace:*
+        version: link:../../packages/aggregation
       '@fiscus/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
@@ -593,10 +599,16 @@ importers:
       '@fiscus/domain':
         specifier: workspace:*
         version: link:../domain
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
     devDependencies:
       '@fiscus/config':
         specifier: workspace:*
         version: link:../config
+      '@fiscus/env':
+        specifier: workspace:*
+        version: link:../env
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.2

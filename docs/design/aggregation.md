@@ -58,6 +58,13 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
 
 - `ProviderRegistry`: the providers this server has enabled, looked up by a connection's
   `provider`. Per-connection credentials (ADR 0008) build on it in #83.
+- Plaid (#82): `PlaidClient`, a small `fetch` client for the endpoints M2 uses, with zod-checked
+  responses and Plaid's errors mapped to `ProviderError` kinds; `plaidEnvVars` and
+  `instancePlaidConfig` for the server's keys (all three or none); `resolvePlaidCredentials`,
+  which gives a connection its keys (null `credential_set_id` = the server's), and
+  `credentialsChanged`, true when a connection's recorded `provider_env` or `provider_client_id`
+  no longer matches (a rotated secret isn't a change). The base URL comes from `PLAID_ENV`; a
+  test-only override is honored only in sandbox.
 - `@fiscus/aggregation/testing`, for tests only:
   - `FakeAggregationProvider`: scripted and deterministic. Accounts, balances, liabilities, a list
     of **updates** (each the pages one sync returns, made visible with `release()`), `delta` or
@@ -67,6 +74,8 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
     its tip, a foreign purchase, a refund, and a card payment seen from both accounts.
   - `startStubServer(routes)`: a Node `http` server on an ephemeral local port that answers from
     route handlers and records requests, for adapters to talk to instead of Plaid or the Bridge (D17).
+  - `startFakePlaid()`: Plaid's endpoints on a stub server, answering the Riveras' scenario in
+    Plaid's format and sign, checking keys and tokens, with scripted failures.
 
 ## 3. The conformance suite
 

@@ -72,6 +72,37 @@ Read the release notes first.
 the source to the same digest. The release notes list the digests;
 [verifying a release](docs/security/verify-releases.md) shows how to check yours.
 
+### Plaid keys
+Bank connections through Plaid use the server's own Plaid keys, from
+[Plaid's dashboard](https://dashboard.plaid.com). Set all three in `.env`, or none:
+
+- `PLAID_CLIENT_ID` and `PLAID_SECRET` (or `PLAID_SECRET_FILE`, like every variable).
+- `PLAID_ENV`: `production` for real banks, or `sandbox` for Plaid's test banks and test data.
+  Each environment has its own secret, and a bank connected in one doesn't work in the other.
+- Optionally `PLAID_REDIRECT_URI`, an `https` address listed in Plaid's dashboard, for banks
+  whose sign-in happens on their own site.
+
+Without them, Plaid is unavailable, unless a household adds its own keys. With only some set,
+the api and worker don't start, and say which are missing. The api logs say only
+`Plaid: configured (production)` or `Plaid: not configured`, never the keys. Changing the
+secret is safe; changing the client id or the environment means reconnecting every bank made
+with the old ones, and Fiscus marks those connections "reconnect".
+
+**Trying sandbox on a server that has real data:** don't switch `PLAID_ENV` on it. Run sandbox
+as a separate stack, with its own `.env`, port and volumes, under another project name:
+
+```sh
+mkdir ../fiscus-sandbox && cp docker-compose.yml ../fiscus-sandbox/ && cd ../fiscus-sandbox
+curl -fsSL https://github.com/ahanel13/fiscus/releases/latest/download/env.example -o .env
+# In this .env: new passwords and APP_ENCRYPTION_KEY, PLAID_ENV=sandbox with the sandbox
+# secret, and FISCUS_PORT=8081.
+docker compose -p fiscus-sandbox up -d --wait
+```
+
+`-p fiscus-sandbox` gives it its own containers and volumes, so it never touches the real
+database. The compose file names its project `fiscus`, so every command for the sandbox stack
+needs `-p fiscus-sandbox`; remove it with `docker compose -p fiscus-sandbox down -v`.
+
 ## Security
 What Fiscus protects, from whom, and where your data goes: [security](docs/security/README.md).
 To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a public issue.

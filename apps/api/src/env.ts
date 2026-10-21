@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { plaidEnvVars } from '@fiscus/aggregation';
 import {
   encryptionKeyEnv,
   encryptionKeyVersionEnv,
@@ -39,4 +40,6 @@ export default defineEnv('api', {
     'Trust X-Forwarded-For from a reverse proxy, for client IPs in rate limits and audit logs. ' +
       'Enable only when the api is reachable solely through that proxy.',
   ),
+  // The server's own Plaid keys (ADR 0008, #82): all three or none, checked at startup.
+  ...plaidEnvVars,
 });

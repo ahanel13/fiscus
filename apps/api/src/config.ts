@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { PlaidEnvironment, SignupMode } from '@fiscus/shared';
+import type { PlaidInstanceConfig } from '@fiscus/aggregation';
+import type { SignupMode } from '@fiscus/shared';
 
 export interface AppConfig {
   databaseUrl: string;
@@ -12,10 +13,10 @@ export interface AppConfig {
   signupMode: SignupMode;
   cookieSecure: boolean;
   /**
-   * The instance's Plaid keys, when set (walkthrough §8). Nothing sets this yet: #82 reads
-   * PLAID_CLIENT_ID, PLAID_SECRET and PLAID_ENV into it, and adds the keys themselves.
+   * The server's own Plaid keys (#82), or undefined when Plaid isn't configured. Resolve a
+   * connection's keys with `resolvePlaidCredentials`, never from here directly.
    */
-  plaid?: { environment: PlaidEnvironment } | undefined;
+  plaid?: PlaidInstanceConfig | undefined;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

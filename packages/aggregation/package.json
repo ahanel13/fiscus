@@ -25,11 +25,13 @@
   },
   "devDependencies": {
     "@fiscus/config": "workspace:*",
+    "@fiscus/env": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@fiscus/domain": "workspace:*"
+    "@fiscus/domain": "workspace:*",
+    "zod": "catalog:"
   }
 }

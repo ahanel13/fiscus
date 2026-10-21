@@ -58,7 +58,9 @@ describe('instance settings (ADM-05, in part)', () => {
     bea = new TestClient(app);
     expect((await bea.post('/api/v1/auth/signup', BEA)).status).toBe(201);
     // After setup: on startup an app issues a new setup token while setup is still required.
-    sandboxApp = await createTestApp(tdb.appUrl, { plaid: { environment: 'sandbox' } });
+    sandboxApp = await createTestApp(tdb.appUrl, {
+      plaid: { clientId: 'test-client', secret: 'test-secret', env: 'sandbox' },
+    });
   }, 120_000);
 
   afterAll(async () => {
