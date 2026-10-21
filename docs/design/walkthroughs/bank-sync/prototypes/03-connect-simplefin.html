@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect with SimpleFIN · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="on">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Accounts</h1>
+          <div class="row">
+            <span class="btn secondary">Last 12 months ▾</span
+            ><span class="btn">+ Add account</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="card row spread">
+            <div>
+              <div class="muted" style="font-weight: 500">
+                Net worth <span style="font-weight: 400">(visible to you)</span>
+              </div>
+              <div style="font-size: 28px; font-weight: 650">$48,212.40</div>
+              <div class="small">
+                <span class="muted">Assets</span> $50,019.62 &nbsp;
+                <span class="muted">Liabilities</span> $1,807.22
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="overlay">
+      <div class="dialog">
+        <h2>Connect with SimpleFIN</h2>
+        <p class="muted">
+          SimpleFIN Bridge connects to your banks for you, for a small yearly fee, and gives Fiscus
+          a token to read them.
+        </p>
+        <ol class="muted" style="padding-left: 20px; margin: 8px 0 14px">
+          <li>At <b>bridge.simplefin.org</b>, connect your banks and create a setup token.</li>
+          <li>Paste it here. Fiscus uses it once to get lasting, read-only access.</li>
+        </ol>
+        <label class="field"
+          ><span>Setup token</span>
+          <div class="input mono" style="color: var(--muted)">
+            aHR0cHM6Ly9icmlkZ2Uuc2ltcGxlZmluLm9yZy9zaW1wbGVmaW4vY2xhaW0v…
+          </div>
+          <div class="small muted" style="margin-top: 4px">
+            It works only once. If it's been used, create a new one at the Bridge.
+          </div></label
+        >
+        <div class="alert info small" style="margin-top: 14px">
+          SimpleFIN updates about once a day, and you sign in to banks at the Bridge, not here. To
+          fix a connection, you go back there.
+        </div>
+        <div class="actions">
+          <span class="btn secondary">Cancel</span><span class="btn">Connect</span>
+        </div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#338), not the built app</div>
+  </body>
+</html>
