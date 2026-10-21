@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Server · Bank connections · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a class="on">Server</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header"><h1>Server</h1></div>
+        <div class="content">
+          <div class="row" style="gap: 24px; align-items: flex-start">
+            <div style="width: 180px" class="stack">
+              <div class="muted">Users</div>
+              <div class="muted">Invites</div>
+              <div style="font-weight: 600">Bank connections</div>
+              <div class="muted">Backups</div>
+            </div>
+            <div class="grow stack">
+              <div class="card">
+                <div class="row spread">
+                  <h2>Plaid</h2>
+                  <span class="badge ok">Configured</span>
+                </div>
+                <p class="small muted">
+                  Keys come from <span class="mono">PLAID_CLIENT_ID</span> and
+                  <span class="mono">PLAID_SECRET</span> in the server’s environment · environment
+                  <b>production</b> · 4 households, 9 connections.
+                </p>
+                <div class="small">
+                  <span class="check on"></span>Households may use their own Plaid keys
+                </div>
+              </div>
+              <div class="card">
+                <div class="row spread">
+                  <h2>SimpleFIN</h2>
+                  <span class="badge ok">On</span>
+                </div>
+                <p class="small muted">
+                  Nothing to configure: each household brings its own Bridge token · 2 connections.
+                  SimpleFIN allows about 24 requests a day per connection, so Fiscus refreshes it at
+                  most every 6 hours.
+                </p>
+              </div>
+              <div class="card">
+                <h2>Schedule</h2>
+                <label class="field"
+                  ><span>Sync every</span>
+                  <div class="input" style="width: 200px">4 hours ▾</div></label
+                >
+                <p class="small muted" style="margin-top: 6px">
+                  Plus “Refresh now”, at most once every 15 minutes per connection. Last run 1:58
+                  pm: 9 connections, 1 needs sign-in, 1 failing.
+                </p>
+              </div>
+              <div class="card">
+                <div class="row spread">
+                  <h2>Webhooks</h2>
+                  <span class="badge">Off</span>
+                </div>
+                <p class="small muted">
+                  With a public address for one path,
+                  <span class="mono">/api/v1/webhooks/plaid</span>, Plaid tells Fiscus about new
+                  transactions and broken sign-ins within minutes, and polling relaxes to every 12
+                  hours. Everything works without it.
+                </p>
+                <span class="btn secondary sm">Set up webhooks…</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#338), not the built app</div>
+  </body>
+</html>

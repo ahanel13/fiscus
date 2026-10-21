@@ -1,0 +1,94 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Needs sign-in · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="on">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Accounts</h1>
+          <div class="row">
+            <span class="btn secondary">Last 12 months ▾</span
+            ><span class="btn">+ Add account</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="alert warn row">
+            <div class="logo" style="background: #1f5f8b">H</div>
+            <div class="grow">
+              <b>Harbor Credit Union needs you to sign in again.</b>
+              <div class="small">
+                Nothing new has arrived since Oct 18, for Everyday checking, Harbor CU Savings and
+                Joint card. Balances shown are from then.
+              </div>
+            </div>
+            <span class="btn">Sign in again</span>
+          </div>
+          <div class="card row spread">
+            <div>
+              <div class="muted" style="font-weight: 500">
+                Net worth <span style="font-weight: 400">(visible to you)</span>
+              </div>
+              <div style="font-size: 28px; font-weight: 650">$48,212.40</div>
+              <div class="small">
+                <span class="muted">Assets</span> $50,019.62 &nbsp;
+                <span class="muted">Liabilities</span> $1,807.22
+              </div>
+            </div>
+          </div>
+          <h2 style="margin-top: 8px">Cash</h2>
+          <div class="list">
+            <div class="item">
+              <div class="grow">
+                <div style="font-weight: 500">Everyday checking</div>
+                <div class="small muted">Ours · Harbor CU ••4410</div>
+              </div>
+              <div class="small muted" style="text-align: right">
+                <span class="badge warn">Needs sign-in</span><br />as of Oct 18
+              </div>
+              <div class="amount" style="width: 120px; font-weight: 500">$6,512.40</div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div style="font-weight: 500">Harbor CU Savings</div>
+                <div class="small muted">Ours · Harbor CU ••8812</div>
+              </div>
+              <div class="small muted" style="text-align: right">
+                <span class="badge warn">Needs sign-in</span><br />as of Oct 18
+              </div>
+              <div class="amount" style="width: 120px; font-weight: 500">$31,250.00</div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div style="font-weight: 500">Holiday fund</div>
+                <div class="small muted">Ours · entered by hand</div>
+              </div>
+              <div class="small muted" style="text-align: right">as of Sep 30</div>
+              <div class="amount" style="width: 120px; font-weight: 500">$2,150.00</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#338), not the built app</div>
+  </body>
+</html>

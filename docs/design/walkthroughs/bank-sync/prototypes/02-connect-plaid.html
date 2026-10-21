@@ -1,0 +1,91 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect a bank · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="on">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Accounts</h1>
+          <div class="row">
+            <span class="btn secondary">Last 12 months ▾</span
+            ><span class="btn">+ Add account</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="card row spread">
+            <div>
+              <div class="muted" style="font-weight: 500">
+                Net worth <span style="font-weight: 400">(visible to you)</span>
+              </div>
+              <div style="font-size: 28px; font-weight: 650">$48,212.40</div>
+              <div class="small">
+                <span class="muted">Assets</span> $50,019.62 &nbsp;
+                <span class="muted">Liabilities</span> $1,807.22
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="overlay">
+      <div class="dialog">
+        <h2>Connect a bank</h2>
+        <p class="muted">
+          Plaid opens next. You sign in to your bank there, not here; Fiscus never sees your bank
+          password.
+        </p>
+        <div class="card stack" style="background: var(--surface-2); border: 0">
+          <div>
+            <b>What Fiscus gets</b>
+            <div class="muted">
+              Read-only access to the accounts you choose: balances and transactions, refreshed
+              several times a day. It can't move money.
+            </div>
+          </div>
+          <div>
+            <b>Whose they are</b>
+            <div class="muted">
+              Accounts you connect are yours to start with. Next you choose which ones to track,
+              link them to accounts you already have here, and decide who else in the household sees
+              them.
+            </div>
+          </div>
+          <div>
+            <b>Where it's stored</b>
+            <div class="muted">
+              The connection is encrypted with this household's key, on this server.
+            </div>
+          </div>
+        </div>
+        <p class="small muted" style="margin-top: 12px">
+          Through the server's Plaid account. A household owner can use their own Plaid keys
+          instead, in Household settings → Connections.
+        </p>
+        <div class="actions">
+          <span class="btn secondary">Cancel</span><span class="btn">Continue to Plaid</span>
+        </div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#338), not the built app</div>
+  </body>
+</html>
