@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { accounts, type Executor, householdMembers, rules, transactions } from '@fiscus/db';
+import { accessLevels, type EngineRule, runRules } from '@fiscus/ledger';
 import type {
   createRuleSchema,
   reorderRulesSchema,
@@ -15,8 +16,6 @@ import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
-import { accessLevels } from '../visibility/visibility-scope.js';
-import { type EngineRule, runRules } from './engine.js';
 
 type CreateInput = z.infer<typeof createRuleSchema>;
 type UpdateInput = z.infer<typeof updateRuleSchema>;
@@ -140,7 +139,7 @@ export class RulesService {
     return this.scope.run(ctx, async (tx) => {
       const changes = await runRules(
         tx,
-        ctx,
+        ctx.householdId,
         await this.#visibleRows(tx),
         [{ id: 'draft', ...draft, authorMemberId: ctx.memberId }],
         ctx.role === 'viewer' ? new Map() : await accessLevels(tx),
@@ -168,7 +167,7 @@ export class RulesService {
       };
       const changes = await runRules(
         tx,
-        ctx,
+        ctx.householdId,
         await this.#visibleRows(tx),
         [rule],
         await accessLevels(tx),

@@ -70,6 +70,7 @@ packages/
   shared/     zod schemas, DTO types, money utils, enums (used by every app)
   db/         Drizzle schema, migrations, seed
   domain/     business logic shared by api + worker (budget engines, rules, recurrence)
+  ledger/     the import pipeline shared by api + worker (rules engine, transfers, balances, activity gate)
   tools/      AI tool registry used by the in-app assistant and the MCP server
   config/     shared tsconfig / eslint / prettier presets
 deploy/

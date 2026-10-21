@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { accountOwners, type Executor, householdMembers, transactions } from '@fiscus/db';
+import { accessLevels } from '@fiscus/ledger';
 import type { AccessLevel, Lens } from '@fiscus/shared';
 import { and, eq, isNull } from 'drizzle-orm';
 import { type SQL, sql } from 'drizzle-orm';
@@ -14,14 +15,6 @@ export interface ScopedAccount {
   level: AccessLevel;
   /** How much of the account counts toward totals under the lens, in basis points. */
   weightBps: number;
-}
-
-/** Every account the caller can see, with their level (fiscus_account_access()). */
-export async function accessLevels(tx: Executor): Promise<Map<string, AccessLevel>> {
-  const { rows } = await tx.execute<{ account_id: string; level: AccessLevel }>(
-    sql`SELECT account_id, level FROM fiscus_account_access()`,
-  );
-  return new Map(rows.map((r) => [r.account_id, r.level]));
 }
 
 const invalidLens = () =>

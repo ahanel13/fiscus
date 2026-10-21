@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { households, transactions } from '@fiscus/db';
+import { householdRanges, transactionDate } from '@fiscus/ledger';
 import {
   averageOf,
   buckets,
@@ -12,7 +13,7 @@ import { and, eq, gte, isNull, lte, ne, type SQL, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
-import { householdRanges, resolveParams, transactionDate } from '../ranges/household-ranges.js';
+import { resolveParams } from '../ranges/household-ranges.js';
 import { spendingLensFilter } from '../visibility/visibility-scope.js';
 
 type Query = z.infer<typeof cashFlowQuerySchema>;

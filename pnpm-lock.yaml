@@ -370,6 +370,9 @@ importers:
       '@fiscus/env':
         specifier: workspace:*
         version: link:../../packages/env
+      '@fiscus/ledger':
+        specifier: workspace:*
+        version: link:../../packages/ledger
       '@fiscus/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -691,6 +694,37 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.5
+    devDependencies:
+      '@fiscus/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@types/node@26.6.2)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/ledger:
+    dependencies:
+      '@fiscus/crypto':
+        specifier: workspace:*
+        version: link:../crypto
+      '@fiscus/db':
+        specifier: workspace:*
+        version: link:../db
+      '@fiscus/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.3(@types/pg@8.23.1)(pg@8.23.0)
+      uuid:
+        specifier: 'catalog:'
+        version: 14.0.2
     devDependencies:
       '@fiscus/config':
         specifier: workspace:*

@@ -18,6 +18,18 @@ import {
   transactionTags,
 } from '@fiscus/db';
 import {
+  accessLevels,
+  activeRules,
+  detectTransfers,
+  findTransfers,
+  type Leg,
+  recomputeBalances,
+  removeOverlaps,
+  runRules,
+  transferCategories,
+  unlinkTransfers,
+} from '@fiscus/ledger';
+import {
   type CategoryKind,
   type createImportProfileSchema,
   type CsvMapping,
@@ -41,26 +53,16 @@ import {
   type updateImportProfileSchema,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { AccountsService } from '../accounts/accounts.service.js';
-import { recomputeBalances } from '../accounts/balances.js';
-import {
-  detectTransfers,
-  findTransfers,
-  type Leg,
-  transferCategories,
-  unlinkTransfers,
-} from '../ledger/transfers.js';
-import { activeRules, runRules } from '../rules/engine.js';
 import { addDays, todayIn } from '../common/dates.js';
 import { violatedConstraint } from '../common/db-errors.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { type HouseholdActivity, HouseholdScope } from '../households/household-scope.js';
 import { transactionNoteContext } from '../ledger/transactions.service.js';
-import { accessLevels } from '../visibility/visibility-scope.js';
 
 type PreviewInput = z.output<typeof importRequestSchema>;
 type StartInput = z.output<typeof startImportSchema>;
@@ -70,8 +72,6 @@ type ProfilePatch = z.infer<typeof updateImportProfileSchema>;
 type Batch = typeof importBatches.$inferSelect;
 type AccountMapping = StartInput['accounts'][number];
 
-/** A row that would duplicate one already in the account: same amount, within this many days. */
-const OVERLAP_DAYS = 3;
 const CHUNK = 1000;
 
 interface Planned {
@@ -103,9 +103,6 @@ const details = (t: { date: string; amountMinor: number; description: string }) 
 /** A file row's details, as #insertTransactions stores them. */
 const rowDetails = (row: ImportRow) =>
   details({ ...row, description: row.description.trim() || (row.name?.trim() ?? '') });
-
-const days = (a: string, b: string) =>
-  Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
 
 /**
  * File imports (docs/design/imports.md, permissions TXN-09/10). The browser parses the file and
@@ -153,7 +150,7 @@ export class ImportsService {
         let kept: Planned[] = [];
         if (!a.skip) {
           const planned = this.#dedupeKeys(this.#screen(rows, today, results));
-          kept = await this.#removeOverlaps(
+          kept = await removeOverlaps(
             tx,
             accountId,
             null,
@@ -452,7 +449,7 @@ export class ImportsService {
       const today = await this.#today(tx, ctx);
       const results: ImportRowResult[] = [];
       const planned = this.#dedupeKeys(this.#screen(input.transactions, today, results));
-      const accepted = await this.#removeOverlaps(
+      const accepted = await removeOverlaps(
         tx,
         batch.accountId,
         batch.id,
@@ -479,7 +476,7 @@ export class ImportsService {
       const ruled = inserted.length
         ? await runRules(
             tx,
-            ctx,
+            ctx.householdId,
             await tx.select().from(transactions).where(inArray(transactions.id, inserted)),
             await activeRules(tx),
             null,
@@ -892,61 +889,6 @@ export class ImportsService {
       }
     }
     return kept;
-  }
-
-  /**
-   * Possible duplicates of transactions already in the account (entered by hand, synced, or from
-   * another file), not counting earlier parts of this batch: same amount within three days. Each
-   * existing transaction matches at most one row, closest date first. Flagged and left out unless
-   * the row is ticked.
-   */
-  async #removeOverlaps(
-    tx: Executor,
-    accountId: string | null,
-    batchId: string | null,
-    planned: Planned[],
-    results: ImportRowResult[],
-    include: Set<number>,
-  ): Promise<Planned[]> {
-    if (!accountId || planned.length === 0) return planned;
-    const dates = planned.map((p) => p.row.date).sort();
-    const existing = await tx
-      .select({
-        id: transactions.id,
-        amount: transactions.amountMinor,
-        date: transactions.authorizedDate,
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.accountId, accountId),
-          isNull(transactions.deletedAt),
-          isNull(transactions.parentId),
-          gte(transactions.authorizedDate, addDays(dates[0]!, -OVERLAP_DAYS)),
-          lte(transactions.authorizedDate, addDays(dates.at(-1)!, OVERLAP_DAYS)),
-          batchId
-            ? or(isNull(transactions.importBatchId), ne(transactions.importBatchId, batchId))
-            : undefined,
-        ),
-      );
-    const byAmount = Map.groupBy(existing, (e) => e.amount);
-    const claimed = new Set<string>();
-    const kept: Planned[] = [];
-    for (const p of [...planned].sort((a, b) => a.row.date.localeCompare(b.row.date))) {
-      const match = (byAmount.get(p.row.amountMinor) ?? [])
-        .filter((e) => !claimed.has(e.id) && days(e.date, p.row.date) <= OVERLAP_DAYS)
-        .sort((a, b) => days(a.date, p.row.date) - days(b.date, p.row.date))[0];
-      if (match) claimed.add(match.id);
-      if (match && !include.has(p.row.line)) {
-        results.push({
-          line: p.row.line,
-          status: 'overlap',
-          matchId: match.id,
-          message: 'May already be in this account',
-        });
-      } else kept.push(p);
-    }
-    return kept.sort((a, b) => a.row.line - b.row.line);
   }
 
   /**
