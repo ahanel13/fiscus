@@ -55,7 +55,7 @@ export class AdminSettingsController {
     const plaid = this.config.plaid;
     return {
       data: bankConnectionsOverviewSchema.parse({
-        plaid: { configured: !!plaid, environment: plaid?.environment ?? null },
+        plaid: { configured: !!plaid, environment: plaid?.env ?? null },
         simplefin: { enabled: settings['simplefin.enabled'] },
         settings,
       }),

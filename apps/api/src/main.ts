@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'reflect-metadata';
+import { instancePlaidConfigOrExit, plaidStatus } from '@fiscus/aggregation';
 import { masterKeysOrExit } from '@fiscus/crypto';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
@@ -14,6 +15,12 @@ import apiEnv from './env.js';
 const env = loadEnvOrExit(apiEnv);
 // Without values: Node's own report prints the whole error (#308).
 exitOnUnhandled((message) => new Logger('Process').fatal(message));
+// Some of the Plaid keys but not all stops the api, naming the missing ones (#82).
+const plaidLogger = new Logger('Plaid');
+const plaid = instancePlaidConfigOrExit(env, {
+  warn: (message) => plaidLogger.warn(message),
+  fatal: (message) => plaidLogger.fatal(message),
+});
 
 const config: AppConfig = {
   databaseUrl: env.DATABASE_URL,
@@ -24,6 +31,7 @@ const config: AppConfig = {
   publicUrl: env.PUBLIC_URL,
   signupMode: env.SIGNUP_MODE,
   cookieSecure: env.COOKIE_SECURE,
+  plaid,
 };
 // Fail closed, and say why: keys that can't work stop the api before it serves anything (#307).
 await masterKeysOrExit({ masterKeys: () => masterKeysFrom(config) }, (message) =>
@@ -36,5 +44,7 @@ const app = await NestFactory.create<NestFastifyApplication>(
   { logger: toNestLogLevels(env.LOG_LEVEL) },
 );
 await configureApp(app);
+// Only whether, and which environment: never the keys.
+plaidLogger.log(plaidStatus(plaid));
 app.enableShutdownHooks();
 await app.listen({ port: env.PORT, host: env.HOST });

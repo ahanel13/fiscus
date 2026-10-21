@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "catalog:",
+    "@fiscus/aggregation": "workspace:*",
     "@fiscus/crypto": "workspace:*",
     "@fiscus/db": "workspace:*",
     "@fiscus/domain": "workspace:*",

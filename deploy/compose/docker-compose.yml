@@ -106,6 +106,11 @@ services:
         # Only while rotating the master key (docs/security/encryption.md): the key being replaced.
         APP_ENCRYPTION_KEY_PREVIOUS: ${APP_ENCRYPTION_KEY_PREVIOUS:-}
         APP_ENCRYPTION_KEY_PREVIOUS_VERSION: ${APP_ENCRYPTION_KEY_PREVIOUS_VERSION:-}
+        # The server's Plaid keys (README, Plaid keys): all three or none. Unset: no Plaid.
+        PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+        PLAID_SECRET: ${PLAID_SECRET:-}
+        PLAID_ENV: ${PLAID_ENV:-}
+        PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI:-}
         LOG_LEVEL: ${LOG_LEVEL:-info}
       PUBLIC_URL: ${FISCUS_PUBLIC_URL:-http://localhost:8080}
       SIGNUP_MODE: ${FISCUS_SIGNUP_MODE:-invite_only}
