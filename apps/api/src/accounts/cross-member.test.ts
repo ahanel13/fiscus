@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TestClient } from '../testing/test-app.js';
 
@@ -368,6 +369,108 @@ describe('cross-member visibility (generated)', () => {
       ).body.data;
       const share = await ann.request('PUT', `${url}/accounts/${solo.id}/owners`, { owners });
       expect(share.body.code).toBe('private_joint_disallowed');
+    });
+  });
+
+  // Bank connections (#78, ACC-02/03): A connected each account (straight in the database; the
+  // link flow is #79's). One is still being set up, so only A sees it (D4). AB-private is left
+  // out: the rules above took B off it.
+  describe('connections', () => {
+    const SETUP = 'ABC-full';
+    const connectionOf = new Map<string, string>();
+    const connected = () => fixtures.filter((x) => x.key !== 'AB-private');
+
+    beforeAll(async () => {
+      const db = new pg.Client({ connectionString: tdb.ownerUrl });
+      await db.connect();
+      try {
+        for (const x of connected()) {
+          const id = crypto.randomUUID();
+          connectionOf.set(x.key, id);
+          await db.query(
+            `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id, status)
+             VALUES ($1, $2, $3, 'simplefin', $4, $5)`,
+            [id, hid, member.A, `item-${id}`, x.key === SETUP ? 'setup' : 'ok'],
+          );
+          await db.query('UPDATE accounts SET connection_id = $1 WHERE id = $2', [id, x.id]);
+        }
+      } finally {
+        await db.end();
+      }
+    });
+
+    /** Written from the matrix: its owner, or anyone who sees its account, unless in setup. */
+    const sees = (actor: Actor, x: Fixture) =>
+      actor === 'A' || (x.key !== SETUP && expectedLevel(actor, x) !== undefined);
+
+    it.each(ACTORS)(
+      'lists for %s exactly the connections behind accounts it sees',
+      async (actor) => {
+        const res = await client[actor].get(`${base()}/connections`);
+        expect(res.status).toBe(200);
+        const got = new Map(
+          res.body.data.map((c: { id: string; accountCount: number }) => [c.id, c.accountCount]),
+        );
+        const want = new Map(
+          connected()
+            .filter((x) => sees(actor, x))
+            .map((x) => [connectionOf.get(x.key)!, expectedLevel(actor, x) ? 1 : 0]),
+        );
+        expect(got).toEqual(want);
+        expect(leaks(actor, res.body)).toEqual([]);
+        for (const c of res.body.data) {
+          expect(c.owner).toEqual({ memberId: member.A, name: 'Ada' });
+          expect(Object.keys(c).sort()).toEqual(
+            [
+              'accountCount',
+              'id',
+              'institutionName',
+              'lastSyncedAt',
+              'nextSyncAt',
+              'owner',
+              'provider',
+              'status',
+            ].sort(),
+          );
+        }
+      },
+    );
+
+    it.each(ACTORS.filter((a) => a !== 'A'))(
+      'refuses %s disconnecting any of them, without revealing hidden ones',
+      async (actor) => {
+        for (const x of connected()) {
+          const res = await client[actor].delete(
+            `${base()}/connections/${connectionOf.get(x.key)}`,
+          );
+          const status = actor === 'V' ? 403 : sees(actor, x) ? 403 : 404;
+          expect([x.key, res.status]).toEqual([x.key, status]);
+          expect(leaks(actor, res.body)).toEqual([]);
+        }
+      },
+    );
+
+    it('lets A disconnect one, keeping the account and its history (D14)', async () => {
+      const x = fixtures.find((y) => y.key === 'AB-full')!;
+      const url = `${base()}/connections/${connectionOf.get(x.key)}`;
+      expect((await client.A.delete(url)).status).toBe(204);
+      expect((await client.A.delete(url)).status).toBe(204); // already disconnected
+      for (const actor of ACTORS) {
+        const ids = (await client[actor].get(`${base()}/connections`)).body.data.map(
+          (c: { id: string }) => c.id,
+        );
+        expect(ids).not.toContain(connectionOf.get(x.key));
+      }
+      const account = await client.B.get(`${base()}/accounts/${x.id}`);
+      expect(account.status).toBe(200);
+      expect(account.body.data.balance).toEqual({ amountMinor: x.balance, asOf: '2026-01-01' });
+      // Seen by those who see the account, and only them.
+      for (const actor of ACTORS) {
+        const events = (await client[actor].get(`${base()}/activity?limit=200`)).body.data.filter(
+          (e: { action: string }) => e.action === 'connection.disconnected',
+        );
+        expect([actor, events.length]).toEqual([actor, expectedLevel(actor, x) ? 1 : 0]);
+      }
     });
   });
 });

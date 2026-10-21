@@ -347,22 +347,134 @@ describe('system context belongs to the worker', () => {
     });
   });
 
+  describe('fiscus_claim_due_connections', () => {
+    // Due unless noted. Polled: ok, error (backing off), and disconnected ones still to end at the
+    // provider. Not polled: setup (D4), login_required (only its owner fixes it, D11).
+    const due = {
+      ok: randomUUID(),
+      error: randomUUID(),
+      removal: randomUUID(),
+      other: randomUUID(),
+    };
+    const notDue = {
+      setup: randomUUID(),
+      loginRequired: randomUUID(),
+      disconnected: randomUUID(),
+      leased: randomUUID(),
+      later: randomUUID(),
+      never: randomUUID(),
+      disabled: randomUUID(),
+    };
+    const DISABLED = randomUUID();
+    let second: pg.Client;
+
+    beforeAll(async () => {
+      await owner.query(
+        `INSERT INTO households (id, name, base_currency, timezone, status) VALUES ($1, 'D', 'USD', 'UTC', 'disabled')`,
+        [DISABLED],
+      );
+      const disabledOwner = randomUUID();
+      await owner.query(
+        `INSERT INTO household_members (id, household_id, user_id, role, display_name, color)
+         VALUES ($1, $2, $3, 'owner', 'Name', '#000')`,
+        [disabledOwner, DISABLED, people.z.user],
+      );
+      const rows: [string, string, string, string, string, boolean, string | null][] = [
+        [due.ok, H, people.a.member, 'ok', '-1 minute', false, null],
+        [due.error, H, people.b.member, 'error', '-1 hour', false, null],
+        [due.removal, H, people.a.member, 'disconnected', '-1 second', true, null],
+        [due.other, X, people.z.member, 'ok', '-1 day', false, '-1 second'],
+        [notDue.setup, H, people.a.member, 'setup', '-1 minute', false, null],
+        [notDue.loginRequired, H, people.a.member, 'login_required', '-1 minute', false, null],
+        [notDue.disconnected, H, people.a.member, 'disconnected', '-1 minute', false, null],
+        [notDue.leased, H, people.a.member, 'ok', '-1 minute', false, '5 minutes'],
+        [notDue.later, H, people.a.member, 'ok', '1 hour', false, null],
+        [notDue.disabled, DISABLED, disabledOwner, 'ok', '-1 minute', false, null],
+      ];
+      for (const [id, h, by, status, next, requested, lease] of rows) {
+        await owner.query(
+          `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id,
+             status, next_sync_at, disconnect_requested, lease_until)
+           VALUES ($1, $2, $3, 'plaid', gen_random_uuid()::text, $4, now() + $5::interval, $6,
+                   now() + $7::interval)`,
+          [id, h, by, status, next, requested, lease],
+        );
+      }
+      await owner.query(
+        `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id, status)
+         VALUES ($1, $2, $3, 'simplefin', gen_random_uuid()::text, 'ok')`,
+        [notDue.never, H, people.a.member],
+      );
+      second = new pg.Client({ connectionString: tdb.workerUrl });
+      await second.connect();
+    });
+    afterAll(() => second?.end());
+
+    const claim = (q: pg.Client, limit = 100) =>
+      q.query(`SELECT * FROM fiscus_claim_due_connections($1, interval '10 minutes')`, [limit]);
+
+    it('gives the app role nothing, in any context', async () => {
+      for (const ctx of [{}, { household: H, system: true }, member(people.a)]) {
+        await as(app, ctx, async (q) => expect((await claim(q)).rows).toEqual([]));
+      }
+    });
+
+    it('gives the worker the due connections, as ids only, and leases them', async () => {
+      await as(worker, {}, async (q) => {
+        const { rows, fields } = await claim(q);
+        expect(fields.map((f) => f.name)).toEqual(['connection_id', 'household_id']);
+        expect(new Set(rows.map((r) => `${r.connection_id}:${r.household_id}`))).toEqual(
+          new Set([
+            `${due.ok}:${H}`,
+            `${due.error}:${H}`,
+            `${due.removal}:${H}`,
+            `${due.other}:${X}`,
+          ]),
+        );
+        // Leased: claimed again, nothing is due.
+        expect((await claim(q)).rows).toEqual([]);
+      });
+    });
+
+    it('takes the longest-waiting first, up to the limit', async () => {
+      await as(worker, {}, async (q) =>
+        expect((await claim(q, 2)).rows.map((r) => r.connection_id)).toEqual([
+          due.other,
+          due.error,
+        ]),
+      );
+    });
+
+    it('never gives two workers the same connection', async () => {
+      await worker.query('BEGIN');
+      await second.query('BEGIN');
+      try {
+        const first = (await claim(worker, 2)).rows.map((r) => r.connection_id as string);
+        // The first worker hasn't committed: its rows are locked, and skipped.
+        const rest = (await claim(second)).rows.map((r) => r.connection_id as string);
+        expect(first).toHaveLength(2);
+        expect(first.filter((id) => rest.includes(id))).toEqual([]);
+        expect(new Set([...first, ...rest])).toEqual(new Set(Object.values(due)));
+      } finally {
+        await worker.query('ROLLBACK');
+        await second.query('ROLLBACK');
+      }
+    });
+  });
+
   it('runs the writing functions as a role that can change only what they need', async () => {
     const { rows: owners } = await owner.query(`
       SELECT p.proname, r.rolname FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
       WHERE p.proname IN ('fiscus_create_household', 'fiscus_join_household', 'fiscus_reassign_category',
-                          'fiscus_set_instance_setting')
+                          'fiscus_set_instance_setting', 'fiscus_claim_due_connections',
+                          'fiscus_disconnect_connection')
       ORDER BY 1`);
-    expect(owners.map((o) => o.rolname)).toEqual([
-      'fiscus_steward',
-      'fiscus_steward',
-      'fiscus_steward',
-      'fiscus_steward',
-    ]);
+    expect(owners.map((o) => o.rolname)).toEqual(Array(6).fill('fiscus_steward'));
     const { rows } = await owner.query(`
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
                                     'categories', 'household_keys', 'audit_events', 'users',
-                                    'instance_settings']) t,
+                                    'instance_settings', 'accounts', 'connections',
+                                    'connection_secrets']) t,
                        unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) p
       WHERE has_table_privilege('fiscus_steward', t, p)`);
     expect(rows.map((r) => `${r.p} ${r.t}`).sort()).toEqual([
@@ -374,6 +486,13 @@ describe('system context belongs to the worker', () => {
       SELECT table_name || '.' || column_name AS c FROM information_schema.column_privileges
       WHERE grantee = 'fiscus_steward' AND privilege_type = 'UPDATE' ORDER BY 1`);
     expect(columns.map((r) => r.c)).toEqual([
+      'accounts.connection_id',
+      'accounts.updated_at',
+      'connections.disconnect_requested',
+      'connections.lease_until',
+      'connections.next_sync_at',
+      'connections.status',
+      'connections.updated_at',
       'instance_settings.updated_at',
       'instance_settings.updated_by_user_id',
       'instance_settings.value',

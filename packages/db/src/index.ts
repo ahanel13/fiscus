@@ -21,6 +21,7 @@ export {
   type ChainVerification,
   type HouseholdProof,
 } from './activity.js';
+export { readConnectionSecret, saveConnectionSecret } from './connection-secrets.js';
 export { setContext, systemContext, userContext, withContext, type DbContext } from './context.js';
 export { MAINTENANCE_JOBS, runMaintenanceJob, type MaintenanceJob } from './maintenance.js';
 export { pingDatabase } from './health.js';

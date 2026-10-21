@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { HouseholdAccess } from './households/household-access.js';
 import { createTestApp, TestClient } from './testing/test-app.js';
@@ -13,6 +14,7 @@ import { createTestApp, TestClient } from './testing/test-app.js';
 const SECRET_NAME = 'Bob household (secret)';
 const SECRET_ACCOUNT = 'Bob savings (secret)';
 const SECRET_TAG = 'Bob tag (secret)';
+const SECRET_INSTITUTION = 'Bob bank (secret)';
 /** Path parameters that aren't ids: the same value in every household. */
 const FIXED: Record<string, string> = { date: '2026-01-01', kind: 'shared', key: 'range:reports' };
 
@@ -123,6 +125,35 @@ describe('cross-tenant isolation (generated from routes)', () => {
     };
     Object.assign(ids.a, await ledger(alice, a.id, ids.a.accountId, 'A tag'));
     Object.assign(ids.b, await ledger(bob, b.id, ids.b.accountId, SECRET_TAG));
+    // A bank connection behind each household's account (the link flow is #79's).
+    const db = new pg.Client({ connectionString: tdb.ownerUrl });
+    await db.connect();
+    try {
+      for (const [x, name] of [
+        [ids.a, 'A bank'],
+        [ids.b, SECRET_INSTITUTION],
+      ] as const) {
+        const institution = crypto.randomUUID();
+        await db.query(
+          `INSERT INTO institutions (id, provider, provider_institution_id, name)
+           VALUES ($1, 'plaid', gen_random_uuid()::text, $2)`,
+          [institution, name],
+        );
+        x.connectionId = crypto.randomUUID();
+        await db.query(
+          `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id,
+             status, institution_id)
+           VALUES ($1, $2, $3, 'plaid', $4, 'ok', $5)`,
+          [x.connectionId, x.householdId, x.memberId, `item-${x.connectionId}`, institution],
+        );
+        await db.query('UPDATE accounts SET connection_id = $1 WHERE id = $2', [
+          x.connectionId,
+          x.accountId,
+        ]);
+      }
+    } finally {
+      await db.end();
+    }
     // B also gets a second member, so member routes have a non-owner target.
     const token = new URLSearchParams(new URL(inviteB.body.data.url).hash.slice(1)).get('token')!;
     await carol.post('/api/v1/invites/accept', { token });
@@ -219,6 +250,7 @@ describe('cross-tenant isolation (generated from routes)', () => {
         SECRET_NAME,
         SECRET_ACCOUNT,
         SECRET_TAG,
+        SECRET_INSTITUTION,
         ids.b.memberId!,
         ids.b.otherMemberId!,
         ids.b.inviteId!,
@@ -226,6 +258,7 @@ describe('cross-tenant isolation (generated from routes)', () => {
         ids.b.transactionId!,
         ids.b.tagId!,
         ids.b.categoryId!,
+        ids.b.connectionId!,
       ];
       try {
         for (const route of householdRoutes()) {

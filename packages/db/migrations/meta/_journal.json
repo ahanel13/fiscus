@@ -253,6 +253,20 @@
       "when": 1792561847219,
       "tag": "0035_instance_settings_access",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792595477742,
+      "tag": "0036_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792595479516,
+      "tag": "0037_connections_rls",
+      "breakpoints": true
     }
   ]
 }

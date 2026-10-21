@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { FieldCrypto } from '@fiscus/crypto';
+import { createDb, saveConnectionSecret, withContext } from '@fiscus/db';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { LoggerService } from '@nestjs/common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TransactionsService } from './ledger/transactions.service.js';
 import { runImport } from './testing/imports.js';
@@ -11,8 +14,8 @@ import { createTestApp, TestClient } from './testing/test-app.js';
  * No financial data in logs, errors, or metrics (ADR 0014 §2.3, #308). The app runs with every
  * log level captured, and stdout and stderr too, while it handles recognizable values the way a
  * person would: an account and its balance, transactions and their notes, a search, an import,
- * refused requests, and a server error whose message holds the values, as a failed query's does.
- * None of the values may appear in what was captured.
+ * refused requests, a bank connection and its secret (#78), and a server error whose message holds
+ * the values, as a failed query's does. None of the values may appear in what was captured.
  */
 describe('no financial data in logs (#308)', () => {
   // Distinctive, and not hex, so no id or timestamp matches them by chance.
@@ -20,6 +23,8 @@ describe('no financial data in logs (#308)', () => {
   const AMOUNT = -8675309; // $86,753.09
   const BALANCE = 5551212; // $55,512.12
   const IMPORTED = -2718281; // $27,182.81
+  /** A bank connection's access token: never in a response, a log, or activity (#78). */
+  const ACCESS_TOKEN = `access-production-${NAME}-5ecret`;
   const SECRETS = [
     NAME.toLowerCase(),
     ...[AMOUNT, BALANCE, IMPORTED].flatMap((minor) => {
@@ -73,13 +78,14 @@ describe('no financial data in logs (#308)', () => {
       password: 'logs test Password1!',
       displayName: `Ada ${NAME}`,
     });
-    hh = (
+    const created = (
       await A.post('/api/v1/households', {
         name: `Home ${NAME}`,
         baseCurrency: 'USD',
         timezone: 'UTC',
       })
-    ).body.data.id;
+    ).body.data;
+    hh = created.id;
     const account = await A.post(url('/accounts'), {
       name: `Checking ${NAME}`,
       type: 'depository',
@@ -117,6 +123,43 @@ describe('no financial data in logs (#308)', () => {
     });
     expect(imported.added).toBe(1);
 
+    // A bank connection with its secret (made by the link flow in #79; here, as its owner would),
+    // listed and disconnected.
+    const userId = (await A.get('/api/v1/me')).body.data.id as string;
+    const connectionId = crypto.randomUUID();
+    const db = createDb(tdb.appUrl);
+    try {
+      await withContext(
+        db.db,
+        { householdId: hh, memberId: created.you.memberId, userId, system: false },
+        async (tx) => {
+          await tx.execute(
+            sql`INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id, status)
+                VALUES (${connectionId}, ${hh}, ${created.you.memberId}, 'plaid', ${`item-${NAME}`}, 'ok')`,
+          );
+          await tx.execute(
+            sql`UPDATE accounts SET connection_id = ${connectionId} WHERE id = ${accountId}`,
+          );
+          await saveConnectionSecret(tx, app.get(FieldCrypto), hh, connectionId, ACCESS_TOKEN);
+        },
+      );
+    } finally {
+      await db.close();
+    }
+    const responses = [
+      await A.get(url('/connections')),
+      await A.delete(url(`/connections/${connectionId}`)),
+      await A.get(url('/activity?limit=200')),
+    ];
+    expect(responses.map((r) => r.status)).toEqual([200, 204, 200]);
+    expect(responses[0]!.body.data).toHaveLength(1);
+    expect(
+      responses[2]!.body.data.some(
+        (e: { action: string }) => e.action === 'connection.disconnected',
+      ),
+    ).toBe(true);
+    for (const r of responses) expect(JSON.stringify(r.body ?? '')).not.toContain(ACCESS_TOKEN);
+
     // Refused: a change without If-Match, and a body that doesn't validate.
     expect(
       (await A.request('PATCH', url(`/transactions/${id}`), { displayName: `Renamed ${NAME}` }))
@@ -146,6 +189,7 @@ describe('no financial data in logs (#308)', () => {
     expect(text).toContain('GET /api/v1/households/:householdId/transactions');
     expect(text).toContain('DrizzleQueryError');
     expect(text).toContain('code=23505');
+    expect(text).not.toContain(ACCESS_TOKEN);
     for (const secret of SECRETS) {
       expect(text.toLowerCase(), `"${secret}" appeared in the logs`).not.toContain(secret);
     }

@@ -57,9 +57,16 @@ export const accounts = pgTable(
     householdId: uuid()
       .notNull()
       .references(() => households.id, { onDelete: 'cascade' }),
-    /** Bank connection (M2). No foreign key until the connections table exists. */
+    /**
+     * The bank connection it syncs from (#78); null = manual or import-only. Disconnecting clears
+     * it but keeps `providerAccountId`, so reconnecting can suggest linking it back (D14).
+     * Its foreign key to connections `(household_id, id)` comes a release later (upgrades §3): the
+     * previous release's tests set connection ids that name no connection.
+     */
     connectionId: uuid(),
     providerAccountId: text(),
+    /** The first day sync asks the provider for (D6): 90 days back, or before its history ends. */
+    syncFrom: date({ mode: 'string' }),
     name: text().notNull(),
     officialName: text(),
     type: accountType().notNull(),
