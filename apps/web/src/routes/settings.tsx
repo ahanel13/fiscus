@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { SourceLinks } from '../components/About.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { HistoryCheckSettings } from '../components/HistoryCheck.js';
 import { CategoriesSettings } from './categories-settings.js';
 import { HouseholdGeneral } from './household-general.js';
 import { InviteButton, InviteDialog, PendingInvites } from './invites.js';
@@ -170,7 +171,7 @@ export function HouseholdSettingsLayout() {
   );
 }
 
-/** The household's name, currency, and how you handle money together. */
+/** The household's name, currency, how you handle money, and this device's history check. */
 export function GeneralSettings() {
   const { householdId } = useParams({ strict: false }) as { householdId: string };
   const household = useSuspenseQuery(householdQuery(householdId)).data;
@@ -184,6 +185,7 @@ export function GeneralSettings() {
       />
       <p className="-mt-3 px-1 text-sm text-muted">Your role: {ROLE_LABELS[household.you.role]}</p>
       <MakeJointOffer householdId={householdId} />
+      <HistoryCheckSettings householdId={householdId} />
     </>
   );
 }
