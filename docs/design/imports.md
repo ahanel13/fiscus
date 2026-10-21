@@ -1,7 +1,7 @@
 # Getting data in: imports, rules, review, transfers (M1 Phase 4)
 
 - Status: Accepted
-- Tickets: #73 (CSV import), #75 (Monarch import), #41 (rules), #44 (review queue), #40 (transfers)
+- Tickets: #73 (CSV import), #74 (OFX/QFX import), #75 (Monarch import), #41 (rules), #44 (review queue), #40 (transfers)
 - Builds on: [data model §3.5, §5, §6](data-model.md), [transactions](transactions.md), [permissions](permissions.md) TXN-08/09/10, RULE-01–07, [accounts and visibility](accounts-and-visibility.md)
 
 Phase 4 gets real history into Fiscus and keeps it tidy: bank CSV files and a Monarch export come
@@ -12,6 +12,7 @@ makes checking them quick; transfers between your own accounts stop counting as 
 
 ```
 source → columns (CSV) → accounts → categories → review → done (undo available)
+         (OFX and QFX skip the columns and categories)
 ```
 
 - **Files are parsed in the browser.** The server receives rows as JSON, never the file, and
@@ -38,7 +39,8 @@ source → columns (CSV) → accounts → categories → review → done (undo a
   preview 0.25 s, start 2 s, then 90 parts of at most 1.5 s each, about 18 s in all.
 - When the background worker arrives (M2), imports can move to a job that continues after you
   close the tab, using the same steps.
-- Limits: 50 000 rows and 20 MB per import; larger files are split by date.
+- Limits: 50 000 rows and 20 MB per import; larger files are split by date. A file over 20 MB
+  is refused before it's read, whatever its source.
 
 ### The wizard
 
@@ -48,9 +50,9 @@ is skipped and shown as done.
 
 | Step | What you do | Shown for |
 |---|---|---|
-| 1. **Source** | Pick where it's from: *Monarch*, or *A bank or card statement (CSV)*. Drop the file(s); a short "how to export from Monarch" guide sits beside the drop zone | Always |
-| 2. **Columns** | Match columns, with the first rows shown live as you choose. A saved profile is picked automatically and the step collapses to "Using *Chase checking*. Change" | CSV only |
-| 3. **Accounts** | Each account in the file → *new*, *an existing one*, or ***Don't import*** (its transactions and balances are left out; a transfer to it keeps its Transfer category on the side you import), with type, owners, and visibility. Closed accounts listed with their close date. Monarch Owner names → members | Monarch, or a CSV with an Account column; otherwise one picker in step 1 |
+| 1. **Source** | Pick where it's from: *Monarch*, or *A bank or card statement* (CSV, OFX, or QFX, told apart by their content, not their name). Drop the file(s); a short "how to export from Monarch" guide sits beside the drop zone. An OFX file lists its accounts and transactions, and statements it can't import yet ("Investment statements aren't supported yet") | Always |
+| 2. **Columns** | Match columns, with the first rows shown live as you choose. A saved profile is picked automatically and the step collapses to "Using *Chase checking*. Change" | CSV only (not OFX) |
+| 3. **Accounts** | Each account in the file → *new*, *an existing one*, or ***Don't import*** (its transactions and balances are left out; a transfer to it keeps its Transfer category on the side you import), with type, owners, and visibility. Closed accounts listed with their close date. Monarch Owner names → members. OFX accounts show as "••1234 · Credit card · balance $767.19" | Monarch, OFX, or a CSV with an Account column; otherwise one picker in step 1 |
 | 4. **Categories** | Each category in the file → one of yours (several can share one), or *new*. Starts from how your **last import mapped it** ("As last time"), else the same name. New ones get a kind guessed from the data (transfer names, all money in = income), which you can change | When the file has categories |
 | 5. **Review** | Totals in plain words ("1 204 new transactions, 38 already imported, 3 possible duplicates"), then a table filtered by status: new, already imported, possible duplicate (tick to include), skipped, error. Transfers to be linked and rules that will apply are shown here | Always |
 | 6. **Done** | Progress, then a summary with **Undo this import**, "Review 7 transactions", and "Go to transactions" | Always |
@@ -72,6 +74,46 @@ is skipped and shown as done.
 
 A mapping can be **saved as a profile** ("Chase checking CSV") and is picked automatically when
 the next file's headers match.
+
+### OFX/QFX (#74)
+
+OFX is what banks offer as "Download for Quicken / Money" (QFX is Quicken's flavor of it). It
+labels every value, so there are no columns to match, and it has the bank's own id for each
+transaction, so overlapping downloads dedupe exactly. The parser is a small tokenizer in
+`@fiscus/shared` (`imports/ofx.ts`), like the CSV one: OFX 1.x SGML (leaf tags left unclosed,
+`CHARSET:1252` decoded as Windows-1252), OFX 2.x XML, and QFX (`INTU.*` tags ignored). One pass,
+linear in the file, at most 32 elements deep, and no DTDs or entities expanded beyond the five
+XML ones and numeric references.
+
+| OFX | Fiscus | Notes |
+|---|---|---|
+| `FITID` | The **dedupe key** (`externalId`, up to 255 characters) | Re-importing a file, or one that overlaps it, adds only what's new. A FITID repeated in one file with other details (a bank reusing ids) falls back to the hash key, so both rows import |
+| `NAME` (or `PAYEE/NAME`) + `MEMO` | Original description | `MEMO` is added when it says something `NAME` doesn't; `Check 1043` from `CHECKNUM` when there's no name. The name is left unset, so cleanup and rules apply as for CSV |
+| `DTPOSTED` | Date | The first 8 digits, as written: `20261006`, `20261006120000.000[-5:EST]` and `20261006000000[0:GMT]` are all 2026-10-06. The time and offset are ignored |
+| `TRNAMT` | Amount, sign kept (negative = money out) | Parsed as decimal text, never as a float |
+| `LEDGERBAL` (`BALAMT` on `DTASOF`) | One **entered balance** (anchor) on its day | The balances path of the import, so Undo removes it. With several statements for one account, the latest |
+| `ACCTID` | Its **last 4 digits**: the account's mask | The full account number never leaves the browser: it isn't sent, stored, or logged (a test checks the request bodies) |
+| `ACCTTYPE`, or a card statement | Account type | `CHECKING`, `SAVINGS`, `MONEYMRKT`, `CD` → checking or savings; card statements and `CREDITLINE` → credit card |
+| `CURDEF` | A new account's currency | |
+| `FI/ORG` | A new account's name, "Example Bank ••1234" | |
+
+- **Accounts.** Each account in the file goes into one of yours with the **same last 4 digits and
+  a compatible type**, then one with the **name** a new account would get, otherwise a **new
+  account** named "<bank> ••1234" with that mask and the statement's currency. One of your
+  accounts takes one statement, and never one in another currency. You can change any of them.
+- **Signs.** `TRNAMT` is trusted. When the data looks reversed (`DEBIT` rows positive, or, without
+  types, a card that's mostly money in), the account is listed under "Check these" with an
+  **"Amounts are reversed"** switch, off until you turn it on, which negates that account's
+  amounts and its balance.
+- **Format.** The batch is recorded as `qfx` when the file has Quicken's `INTU.BID` or a `.qfx`
+  name, otherwise `ofx`.
+- **Errors** carry a line number and never amounts, descriptions, or account numbers: "This file
+  can't be read as OFX (line 39): The file ends early." Over 50 000 transactions, 200 accounts, or
+  20 MB is refused with the limit it's over.
+- **Not supported yet:** OFX Direct Connect and Web Connect (downloading from the bank), investment
+  and loan statements (reported on the Source step, while the bank and card statements in the
+  same file still import), QIF, `AVAILBAL`, `DTUSER`, statements in a currency other than their
+  account's, and dropping several files at once.
 
 ### Duplicates and overlaps
 | Case | Detection | Default |

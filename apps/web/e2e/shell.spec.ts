@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from './test.js';
 import { axeViolations } from './axe.js';
 
@@ -827,4 +828,82 @@ test('you choose how you appear; a household that shares everything makes accoun
   await page.getByRole('alertdialog').getByRole('button', { name: 'Make joint' }).click();
   await expect(page.getByText(/accounts are joint now/)).toBeVisible();
   await expect(offer).toHaveCount(0);
+});
+
+test('imports an OFX file, and finds its accounts by their last 4 digits the next time', async ({
+  page,
+}) => {
+  // Synthetic statements from the parser's fixtures: checking ••1234, savings ••5678, and a card
+  // ••9012. The full account numbers never leave the browser.
+  const fixture = (name: string) =>
+    readFileSync(new URL(`../../../packages/shared/src/imports/fixtures/${name}`, import.meta.url));
+  const ofx = {
+    name: 'statement.ofx',
+    mimeType: 'application/x-ofx',
+    buffer: fixture('multi-account.ofx'),
+  };
+  const steps = page.getByRole('list', { name: 'Import steps' });
+
+  await signIn(page);
+  await page.goto(`${householdUrl}/import`);
+  await page.getByText('A bank or card statement').click();
+  await page.locator('input[type=file]').setInputFiles(ofx);
+  await expect(page.getByText('OFX · 3 accounts · 5 transactions')).toBeVisible();
+  // OFX labels its values, and has no categories: no columns or categories to match.
+  await expect(steps).not.toContainText('Columns');
+  await expect(steps).not.toContainText('Categories');
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Where does each account go?' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Ready to import (3)' })).toBeVisible();
+  await expect(page.getByText('••1234 · Checking · balance $1,438.25')).toBeVisible();
+  await expect(page.getByText('A new account, Example Bank ••5678.')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('5 new transactions.')).toBeVisible();
+  await page.getByRole('button', { name: 'Import 5 transactions' }).click();
+  await expect(
+    page.getByText(/5 transactions and \d+ balances imported into 3 accounts/),
+  ).toBeVisible();
+
+  // The new accounts have the last 4 digits, and the statement's balance.
+  await page.goto(`${householdUrl}/accounts`);
+  const checking = page.getByRole('link', { name: /Example Bank ••1234/ });
+  await expect(checking).toContainText('•••• 1234');
+  await expect(checking).toContainText('$1,438.25');
+
+  // The same file again: each account is found by its last 4 digits, and nothing is new.
+  await page.goto(`${householdUrl}/import`);
+  await page.getByText('A bank or card statement').click();
+  await page.locator('input[type=file]').setInputFiles(ofx);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(
+    page.getByText('Goes into Example Bank ••1234, which has the same last 4 digits.'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('0 new transactions, 5 already imported.')).toBeVisible();
+
+  // A card statement whose purchases read as money in: the card is found, and its amounts can
+  // be flipped.
+  await page.goto(`${householdUrl}/import`);
+  await page.getByText('A bank or card statement').click();
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'card.qfx',
+    mimeType: 'application/vnd.intu.qfx',
+    buffer: fixture('card-reversed.qfx'),
+  });
+  await expect(page.getByText('QFX · 1 account · 3 transactions')).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('heading', { name: 'Check these (1)' })).toBeVisible();
+  await expect(
+    page.getByText('Goes into Example Bank ••9012, which has the same last 4 digits.'),
+  ).toBeVisible();
+  await page.getByText('Amounts are reversed').click();
+  await expect(page.getByText('••9012 · Credit card · balance −$767.19')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('3 new transactions.')).toBeVisible();
+  await page.getByRole('button', { name: 'Import 3 transactions' }).click();
+  await expect(page.getByRole('heading', { name: 'Imported' })).toBeVisible();
 });

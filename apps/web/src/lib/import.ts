@@ -7,10 +7,13 @@ import {
   type CategoryGroup,
   type CategoryKind,
   chunkRowsByDate,
+  CsvError,
   type CsvMapping,
   type CsvTable,
+  decodeOfx,
   IMPORT_LIMITS,
   type ImportBalance,
+  type ImportFormat,
   type ImportPreview,
   type ImportRequest,
   type ImportRowResult,
@@ -20,30 +23,91 @@ import {
   inferCategoryKind,
   isMonarchBalances,
   isMonarchTransactions,
+  looksLikeOfx,
   looseName,
   type MonarchAccount,
+  type OfxAccount,
+  type OfxAccountType,
+  OfxError,
+  type OfxFile,
+  ofxFormat,
+  type OfxUnsupported,
+  OFX_LIMITS,
+  parseCsv,
+  parseOfx,
   readMonarch,
+  readOfx,
   type RowProblem,
+  type StartImport,
 } from '@fiscus/shared';
 import { api } from '../api/client.js';
 
 // The import wizard's logic, kept out of the components so it can be tested
 // (docs/design/imports.md §1).
 
-export type FileKind = 'monarch-transactions' | 'monarch-balances' | 'csv';
+export type FileKind = 'monarch-transactions' | 'monarch-balances' | 'csv' | 'ofx';
 
-export interface LoadedFile {
-  name: string;
-  table: CsvTable;
-  kind: FileKind;
-}
+export type LoadedFile =
+  | { name: string; kind: 'monarch-transactions' | 'monarch-balances' | 'csv'; table: CsvTable }
+  | { name: string; kind: 'ofx'; ofx: OfxFile };
 
-export const classifyFile = (table: CsvTable): FileKind =>
+export type CsvFile = Extract<LoadedFile, { table: CsvTable }>;
+export type OfxLoadedFile = Extract<LoadedFile, { kind: 'ofx' }>;
+
+export const classifyFile = (table: CsvTable): CsvFile['kind'] =>
   isMonarchTransactions(table.headers)
     ? 'monarch-transactions'
     : isMonarchBalances(table.headers)
       ? 'monarch-balances'
       : 'csv';
+
+/** For every source: docs/design/imports.md §1 promises 20 MB at most. */
+export const MAX_FILE_BYTES = OFX_LIMITS.bytes;
+
+/** A file over MAX_FILE_BYTES, refused before it's read. */
+export class FileTooLargeError extends Error {
+  constructor() {
+    super('The file is over 20 MB');
+    this.name = 'FileTooLargeError';
+  }
+}
+
+/**
+ * Reads a chosen file: OFX or QFX when its content says so (whatever it's named), CSV otherwise.
+ * The size is checked first, so a huge file is never read into memory.
+ */
+export async function readFile(
+  file: Pick<File, 'name' | 'size' | 'arrayBuffer'>,
+): Promise<LoadedFile> {
+  if (file.size > MAX_FILE_BYTES) throw new FileTooLargeError();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  // Every OFX header is ASCII: a single-byte decoding is enough to recognize one.
+  const head = new TextDecoder('windows-1252').decode(bytes.subarray(0, 4096));
+  if (looksLikeOfx(head)) return { name: file.name, kind: 'ofx', ofx: parseOfx(decodeOfx(bytes)) };
+  const table = parseCsv(new TextDecoder().decode(bytes));
+  return { name: file.name, kind: classifyFile(table), table };
+}
+
+/** What to say about a file that can't be read: a line number at most, never its data. */
+export function fileErrorMessage(err: unknown): string {
+  if (err instanceof FileTooLargeError) {
+    return 'This file is over 20 MB. Export a shorter period, and import each part.';
+  }
+  if (err instanceof OfxError) {
+    return `This file can’t be read as OFX (line ${err.line}): ${err.message}.`;
+  }
+  if (err instanceof CsvError) return `This file can’t be read (line ${err.line}): ${err.message}.`;
+  return 'This file can’t be read as a CSV file.';
+}
+
+/** "Investment statements aren't supported yet", once for each kind in the file. */
+export function unsupportedNotices(unsupported: OfxUnsupported[]): string[] {
+  const kinds = new Set(unsupported.map((u) => u.kind));
+  return [
+    kinds.has('investment') ? 'Investment statements aren’t supported yet' : '',
+    kinds.has('loan') ? 'Loan statements aren’t supported yet' : '',
+  ].filter(Boolean);
+}
 
 /** Where one account in the file goes. */
 export interface AccountChoice {
@@ -77,6 +141,25 @@ export interface AccountChoice {
    * while you edit). Empty: the wizard is confident; it goes in "Ready to import".
    */
   check: CheckReason[];
+  /** OFX: what the statement says about its account. Never the account number. */
+  statement?: OfxStatementInfo;
+  /** OFX: the account the wizard found for it, by its last 4 digits or by name. */
+  matched?: { accountId: string; by: 'mask' | 'name' };
+  /** OFX: the bank wrote this account's amounts the other way round, so they're negated. */
+  reversed?: boolean;
+}
+
+export interface OfxStatementInfo {
+  kind: 'bank' | 'card';
+  ofxType: OfxAccountType | null;
+  /** The last 4 digits of the account number. */
+  mask: string | null;
+  /** CURDEF: the currency of its amounts. */
+  currency: string | null;
+  /** LEDGERBAL: one entered balance, on its day. */
+  ledgerBalance: { date: string; balanceMinor: number } | null;
+  /** Spending looks like money in: "Amounts are reversed" is offered. */
+  amountsLookReversed: boolean;
 }
 
 /** What makes an account worth a look on the Accounts step. */
@@ -91,7 +174,9 @@ export type CheckReason =
    */
   | 'closed_with_money'
   /** The name doesn't say what type it is, and its balances suggest a card or a loan. */
-  | 'type_unsure';
+  | 'type_unsure'
+  /** OFX: spending in the file looks like money in. */
+  | 'amounts_reversed';
 
 const lower = (s: string) => s.trim().toLowerCase();
 
@@ -145,6 +230,92 @@ export function suggestAccounts(found: MonarchAccount[], existing: Account[]): A
               ? 'type_unsure'
               : null,
           ].filter((r) => r !== null) as CheckReason[]),
+    };
+  });
+}
+
+const OFX_TYPE_LABELS: Record<OfxAccountType, string> = {
+  CHECKING: 'Checking',
+  SAVINGS: 'Savings',
+  MONEYMRKT: 'Money market',
+  CD: 'CD',
+  CREDITLINE: 'Line of credit',
+};
+
+/** "Credit card", "Checking": what the statement says the account is. */
+export const statementTypeLabel = (s: Pick<OfxStatementInfo, 'kind' | 'ofxType'>) =>
+  s.kind === 'card' ? 'Credit card' : s.ofxType ? OFX_TYPE_LABELS[s.ofxType] : 'Bank account';
+
+/** "••1234 · Credit card": how the Accounts step shows a statement's account. */
+export const statementLabel = (s: Pick<OfxStatementInfo, 'kind' | 'ofxType' | 'mask'>) =>
+  [s.mask ? `••${s.mask}` : '', statementTypeLabel(s)].filter(Boolean).join(' · ');
+
+/** "Example Bank ••1234": the name a new account gets. */
+const newAccountName = (a: OfxAccount) =>
+  [
+    a.org?.trim() || statementTypeLabel({ kind: a.kind, ofxType: a.ofxType }),
+    a.mask ? `••${a.mask}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 120);
+
+/**
+ * First choices for an OFX file's accounts: one you own with the same last 4 digits and a
+ * compatible type (checking, savings, money market, and CDs are checking or savings; cards and
+ * credit lines are credit), then one with the name a new account would get, else a new account
+ * with that name, the last 4 digits, and the statement's currency. Each of your accounts is
+ * matched once at most, and never to a statement in another currency.
+ */
+export function suggestOfxAccounts(found: OfxAccount[], existing: Account[]): AccountChoice[] {
+  const owned = existing
+    .filter((a) => a.yourAccess === 'owner')
+    // An open account first; a closed one only when no open one matches.
+    .sort((a, b) => Number(!!a.closedAt) - Number(!!b.closedAt));
+  const taken = new Set<string>();
+  return found.map((a): AccountChoice => {
+    const name = newAccountName(a);
+    const fits = (e: Account) =>
+      !taken.has(e.id) && (!a.currency || !e.currency || e.currency === a.currency);
+    const byMask = a.mask
+      ? owned.find((e) => fits(e) && e.mask === a.mask && e.type === a.suggestedType)
+      : undefined;
+    const byName = byMask ? undefined : owned.find((e) => fits(e) && lower(e.name) === lower(name));
+    const match = byMask ?? byName;
+    if (match) taken.add(match.id);
+    const days = [a.firstDate, a.lastDate, a.ledgerBalance?.date]
+      .filter((d): d is string => !!d)
+      .sort();
+    return {
+      key: a.key,
+      mode: match ? 'existing' : 'new',
+      accountId: match?.id ?? null,
+      sameAs: null,
+      name,
+      type: a.suggestedType,
+      balanceMode: 'transactions',
+      close: false,
+      closeOn: null,
+      transactions: a.transactions,
+      balances: a.ledgerBalance ? 1 : 0,
+      firstDate: a.firstDate,
+      lastDate: a.lastDate,
+      lastBalance: a.ledgerBalance?.balanceMinor ?? null,
+      from: days[0] ?? null,
+      to: days.at(-1) ?? null,
+      duplicateOf: null,
+      continuedBy: null,
+      check: a.amountsLookReversed ? ['amounts_reversed'] : [],
+      statement: {
+        kind: a.kind,
+        ofxType: a.ofxType,
+        mask: a.mask,
+        currency: a.currency,
+        ledgerBalance: a.ledgerBalance,
+        amountsLookReversed: a.amountsLookReversed,
+      },
+      ...(match ? { matched: { accountId: match.id, by: byMask ? 'mask' : 'name' } } : {}),
+      reversed: false,
     };
   });
 }
@@ -204,12 +375,17 @@ export interface FileRows {
   problems: RowProblem[];
   monarchAccounts: MonarchAccount[];
   owners: string[];
+  /** OFX: each account in the file. */
+  ofxAccounts?: OfxAccount[];
+  /** OFX: statements it doesn't read yet (investment, loan). */
+  unsupported?: OfxUnsupported[];
 }
 
 /** Monarch: both files read together; every account in either is listed. */
 export function readMonarchFiles(files: LoadedFile[], exponent: number): FileRows {
-  const t = files.find((f) => f.kind === 'monarch-transactions');
-  const b = files.find((f) => f.kind === 'monarch-balances');
+  const csv = files.filter((f): f is CsvFile => f.kind !== 'ofx');
+  const t = csv.find((f) => f.kind === 'monarch-transactions');
+  const b = csv.find((f) => f.kind === 'monarch-balances');
   const m = readMonarch(
     { ...(t ? { transactions: t.table } : {}), ...(b ? { balances: b.table } : {}) },
     exponent,
@@ -227,7 +403,7 @@ export function readMonarchFiles(files: LoadedFile[], exponent: number): FileRow
 export const FILE_ACCOUNT = 'This file';
 
 /** A bank CSV with a column mapping. Without an Account column it's all one account. */
-export function readCsvFile(file: LoadedFile, mapping: CsvMapping, exponent: number): FileRows {
+export function readCsvFile(file: CsvFile, mapping: CsvMapping, exponent: number): FileRows {
   const { transactions, problems } = applyMapping(file.table, mapping, {
     exponent,
     account: FILE_ACCOUNT,
@@ -256,8 +432,50 @@ export function readCsvFile(file: LoadedFile, mapping: CsvMapping, exponent: num
   return { transactions, balances: [], problems, monarchAccounts, owners: [] };
 }
 
+/**
+ * An OFX or QFX file's bank and card statements as rows: FITID is the dedupe key, and LEDGERBAL
+ * one entered balance per account. `currency` (the household's) sets the decimals of a statement
+ * without CURDEF.
+ */
+export function readOfxFile(file: OfxLoadedFile, currency: string): FileRows {
+  const r = readOfx(file.ofx, { currency });
+  return {
+    transactions: r.transactions,
+    balances: r.balances,
+    problems: r.problems,
+    monarchAccounts: [],
+    owners: [],
+    ofxAccounts: r.accounts,
+    unsupported: r.unsupported,
+  };
+}
+
+/** What the batch is recorded as: `qfx` for Quicken's flavor of OFX. */
+export const fileFormat = (
+  source: 'csv' | 'monarch',
+  file: LoadedFile | undefined,
+): ImportFormat => (file?.kind === 'ofx' ? ofxFormat(file.ofx, file.name) : source);
+
+/**
+ * The rows as they're sent: an account marked "Amounts are reversed" has its amounts and its
+ * balance negated. The review and the import both use these.
+ */
+export function rowsToSend(rows: FileRows, choices: AccountChoice[]): FileRows {
+  const reversed = new Set(choices.filter((c) => c.reversed).map((c) => c.key));
+  if (!reversed.size) return rows;
+  return {
+    ...rows,
+    transactions: rows.transactions.map((t) =>
+      reversed.has(t.account) ? { ...t, amountMinor: -t.amountMinor } : t,
+    ),
+    balances: rows.balances.map((b) =>
+      reversed.has(b.account) ? { ...b, balanceMinor: -b.balanceMinor } : b,
+    ),
+  };
+}
+
 export interface WizardChoices {
-  format: 'csv' | 'monarch';
+  format: ImportFormat;
   filename: string;
   profileId?: string;
   accounts: AccountChoice[];
@@ -280,6 +498,9 @@ const accountMapping = (choices: AccountChoice[]) =>
                     name: a.name.trim() || a.key,
                     type: a.type,
                     balanceMode: a.balanceMode,
+                    // OFX: the last 4 digits, never the whole number, and the statement's currency.
+                    ...(a.statement?.mask ? { mask: a.statement.mask } : {}),
+                    ...(a.statement?.currency ? { currency: a.statement.currency } : {}),
                   },
                 }),
             ...(a.close && a.closeOn ? { closeOn: a.closeOn } : {}),
@@ -334,25 +555,32 @@ export interface ImportState {
   failed: { key: string; message: string } | null;
 }
 
+/** The request that starts a run. */
+export function startRequest(choices: WizardChoices, rows: FileRows): StartImport {
+  const used = new Set(choices.accounts.filter((a) => a.mode !== 'skip').map((a) => a.key));
+  const kept = rows.transactions.filter((t) => used.has(t.account));
+  return {
+    format: choices.format,
+    filename: choices.filename,
+    ...(choices.profileId ? { profileId: choices.profileId } : {}),
+    accounts: accountMapping(choices.accounts),
+    categories: categoryMapping(choices.categories),
+    members: choices.members,
+    categoryNames: [
+      ...new Set(kept.map((t) => t.category?.trim()).filter((n): n is string => !!n)),
+    ],
+    tags: [...new Set(kept.flatMap((t) => t.tags ?? []))],
+  };
+}
+
 /** Starts a run: new accounts, categories, and tags, closed accounts, a batch per account. */
 export async function startImport(
   householdId: string,
   choices: WizardChoices,
   rows: FileRows,
 ): Promise<ImportRun> {
-  const used = new Set(choices.accounts.filter((a) => a.mode !== 'skip').map((a) => a.key));
-  const kept = rows.transactions.filter((t) => used.has(t.account));
   const res = await api<{ data: ImportRun }>('POST', `/api/v1/households/${householdId}/imports`, {
-    body: {
-      format: choices.format,
-      filename: choices.filename,
-      ...(choices.profileId ? { profileId: choices.profileId } : {}),
-      accounts: accountMapping(choices.accounts),
-      categories: categoryMapping(choices.categories),
-      members: choices.members,
-      categoryNames: [...new Set(kept.map((t) => t.category?.trim()).filter((n) => !!n))],
-      tags: [...new Set(kept.flatMap((t) => t.tags ?? []))],
-    },
+    body: startRequest(choices, rows),
   });
   return res.data;
 }

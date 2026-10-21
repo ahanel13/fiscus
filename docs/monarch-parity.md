@@ -15,7 +15,7 @@ Milestones refer to [roadmap.md](roadmap.md).
 | Monarch | Fiscus | Status | Where |
 |---|---|---|---|
 | Plaid / MX / Finicity aggregation, switch per institution | Plaid + SimpleFIN + file import. MX/Finicity need business contracts | 🟡 | M2 |
-| Manual accounts, CSV import, Mint import | Manual, CSV/OFX/QFX, **Monarch import** (P1), YNAB/Actual (Mint shut down in 2024) | ✅ | M1 |
+| Manual accounts, CSV import, Mint import | Manual, CSV, OFX/QFX (#74), **Monarch import** (P1), YNAB/Actual (Mint shut down in 2024) | ✅ | M1, M1.5 (OFX/QFX) |
 | Real-time refresh with per-account status | Refresh now, connection health panel, polling + optional webhooks | ✅ | M2 (ADR 0008) |
 | Account groups, ordering, account notes | Your own groups and order, arranged with up/down and "Move to" (drag and drop later); notes on each account | ✅ | M1.5 (#48) |
 | Zillow home value, vehicle value | Manual value + appreciation curve, pluggable valuation provider (Zillow's API is closed) | 🟡 | M6 |

@@ -3,13 +3,11 @@ import {
   type AccountType,
   type CategoryKind,
   type CsvMapping,
-  CsvError,
   detectDateFormat,
   headerSignature,
   type ImportPreview,
   type ImportRowResult,
   minorUnitExponent,
-  parseCsv,
   profileFits,
   suggestMapping,
 } from '@fiscus/shared';
@@ -58,9 +56,11 @@ import {
   chooseAccount,
   chooseMany,
   continuationGap,
-  classifyFile,
   combinedInto,
   combineTargets,
+  type CsvFile,
+  fileErrorMessage,
+  fileFormat,
   type FileRows,
   type ImportState,
   type LoadedFile,
@@ -68,19 +68,26 @@ import {
   previewImport,
   previewRequest,
   readCsvFile,
+  readFile,
   readMonarchFiles,
+  readOfxFile,
+  rowsToSend,
   sendRows,
   startImport,
+  statementLabel,
   suggestAccounts,
   suggestCategories,
+  suggestOfxAccounts,
   summarize,
   undoRun,
+  unsupportedNotices,
   withType,
   type WizardChoices,
 } from '../lib/import.js';
 
 // The import wizard (docs/design/imports.md §1): source → columns (CSV) → accounts → categories
-// → review → done. Nothing is saved until "Import"; Back keeps every choice.
+// → review → done. An OFX or QFX file skips the columns and categories. Nothing is saved until
+// "Import"; Back keeps every choice.
 
 type Source = 'monarch' | 'csv';
 type StepId = 'source' | 'columns' | 'accounts' | 'categories' | 'review' | 'done';
@@ -139,9 +146,11 @@ export function ImportPage() {
   const [includeOverlaps, setIncludeOverlaps] = useState<Set<number>>(new Set());
 
   const hasCategories = (rows?.transactions ?? []).some((t) => t.category?.trim());
+  const ofx = files[0]?.kind === 'ofx';
   const steps: StepId[] = [
     'source',
-    ...(source === 'csv' ? (['columns'] as const) : []),
+    // An OFX file says what each value is: no columns to match.
+    ...(source === 'csv' && !ofx ? (['columns'] as const) : []),
     'accounts',
     // A Monarch export has categories: show the step before the file is read, so the list of
     // steps doesn't grow under you once it is.
@@ -158,7 +167,7 @@ export function ImportPage() {
   const back = () => go(steps[index - 1]!);
 
   const choices: WizardChoices = {
-    format: source,
+    format: fileFormat(source, files[0]),
     filename:
       files
         .map((f) => f.name)
@@ -170,10 +179,20 @@ export function ImportPage() {
     members: memberChoices,
   };
 
+  // What's sent: rows of an account marked "Amounts are reversed" negated.
+  const sendable = useMemo(
+    () => (rows ? rowsToSend(rows, accountChoices) : null),
+    [rows, accountChoices],
+  );
+
   /** Reads the files (and mapping, for CSV) into rows, and sets first choices for later steps. */
   const prepare = (loaded: FileRows) => {
     setRows(loaded);
-    setAccountChoices(suggestAccounts(loaded.monarchAccounts, accounts));
+    setAccountChoices(
+      loaded.ofxAccounts
+        ? suggestOfxAccounts(loaded.ofxAccounts, accounts)
+        : suggestAccounts(loaded.monarchAccounts, accounts),
+    );
     setCategoryChoices(suggestCategories(loaded.transactions, groups, remembered));
     setMemberChoices(
       loaded.owners.map((name) => ({
@@ -189,17 +208,13 @@ export function ImportPage() {
   const loadFiles = async (list: File[]) => {
     setFileError(null);
     try {
-      const loaded = await Promise.all(
-        list.map(async (f) => {
-          const table = parseCsv(await f.text());
-          return { name: f.name, table, kind: classifyFile(table) } satisfies LoadedFile;
-        }),
-      );
+      // Each file's size is checked before any is read.
+      const loaded = await Promise.all(list.map(readFile));
       if (source === 'monarch') {
         const merged = [...files, ...loaded].filter(
           (f, i, all) => all.findLastIndex((g) => g.kind === f.kind) === i,
         );
-        if (merged.some((f) => f.kind === 'csv')) {
+        if (merged.some((f) => f.kind === 'csv' || f.kind === 'ofx')) {
           setFileError(
             'That doesn’t look like a Monarch export. Choose the Transactions or Balances file from Monarch, or switch to “A bank or card statement”.',
           );
@@ -209,6 +224,7 @@ export function ImportPage() {
       } else {
         const file = loaded[0]!;
         setFiles([file]);
+        if (file.kind === 'ofx') return;
         const fit = profiles.find((p) => profileFits(p.mapping, file.table.headers));
         if (fit) {
           setMapping(fit.mapping);
@@ -219,11 +235,7 @@ export function ImportPage() {
         }
       }
     } catch (err) {
-      setFileError(
-        err instanceof CsvError
-          ? `This file can’t be read (line ${err.line}): ${err.message}.`
-          : 'This file can’t be read as a CSV file.',
-      );
+      setFileError(fileErrorMessage(err));
     }
   };
 
@@ -232,7 +244,8 @@ export function ImportPage() {
       <div>
         <h1 className="text-2xl font-semibold">Import</h1>
         <p className="text-sm text-muted">
-          Bring in history from Monarch or a bank’s CSV file. Nothing is saved until the last step.
+          Bring in history from Monarch, or a bank’s CSV, OFX, or QFX file. Nothing is saved until
+          the last step.
         </p>
       </div>
       <Stepper steps={steps} current={step} />
@@ -250,13 +263,15 @@ export function ImportPage() {
           onFiles={(f) => void loadFiles(f)}
           onRemove={(name) => setFiles(files.filter((f) => f.name !== name))}
           onNext={() => {
+            const file = files[0];
             if (source === 'monarch') prepare(readMonarchFiles(files, exponent));
+            else if (file?.kind === 'ofx') prepare(readOfxFile(file, household.baseCurrency));
             next();
           }}
         />
       ) : null}
 
-      {step === 'columns' && files[0] ? (
+      {step === 'columns' && files[0] && files[0].kind !== 'ofx' ? (
         <ColumnsStep
           householdId={householdId}
           file={files[0]}
@@ -277,7 +292,7 @@ export function ImportPage() {
                   {
                     body: {
                       name: saveAs,
-                      headers: headerSignature(files[0]!.table.headers),
+                      headers: headerSignature((files[0] as CsvFile).table.headers),
                       mapping: complete,
                     },
                   },
@@ -290,7 +305,7 @@ export function ImportPage() {
                 toast(err instanceof ApiError ? err.title : 'The mapping wasn’t saved.');
               }
             }
-            prepare(readCsvFile(files[0]!, complete, exponent));
+            prepare(readCsvFile(files[0] as CsvFile, complete, exponent));
             next();
           }}
         />
@@ -322,11 +337,11 @@ export function ImportPage() {
         />
       ) : null}
 
-      {step === 'review' && rows ? (
+      {step === 'review' && sendable ? (
         <ReviewStep
           householdId={householdId}
           choices={choices}
-          rows={rows}
+          rows={sendable}
           currency={household.baseCurrency}
           includeOverlaps={includeOverlaps}
           onIncludeOverlaps={setIncludeOverlaps}
@@ -335,11 +350,11 @@ export function ImportPage() {
         />
       ) : null}
 
-      {step === 'done' && rows ? (
+      {step === 'done' && sendable ? (
         <DoneStep
           householdId={householdId}
           choices={choices}
-          rows={rows}
+          rows={sendable}
           includeOverlaps={includeOverlaps}
           onFinished={() =>
             void queryClient.invalidateQueries({ queryKey: ['households', householdId] })
@@ -447,9 +462,10 @@ function SourceStep({
   onNext: () => void;
 }) {
   const monarch = source === 'monarch';
+  const ofx = files[0]?.kind === 'ofx' ? files[0].ofx : null;
   const ready = monarch
     ? files.some((f) => f.kind === 'monarch-transactions' || f.kind === 'monarch-balances')
-    : files.length === 1;
+    : files.length === 1 && (!ofx || ofx.statements.length > 0);
   return (
     <Card className="space-y-5">
       <StepHeading>Where is it from?</StepHeading>
@@ -467,18 +483,29 @@ function SourceStep({
         <RadioCard
           value="csv"
           title="A bank or card statement"
-          description="A CSV file from your bank. You’ll match its columns next."
+          description="A CSV, OFX, or QFX file from your bank. For a CSV, you’ll match its columns next."
         />
       </RadioGroup>
       <div className="grid gap-4 md:grid-cols-[1fr_16rem]">
         <FileDrop
-          label={monarch ? 'Drop your Monarch files here' : 'Drop the CSV file here'}
+          label={monarch ? 'Drop your Monarch files here' : 'Drop the CSV, OFX, or QFX file here'}
           description={
             monarch
               ? 'The Transactions file, the Balances file, or both. They stay on this device until you import.'
               : 'It stays on this device until you import.'
           }
-          accept={['text/csv', '.csv']}
+          accept={
+            monarch
+              ? ['text/csv', '.csv']
+              : [
+                  'text/csv',
+                  '.csv',
+                  'application/x-ofx',
+                  '.ofx',
+                  '.qfx',
+                  'application/vnd.intu.qfx',
+                ]
+          }
           allowsMultiple={monarch}
           onFiles={onFiles}
         />
@@ -502,11 +529,13 @@ function SourceStep({
             <li key={f.name} className="flex items-center gap-3 px-3 py-2 text-sm">
               <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
               <Badge>
-                {f.kind === 'monarch-transactions'
-                  ? `Transactions · ${n(f.table.rows.length)} rows`
-                  : f.kind === 'monarch-balances'
-                    ? `Balances · ${n(f.table.rows.length)} rows`
-                    : `${n(f.table.rows.length)} rows`}
+                {f.kind === 'ofx'
+                  ? ofxSummary(f)
+                  : f.kind === 'monarch-transactions'
+                    ? `Transactions · ${n(f.table.rows.length)} rows`
+                    : f.kind === 'monarch-balances'
+                      ? `Balances · ${n(f.table.rows.length)} rows`
+                      : `${n(f.table.rows.length)} rows`}
               </Badge>
               <Button variant="ghost" size="sm" onPress={() => onRemove(f.name)}>
                 Remove
@@ -515,6 +544,16 @@ function SourceStep({
           ))}
         </ul>
       ) : null}
+      {ofx
+        ? unsupportedNotices(ofx.unsupported).map((notice) => (
+            <Alert key={notice} tone="info">
+              {notice}.{' '}
+              {ofx.statements.length
+                ? 'The bank and card statements in this file still import.'
+                : 'This file has no bank or card statements to import.'}
+            </Alert>
+          ))
+        : null}
       {monarch && files.length === 1 && files[0]!.kind === 'monarch-transactions' ? (
         <p className="text-sm text-muted">
           Without the Balances file, each account’s history starts with its transactions, and
@@ -524,6 +563,17 @@ function SourceStep({
       <StepActions onNext={onNext} nextDisabled={!ready} />
     </Card>
   );
+}
+
+/** "OFX · 3 accounts · 5 transactions". */
+function ofxSummary(file: Extract<LoadedFile, { kind: 'ofx' }>): string {
+  const accounts = new Set(file.ofx.statements.map((s) => s.key)).size;
+  const transactions = file.ofx.statements.reduce((sum, s) => sum + s.transactions.length, 0);
+  return [
+    fileFormat('csv', file).toUpperCase(),
+    `${n(accounts)} ${accounts === 1 ? 'account' : 'accounts'}`,
+    `${n(transactions)} ${transactions === 1 ? 'transaction' : 'transactions'}`,
+  ].join(' · ');
 }
 
 // ── 2. Columns (CSV) ───────────────────────────────────────────────────────────────────────
@@ -538,7 +588,7 @@ function ColumnsStep({
   onNext,
 }: {
   householdId: string;
-  file: LoadedFile;
+  file: CsvFile;
   mapping: Partial<CsvMapping>;
   onMapping: (m: Partial<CsvMapping>) => void;
   profileName: string | undefined;
@@ -803,7 +853,11 @@ const checkLabel = (reason: CheckReason, c: AccountChoice): string =>
     closed_with_money:
       (c.lastBalance ?? 0) < 0 ? 'Closed with a balance owed?' : 'Closed with money in it?',
     type_unsure: 'Check the type',
+    amounts_reversed: 'Amounts look reversed',
   })[reason];
+
+/** How the Accounts step names an account: its statement's last 4 digits and type, for OFX. */
+const accountLabel = (c: AccountChoice) => (c.statement ? statementLabel(c.statement) : c.key);
 
 type ExistingAccount = { id: string; name: string; closedAt: string | null };
 
@@ -952,7 +1006,7 @@ function AccountsStep({
             {collapsible ? (
               <span className="text-sm text-muted">
                 {ready.some((c) => c.mode === 'existing')
-                  ? 'Matched to your accounts by name, or new with the type their name says.'
+                  ? 'Matched to your accounts, or new with the type their name says.'
                   : 'New accounts with the type their name says.'}
               </span>
             ) : null}
@@ -1045,12 +1099,27 @@ function AccountRow({
     choices.filter((o) => o.key !== c.key && o.mode === 'existing').map((o) => o.accountId),
   );
   const targets = combineTargets(choices, c.key);
+  const label = accountLabel(c);
+  const s = c.statement;
+  const matched = accounts.find((a) => a.id === c.accountId);
   return (
     <li className="grid gap-3 p-3 md:grid-cols-[auto_1fr_15rem_12rem] md:items-start">
-      <Checkbox aria-label={`Select ${c.key}`} isSelected={selected} onChange={onSelect} />
+      <Checkbox aria-label={`Select ${label}`} isSelected={selected} onChange={onSelect} />
       <div className="min-w-0 text-sm">
         <p className="flex flex-wrap items-center gap-2">
-          <span className="truncate font-medium">{c.key}</span>
+          <span className="truncate font-medium">
+            {label}
+            {s?.ledgerBalance ? (
+              <>
+                {' · balance '}
+                <Amount
+                  minor={(c.reversed ? -1 : 1) * s.ledgerBalance.balanceMinor}
+                  currency={s.currency ?? currency}
+                  kind={c.type === 'credit' || c.type === 'loan' ? 'liability' : 'balance'}
+                />
+              </>
+            ) : null}
+          </span>
           {c.check.map((r) => (
             <Badge key={r} tone="warning">
               {checkLabel(r, c)}
@@ -1059,8 +1128,13 @@ function AccountRow({
         </p>
         <p className="text-muted">
           {[
-            c.transactions ? `${n(c.transactions)} transactions` : '',
-            c.balances ? `${n(c.balances)} days of balances` : '',
+            c.transactions
+              ? `${n(c.transactions)} ${c.transactions === 1 ? 'transaction' : 'transactions'}`
+              : '',
+            // A statement's one balance is in its title.
+            c.balances && !s
+              ? `${n(c.balances)} ${c.balances === 1 ? 'day' : 'days'} of balances`
+              : '',
           ]
             .filter(Boolean)
             .join(' · ')}
@@ -1071,6 +1145,29 @@ function AccountRow({
             </>
           ) : null}
         </p>
+        {s && matched && c.matched?.accountId === matched.id ? (
+          <p className="mt-1 text-muted">
+            Goes into {matched.name}, which has the same{' '}
+            {c.matched.by === 'mask' ? 'last 4 digits' : 'name'}.
+          </p>
+        ) : null}
+        {s && c.mode === 'new' ? (
+          <p className="mt-1 text-muted">
+            A new account, {c.name}
+            {s.currency && s.currency !== currency ? `, in ${s.currency}` : ''}.
+          </p>
+        ) : null}
+        {s?.amountsLookReversed && c.mode !== 'skip' ? (
+          <div className="mt-1 space-y-1">
+            <Switch isSelected={!!c.reversed} onChange={(reversed) => onUpdate({ reversed })}>
+              Amounts are reversed
+            </Switch>
+            <p className="text-muted">
+              Purchases in this file look like money in: if they are, switch this on to flip every
+              amount and the balance.
+            </p>
+          </div>
+        ) : null}
         {c.duplicateOf ? (
           <p className="mt-1 text-muted">
             Same balance as {c.duplicateOf} every day, and no transactions of its own: probably the
@@ -1115,7 +1212,7 @@ function AccountRow({
         ) : null}
       </div>
       <Select
-        aria-label={`Where ${c.key} goes`}
+        aria-label={`Where ${label} goes`}
         value={
           c.mode === 'existing'
             ? c.accountId
@@ -1150,7 +1247,7 @@ function AccountRow({
           <SelectSection title="Combine with">
             {targets.map((o) => (
               <SelectItem key={`combine:${o.key}`} id={`combine:${o.key}`}>
-                {o.key}
+                {accountLabel(o)}
               </SelectItem>
             ))}
           </SelectSection>
@@ -1158,7 +1255,7 @@ function AccountRow({
       </Select>
       {c.mode === 'new' ? (
         <Select
-          aria-label={`Type of ${c.key}`}
+          aria-label={`Type of ${label}`}
           value={c.type}
           onChange={(v) => onUpdate(withType(c, v as AccountType))}
         >
