@@ -156,7 +156,7 @@ caller can't see ("Transfer to Anthony").
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
 | RULE-01 | Read household-wide rules | ✅ | ✅ | ✅ | |
-| RULE-02 | Read member-scoped rules | own | own | own | |
+| RULE-02 | Read member-scoped rules | own | own | own | Only their member, and system context (bank sync). They run on the accounts their member owns, after household-wide rules; on a joint account every owner's run ([imports §3](imports.md)) |
 | RULE-03 | Create / edit / delete household-wide rule | ✅ | ✅ | ❌ | See RULE-05 for its reach |
 | RULE-04 | Create / edit / delete member-scoped rule | own | own | ❌ | |
 | RULE-05 | **Reach of a rule's actions** | — | — | — | Categorize/rename/tag actions apply only to accounts where the **rule's creator** is `owner` or `full`. Attribution, exclude, split, and business actions apply only to accounts the creator **owns**. This is re-evaluated at run time, so a rule can never reach further than its creator could by hand |

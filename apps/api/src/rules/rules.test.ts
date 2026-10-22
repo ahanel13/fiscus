@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runImport } from '../testing/imports.js';
 import { createTestApp, TestClient } from '../testing/test-app.js';
@@ -37,8 +38,8 @@ describe('rules', () => {
       attribution: { memberId: string }[];
       version: number;
     }[];
-  const csv = (accountId: string, rows: [string, number, string?][]) =>
-    runImport(A, url(), {
+  const csv = (accountId: string, rows: [string, number, string?][], by = A) =>
+    runImport(by, url(), {
       format: 'csv',
       filename: 'bank.csv',
       accounts: [{ key: 'file', accountId }],
@@ -236,7 +237,21 @@ describe('rules', () => {
       conditions: { description: { op: 'contains', value: 'hulu' } },
       actions: { categoryId: dining },
     });
+    const cys = await rule(C, {
+      scope: 'mine',
+      conditions: { description: { op: 'contains', value: 'hulu' } },
+      actions: { markReviewed: true },
+    });
     expect((await C.post(url('/leave'))).status).toBeLessThan(300);
+    // Their own rules go with them; the household's they wrote wait for someone to adopt them.
+    const db = new pg.Client({ connectionString: tdb.ownerUrl });
+    await db.connect();
+    try {
+      const left = await db.query('SELECT id FROM rules WHERE id = ANY($1)', [[hulu, cys]]);
+      expect(left.rows.map((r) => r.id)).toEqual([hulu]);
+    } finally {
+      await db.end();
+    }
     const listed = (
       (await A.get(url('/rules'))).body.data as { id: string; authorLeft: boolean }[]
     ).find((r) => r.id === hulu);
@@ -244,5 +259,161 @@ describe('rules', () => {
     expect((await A.post(url(`/rules/${hulu}/apply`))).body.data).toEqual({ changed: 0 });
     await A.request('PATCH', url(`/rules/${hulu}`), { enabled: true });
     expect((await A.post(url(`/rules/${hulu}/apply`))).body.data).toEqual({ changed: 1 });
+  });
+
+  // Rules of your own (#58). These come last: the ones above see the household's rules only.
+  describe('of your own', () => {
+    const listed = async (c: TestClient) =>
+      ((await c.get(url('/rules'))).body.data as { id: string; scope: string }[]).map(
+        (r) => `${r.scope}:${r.id}`,
+      );
+    const categoryOf = async (accountId: string, amountMinor: number) =>
+      (await txns(accountId)).find((t) => t.amountMinor === amountMinor)?.categoryId;
+    const joint = (shares: [number, number]) =>
+      account(A, `Joint ${shares.join('/')}`, {
+        visibility: 'full',
+        owners: [
+          { memberId: ada, shareBps: shares[0] },
+          { memberId: bea, shareBps: shares[1] },
+        ],
+      });
+
+    it('only their member sees, edits, reorders, and deletes them', async () => {
+      const first = await rule(B, {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'zzz first' } },
+        actions: { markReviewed: true },
+      });
+      const second = await rule(B, {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'zzz second' } },
+        actions: { markReviewed: true },
+      });
+      const household = await rule(B, {
+        conditions: { description: { op: 'contains', value: 'zzz household' } },
+        actions: { markReviewed: true },
+      });
+      const bs = await listed(B);
+      // The household's first, then yours.
+      expect(bs.slice(-1)).toEqual([`mine:${second}`]);
+      expect(bs.indexOf(`household:${household}`)).toBeLessThan(bs.indexOf(`mine:${first}`));
+      expect((await listed(A)).some((r) => r.endsWith(first) || r.endsWith(second))).toBe(false);
+      expect((await A.request('PATCH', url(`/rules/${first}`), { enabled: false })).status).toBe(
+        404,
+      );
+      expect((await A.request('DELETE', url(`/rules/${first}`))).status).toBe(404);
+      expect((await A.post(url(`/rules/${first}/apply`))).status).toBe(404);
+      expect((await A.request('PUT', url('/rules/order'), { ids: [first] })).status).toBe(404);
+
+      const edited = await B.request('PATCH', url(`/rules/${first}`), { name: 'Mine' });
+      expect(edited.body.data).toMatchObject({ scope: 'mine', authorMemberId: bea });
+      // Reordered within their scope only.
+      expect((await B.request('PUT', url('/rules/order'), { ids: [second, first] })).status).toBe(
+        204,
+      );
+      expect((await listed(B)).slice(-2)).toEqual([`mine:${second}`, `mine:${first}`]);
+      const mixed = await B.request('PUT', url('/rules/order'), { ids: [second, household] });
+      expect(mixed.status).toBe(422);
+      expect(mixed.body.code).toBe('mixed_scopes');
+      // Not in the household's activity feed either.
+      const feed = (await A.get(url('/activity?limit=100'))).body.data as { targetId: string }[];
+      expect(feed.some((e) => e.targetId === first)).toBe(false);
+      expect(feed.some((e) => e.targetId === household)).toBe(true);
+      for (const id of [first, second, household]) {
+        expect((await B.request('DELETE', url(`/rules/${id}`))).status).toBe(204);
+      }
+    });
+
+    it('on an account you own alone, run after the household’s, so yours win', async () => {
+      const acc = await account(A, 'Ada alone', { visibility: 'full' });
+      await rule(A, {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'pizza place' } },
+        actions: { categoryId: dining },
+      });
+      await rule(A, {
+        conditions: { description: { op: 'contains', value: 'pizza place' } },
+        actions: { categoryId: groceries },
+      });
+      // Bea's own rules don't run on Ada's account, though Bea could categorize it by hand.
+      await rule(B, {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'pizza place' } },
+        actions: { rename: 'Bea’s pizza' },
+      });
+      await csv(acc, [['PIZZA PLACE 12', -2100]]);
+      const [t] = await txns(acc);
+      expect(t?.categoryId).toBe(dining);
+      expect(t?.displayName).not.toBe('Bea’s pizza');
+    });
+
+    it('on a joint account, every owner’s run: by share, largest first, so the smaller share’s win', async () => {
+      const acc = await joint([4000, 6000]);
+      await rule(A, {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'bakery' } },
+        actions: { categoryId: dining },
+      });
+      await rule(B, {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'bakery' } },
+        actions: { categoryId: groceries, markReviewed: true },
+      });
+      // Ada imports it: Bea's rules run too, though Ada can't see them.
+      await csv(acc, [['BAKERY ON MAIN', -650]]);
+      const [t] = await txns(acc);
+      // Bea (60%) first, then Ada (40%): Ada's category wins; Bea's "reviewed" stays.
+      expect(t).toMatchObject({ categoryId: dining, reviewStatus: 'reviewed' });
+
+      // An import by Bea runs them in the same order.
+      await csv(acc, [['BAKERY ON MAIN', -651]], B);
+      expect(await categoryOf(acc, -651)).toBe(dining);
+    });
+
+    it('on a joint account with equal shares, by member id', async () => {
+      const acc = await joint([5000, 5000]);
+      await rule(A, {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'florist' } },
+        actions: { categoryId: dining },
+      });
+      await rule(B, {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'florist' } },
+        actions: { categoryId: groceries },
+      });
+      await csv(acc, [['FLORIST', -3000]]);
+      // The later member id runs last, and wins.
+      expect(await categoryOf(acc, -3000)).toBe(ada > bea ? dining : groceries);
+    });
+
+    it('[RULE-05] reach only the accounts their member owns, applied to existing too', async () => {
+      const adas = await account(A, 'Ada full again', { visibility: 'full' });
+      const beas = await account(B, 'Bea’s own', { visibility: 'full' });
+      await csv(adas, [['BOOKSHOP', -1800]]);
+      await csv(beas, [['BOOKSHOP', -1801]], B);
+      const draft = {
+        conditions: { description: { op: 'contains', value: 'bookshop' } },
+        actions: { categoryId: dining },
+      };
+      // As the household's, Bea's rule would reach Ada's full account; as hers, only her own.
+      const asHousehold = (await B.post(url('/rules/preview'), draft)).body.data.changes as {
+        amountMinor: number;
+      }[];
+      expect(asHousehold.map((c) => c.amountMinor).sort((x, y) => x - y)).toEqual([-1801, -1800]);
+      const preview = await B.post(url('/rules/preview'), { scope: 'mine', ...draft });
+      expect(preview.body.data.changes).toEqual([expect.objectContaining({ amountMinor: -1801 })]);
+      const id = await rule(B, { scope: 'mine', ...draft });
+      expect((await B.post(url(`/rules/${id}/apply`))).body.data).toEqual({ changed: 1 });
+      expect(await categoryOf(beas, -1801)).toBe(dining);
+      expect(await categoryOf(adas, -1800)).toBeNull();
+      // A transfer still needs both accounts to be yours.
+      const refused = await B.post(url('/rules'), {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'bookshop' } },
+        actions: { transferTo: { accountId: adas } },
+      });
+      expect(refused.body.code).toBe('invalid_account');
+    });
   });
 });

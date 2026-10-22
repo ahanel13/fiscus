@@ -8,10 +8,11 @@ import type {
   RuleActions,
   RuleConditions,
   RulePreview,
+  RuleScope,
   updateRuleSchema,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull, max } from 'drizzle-orm';
+import { and, asc, eq, isNull, max, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
@@ -19,23 +20,26 @@ import { HouseholdScope } from '../households/household-scope.js';
 
 type CreateInput = z.infer<typeof createRuleSchema>;
 type UpdateInput = z.infer<typeof updateRuleSchema>;
-type Draft = { conditions: RuleConditions; actions: RuleActions };
+type Draft = { scope: RuleScope; conditions: RuleConditions; actions: RuleActions };
 
 /**
- * Household-wide rules (RULE-01/03/05/06/07). Everyone reads them; owners and members change
- * them. A rule acts with its author's access, and editing one makes you its author.
+ * Rules (RULE-01–07): the household's, which everyone reads and owners and members change, and
+ * each member's own (#58), which only they see (row-level security, 0039). A rule acts with its
+ * author's access, and editing a household rule makes you its author. Activity about your own
+ * rules is yours alone, like the rules.
  */
 @Injectable()
 export class RulesService {
   constructor(private readonly scope: HouseholdScope) {}
 
+  /** The household's rules, then yours, each in order. */
   async list(ctx: HouseholdContext): Promise<Rule[]> {
     return this.scope.run(ctx, async (tx) => {
       const rows = await tx
         .select({ rule: rules, leftAt: householdMembers.leftAt })
         .from(rules)
         .leftJoin(householdMembers, eq(householdMembers.id, rules.authorMemberId))
-        .orderBy(asc(rules.position), asc(rules.createdAt));
+        .orderBy(sql`${rules.memberId} IS NOT NULL`, asc(rules.position), asc(rules.createdAt));
       return rows.map(({ rule, leftAt }) => toRule(rule, leftAt !== null));
     });
   }
@@ -43,13 +47,16 @@ export class RulesService {
   async create(ctx: HouseholdContext, input: CreateInput): Promise<Rule> {
     return this.scope.run(ctx, async (tx, activity) => {
       await this.#checkActions(tx, input.actions);
-      const [{ last }] = (await tx.select({ last: max(rules.position) }).from(rules)) as [
-        { last: number | null },
-      ];
+      const memberId = input.scope === 'mine' ? ctx.memberId : null;
+      const [{ last }] = (await tx
+        .select({ last: max(rules.position) })
+        .from(rules)
+        .where(inScope(memberId))) as [{ last: number | null }];
       const [row] = await tx
         .insert(rules)
         .values({
           householdId: ctx.householdId,
+          memberId,
           name: input.name ?? null,
           position: (last ?? 0) + 1,
           enabled: input.enabled ?? true,
@@ -62,6 +69,8 @@ export class RulesService {
         action: 'rule.created',
         targetType: 'rule',
         targetId: row!.id,
+        metadata: { scope: input.scope },
+        visibleToHousehold: memberId === null,
         changes: {
           after: { name: input.name ?? null, conditions: input.conditions, actions: input.actions },
         },
@@ -92,6 +101,7 @@ export class RulesService {
         targetType: 'rule',
         targetId: id,
         metadata: { fields: Object.keys(patch), author: ctx.memberId },
+        visibleToHousehold: before.memberId === null,
         changes: {
           before: Object.fromEntries(
             Object.keys(patch).map((k) => [k, before[k as keyof typeof before]]),
@@ -105,35 +115,62 @@ export class RulesService {
 
   async remove(ctx: HouseholdContext, id: string): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
-      const [row] = await tx.delete(rules).where(eq(rules.id, id)).returning({ id: rules.id });
+      const [row] = await tx
+        .delete(rules)
+        .where(eq(rules.id, id))
+        .returning({ id: rules.id, memberId: rules.memberId });
       if (!row) throw problems.notFound();
-      await activity.record({ action: 'rule.deleted', targetType: 'rule', targetId: id });
+      await activity.record({
+        action: 'rule.deleted',
+        targetType: 'rule',
+        targetId: id,
+        visibleToHousehold: row.memberId === null,
+      });
     });
   }
 
-  /** Puts rules in the given order; any not listed keep their order after these. */
+  /**
+   * Puts the household's rules, or yours, in the given order; any of the same ones not listed keep
+   * their order after these. The two are ordered apart, since yours always run after the
+   * household's.
+   */
   async reorder(ctx: HouseholdContext, input: z.infer<typeof reorderRulesSchema>): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
-      const all = await tx
-        .select({ id: rules.id })
+      const visible = await tx
+        .select({ id: rules.id, memberId: rules.memberId })
         .from(rules)
         .orderBy(asc(rules.position), asc(rules.createdAt));
-      const known = new Set(all.map((r) => r.id));
-      if (input.ids.some((id) => !known.has(id))) throw problems.notFound();
-      const order = [...input.ids, ...all.map((r) => r.id).filter((id) => !input.ids.includes(id))];
+      const scopes = new Map(visible.map((r) => [r.id, r.memberId]));
+      if (input.ids.some((id) => !scopes.has(id))) throw problems.notFound();
+      const memberId = scopes.get(input.ids[0]!)!;
+      if (input.ids.some((id) => scopes.get(id) !== memberId)) {
+        throw new Problem(
+          422,
+          'mixed_scopes',
+          'Household rules and your own are ordered separately',
+          'Reorder one list at a time.',
+        );
+      }
+      const all = visible.filter((r) => r.memberId === memberId).map((r) => r.id);
+      const order = [...input.ids, ...all.filter((id) => !input.ids.includes(id))];
       for (const [i, id] of order.entries()) {
         await tx
           .update(rules)
           .set({ position: i + 1 })
           .where(eq(rules.id, id));
       }
-      await activity.record({ action: 'rule.reordered', targetType: 'rule', metadata: { order } });
+      await activity.record({
+        action: 'rule.reordered',
+        targetType: 'rule',
+        metadata: { order, scope: memberId === null ? 'household' : 'mine' },
+        visibleToHousehold: memberId === null,
+      });
     });
   }
 
   /**
    * RULE-06: what a rule would change in the transactions you can see, as if you were its author.
-   * Changes nothing.
+   * One of your own would change only the accounts you own. Changes nothing.
    */
   async preview(ctx: HouseholdContext, draft: Draft): Promise<RulePreview> {
     return this.scope.run(ctx, async (tx) => {
@@ -141,7 +178,15 @@ export class RulesService {
         tx,
         ctx.householdId,
         await this.#visibleRows(tx),
-        [{ id: 'draft', ...draft, authorMemberId: ctx.memberId }],
+        [
+          {
+            id: 'draft',
+            memberId: draft.scope === 'mine' ? ctx.memberId : null,
+            conditions: draft.conditions,
+            actions: draft.actions,
+            authorMemberId: ctx.memberId,
+          },
+        ],
         ctx.role === 'viewer' ? new Map() : await accessLevels(tx),
         null,
       );
@@ -161,6 +206,7 @@ export class RulesService {
       if (row.leftAt) return { changed: 0 }; // RULE-07: edit it to adopt it first
       const rule: EngineRule = {
         id: row.rule.id,
+        memberId: row.rule.memberId,
         conditions: row.rule.conditions as RuleConditions,
         actions: row.rule.actions as RuleActions,
         authorMemberId: row.rule.authorMemberId,
@@ -179,6 +225,7 @@ export class RulesService {
           targetType: 'rule',
           targetId: id,
           metadata: { transactions: changes.length },
+          visibleToHousehold: rule.memberId === null,
         });
       }
       return { changed: changes.length };
@@ -219,8 +266,13 @@ export class RulesService {
   }
 }
 
+/** The household's rules (null), or one member's. */
+const inScope = (memberId: string | null) =>
+  memberId === null ? isNull(rules.memberId) : eq(rules.memberId, memberId);
+
 const toRule = (r: typeof rules.$inferSelect, authorLeft: boolean): Rule => ({
   id: r.id,
+  scope: r.memberId === null ? 'household' : 'mine',
   name: r.name,
   position: r.position,
   enabled: r.enabled,

@@ -65,7 +65,15 @@ export type RuleActions = z.infer<typeof ruleActionsSchema>;
 
 const ruleName = z.string().trim().min(1).max(80);
 
+/**
+ * Whose rule it is (#58): the household's, which everyone sees, or yours, which only you see and
+ * which runs on the accounts you own, after the household's. Chosen when it's created.
+ */
+export const ruleScopeSchema = z.enum(['household', 'mine']);
+export type RuleScope = z.infer<typeof ruleScopeSchema>;
+
 export const createRuleSchema = z.object({
+  scope: ruleScopeSchema.default('household'),
   name: ruleName.optional(),
   enabled: z.boolean().optional(),
   conditions: ruleConditionsSchema,
@@ -84,6 +92,8 @@ export const reorderRulesSchema = z.object({ ids: z.array(z.uuid()).min(1).max(1
 
 export interface Rule {
   id: string;
+  /** Listing returns the household's rules and yours, never another member's (RULE-02). */
+  scope: RuleScope;
   name: string | null;
   position: number;
   enabled: boolean;

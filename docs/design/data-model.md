@@ -338,13 +338,13 @@ The effective date for ranges, budgets, and reports is `date_override` if set, e
 |---|---|---|
 | id | uuid PK | |
 | household_id | uuid FK | |
-| scope_member_id | uuid FK null | Null = household-wide. Otherwise it applies only to accounts that member owns |
+| member_id | uuid FK null | Null = the household's. Otherwise that member's own (#58): only they see it, and it runs only on accounts they own, after the household's rules ([imports §3](imports.md)). Composite FK to `household_members` (cascade); deleted when they leave (RULE-07, a trigger, since leaving sets `left_at`) |
 | name | text | |
-| priority | int | Lower runs first |
+| position | int | Lower runs first, within the household's rules or within one member's |
 | conditions | jsonb | Validated by a zod schema in `packages/shared` (merchant/description/amount/account/category matchers) |
 | actions | jsonb | Rename, recategorize, tag, set attribution, mark reviewed, exclude, split, … |
 | enabled | bool | |
-| created_by_member_id | uuid | |
+| author_member_id | uuid | Whose access it acts with (RULE-05): its creator, or whoever last edited it. A member's own rule is always theirs (`member_id = author_member_id`) |
 | version | int | |
 
 **`import_profiles`** (`household_id`, `name`, `format`, `mapping jsonb`) and **`import_batches`** (`household_id`, `account_id`, `member_id`, `format` enum `csv`/`ofx`/`qfx`/`monarch`, `filename`, `row_count`, `profile_id`, `reverted_at`). Reverting a batch soft-deletes its transactions.
@@ -391,7 +391,7 @@ settings are missing, policies evaluate to false and the query returns **nothing
    resolve, because the `accounts` row is filtered. The API **must not serialize `account_id` in that case**
    and shows the paying member instead (F1). The permissions matrix (#3) specifies this.
 4. **Notes** (`transaction_notes`): shared note → visible if the transaction is visible (policy 3). Private note → `author_member_id = :me` only.
-5. **Rules**: household-wide rules are visible to all members. Member-scoped rules are visible only to their member.
+5. **Rules**: household-wide rules are visible to all members. Member-scoped rules are visible only to their member, and to system context (bank sync); a restrictive policy (migration 0039) adds this to the household one.
 6. **Writes** use the same predicates in `WITH CHECK`. Write *authorization*, such as who may edit
    attribution (F6), is enforced in the domain layer and specified in #3. RLS guarantees only that
    you can't touch what you can't see.

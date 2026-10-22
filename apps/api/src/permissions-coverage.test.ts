@@ -27,8 +27,6 @@ const NOT_BUILT: Record<string, string> = {
   'TXN-11': 'Per-transaction edit history (#46)',
   'ATT-03': 'Flagging attribution changes (M3)',
   'ATT-04': 'Resolving flags (M3)',
-  'RULE-02': 'Member-scoped rules (#58)',
-  'RULE-04': 'Member-scoped rules (#58)',
   'TOK-01': 'Personal access tokens (M10)',
   'TOK-02': 'Personal access tokens (M10)',
   'TOK-03': 'Personal access tokens (M10)',

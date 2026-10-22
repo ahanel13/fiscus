@@ -7,6 +7,7 @@ import type {
   RuleActions,
   RuleConditions,
   RulePreview,
+  RuleScope,
   Tag,
 } from '@fiscus/shared';
 import { MEMBER_COLORS, TRANSFER_RULE_DEFAULT_DAYS } from '@fiscus/shared';
@@ -90,6 +91,10 @@ export function RulesSettings() {
     members: new Map(members.map((m) => [m.id, m.isYou ? 'me' : m.displayName])),
   };
   const rules = list.data ?? [];
+  const householdRules = rules.filter((r) => r.scope === 'household');
+  const yours = rules.filter((r) => r.scope === 'mine');
+  // Rules of your own (#58) are for households of two or more; on your own, every rule is yours.
+  const scoped = members.length > 1 || yours.length > 0;
 
   const reorder = useMutation({
     mutationFn: (ids: string[]) =>
@@ -101,11 +106,33 @@ export function RulesSettings() {
       api('PATCH', `${base(householdId)}/rules/${r.id}`, { body: { enabled: !r.enabled } }),
     onSuccess: refresh,
   });
-  const move = (i: number, by: -1 | 1) => {
-    const ids = rules.map((r) => r.id);
-    [ids[i], ids[i + by]] = [ids[i + by]!, ids[i]!];
-    reorder.mutate(ids);
-  };
+  const section = (list: Rule[], label: (i: number) => string) => (
+    <ol className="space-y-2">
+      {list.map((r, i) => (
+        <li key={r.id}>
+          <RuleCard
+            rule={r}
+            number={i + 1}
+            label={label(i)}
+            names={names}
+            currency={household.baseCurrency}
+            canEdit={canEdit}
+            first={i === 0}
+            last={i === list.length - 1}
+            onToggle={() => toggle.mutate(r)}
+            onMove={(by) => {
+              const ids = list.map((x) => x.id);
+              [ids[i], ids[i + by]] = [ids[i + by]!, ids[i]!];
+              reorder.mutate(ids);
+            }}
+            onApply={() => setApplying(r)}
+            onEdit={() => setEditing(r)}
+            onDelete={() => setDeleting(r)}
+          />
+        </li>
+      ))}
+    </ol>
+  );
 
   return (
     <>
@@ -125,71 +152,42 @@ export function RulesSettings() {
         {canEdit && household.cleanMerchantNames ? (
           <NameCleanupCard householdId={householdId} />
         ) : null}
-        {list.isPending ? null : rules.length === 0 ? (
+        {list.isPending ? null : rules.length === 0 && !(scoped && canEdit) ? (
           <EmptyState icon={Wand2} title="No rules yet">
             <p>Create one here, or from a transaction: open it and choose “Make a rule”.</p>
           </EmptyState>
+        ) : !scoped ? (
+          section(householdRules, (i) => `rule ${i + 1}`)
         ) : (
-          <ol className="space-y-2">
-            {rules.map((r, i) => (
-              <li key={r.id}>
-                <Card className="flex flex-wrap items-start gap-3 p-4">
-                  <span className="mt-0.5 w-6 text-sm text-muted tabular-nums">{i + 1}.</span>
-                  <div className="min-w-0 flex-1 space-y-1 text-sm">
-                    <p className="flex flex-wrap items-center gap-2 font-medium">
-                      {r.name ?? describeActions(r.actions, names)}
-                      {!r.enabled ? <Badge>Off</Badge> : null}
-                      {r.authorLeft ? (
-                        <Badge tone="warning">Author left: edit to adopt</Badge>
-                      ) : null}
-                    </p>
-                    <p className="text-muted">
-                      When: {describeConditions(r.conditions, names, household.baseCurrency)}
-                    </p>
-                    {r.name ? (
-                      <p className="text-muted">Then: {describeActions(r.actions, names)}</p>
-                    ) : null}
-                  </div>
-                  {canEdit ? (
-                    <div className="flex flex-wrap items-center gap-1">
-                      <Switch
-                        aria-label={`${r.enabled ? 'Turn off' : 'Turn on'} rule ${i + 1}`}
-                        isSelected={r.enabled}
-                        onChange={() => toggle.mutate(r)}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Move rule ${i + 1} up`}
-                        isDisabled={i === 0}
-                        onPress={() => move(i, -1)}
-                      >
-                        <ArrowUp aria-hidden className="size-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Move rule ${i + 1} down`}
-                        isDisabled={i === rules.length - 1}
-                        onPress={() => move(i, 1)}
-                      >
-                        <ArrowDown aria-hidden className="size-4" />
-                      </Button>
-                      <Button variant="secondary" size="sm" onPress={() => setApplying(r)}>
-                        Apply to existing
-                      </Button>
-                      <Button variant="ghost" size="sm" onPress={() => setEditing(r)}>
-                        Edit
-                      </Button>
-                      <Button variant="ghost" size="sm" onPress={() => setDeleting(r)}>
-                        Delete
-                      </Button>
-                    </div>
-                  ) : null}
-                </Card>
-              </li>
-            ))}
-          </ol>
+          <>
+            <section aria-labelledby="household-rules" className="space-y-2">
+              <h2 id="household-rules" className="text-base font-semibold">
+                Household rules
+              </h2>
+              <p className="text-sm text-muted">Everyone here sees these. They run first.</p>
+              {householdRules.length ? (
+                section(householdRules, (i) => `household rule ${i + 1}`)
+              ) : (
+                <p className="text-sm text-muted">None yet.</p>
+              )}
+            </section>
+            <section aria-labelledby="your-rules" className="space-y-2 pt-2">
+              <h2 id="your-rules" className="text-base font-semibold">
+                Your rules
+              </h2>
+              <p className="text-sm text-muted">
+                Only you see these. They run after the household’s, on the accounts you own, joint
+                ones included.
+              </p>
+              {yours.length ? (
+                section(yours, (i) => `your rule ${i + 1}`)
+              ) : (
+                <p className="text-sm text-muted">
+                  None yet. To make one, choose “Just me” when you create a rule.
+                </p>
+              )}
+            </section>
+          </>
         )}
       </div>
 
@@ -230,6 +228,89 @@ export function RulesSettings() {
         Transactions it already changed stay as they are.
       </ConfirmDialog>
     </>
+  );
+}
+
+/** One rule in a list, with its controls when you can change it. */
+function RuleCard({
+  rule: r,
+  number,
+  label,
+  names,
+  currency,
+  canEdit,
+  first,
+  last,
+  onToggle,
+  onMove,
+  onApply,
+  onEdit,
+  onDelete,
+}: {
+  rule: Rule;
+  number: number;
+  /** How its controls name it: "rule 2", "your rule 1". */
+  label: string;
+  names: Parameters<typeof describeConditions>[1] & Parameters<typeof describeActions>[1];
+  currency: string;
+  canEdit: boolean;
+  first: boolean;
+  last: boolean;
+  onToggle: () => void;
+  onMove: (by: -1 | 1) => void;
+  onApply: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Card className="flex flex-wrap items-start gap-3 p-4">
+      <span className="mt-0.5 w-6 text-sm text-muted tabular-nums">{number}.</span>
+      <div className="min-w-0 flex-1 space-y-1 text-sm">
+        <p className="flex flex-wrap items-center gap-2 font-medium">
+          {r.name ?? describeActions(r.actions, names)}
+          {!r.enabled ? <Badge>Off</Badge> : null}
+          {r.authorLeft ? <Badge tone="warning">Author left: edit to adopt</Badge> : null}
+        </p>
+        <p className="text-muted">When: {describeConditions(r.conditions, names, currency)}</p>
+        {r.name ? <p className="text-muted">Then: {describeActions(r.actions, names)}</p> : null}
+      </div>
+      {canEdit ? (
+        <div className="flex flex-wrap items-center gap-1">
+          <Switch
+            aria-label={`${r.enabled ? 'Turn off' : 'Turn on'} ${label}`}
+            isSelected={r.enabled}
+            onChange={onToggle}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Move ${label} up`}
+            isDisabled={first}
+            onPress={() => onMove(-1)}
+          >
+            <ArrowUp aria-hidden className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Move ${label} down`}
+            isDisabled={last}
+            onPress={() => onMove(1)}
+          >
+            <ArrowDown aria-hidden className="size-4" />
+          </Button>
+          <Button variant="secondary" size="sm" onPress={onApply}>
+            Apply to existing
+          </Button>
+          <Button variant="ghost" size="sm" onPress={onEdit}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" onPress={onDelete}>
+            Delete
+          </Button>
+        </div>
+      ) : null}
+    </Card>
   );
 }
 
@@ -478,13 +559,17 @@ export function RuleEditor({
     set(CLEARED[part]);
   };
   const body = fromDraft(d);
+  // Whose rule it is, chosen when it's created; on your own, it's the household's (#58).
+  const [scope, setScope] = useState<RuleScope>(rule?.scope ?? 'household');
+  const chooseScope = rule === null && members.length > 1;
   const valid =
     Object.keys(body.conditions).length > 0 &&
     Object.keys(body.actions).length > 0 &&
     (d.min === null || d.max === null || Math.abs(d.min) <= Math.abs(d.max));
 
-  // What it would change, refreshed a moment after you stop editing.
-  const key = JSON.stringify(body);
+  // What it would change, refreshed a moment after you stop editing. One of yours changes only
+  // the accounts you own.
+  const key = JSON.stringify({ scope, ...body });
   const [settled, setSettled] = useState(key);
   useEffect(() => {
     const t = setTimeout(() => setSettled(key), 400);
@@ -512,7 +597,7 @@ export function RuleEditor({
             body: { name: d.name.trim() || null, ...body },
           })
         : await api<Data<Rule>>('POST', `${base(householdId)}/rules`, {
-            body: { ...(d.name.trim() ? { name: d.name.trim() } : {}), ...body },
+            body: { scope, ...(d.name.trim() ? { name: d.name.trim() } : {}), ...body },
           });
       if (!willApply) return null;
       return (
@@ -562,6 +647,27 @@ export function RuleEditor({
           maxLength={80}
           placeholder="Groceries at Trader Joe’s"
         />
+        {chooseScope ? (
+          <div>
+            <p id="rule-scope" className="mb-1 text-sm font-medium">
+              Who this rule is for
+            </p>
+            <SegmentedControl
+              aria-labelledby="rule-scope"
+              options={[
+                { value: 'household', label: 'Everyone in the household' },
+                { value: 'mine', label: 'Just me' },
+              ]}
+              value={scope}
+              onChange={setScope}
+            />
+            <p className="mt-1 text-xs text-muted">
+              {scope === 'household'
+                ? 'Everyone here sees it, and it runs on every account it reaches.'
+                : 'Only you see it. It runs on the accounts you own, after the household’s rules.'}
+            </p>
+          </div>
+        ) : null}
 
         <fieldset className="space-y-3">
           <legend className="mb-1 text-sm font-semibold">When a transaction…</legend>
@@ -789,7 +895,7 @@ export function RuleEditor({
             </>
           )}
         </div>
-        {rule ? (
+        {rule?.scope === 'household' ? (
           <p className="text-xs text-muted">
             Saving makes you this rule’s author: it will act with your access to accounts.
           </p>
@@ -926,7 +1032,7 @@ function ApplyDialog({
     queryFn: async () =>
       (
         await api<Data<RulePreview>>('POST', `${base(householdId)}/rules/preview`, {
-          body: { conditions: rule.conditions, actions: rule.actions },
+          body: { scope: rule.scope, conditions: rule.conditions, actions: rule.actions },
         })
       ).data,
   });
