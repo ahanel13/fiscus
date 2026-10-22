@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
   Account,
+  AccountType,
   AccountChoiceInput,
   AccountVisibility,
   BankAlreadyConnected,
@@ -35,6 +36,7 @@ import {
   Alert,
   Badge,
   Button,
+  ComboBox,
   buttonStyles,
   ConfirmDialog,
   DateText,
@@ -45,7 +47,7 @@ import {
   Skeleton,
   TimeZoneProvider,
 } from '../components/ui.js';
-import { balanceKind, privateAllowed, VISIBILITY } from '../lib/accounts.js';
+import { balanceKind, privateAllowed, TYPE_LABELS, VISIBILITY } from '../lib/accounts.js';
 import { leaveTo } from '../lib/flash.js';
 import {
   clearOAuthState,
@@ -810,6 +812,27 @@ function OfferedRow({
   // Linking needs the same currency (the api refuses others).
   const targets = yours.filter((y) => y.currency === a.currency && !taken.has(y.id));
   const linked = yours.find((y) => y.id === c.accountId);
+  // Searchable, as people have many accounts: the same kind first (a card beside your cards),
+  // open before closed, then by name.
+  const choosable = [...(linked && !targets.includes(linked) ? [linked] : []), ...targets].sort(
+    (x, y) =>
+      Number(!!x.closedAt) - Number(!!y.closedAt) ||
+      x.name.localeCompare(y.name, undefined, { sensitivity: 'base' }),
+  );
+  // One section per type, the bank account's own type first, then in the usual order.
+  const types = (Object.keys(TYPE_LABELS) as AccountType[]).sort(
+    (x, y) => Number(y === a.type) - Number(x === a.type),
+  );
+  const byType = types
+    .map((type) => ({ type, accounts: choosable.filter((y) => y.type === type) }))
+    .filter((g) => g.accounts.length);
+  const linkItem = (y: Account) => (
+    <SelectItem key={y.id} id={y.id} textValue={`Link to ${y.name}`}>
+      Link to {y.name}
+      {y.mask ? <span className="text-muted"> ••{y.mask}</span> : null}
+      {y.closedAt ? <span className="text-muted"> (closed)</span> : null}
+    </SelectItem>
+  );
   const owners = ownerOptions(members, me);
   const ownersId = owners.find((o) => sameOwners(o.owners, c.owners))?.id ?? 'me';
   const allowPrivate = privateAllowed(c.owners.length, members.length);
@@ -906,10 +929,14 @@ function OfferedRow({
         </div>
       </div>
       <div className="space-y-1">
-        <Select
+        <ComboBox
           aria-label={`What ${a.name}${a.mask ? ` ending in ${a.mask}` : ''} becomes`}
-          value={c.choice === 'link' ? c.accountId : c.choice}
-          onChange={(v) => {
+          placeholder="Search your accounts"
+          menuTrigger="focus"
+          allowsEmptyCollection
+          selectedKey={c.choice === 'link' ? c.accountId : c.choice}
+          onSelectionChange={(v) => {
+            if (v === null) return;
             const value = String(v);
             if (value === 'new' || value === 'skip') onChange({ choice: value, accountId: null });
             else onChange({ choice: 'link', accountId: value });
@@ -917,17 +944,15 @@ function OfferedRow({
         >
           <SelectItem id="new">New account</SelectItem>
           <SelectItem id="skip">Don’t track</SelectItem>
-          {targets.length || linked ? (
-            <SelectSection title="Link to one of yours">
-              {[...(linked && !targets.includes(linked) ? [linked] : []), ...targets].map((y) => (
-                <SelectItem key={y.id} id={y.id} textValue={`Link to ${y.name}`}>
-                  Link to {y.name}
-                  {y.closedAt ? ' (closed)' : ''}
-                </SelectItem>
-              ))}
+          {byType.map((g) => (
+            <SelectSection
+              key={g.type}
+              title={`${TYPE_LABELS[g.type]}${g.type === a.type ? ' (same kind)' : ''}`}
+            >
+              {g.accounts.map(linkItem)}
             </SelectSection>
-          ) : null}
-        </Select>
+          ))}
+        </ComboBox>
         {reason ? <p className="text-xs text-muted">{reason}</p> : null}
       </div>
     </li>

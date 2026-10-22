@@ -348,7 +348,7 @@ function Fields() {
           errorMessage="Notes can be up to 500 characters."
           defaultValue="Way too long…"
         />
-        <Select label="Category" defaultValue="groceries">
+        <Select label="Category" defaultValue="groceries" searchable>
           <SelectSection title="Food">
             <SelectItem id="groceries">Groceries</SelectItem>
             <SelectItem id="dining">Dining out</SelectItem>

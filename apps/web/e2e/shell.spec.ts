@@ -663,9 +663,15 @@ test('links a transfer between accounts, and works through the review queue by k
   await expect(page.getByText('1 to review, oldest first.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Reviewing Coffee' })).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
-  // c opens the category list; choosing the one it has closes it, and the keys work again.
+  // c opens the category list, ready to search: typing narrows it, Enter picks the first. That
+  // closes it, and the keys work again.
   await page.keyboard.press('c');
-  await page.getByRole('option', { name: 'Coffee', exact: true }).click();
+  await expect(page.getByRole('searchbox', { name: 'Search' })).toBeFocused();
+  await page.keyboard.type('coff');
+  await expect(
+    page.getByRole('listbox').getByRole('option', { name: 'Coffee', exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press('Enter');
   await expect(page.getByRole('listbox')).toHaveCount(0);
   await page.keyboard.press('r');
   await expect(page.getByText('All caught up')).toBeVisible();
@@ -1032,13 +1038,18 @@ test('connects a bank through Plaid Link, on its own page, and chooses what to t
   expect(await axeViolations(page)).toEqual([]);
 
   // Link the checking account to the one already here, create the savings, skip the rest.
-  const becomes = (name: RegExp) => page.getByRole('button', { name });
-  await becomes(/What Harbor CU Checking ending in 4410 becomes/).click();
-  await page.getByRole('option', { name: 'Link to Everyday checking' }).click();
+  // Searchable, with your accounts grouped by type, the same kind first.
+  const becomes = (name: RegExp) => page.getByRole('combobox', { name });
+  const checking = becomes(/What Harbor CU Checking ending in 4410 becomes/);
+  await checking.click();
+  const menu = page.getByRole('listbox', { name: /What Harbor CU Checking/ });
+  await expect(menu.getByText('Cash (checking, savings) (same kind)')).toBeVisible();
+  await checking.fill('every');
+  await expect(menu.getByRole('option')).toHaveCount(1);
+  await menu.getByRole('option', { name: /^Link to Everyday checking/ }).click();
+  await expect(checking).toHaveValue('Link to Everyday checking');
   await expect(page.getByText('Keeps its history; sync fills in after it.')).toBeVisible();
-  await expect(becomes(/What Harbor CU Savings ending in 8812 becomes/)).toContainText(
-    'New account',
-  );
+  await expect(becomes(/What Harbor CU Savings ending in 8812 becomes/)).toHaveValue('New account');
   for (const name of [/What Harbor CU Visa/, /What Old savings/]) {
     await becomes(name).click();
     // Its own menu: the last one may still be closing.

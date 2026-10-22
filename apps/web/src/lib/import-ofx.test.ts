@@ -101,6 +101,7 @@ describe('OFX files in the import wizard', () => {
       account('a1', 'My checking', { mask: '1234' }),
       // Same last 4 as the savings account, but a card: not the same account.
       account('a2', 'Visa', { mask: '5678', type: 'credit' }),
+      // No last 4 of its own, but its name ends with them.
       account('a3', 'Example Bank ••9012', { type: 'credit' }),
       // Someone else's account isn't offered.
       account('a4', 'Shared checking', { mask: '1234', yourAccess: 'full' }),
@@ -118,7 +119,7 @@ describe('OFX files in the import wizard', () => {
     ).toEqual([
       ['checking-1234', 'existing', 'a1', 'mask', 'Example Bank ••1234', 'depository', 143825],
       ['savings-5678', 'new', null, undefined, 'Example Bank ••5678', 'depository', 550123],
-      ['card-9012', 'existing', 'a3', 'name', 'Example Bank ••9012', 'credit', -3840],
+      ['card-9012', 'existing', 'a3', 'mask', 'Example Bank ••9012', 'credit', -3840],
     ]);
     expect(choices.map((c) => statementLabel(c.statement!))).toEqual([
       '••1234 · Checking',
