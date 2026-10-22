@@ -8,9 +8,15 @@ export interface ShortcutHandlers {
   jump: (key: string) => void;
 }
 
+const NOT_TYPED = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color']);
+
+/** Whether a key press goes into a field being typed in, so shortcuts leave it alone. */
 export const typing = (el: EventTarget | null) =>
   el instanceof HTMLElement &&
-  (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+  (el.isContentEditable ||
+    ['TEXTAREA', 'SELECT'].includes(el.tagName) ||
+    // A checkbox, radio or button isn't typed into: shortcuts still work from one.
+    (el instanceof HTMLInputElement && !NOT_TYPED.has(el.type)));
 
 /** Global keyboard shortcuts (IA §8). Ignored while typing in a field. */
 export function useShortcuts(handlers: ShortcutHandlers): void {

@@ -125,9 +125,12 @@ export function CategorySelect({
   isDisabled,
   appearance,
   autoOpen,
+  placeholder,
 }: {
   groups: CategoryGroup[];
   value: string | null;
+  /** Shown instead of "Uncategorized" when `value` is null: several with different ones. */
+  placeholder?: string;
   onChange: (id: string) => void;
   label?: string;
   hideLabel?: boolean;
@@ -152,7 +155,8 @@ export function CategorySelect({
       {...(autoOpen
         ? { autoFocus: true, onFocus: openOnFocus, isOpen: open, onOpenChange: setOpen }
         : {})}
-      value={value ?? uncategorized ?? null}
+      value={value ?? (placeholder ? null : (uncategorized ?? null))}
+      {...(placeholder ? { placeholder } : {})}
       onChange={(v) => v && onChange(String(v))}
       isDisabled={isDisabled}
       searchable

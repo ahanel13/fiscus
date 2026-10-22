@@ -663,6 +663,18 @@ test('links a transfer between accounts, and works through the review queue by k
   await expect(page.getByText('1 to review, oldest first.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Reviewing Coffee' })).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
+  // Each row says which account it's in.
+  const queue = page.getByRole('region', { name: 'To review' });
+  await expect(queue.getByRole('listitem')).toHaveText(/Coffee.* · .+ · /);
+  // With some checked, the category picker and Mark reviewed are theirs, all at once.
+  const coffeeBox = queue.getByRole('checkbox', { name: 'Select Coffee' });
+  await coffeeBox.check({ force: true });
+  await expect(page.getByRole('button', { name: /Category for 1 checked/ })).toContainText(
+    'Coffee',
+  );
+  await expect(page.getByRole('button', { name: 'Mark 1 reviewed' })).toBeVisible();
+  await coffeeBox.uncheck({ force: true });
+  await expect(page.getByRole('button', { name: 'Mark reviewed' })).toBeVisible();
   // c opens the category list, ready to search: typing narrows it, Enter picks the first. That
   // closes it, and the keys work again.
   await page.keyboard.press('c');
