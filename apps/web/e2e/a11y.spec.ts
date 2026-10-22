@@ -25,7 +25,15 @@ for (const theme of ['light', 'dark'] as const) {
       await page.getByRole('button', { name: /Category/ }).click();
       await expect(page.getByRole('listbox')).toBeVisible();
       expect(await violations(page)).toEqual([]);
+      // Searchable: typing goes to its search box and narrows the list.
+      await expect(page.getByRole('searchbox', { name: 'Search' })).toBeFocused();
+      await page.keyboard.type('din');
+      await expect(page.getByRole('listbox').getByRole('option')).toHaveText(['Dining out']);
+      expect(await violations(page)).toEqual([]);
+      // The first Escape clears the search, the second closes the list.
       await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('listbox')).toHaveCount(0);
 
       await page.getByRole('button', { name: 'Open dialog' }).click();
       await expect(page.getByRole('dialog', { name: 'Rename account' })).toBeVisible();

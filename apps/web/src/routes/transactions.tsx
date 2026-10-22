@@ -155,6 +155,7 @@ export function CategorySelect({
       value={value ?? uncategorized ?? null}
       onChange={(v) => v && onChange(String(v))}
       isDisabled={isDisabled}
+      searchable
     >
       {groups.map((g) => (
         <SelectSection key={g.id} title={g.name}>
