@@ -204,22 +204,27 @@ export function interchangeablePairs(
  * The unambiguous transfers for `legs` (already eligible: unlinked, uncategorized or a transfer):
  * each side has exactly one possible other side, among `legs` and the ledger, and the caller owns
  * both accounts (TXN-08). `legs` may be transactions or, for a preview, file rows not stored yet.
- * Returns the pairs, each with a leg from `legs` first, and the ledger legs involved.
+ * Returns the pairs, each with a leg from `legs` first, and the ledger legs involved. `sees`
+ * narrows the ledger to the accounts the person it runs for can see, for system context, which
+ * sees them all (sync, #80); otherwise row-level security already has.
  */
 export async function findTransfers(
   tx: Executor,
   legs: Leg[],
   cats: TransferCategories,
   owns: (accountId: string) => boolean,
+  sees: (accountId: string) => boolean = () => true,
 ): Promise<{ pairs: [Leg, Leg][]; ledger: Leg[] }> {
   const mine = new Set(legs.map((l) => l.id));
-  const fromLedger = (await ledgerCandidates(tx, legs, cats)).filter((o) => !mine.has(o.id));
+  const visibleCandidates = async (of: Leg[]) =>
+    (await ledgerCandidates(tx, of, cats)).filter((o) => sees(o.accountId));
+  const fromLedger = (await visibleCandidates(legs)).filter((o) => !mine.has(o.id));
   const first = [...pairsBetween(legs, legs), ...pairsBetween(legs, fromLedger)];
   if (first.length === 0) return { pairs: [], ledger: [] };
   // Every possible leg of every ledger leg involved, so "exactly one" holds from both sides.
   const paired = new Set(first.map(([, b]) => b));
   const ledger = fromLedger.filter((o) => paired.has(o.id));
-  const further = await ledgerCandidates(tx, ledger, cats);
+  const further = await visibleCandidates(ledger);
   const second = pairsBetween(ledger, further);
   const candidates = new Map<string, Set<string>>();
   const add = (a: string, b: string) => candidates.set(a, (candidates.get(a) ?? new Set()).add(b));
@@ -254,13 +259,16 @@ export async function findTransfers(
 
 /**
  * Links the transfers among `ids` that are unambiguous (findTransfers). Anything else is left as
- * it is. Runs on import and on manual entry. Returns the transfer groups it made, one per pair.
+ * it is. Runs on import, on manual entry, and on sync. Returns the transfer groups it made, one
+ * per pair. With `onlyVisible` (system context: sync, for its connection's owner), the ledger is
+ * narrowed to the accounts in `levels`, as row-level security would narrow it for that member.
  */
 export async function detectTransfers(
   tx: Executor,
   activity: HouseholdActivity,
   ids: string[],
   levels: Map<string, AccessLevel>,
+  onlyVisible = false,
 ): Promise<string[]> {
   if (ids.length === 0) return [];
   const cats = await transferCategories(tx);
@@ -276,7 +284,13 @@ export async function detectTransfers(
   const awaited = await awaitedTransfers(tx, arrived, owns);
   const done = new Set(awaited.flatMap(([a, b]) => [a.id, b.id]));
   const rows = arrived.filter((r) => !done.has(r.id) && detectable(r, cats));
-  const { pairs } = await findTransfers(tx, rows, cats, owns);
+  const { pairs } = await findTransfers(
+    tx,
+    rows,
+    cats,
+    owns,
+    onlyVisible ? (accountId) => levels.has(accountId) : undefined,
+  );
   return linkTransfers(tx, activity, [...awaited, ...pairs], cats, true);
 }
 
@@ -528,13 +542,14 @@ export async function linkTransfers(
  * Unlinks the transfers in `groups`: every live leg leaves the group, and a leg still in the
  * Transfer category goes back to the category it had (Uncategorized if that's gone). A leg someone
  * recategorized since keeps their choice. Used when a person unlinks, and when one leg is
- * deleted, undone with its import, or moved into the other leg's account.
+ * deleted, undone with its import, moved into the other leg's account, or changed by its bank to
+ * another amount (sync, #80).
  */
 export async function unlinkTransfers(
   tx: Executor,
   activity: HouseholdActivity,
   groups: string[],
-  cause: 'unlinked' | 'deleted' | 'reverted' | 'moved',
+  cause: 'unlinked' | 'deleted' | 'reverted' | 'moved' | 'bank_changed',
 ): Promise<void> {
   if (groups.length === 0) return;
   const cats = await transferCategories(tx);

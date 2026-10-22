@@ -87,6 +87,10 @@ export const FAILURE = {
   secretMissing: 'secret_missing',
   secretUnreadable: 'secret_unreadable',
   timeout: 'timeout',
+  /** The member who linked it has left the household: only a household owner disconnects it. */
+  ownerLeft: 'owner_left',
+  /** Another run moved the connection's cursor while this one was syncing it. */
+  syncConflict: 'sync_conflict',
   /** Anything else: a bug, or the database. Logged with `describeError`. */
   internal: 'internal',
 } as const;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { ProviderRegistry } from '@fiscus/aggregation';
 import { FakeAggregationProvider, FakeClock, riveraAccounts } from '@fiscus/aggregation/testing';
-import { ProviderError, type ProviderAccount } from '@fiscus/domain';
+import { ProviderError, type SyncPage } from '@fiscus/domain';
 import { NestFactory } from '@nestjs/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startWorkerHarness, until, type WorkerHarness } from '../testing/harness.js';
@@ -17,29 +17,42 @@ import { Runner, type RunnerOptions } from './runner.js';
 
 /** The fake, with calls recorded by secret, and failures and pauses a test turns on. */
 class TestProvider extends FakeAggregationProvider {
-  readonly listed: string[] = [];
+  readonly synced: string[] = [];
   readonly removed: string[] = [];
   readonly #active = new Set<string>();
   /** Times one connection's job ran while another for it was still running. */
   overlaps = 0;
-  listFailure: Error | null = null;
+  syncFailure: Error | null = null;
   removeFailures = 0;
-  /** While set, listAccounts waits for it. */
+  /** While set, sync waits for it. */
   hold: Promise<void> | null = null;
   delayMs = 0;
 
   constructor(id = 'plaid') {
-    super({ id, mode: 'delta', accounts: riveraAccounts(), updates: [[{}]] });
+    super({
+      id,
+      mode: 'delta',
+      accounts: riveraAccounts(),
+      updates: [[{}]],
+      capabilities: { liabilities: false },
+    });
   }
 
-  override async listAccounts(secret: string): Promise<ProviderAccount[]> {
+  override async sync(secret: string): Promise<SyncPage> {
     if (this.#active.has(secret)) this.overlaps++;
     this.#active.add(secret);
-    this.listed.push(secret);
+    this.synced.push(secret);
     try {
       await (this.hold ?? new Promise((resolve) => setTimeout(resolve, this.delayMs)));
-      if (this.listFailure) throw this.listFailure;
-      return riveraAccounts();
+      if (this.syncFailure) throw this.syncFailure;
+      return {
+        mode: 'delta',
+        added: [],
+        modified: [],
+        removed: [],
+        nextCursor: 'c',
+        hasMore: false,
+      };
     } finally {
       this.#active.delete(secret);
     }
@@ -111,7 +124,7 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
 
     await passOnce(runner());
 
-    expect(new Set(plaid.listed)).toEqual(new Set(['secret-ok', 'secret-error']));
+    expect(new Set(plaid.synced)).toEqual(new Set(['secret-ok', 'secret-error']));
     for (const id of [ok, failing]) {
       const row = await h.row(id);
       expect(row).toMatchObject({ status: 'ok', leased: false, lastErrorCode: null });
@@ -158,17 +171,17 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
     const [a, b] = [runner({ concurrency: 3 }), runner({ concurrency: 3 })];
     await until(async () => {
       await Promise.all([a.pass(), b.pass()]);
-      return plaid.listed.length >= ids.length;
+      return plaid.synced.length >= ids.length;
     }, 20_000);
     await Promise.all([a.idle(), b.idle()]);
     expect(plaid.overlaps).toBe(0);
-    expect(plaid.listed.toSorted()).toEqual(ids.map((_, n) => `secret-${n}`).toSorted());
+    expect(plaid.synced.toSorted()).toEqual(ids.map((_, n) => `secret-${n}`).toSorted());
   });
 
   it('backs off 1 min, 5 min, 30 min, … up to the interval, and resets after a success', async () => {
     const id = await h.connection();
     const r = runner();
-    plaid.listFailure = new ProviderError('institution_down', { providerCode: 'INSTITUTION_DOWN' });
+    plaid.syncFailure = new ProviderError('institution_down', { providerCode: 'INSTITUTION_DOWN' });
 
     const delays: number[] = [];
     let firstFailedAt: Date | null = null;
@@ -189,7 +202,7 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
     }
     expect(delays).toEqual([1, 5, 30, 120, 240, 240]);
 
-    plaid.listFailure = null;
+    plaid.syncFailure = null;
     await passOnce(r);
     expect(await h.row(id)).toMatchObject({
       status: 'ok',
@@ -199,7 +212,7 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
       nextInMinutes: 240,
     });
     // And the next failure starts the ladder over.
-    plaid.listFailure = new ProviderError('transient', { providerCode: 'INTERNAL_SERVER_ERROR' });
+    plaid.syncFailure = new ProviderError('transient', { providerCode: 'INTERNAL_SERVER_ERROR' });
     await h.due(id);
     await passOnce(r);
     expect(await h.row(id)).toMatchObject({ consecutiveFailures: 1, nextInMinutes: 1 });
@@ -207,7 +220,7 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
 
   it('stops polling a connection that needs its owner to sign in again', async () => {
     const id = await h.connection();
-    plaid.listFailure = new ProviderError('login_required', {
+    plaid.syncFailure = new ProviderError('login_required', {
       providerCode: 'ITEM_LOGIN_REQUIRED',
     });
     await passOnce(runner());
@@ -224,8 +237,8 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
     const noSecret = await h.connection({ secret: null });
     const broken = await h.connection({ secret: 'secret-broken' });
     const r = runner({ concurrency: 10 });
-    const original = plaid.listAccounts.bind(plaid);
-    plaid.listAccounts = async (secret) => {
+    const original = plaid.sync.bind(plaid);
+    plaid.sync = async (secret) => {
       if (secret === 'secret-broken') throw new TypeError('a bug');
       return original(secret);
     };
@@ -271,7 +284,7 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
       const id = await disconnected();
       await passOnce(runner());
       expect(plaid.removed).toEqual(['fake-secret']);
-      expect(plaid.listed).toEqual([]);
+      expect(plaid.synced).toEqual([]);
       expect(await h.row(id)).toMatchObject({
         status: 'disconnected',
         disconnectRequested: false,
@@ -382,7 +395,7 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
         { logger: false },
       );
       const r = app.get(Runner);
-      await until(() => plaid.listed.length === 1 && simplefin.listed.length === 1);
+      await until(() => plaid.synced.length === 1 && simplefin.synced.length === 1);
       await until(async () => (await h.row(quick)).lastSyncedAt !== null);
       expect(r.status().runningJobs).toBe(1);
       expect((await h.row(slow)).leased).toBe(true);

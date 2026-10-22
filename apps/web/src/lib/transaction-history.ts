@@ -29,6 +29,7 @@ const UNLINK_CAUSES: Record<string, string> = {
   deleted: 'when its other side was deleted',
   reverted: 'when its other side’s import was undone',
   moved: 'when both sides ended up in one account',
+  bank_changed: 'when the bank changed an amount',
 };
 
 /** Who did it, as the subject of a sentence. */
@@ -63,6 +64,14 @@ export function historyLine(entry: TransactionHistoryEntry, names: HistoryNames)
         : 'Imported';
     case 'import.reverted':
       return `${who} undid its import`;
+    case 'sync.transactions_added':
+      return 'Came in from the bank';
+    case 'sync.transactions_matched':
+      return 'Matched to the bank’s copy of it, keeping everything here';
+    case 'transaction.provider_removed':
+      return detail.kept
+        ? 'The bank no longer lists it, so it stays here without syncing'
+        : 'The bank removed it';
     case 'transaction.created':
       return detail.otherSide
         ? `${who} recorded it as the other side of a transfer`
@@ -130,6 +139,8 @@ function phrase(c: TransactionFieldChange, n: HistoryNames): string | null {
         : 'set it back to the bank’s date';
     case 'reviewStatus':
       return c.to === 'reviewed' ? 'marked it reviewed' : 'marked it for review';
+    case 'pending':
+      return c.to ? 'marked it pending' : 'posted it';
     case 'excluded':
       return c.to
         ? 'left it out of reports and budgets'

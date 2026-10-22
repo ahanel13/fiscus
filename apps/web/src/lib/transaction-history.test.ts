@@ -74,6 +74,38 @@ describe('historyLine', () => {
         names,
       ),
     ).toBe('A rule added the tags Gifts and Travel');
+    const bank = { kind: 'bank', label: 'Bank' } as const;
+    expect(historyLine(entry({ action: 'sync.transactions_added', actor: bank }), names)).toBe(
+      'Came in from the bank',
+    );
+    expect(historyLine(entry({ action: 'sync.transactions_matched', actor: bank }), names)).toBe(
+      'Matched to the bank’s copy of it, keeping everything here',
+    );
+    expect(
+      historyLine(
+        entry({
+          action: 'transaction.provider_updated',
+          actor: bank,
+          changes: [
+            { field: 'amountMinor', from: -5200, to: -6100 },
+            { field: 'pending', from: true, to: false },
+          ],
+        }),
+        names,
+      ),
+    ).toBe('The bank changed the amount from -$52.00 to -$61.00 and posted it');
+    expect(
+      historyLine(
+        entry({ action: 'transaction.provider_removed', actor: bank, detail: { kept: true } }),
+        names,
+      ),
+    ).toBe('The bank no longer lists it, so it stays here without syncing');
+    expect(
+      historyLine(
+        entry({ action: 'transaction.transfer_unlinked', detail: { cause: 'bank_changed' } }),
+        names,
+      ),
+    ).toBe('The transfer was unlinked when the bank changed an amount');
   });
 
   it('describes bulk edits, splits, moves, transfers, attribution, and notes', () => {

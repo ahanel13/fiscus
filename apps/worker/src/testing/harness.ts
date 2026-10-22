@@ -22,6 +22,12 @@ export interface WorkerHarness {
   crypto: FieldCrypto;
   householdId: string;
   memberId: string;
+  /** Another household, with an owner, a data key and the default categories. */
+  household(): Promise<{ householdId: string; memberId: string }>;
+  /** Another member of a household. */
+  member(householdId: string, name?: string): Promise<string>;
+  /** An account, owned by `owners` (equal shares). */
+  account(opts: AccountOptions): Promise<string>;
   /** Adds a connection, due a minute ago unless `next` says otherwise (a Postgres interval). */
   connection(opts?: ConnectionOptions): Promise<string>;
   /** The connection's row, as the runner left it. */
@@ -31,7 +37,21 @@ export interface WorkerHarness {
   close(): Promise<void>;
 }
 
+export interface AccountOptions {
+  householdId: string;
+  owners: string[];
+  name?: string;
+  type?: string;
+  currency?: string;
+  visibility?: 'full' | 'view_only' | 'balance_only' | 'private';
+  connectionId?: string | null;
+  providerAccountId?: string | null;
+  syncFrom?: string | null;
+}
+
 export interface ConnectionOptions {
+  householdId?: string;
+  ownerMemberId?: string;
   provider?: 'plaid' | 'simplefin';
   status?: string;
   /** Relative to now; null = never. */
@@ -59,27 +79,38 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
   const tdb = await startTestDatabase();
   const owner = new pg.Client({ connectionString: tdb.ownerUrl });
   await owner.connect();
-  const householdId = randomUUID();
-  const memberId = randomUUID();
-  const userId = randomUUID();
-  await owner.query(
-    `INSERT INTO households (id, name, base_currency, timezone) VALUES ($1, 'H', 'USD', 'UTC')`,
-    [householdId],
-  );
-  await owner.query(`INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'A')`, [
-    userId,
-    `${userId}@worker.test`,
-  ]);
-  await owner.query(
-    `INSERT INTO household_members (id, household_id, user_id, role, display_name, color)
-     VALUES ($1, $2, $3, 'owner', 'A', '#000')`,
-    [memberId, householdId, userId],
-  );
   const worker = createDb(tdb.workerUrl);
   const master = new MasterKeys(MasterKey.fromBase64(randomBytes(32).toString('base64'), 1));
   const keys = new HouseholdKeyStore(worker.db, master);
-  await keys.createForHousehold(householdId);
   const crypto = new FieldCrypto(keys, master);
+
+  const member = async (householdId: string, name = 'A', role = 'member') => {
+    const memberId = randomUUID();
+    const userId = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, display_name) VALUES ($1, $2, $3)`, [
+      userId,
+      `${userId}@worker.test`,
+      name,
+    ]);
+    await owner.query(
+      `INSERT INTO household_members (id, household_id, user_id, role, display_name, color)
+       VALUES ($1, $2, $3, $4, $5, '#000')`,
+      [memberId, householdId, userId, role, name],
+    );
+    return memberId;
+  };
+  const household = async () => {
+    const householdId = randomUUID();
+    await owner.query(
+      `INSERT INTO households (id, name, base_currency, timezone) VALUES ($1, 'H', 'USD', 'UTC')`,
+      [householdId],
+    );
+    await owner.query('SELECT fiscus_seed_default_categories($1)', [householdId]);
+    const memberId = await member(householdId, 'A', 'owner');
+    await keys.createForHousehold(householdId);
+    return { householdId, memberId };
+  };
+  const { householdId, memberId } = await household();
 
   return {
     tdb,
@@ -88,6 +119,39 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
     crypto,
     householdId,
     memberId,
+    household,
+    member: (id, name) => member(id, name),
+    async account(opts) {
+      const id = randomUUID();
+      // With its owners in one transaction: an account without any is refused at commit.
+      await owner.query('BEGIN');
+      await owner.query(
+        `INSERT INTO accounts (id, household_id, connection_id, provider_account_id, sync_from, name,
+           type, currency, visibility, balance_mode)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'transactions')`,
+        [
+          id,
+          opts.householdId,
+          opts.connectionId ?? null,
+          opts.providerAccountId ?? null,
+          opts.syncFrom ?? null,
+          opts.name ?? 'Account',
+          opts.type ?? 'depository',
+          opts.currency ?? 'USD',
+          opts.visibility ?? 'full',
+        ],
+      );
+      const share = Math.floor(10000 / opts.owners.length);
+      for (const [i, m] of opts.owners.entries()) {
+        await owner.query(
+          `INSERT INTO account_owners (account_id, member_id, household_id, share_bps)
+           VALUES ($1, $2, $3, $4)`,
+          [id, m, opts.householdId, i === 0 ? 10000 - share * (opts.owners.length - 1) : share],
+        );
+      }
+      await owner.query('COMMIT');
+      return id;
+    },
     async connection(opts = {}) {
       const id = randomUUID();
       const next = opts.next === undefined ? '-1 minute' : opts.next;
@@ -97,8 +161,8 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
          VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval, now() + $8::interval, $9)`,
         [
           id,
-          householdId,
-          memberId,
+          opts.householdId ?? householdId,
+          opts.ownerMemberId ?? memberId,
           opts.provider ?? 'plaid',
           `item-${id}`,
           opts.status ?? 'ok',
@@ -109,8 +173,9 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
       );
       const secret = opts.secret === undefined ? 'fake-secret' : opts.secret;
       if (secret !== null) {
-        await withContext(worker.db, systemContext(householdId), (tx) =>
-          saveConnectionSecret(tx, crypto, householdId, id, secret),
+        const hh = opts.householdId ?? householdId;
+        await withContext(worker.db, systemContext(hh), (tx) =>
+          saveConnectionSecret(tx, crypto, hh, id, secret),
         );
       }
       return id;

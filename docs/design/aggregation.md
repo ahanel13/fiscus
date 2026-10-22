@@ -1,7 +1,7 @@
 # Bank aggregation: the provider interface (M2)
 
 - Status: Accepted
-- Issue: #78 (part 1: the interface, a fake provider, and a conformance suite); #81 (the runner)
+- Issue: #78 (part 1: the interface, a fake provider, and a conformance suite); #81 (the runner); #80 (sync ingest)
 - Builds on: [ADR 0004](../adr/0004-pluggable-providers.md), [ADR 0008](../adr/0008-plaid-credentials-and-webhooks.md), the [bank connections walkthrough](walkthroughs/bank-sync.md) (D1, D6, D8, D10, D14, D17)
 
 Plaid and SimpleFIN sit behind one interface, designed against both from the start (D1), so
@@ -112,8 +112,8 @@ The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives 
   LOCKED`, so two workers never run one connection at once. The claim returns ids only; the runner
   then reads each connection in its household's system context.
 - **Jobs**, by kind, from a handler registry: `sync` for a polled connection, `remove` for a
-  disconnected one with `disconnect_requested`. Until #80, `sync` decrypts the secret and lists the
-  accounts, to check the connection still works. `remove` calls `provider.remove(secret)`, then, in
+  disconnected one with `disconnect_requested`. `sync` brings in transactions and balances (§5).
+  `remove` calls `provider.remove(secret)`, then, in
   one transaction recorded as activity by the system, deletes the secret and clears
   `disconnect_requested`. If remove fails, or this server has no adapter for the provider, the
   secret stays and the job is retried. A connection whose provider has no adapter here fails as
@@ -137,3 +137,51 @@ The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives 
 - **Logs** carry connection ids, outcomes and codes only; errors are logged with `describeError`.
   `apps/worker/src/no-financial-data-in-logs.test.ts` checks that secrets, account names and
   amounts never appear, even when a provider's message or an error carries them.
+
+## 5. Sync ingest
+
+The `sync` job (#80, `apps/worker/src/sync/`), in the connection's household's system context,
+recorded as activity by the system with the connection owner's member id.
+
+- **Before anything:** a connection whose owner has left the household fails as `owner_left`
+  (status `error`); only a household owner can disconnect it (D11, ACC-03).
+- **Pages.** `provider.sync(secret, { cursor, since })` from the stored `sync_cursor`, where
+  `since` is the earliest `sync_from` of the connection's tracked accounts. Each page is applied
+  in its own short transaction that also stores the page's `nextCursor` and `historical_complete`,
+  so the cursor moves only past pages that committed, and a failure keeps the pages before it.
+  The transaction locks the connection and checks its cursor is still the one this run last
+  stored: if another run moved it (a lease that ran out), the job fails as `sync_conflict`; if the
+  connection was disconnected meanwhile, the sync stops there. On `mutation_during_pagination` the
+  run starts again from the cursor it began with, up to 3 times; applying a page again changes
+  nothing.
+- **Which accounts.** A transaction's `providerAccountId` maps to the account with that
+  `provider_account_id` on this connection; anything else is ignored.
+- **New transactions** (upserted by `(account_id, provider_transaction_id)`) arrive as
+  `source = provider`, needing review, named from the bank's merchant name or its cleaned-up text.
+  Rows dated before the account's `sync_from` (D6), in another currency, or posted for nothing are
+  skipped. **Already here (D7):** a posted arrival that is the only one of its kind on its page,
+  with exactly one transaction of that kind already in the account that isn't the provider's (same
+  amount, currency and reported date), gets nothing new: that transaction takes the provider's id
+  and keeps everything a person did to it. Pending arrivals never match. Near or ambiguous matches
+  are inserted for now; `holdPossibleDuplicates()` is where #80's holds (`sync_holds`, the Possible
+  duplicates review) go next. Then rules run on what arrived with their authors' reach (D9,
+  `caller = null`, as on import), and transfers are detected within the **connection owner's**
+  reach: both accounts theirs, and only transactions they could see counted as other candidates,
+  so sync never links, or is swayed by, what's behind a privacy line they can't cross.
+- **Modified** changes only what the bank owns: the amount, dates, pending, the original
+  description and the foreign amount, and the name while it's still the one the bank's text gave.
+  Never a field a person set (`field_versions`), the date override, or the category. A linked
+  transfer whose amount changes is unlinked. A provider row a person deleted stays deleted.
+- **Removed**, and for a `window` page every provider row in its dates for the accounts it lists
+  that it didn't return, is soft-deleted (a transfer it was in is unlinked). A transaction that was
+  yours before the bank's id attached to it lets go of the id and stays.
+- **Balances** in the page go through `writeProviderBalances()`; card and loan details through
+  `writeProviderLiabilities()` once the pages are done, when the provider has them. Touched
+  accounts' computed balances are rebuilt.
+- **Activity.** `sync.transactions_added` per account per page (linked to each transaction, #46),
+  `sync.transactions_matched` per account per page for D7 matches, `transaction.provider_updated`
+  per changed row (its field changes encrypted), `transaction.provider_removed` per removal, and a
+  `sync.page_applied` per page with its counts (the cursor and balances, for the owner only). A
+  transaction's history shows these as the Bank.
+- **Errors** map as in §4: `login_required` and `consent_expired` set `login_required`; anything
+  else is `error` with backoff. The provider's code is stored; its message never is.
