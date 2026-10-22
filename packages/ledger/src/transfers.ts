@@ -572,6 +572,7 @@ async function recordByAccount(
       targetId: accountId,
       accountId,
       metadata: { ...metadata, count: list.length },
+      transactionIds: list.map((l) => l.id),
       changes: { after: { ids: list.map((l) => l.id) } },
     });
   }

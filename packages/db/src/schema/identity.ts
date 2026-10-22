@@ -14,6 +14,7 @@ import {
   uuid,
   index,
   check,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 import { bytea, id, timestamps } from '../columns.js';
 
@@ -167,3 +168,20 @@ export const auditChainHeads = pgTable('audit_chain_heads', {
   headHash: bytea('head_hash').notNull(),
   updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Which transactions each household activity entry touched (#46): what a transaction's history is
+ * made of. Bulk edits and sync batches keep their ids only inside the encrypted `changes`, so the
+ * links are recorded alongside, in the same transaction, by HouseholdActivity.record. Append-only
+ * like the events. No foreign keys: links outlive purged transactions, as events do.
+ */
+export const activityTransactions = pgTable(
+  'activity_transactions',
+  {
+    householdId: uuid().notNull(),
+    /** The entry's position in the household's chain (audit_events.seq). */
+    seq: bigint({ mode: 'number' }).notNull(),
+    transactionId: uuid().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.householdId, t.transactionId, t.seq] })],
+);

@@ -158,6 +158,7 @@ All under `/api/v1/households/:householdId/`.
 | `PUT transactions/:id/splits`, `DELETE …/splits` | Owners (TXN-06) | |
 | `PUT transactions/:id/attribution` | Owners (ATT-01) | `[{memberId, shareBps}]`, or `[]` to inherit |
 | `PUT`/`DELETE transactions/:id/notes/shared`, `…/notes/mine` | NOTE-02 / NOTE-03 | |
+| `GET transactions/:id/history` | Visible (TXN-11) | Newest first: actor (member, rule, import, later the bank), action, and field changes. Only events about accounts you can see; private-note changes to their author; 404 for a transaction you can't see (#46) |
 | `GET`/`POST`/`PATCH`/`DELETE tags` | Read: all · write: OWN, MEM | |
 
 ## 8. Web
@@ -165,7 +166,9 @@ All under `/api/v1/households/:householdId/`.
 - **Transactions page**: a dense, keyboard-friendly table (date, merchant, category, whose, amount),
   grouped by day, with filters, search, and multi-select bulk actions. Infinite scroll by cursor.
 - **Transaction drawer**: edit category, tags, date (with "Bank date: …" for imported rows),
-  attribution ("For: Mine · Ada's · Ours · custom"), split editor, shared note, and my note.
+  attribution ("For: Mine · Ada's · Ours · custom"), split editor, shared note, my note, and its
+  history in plain words ("Ada changed the category from Groceries to Coffee", "Rule Coffee set
+  the category to Coffee", "Imported from Monarch").
 - **Paid by someone else**: rows shared through attribution show "Paid by Ada" in place of the account.
 - **Account page**: its transactions under History, and balances computed from them.
 - **Categories and tags** in Household settings.

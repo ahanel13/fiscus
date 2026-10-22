@@ -54,6 +54,8 @@ interface Plan {
   attribution: { memberId: string; shareBps?: number | undefined }[] | null;
   /** The last matching rule's "transfer to" (transfers.md §3). */
   transfer: NonNullable<RuleActions['transferTo']> | null;
+  /** Which rule set each field (a later one wins), for the transaction's history (#46). */
+  by: Record<string, string>;
 }
 
 /** What a "transfer to" does for one transaction. */
@@ -250,13 +252,23 @@ export async function runRules(
   const plans: Plan[] = [];
   for (const row of candidates) {
     const personSet = new Set(Object.keys(row.fieldVersions));
-    const plan: Plan = { row, set: {}, addTags: new Set(), attribution: null, transfer: null };
+    const plan: Plan = {
+      row,
+      set: {},
+      addTags: new Set(),
+      attribution: null,
+      transfer: null,
+      by: {},
+    };
     for (const rule of rulesFor(row.accountId)) {
       if (!ruleMatches(rule.conditions, row, uncategorized?.id ?? null)) continue;
       const a = rule.actions;
       const categorize = allowed(rule, row.accountId, 'categorize');
       const edit = allowed(rule, row.accountId, 'edit');
-      if (a.rename && categorize && !personSet.has('displayName')) plan.set.displayName = a.rename;
+      if (a.rename && categorize && !personSet.has('displayName')) {
+        plan.set.displayName = a.rename;
+        plan.by.displayName = rule.id;
+      }
       if (
         a.categoryId &&
         categorize &&
@@ -267,14 +279,24 @@ export async function runRules(
         (!personSet.has('categoryId') || row.categoryId === uncategorized?.id)
       ) {
         plan.set.categoryId = a.categoryId;
+        plan.by.categoryId = rule.id;
       }
       if (a.addTagIds && categorize && !personSet.has('tagIds')) {
-        for (const t of a.addTagIds) if (liveTags.has(t)) plan.addTags.add(t);
+        for (const t of a.addTagIds) {
+          if (liveTags.has(t)) {
+            plan.addTags.add(t);
+            plan.by.tagIds = rule.id;
+          }
+        }
       }
       if (a.markReviewed && categorize && !personSet.has('reviewStatus')) {
         plan.set.reviewStatus = 'reviewed';
+        plan.by.reviewStatus = rule.id;
       }
-      if (a.exclude && edit && !personSet.has('excluded')) plan.set.excluded = true;
+      if (a.exclude && edit && !personSet.has('excluded')) {
+        plan.set.excluded = true;
+        plan.by.excluded = rule.id;
+      }
       // A transfer needs ownership of both sides, as linking by hand does (TXN-08).
       if (
         a.transferTo &&
@@ -285,6 +307,7 @@ export async function runRules(
         !row.pending
       ) {
         plan.transfer = a.transferTo;
+        plan.by.transfer = rule.id;
       }
       if (
         a.attribution &&
@@ -293,6 +316,7 @@ export async function runRules(
         a.attribution.every((x) => liveMembers.has(x.memberId))
       ) {
         plan.attribution = a.attribution;
+        plan.by.attribution = rule.id;
       }
     }
     plans.push(plan);
@@ -356,6 +380,7 @@ export async function runRules(
       householdId,
       out.map((o) => o.plan),
     );
+    await recordRuleChanges(activity, out, caller === null ? 'import' : 'apply');
     await writeTransfers(
       tx,
       activity,
@@ -363,6 +388,7 @@ export async function runRules(
       transfers,
       candidates,
       uncategorized?.id ?? null,
+      new Map(plans.flatMap((p) => (p.by.transfer ? [[p.row.id, p.by.transfer]] : []))),
     );
   }
   return out.map((o) => o.change);
@@ -465,6 +491,44 @@ async function resolveTransfers(
   return out;
 }
 
+/**
+ * Records what rules changed, one event per account so each is visible only to members who can
+ * see that account, with each transaction's changes and the rules that made them (#46). A
+ * transfer's other account isn't named: it may be one some of them can't see.
+ */
+async function recordRuleChanges(
+  activity: HouseholdActivity,
+  out: { plan: Plan; change: RuleChange }[],
+  via: 'import' | 'apply',
+) {
+  for (const [accountId, list] of Map.groupBy(out, (o) => o.plan.row.accountId)) {
+    const byId = Object.fromEntries(
+      list.map(({ plan, change }) => {
+        const { transfer, ...fields } = change.changes;
+        const changes = {
+          ...fields,
+          ...(transfer ? { transfer: [null, transfer[1]!.outcome] } : {}),
+        };
+        const rules = [...new Set(Object.keys(changes).map((f) => plan.by[f]!))];
+        return [plan.row.id, { rules, changes }];
+      }),
+    );
+    await activity.record({
+      action: 'transaction.rules_applied',
+      targetType: 'account',
+      targetId: accountId,
+      accountId,
+      metadata: {
+        count: list.length,
+        rules: [...new Set(Object.values(byId).flatMap((c) => c.rules))],
+        via,
+      },
+      transactionIds: list.map((o) => o.plan.row.id),
+      changes: { after: { byId } },
+    });
+  }
+}
+
 /** Carries out resolveTransfers' decisions. */
 async function writeTransfers(
   tx: Executor,
@@ -473,6 +537,7 @@ async function writeTransfers(
   plans: Map<string, TransferPlan>,
   rows: Row[],
   uncategorized: string | null,
+  ruleOf: Map<string, string>,
 ) {
   if (plans.size === 0) return;
   const cats = await transferCategories(tx);
@@ -507,7 +572,8 @@ async function writeTransfers(
         targetType: 'transaction',
         targetId: id,
         accountId: plan.accountId,
-        metadata: { by: 'rule', otherSideOf: row.id },
+        metadata: { by: 'rule', rule: ruleOf.get(row.id), otherSideOf: row.id },
+        transactionIds: [id],
       });
     }
     if (plan.outcome === 'wait') {

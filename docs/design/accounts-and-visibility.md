@@ -154,6 +154,11 @@ account" leaks that a private account exists (F3).
   events about accounts hidden from them exist, and roughly when. We accept that: the alternative is
   a history check that only the server can do, which a server that rewrote history would pass.
 
+- **A transaction's history** (TXN-11, #46) follows the same rule: the events linked to it
+  (`activity_transactions`), each shown only if the caller can see its account, so a transaction
+  you see only because it's for you (F1) shows none of its account's events. Your own private-note
+  changes are yours alone. A transaction you can't see at all is a 404.
+
 Account events: `account.created`, `account.updated` (field names in metadata, values in the
 encrypted `changes`), `account.visibility_changed`, `account.owners_changed`, `account.closed`,
 `account.reopened`, `account.balance_set`, `account.number_revealed`.

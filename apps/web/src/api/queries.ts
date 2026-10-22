@@ -21,6 +21,7 @@ import type {
   SessionSummary,
   Tag,
   Transaction,
+  TransactionHistoryEntry,
   TransactionSort,
   TransferReview,
 } from '@fiscus/shared';
@@ -219,6 +220,19 @@ export const transactionQuery = (id: string, transactionId: string) =>
     queryKey: ['households', id, 'transactions', 'one', transactionId],
     queryFn: async () =>
       (await api<Data<Transaction>>('GET', `${hh(id)}/transactions/${transactionId}`)).data,
+  });
+
+/** A transaction's history, newest first (TXN-11). Refreshed with the ledger after each change. */
+export const transactionHistoryQuery = (id: string, transactionId: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'transactions', 'history', transactionId],
+    queryFn: async () =>
+      (
+        await api<Data<TransactionHistoryEntry[]>>(
+          'GET',
+          `${hh(id)}/transactions/${transactionId}/history`,
+        )
+      ).data,
   });
 
 export const preferencesQuery = (id: string) =>

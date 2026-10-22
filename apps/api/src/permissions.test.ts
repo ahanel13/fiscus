@@ -566,6 +566,16 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     );
   },
   // Moving needs ownership of both accounts (acct-own).
+  // A transaction's history: whoever can see it, and 404 for one they can't (#46).
+  'TXN-11/OWN': async () => ok(await f.A.get(url(`/transactions/${f.tPriv}/history`))),
+  'TXN-11/MEM': async () => {
+    ok(await f.B.get(url(`/transactions/${f.tA}/history`)));
+    refused(await f.B.get(url(`/transactions/${f.tPriv}/history`)), 404);
+  },
+  'TXN-11/VIEW': async () => {
+    ok(await f.V.get(url(`/transactions/${f.tA}/history`)));
+    refused(await f.V.get(url(`/transactions/${f.tPriv}/history`)), 404);
+  },
   'TXN-12/OWN': async () => {
     const t = await txn(f.A, f.accA);
     const r = await f.A.post(url('/transactions/move'), { ids: [t], accountId: f.accAview });

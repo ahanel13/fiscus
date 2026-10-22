@@ -273,6 +273,12 @@ test('records a transaction, categorizes and splits it, and the balance follows'
   // Saved as soon as it's chosen.
   await expect(drawer.getByRole('status')).toHaveText('Saved');
   expect(await axeViolations(page)).toEqual([]);
+  // Its history says who did what, newest first (#46).
+  const history = drawer.getByRole('region', { name: 'History' });
+  await expect(history.getByRole('listitem')).toHaveText([
+    /^You set the category to Groceries/,
+    /^You added it/,
+  ]);
 
   await drawer.getByRole('button', { name: 'Split' }).click();
   const split = page.getByRole('dialog', { name: 'Split Costco run' });

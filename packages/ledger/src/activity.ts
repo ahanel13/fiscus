@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { FieldCrypto } from '@fiscus/crypto';
-import { appendActivity, auditEvents, type Executor } from '@fiscus/db';
+import { activityTransactions, appendActivity, auditEvents, type Executor } from '@fiscus/db';
 import { sql } from 'drizzle-orm';
 
 type ActorKind = (typeof auditEvents.$inferInsert)['actorKind'];
@@ -21,6 +21,11 @@ export interface ActivityInput {
   changes?: { before?: Record<string, unknown>; after?: Record<string, unknown> };
   /** The account it concerns: members who can't see that account don't see the event. */
   accountId?: string;
+  /**
+   * The transactions it touched, which makes it part of each one's history (#46). Every change to
+   * a transaction passes them, bulk ones included.
+   */
+  transactionIds?: readonly string[];
   /** Household-visible by default (activity feed, HH-11/12). */
   visibleToHousehold?: boolean;
   /** Override the actor, e.g. a user who only becomes a member inside this transaction. */
@@ -53,7 +58,7 @@ export class HouseholdActivity {
   async record(input: ActivityInput): Promise<void> {
     this.#count++;
     const { changes } = input;
-    await appendActivity(
+    const { seq } = await appendActivity(
       this.tx,
       {
         actorKind: this.actor.kind,
@@ -80,8 +85,21 @@ export class HouseholdActivity {
             )
         : undefined,
     );
+    const ids = [...new Set(input.transactionIds ?? [])];
+    for (let i = 0; i < ids.length; i += LINK_CHUNK) {
+      await this.tx.insert(activityTransactions).values(
+        ids.slice(i, i + LINK_CHUNK).map((transactionId) => ({
+          householdId: this.householdId,
+          seq,
+          transactionId,
+        })),
+      );
+    }
   }
 }
+
+/** Links per statement: well under Postgres's 65 535 parameters at three a row. */
+const LINK_CHUNK = 5000;
 
 /**
  * The activity gate (ADR 0013): runs `fn` in the caller's household transaction with an activity

@@ -236,6 +236,50 @@ export interface Transaction {
 }
 
 /**
+ * One entry in a transaction's history (TXN-11, #46). Only entries you could see in the activity
+ * feed (none about an account hidden from you), plus your own private-note changes.
+ */
+export interface TransactionHistoryEntry {
+  /** Opaque: positions in the household's history aren't exposed. */
+  id: string;
+  occurredAt: string;
+  /** The activity's action, e.g. `transaction.updated`, `transaction.rules_applied`. */
+  action: string;
+  actor: TransactionHistoryActor;
+  /** What changed about this transaction, field by field; `from` only when it was recorded. */
+  changes: TransactionFieldChange[];
+  /** What the wording needs beyond the fields: the import's format, how many parts, why. */
+  detail: {
+    format?: string;
+    parts?: number;
+    cause?: string;
+    /** The account it moved into (one you can see). */
+    accountId?: string;
+    /** Changed with others at once (bulk edits, rules, name cleanup). */
+    bulk?: boolean;
+    /** Recorded as the other side of a transfer. */
+    otherSide?: boolean;
+  };
+}
+
+/** Who made a change: a member, rules, an import, the bank (sync), or Fiscus itself. */
+export type TransactionHistoryActor =
+  | { kind: 'member'; memberId: string | null; label: string }
+  | { kind: 'rule'; rules: { id: string; name: string | null }[]; label: string }
+  | { kind: 'import' | 'bank' | 'system'; label: string };
+
+export interface TransactionFieldChange {
+  /**
+   * A transaction field (`displayName`, `amountMinor`, `date`, `categoryId`, `reviewStatus`,
+   * `excluded`, `isBusiness`, `tagIds`, `transferExternal`, `attribution`), or `addTagIds` /
+   * `removeTagIds` for tags added or removed, or `transfer` for what a rule's "transfer to" did.
+   */
+  field: string;
+  from?: unknown;
+  to?: unknown;
+}
+
+/**
  * The other leg of a transfer. Its account is named only when you can see it; otherwise only the
  * people who own it are ("Transfer to Bea", F1).
  */
