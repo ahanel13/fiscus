@@ -5,6 +5,7 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -15,7 +16,7 @@ import { bytea, id, timestamps } from '../columns.js';
 import { householdMembers, households } from './households.js';
 
 // Bank connections (data model §3.2, docs/design/aggregation.md, #78). Row-level security and the
-// worker's claim: migration 0037.
+// worker's claim: migration 0037; finishing a claimed job: the connection_jobs migration (#81).
 
 export const CONNECTION_PROVIDERS = ['plaid', 'simplefin'] as const;
 export type ConnectionProvider = (typeof CONNECTION_PROVIDERS)[number];
@@ -109,6 +110,8 @@ export const connections = pgTable(
     nextSyncAt: timestamp({ withTimezone: true }),
     /** A worker holds it until then. */
     leaseUntil: timestamp({ withTimezone: true }),
+    /** Failures in a row, for the worker's backoff (#81); 0 again after a success. */
+    consecutiveFailures: integer().notNull().default(0),
     /** The provider says all older history has arrived. */
     historicalComplete: boolean().notNull().default(false),
     webhookEnabled: boolean().notNull().default(false),

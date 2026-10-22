@@ -462,14 +462,119 @@ describe('system context belongs to the worker', () => {
     });
   });
 
+  describe('fiscus_finish_connection_job', () => {
+    const insert = async (status: string, opts: { requested?: boolean; leased?: boolean } = {}) => {
+      const id = randomUUID();
+      await owner.query(
+        `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id,
+           status, next_sync_at, disconnect_requested, lease_until)
+         VALUES ($1, $2, $3, 'plaid', gen_random_uuid()::text, $4, now() - interval '1 minute', $5,
+                 CASE WHEN $6 THEN now() + interval '10 minutes' END)`,
+        [id, H, people.a.member, status, opts.requested ?? false, opts.leased ?? true],
+      );
+      return id;
+    };
+    const finish = (q: pg.Client, id: string, outcome: string, ...rest: (string | null)[]) =>
+      q.query(`SELECT fiscus_finish_connection_job($1, $2, $3::interval, $4, $5) AS found`, [
+        id,
+        outcome,
+        rest[0] ?? '1 hour',
+        rest[1] ?? null,
+        rest[2] ?? null,
+      ]);
+    const row = async (id: string) =>
+      (
+        await owner.query(
+          `SELECT status, last_error_code, consecutive_failures,
+                  first_failed_at IS NOT NULL AS failing, last_synced_at IS NOT NULL AS synced,
+                  lease_until IS NOT NULL AS leased,
+                  round(extract(epoch FROM next_sync_at - now()) / 60) AS next_in_minutes
+           FROM connections WHERE id = $1`,
+          [id],
+        )
+      ).rows[0];
+
+    it('refuses the app role, in any context', async () => {
+      const id = await insert('ok');
+      for (const ctx of [{}, { household: H, system: true }, member(people.a)]) {
+        expect(await error(() => as(app, ctx, (q) => finish(q, id, 'synced')))).toMatch(
+          /is the worker's/,
+        );
+      }
+      expect(await row(id)).toMatchObject({ leased: true, synced: false });
+    });
+
+    it('records failures, then clears them on success', async () => {
+      const id = await insert('ok');
+      expect((await finish(worker, id, 'failed', '1 minute', 'error', 'ITEM_ERROR')).rows).toEqual([
+        { found: true },
+      ]);
+      expect(await row(id)).toMatchObject({
+        status: 'error',
+        last_error_code: 'ITEM_ERROR',
+        consecutive_failures: 1,
+        failing: true,
+        leased: false,
+        next_in_minutes: '1',
+      });
+      // Not leased any more: nothing to finish.
+      expect((await finish(worker, id, 'synced')).rows).toEqual([{ found: false }]);
+      await owner.query(`UPDATE connections SET lease_until = now() WHERE id = $1`, [id]);
+      await finish(worker, id, 'synced', '4 hours');
+      expect(await row(id)).toMatchObject({
+        status: 'ok',
+        last_error_code: null,
+        consecutive_failures: 0,
+        failing: false,
+        synced: true,
+        next_in_minutes: '240',
+      });
+    });
+
+    it('takes codes, never messages, and only error or login_required', async () => {
+      const id = await insert('ok');
+      expect(
+        await error(() => finish(worker, id, 'failed', '1 minute', 'error', 'Bank said: no')),
+      ).toMatch(/needs an error code/);
+      expect(await error(() => finish(worker, id, 'failed', '1 minute', 'ok', 'X'))).toMatch(
+        /error or login_required/,
+      );
+      expect(await error(() => finish(worker, id, 'deleted'))).toMatch(/unknown outcome/);
+      await finish(worker, id, 'failed', '1 minute', 'login_required', 'ITEM_LOGIN_REQUIRED');
+      expect(await row(id)).toMatchObject({ status: 'login_required' });
+    });
+
+    it('keeps a disconnected connection disconnected, and due while the provider is owed', async () => {
+      const id = await insert('disconnected', { requested: true });
+      await finish(worker, id, 'failed', '5 minutes', 'error', 'provider_unavailable');
+      expect(await row(id)).toMatchObject({ status: 'disconnected', next_in_minutes: '5' });
+      // A sync that finished after it was disconnected leaves it due now.
+      await owner.query(`UPDATE connections SET lease_until = now() WHERE id = $1`, [id]);
+      await finish(worker, id, 'synced', '4 hours');
+      expect(await row(id)).toMatchObject({ status: 'disconnected', next_in_minutes: '0' });
+      // Not done while the removal is still owed.
+      await owner.query(`UPDATE connections SET lease_until = now() WHERE id = $1`, [id]);
+      expect((await finish(worker, id, 'done')).rows).toEqual([{ found: false }]);
+      await owner.query(`UPDATE connections SET disconnect_requested = false WHERE id = $1`, [id]);
+      expect((await finish(worker, id, 'done')).rows).toEqual([{ found: true }]);
+      expect(await row(id)).toMatchObject({ next_in_minutes: null, leased: false });
+    });
+
+    it('releases a lease, leaving it due', async () => {
+      const id = await insert('ok');
+      await finish(worker, id, 'released');
+      expect(await row(id)).toMatchObject({ leased: false, next_in_minutes: '-1' });
+    });
+  });
+
   it('runs the writing functions as a role that can change only what they need', async () => {
     const { rows: owners } = await owner.query(`
       SELECT p.proname, r.rolname FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
       WHERE p.proname IN ('fiscus_create_household', 'fiscus_join_household', 'fiscus_reassign_category',
                           'fiscus_set_instance_setting', 'fiscus_claim_due_connections',
-                          'fiscus_disconnect_connection')
+                          'fiscus_disconnect_connection', 'fiscus_finish_connection_job')
       ORDER BY 1`);
-    expect(owners.map((o) => o.rolname)).toEqual(Array(6).fill('fiscus_steward'));
+    expect(owners.map((o) => o.rolname)).toEqual(Array(7).fill('fiscus_steward'));
     const { rows } = await owner.query(`
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
                                     'categories', 'household_keys', 'audit_events', 'users',
@@ -488,7 +593,11 @@ describe('system context belongs to the worker', () => {
     expect(columns.map((r) => r.c)).toEqual([
       'accounts.connection_id',
       'accounts.updated_at',
+      'connections.consecutive_failures',
       'connections.disconnect_requested',
+      'connections.first_failed_at',
+      'connections.last_error_code',
+      'connections.last_synced_at',
       'connections.lease_until',
       'connections.next_sync_at',
       'connections.status',
