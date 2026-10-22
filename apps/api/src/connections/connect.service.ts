@@ -38,7 +38,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray, isNull, max, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
-import { AccountsService, STYLE_VISIBILITY } from '../accounts/accounts.service.js';
+import { AccountsService } from '../accounts/accounts.service.js';
 import { violatedConstraint } from '../common/db-errors.js';
 import { addDays, todayIn } from '../common/dates.js';
 import { Problem, type ProblemFieldError, problems } from '../common/problem.js';
@@ -483,7 +483,13 @@ export class ConnectService {
             ...(mask ? { mask } : {}),
             // The connecting member owns new accounts unless they say otherwise (ACC-01, D4).
             owners: choice.owners ?? [{ memberId: ctx.memberId }],
-            ...(choice.visibility ? { visibility: choice.visibility } : {}),
+            // Private unless they chose otherwise; a joint one follows the finance style, since it
+            // can't always be private (ADR 0006 §8).
+            ...(choice.visibility
+              ? { visibility: choice.visibility }
+              : (choice.owners?.length ?? 1) === 1
+                ? { visibility: 'private' as const }
+                : {}),
           });
           syncFrom = addDays(today, -NEW_ACCOUNT_DAYS);
           await tx
@@ -643,7 +649,9 @@ export class ConnectService {
       })),
       candidates.map((c) => ({ ...c, closedAt: c.closedAt?.toISOString() ?? null })),
     );
-    const visibility = STYLE_VISIBILITY[hh!.financeStyle] ?? 'full';
+    // A bank's accounts start private to the person who connected them, whatever the household's
+    // finance style: they choose who else sees each before anything syncs (D4).
+    const visibility = 'private';
     return offered.map((a, i): OfferedAccount => {
       const match = matches[i];
       const suggestion: ConnectSuggestion = !match

@@ -79,8 +79,8 @@ the sign-in happens at Plaid, not in Fiscus, and that Fiscus can't move money.
 - **D4. Settle who will see it before anything syncs.** In a shared household, connecting your
   own card shouldn't show its transactions to everyone, even briefly, while you get round to
   changing its sharing. The connecting member owns the new accounts (ACC-01),
-  and their visibility starts from the household's finance style, as for manual accounts
-  (ADR 0006 §8), but you confirm owners and visibility on the next step, before anything syncs.
+  and they start private, whatever the household's finance style (manual accounts start from
+  it, ADR 0006 §8). You confirm owners and visibility on the next step, before anything syncs.
 - Viewers can't connect banks (ACC-01): the menu entries don't show for them.
 
 ---
