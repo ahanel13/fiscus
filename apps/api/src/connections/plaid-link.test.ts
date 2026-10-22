@@ -256,7 +256,8 @@ describe('connecting a bank through Plaid Link (#79)', () => {
     expect(by[RIVERA.savings].suggestion).toEqual({
       choice: 'new',
       owners: [{ memberId: member.A }],
-      visibility: 'view_only',
+      // Private to start with, even in a Separate household (whose default is view-only).
+      visibility: 'private',
     });
     expect(by[RIVERA.oldSavings].suggestion).toEqual({
       choice: 'skip',
@@ -560,13 +561,18 @@ describe('connecting a bank through Plaid Link (#79)', () => {
       await B.post(url(`/connections/${connB}/confirm`), {
         accounts: (r.body.data.accounts as any[]).map((a) =>
           a.providerAccountId === RIVERA.checking
-            ? { providerAccountId: a.providerAccountId, choice: 'new', visibility: 'private' }
+            ? // No visibility given: a bank's new account starts private.
+              { providerAccountId: a.providerAccountId, choice: 'new' }
             : { providerAccountId: a.providerAccountId, choice: 'skip' },
         ),
       }),
     );
     expect(await connectionIds(B)).toContain(connB);
     expect(await connectionIds(A)).not.toContain(connB);
+    const [made] = (
+      await db.query('SELECT visibility FROM accounts WHERE connection_id = $1', [connB])
+    ).rows;
+    expect(made.visibility).toBe('private');
 
     // Update mode (re-auth, ACC-03): its owner only, with the Item's access token, no products.
     const update = await B.post(url(`/plaid/link-token?connection=${connB}`));

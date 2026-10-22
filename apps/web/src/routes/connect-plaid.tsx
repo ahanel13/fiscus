@@ -45,7 +45,7 @@ import {
   Skeleton,
   TimeZoneProvider,
 } from '../components/ui.js';
-import { balanceKind, DEFAULT_VISIBILITY, privateAllowed, VISIBILITY } from '../lib/accounts.js';
+import { balanceKind, privateAllowed, VISIBILITY } from '../lib/accounts.js';
 import { leaveTo } from '../lib/flash.js';
 import {
   clearOAuthState,
@@ -677,7 +677,8 @@ function ChooseAccounts({
     choice: 'new',
     accountId: null,
     owners: [me],
-    visibility: DEFAULT_VISIBILITY[household.financeStyle],
+    // Private to start with, whatever the finance style: you choose who else sees each (D4).
+    visibility: 'private',
   };
   const [choices, setChoices] = useState<Choice[]>(() =>
     setup.accounts.map((a) =>

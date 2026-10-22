@@ -253,8 +253,10 @@ up in Plaid's dashboard.
    name, official name, type and subtype in Fiscus's terms, last 4, currency, and current balance
    in Fiscus's sign) with a suggestion: `link` to one of the caller's accounts no other connection
    syncs (last 4 and type, then name: `matchAccounts` in `@fiscus/shared`, as OFX import uses),
-   `skip` when that match is an account they closed, else `new`, owned by the caller with the
-   finance style's visibility (ADR 0006 §8). `GET /connections/:id/setup` offers them again,
+   `skip` when that match is an account they closed, else `new`, owned by the caller and
+   private, whatever the finance style: they choose who else sees each. Confirming a new
+   account without a visibility makes it private too, unless it's joint (which follows the
+   finance style, ADR 0006 §8). `GET /connections/:id/setup` offers them again,
    from Plaid, while the setup lasts.
 4. **Confirm.** `POST /api/v1/households/:id/connections/:id/confirm`, one choice per offered
    account: `link` (an account the caller owns, in the same currency, not synced by another
