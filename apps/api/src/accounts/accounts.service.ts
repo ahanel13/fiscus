@@ -2,6 +2,7 @@
 import { FieldCrypto } from '@fiscus/crypto';
 import {
   accountGroups,
+  accountLiabilities,
   accountPlacements,
   accountOwners,
   accounts,
@@ -211,6 +212,24 @@ export class AccountsService {
       const rows = await tx.select().from(accounts).where(eq(accounts.id, accountId));
       const [account] = await this.#present(tx, ctx, rows, levels);
       if (!account) throw problems.notFound();
+      // Card details are for owners and full access (#86): below that, not even whether there are
+      // any (row-level security hides the row too).
+      if (account.yourAccess === 'owner' || account.yourAccess === 'full') {
+        const [l] = await tx
+          .select()
+          .from(accountLiabilities)
+          .where(eq(accountLiabilities.accountId, accountId));
+        account.liabilities = l
+          ? {
+              aprBps: l.aprBps,
+              minimumPaymentMinor: l.minimumPaymentMinor,
+              nextDueDate: l.nextDueDate,
+              lastStatementBalanceMinor: l.lastStatementBalanceMinor,
+              lastStatementDate: l.lastStatementDate,
+              updatedAt: l.updatedAt.toISOString(),
+            }
+          : null;
+      }
       return account;
     });
   }
@@ -836,6 +855,8 @@ export class AccountsService {
   ): Promise<Account[]> {
     const ids = rows.map((r) => r.id);
     const owners = await this.#owners(tx, ids);
+    // The latest balance; for a bank-connected account, the bank's last reported one, so a broken
+    // connection shows its date rather than a fresh-looking balance (D12, #86).
     const latest = new Map<string, { amountMinor: number; asOf: string }>();
     if (ids.length) {
       const { rows: balances } = await tx.execute<{
@@ -843,9 +864,13 @@ export class AccountsService {
         as_of: string;
         balance_minor: string;
       }>(sql`
-        SELECT DISTINCT ON (account_id) account_id, as_of::text AS as_of, balance_minor
-        FROM balance_snapshots WHERE account_id = ANY(${sql.param(ids)}::uuid[])
-        ORDER BY account_id, as_of DESC`);
+        SELECT DISTINCT ON (b.account_id) b.account_id, b.as_of::text AS as_of, b.balance_minor
+        FROM balance_snapshots b JOIN accounts a ON a.id = b.account_id
+        WHERE b.account_id = ANY(${sql.param(ids)}::uuid[])
+          AND (a.connection_id IS NULL OR b.source = 'provider' OR NOT EXISTS (
+            SELECT 1 FROM balance_snapshots p
+            WHERE p.account_id = b.account_id AND p.source = 'provider'))
+        ORDER BY b.account_id, b.as_of DESC`);
       for (const b of balances) {
         latest.set(b.account_id, { amountMinor: Number(b.balance_minor), asOf: b.as_of });
       }

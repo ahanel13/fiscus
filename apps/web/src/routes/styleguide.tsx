@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { MEMBER_COLORS } from '@fiscus/shared';
+import { type Account, MEMBER_COLORS } from '@fiscus/shared';
 import { ArrowLeftRight, Landmark, MoreHorizontal, Pencil, Trash2, Wallet } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import type { SortDescriptor } from 'react-aria-components';
 import { Amount } from '../components/Amount.js';
+import { CardDetails } from '../components/CardDetails.js';
 import {
   Alert,
   AmountInput,
@@ -252,6 +253,8 @@ export function StyleGuidePage() {
       <Overlays />
       <TabsAndTables />
       <Dates />
+      {/* The account page's block for a card whose bank reports its details (#86). */}
+      <CardDetails account={SAMPLE_CARD} />
 
       <section className={section}>
         <h2 className="text-xl font-semibold">Shape and depth</h2>
@@ -623,6 +626,33 @@ function TabsAndTables() {
     </Demo>
   );
 }
+
+const SAMPLE_CARD: Account = {
+  id: '00000000-0000-7000-8000-000000000001',
+  name: 'Visa',
+  type: 'credit',
+  subtype: null,
+  currency: 'USD',
+  mask: '4821',
+  visibility: 'full',
+  balanceMode: 'transactions',
+  includeInNetWorth: true,
+  isBusiness: false,
+  sortOrder: 0,
+  closedAt: null,
+  owners: [],
+  yourAccess: 'owner',
+  balance: { amountMinor: -128_455, asOf: '2026-10-20' },
+  liabilities: {
+    aprBps: 2149,
+    minimumPaymentMinor: 3_500,
+    nextDueDate: '2026-10-25',
+    lastStatementBalanceMinor: -142_310,
+    lastStatementDate: '2026-09-28',
+    updatedAt: '2026-10-20T11:00:00.000Z',
+  },
+  version: 1,
+};
 
 function Dates() {
   const [range, setRange] = useState<IsoRange | null>({ start: '2026-09-01', end: '2026-09-30' });

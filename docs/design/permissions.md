@@ -62,6 +62,7 @@ The access level (`fiscus_account_access()`) for (member, account):
 | …except transactions **attributed to me** (F1) | ✅ | ✅ | ✅ | ✅ (shown without account) | ✅ (shown without account) |
 | Read shared notes on visible transactions | ✅ | ✅ | ✅ | only attributed ones | only attributed ones |
 | Account notes | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Card and loan details (`account_liabilities`: APR, payments, statement; #86) | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Account number (`account_number_enc`) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Receipts (M9) | follow their transaction | | | | |
 

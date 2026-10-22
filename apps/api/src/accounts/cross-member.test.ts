@@ -27,6 +27,8 @@ interface Fixture {
   id: string;
   name: string;
   note: string;
+  /** Its card details' APR in basis points, distinct per account (#86). */
+  apr: number;
 }
 
 /** The permissions matrix §3, independent of the code under test. */
@@ -106,6 +108,7 @@ describe('cross-member visibility (generated)', () => {
           id: '',
           name: `Account ${key} zq${n}x`,
           note: `Note for ${key} zq${n}y`,
+          apr: 91_000 + n,
         };
         const res = await client.A.post(`${base()}/accounts`, {
           name: f.name,
@@ -119,6 +122,20 @@ describe('cross-member visibility (generated)', () => {
         f.id = res.body.data.id;
         fixtures.push(f);
       }
+    }
+    // Card details on every account, as a sync would write them (#86).
+    const db = new pg.Client({ connectionString: tdb.ownerUrl });
+    await db.connect();
+    try {
+      for (const f of fixtures) {
+        await db.query(
+          `INSERT INTO account_liabilities (account_id, household_id, apr_bps, last_statement_date)
+           VALUES ($1, $2, $3, '2026-01-01')`,
+          [f.id, hid, f.apr],
+        );
+      }
+    } finally {
+      await db.end();
     }
   }, 180_000);
 
@@ -153,6 +170,8 @@ describe('cross-member visibility (generated)', () => {
       expect(got).toEqual(want);
       expect(res.body.meta).toEqual({ scope: 'visible_to_you' });
       expect(leaks(actor, res.body)).toEqual([]);
+      // Card details are on the account itself, never in lists (#86).
+      expect(JSON.stringify(res.body)).not.toContain('aprBps');
     });
 
     it.each(VISIBILITIES.flatMap((v) => OWNER_SETS.map((o) => `${o.join('')}-${v}`)))(
@@ -191,6 +210,16 @@ describe('cross-member visibility (generated)', () => {
           expect(account.yourAccess).toBe(level);
           expect('notes' in account).toBe(level !== 'balance_only');
           expect(account.balance).toEqual({ amountMinor: f.balance, asOf: '2026-01-01' });
+          // Card details at owner and full access only; below that, not even a null (#86).
+          if (level === 'owner' || level === 'full') {
+            expect(account.liabilities).toMatchObject({
+              aprBps: f.apr,
+              lastStatementDate: '2026-01-01',
+            });
+          } else {
+            expect('liabilities' in account).toBe(false);
+            expect(JSON.stringify(reads.map((r) => r.body))).not.toContain('aprBps');
+          }
         }
       },
     );

@@ -19,6 +19,7 @@ describe('row-level security', () => {
   // Household tables with their own visibility suites (accounts, ledger, connections tests).
   const COVERED_ELSEWHERE = [
     'account_groups',
+    'account_liabilities',
     'aggregation_credentials',
     'account_placements',
     'accounts',

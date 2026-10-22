@@ -44,6 +44,7 @@ import {
   netWorthRangeQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
+import { CardDetails } from '../components/CardDetails.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { BalanceChart } from '../components/BalanceChart.js';
@@ -1052,6 +1053,8 @@ export function AccountDetailPage() {
           <BalanceHistory account={a} points={balances.data} />
         </section>
       )}
+
+      <CardDetails account={a} />
 
       <section aria-labelledby="account-summary" className="space-y-3">
         <h2 id="account-summary" className="font-semibold">

@@ -197,7 +197,10 @@ export interface Account {
   owners: AccountOwner[];
   /** What you may do with it. Owners see everything; see permissions §3 for the rest. */
   yourAccess: AccessLevel;
-  /** The latest balance, if any. */
+  /**
+   * The latest balance, if any, and the day it's for. A bank-connected account's is the bank's
+   * last reported balance, so a connection that stopped syncing shows how old it is (D12).
+   */
   balance: { amountMinor: number; asOf: string } | null;
   /**
    * Asked for with a range (#353): the balance's change from the range's start (or the first
@@ -206,7 +209,24 @@ export interface Account {
   change?: { amountMinor: number; from: string; to: string } | null;
   /** Shared account notes: present at `view_only` and above. */
   notes?: string | null;
+  /**
+   * A card's or loan's statement details from its bank (#86), on the account itself only (not in
+   * lists): present at `full` and `owner`, null when the bank reports none (SimpleFIN never does).
+   */
+  liabilities?: AccountLiabilities | null;
   version: number;
+}
+
+export interface AccountLiabilities {
+  /** Annual rate in basis points (24.99% = 2499). */
+  aprBps: number | null;
+  /** The amount due, as a positive number. */
+  minimumPaymentMinor: number | null;
+  nextDueDate: string | null;
+  /** In Fiscus's sign: what was owed is negative. */
+  lastStatementBalanceMinor: number | null;
+  lastStatementDate: string | null;
+  updatedAt: string;
 }
 
 export interface BalancePoint {

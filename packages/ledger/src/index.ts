@@ -7,5 +7,6 @@ export * from './activity.js';
 export * from './balances.js';
 export * from './engine.js';
 export * from './overlaps.js';
+export * from './provider-balances.js';
 export * from './ranges.js';
 export * from './transfers.js';
