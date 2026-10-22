@@ -8,6 +8,7 @@ import {
 } from '@fiscus/db';
 import { guardActivity, type Actor } from '@fiscus/ledger';
 import { and, eq } from 'drizzle-orm';
+import { readSyncState, syncConnection } from '../sync/sync.js';
 import { FAILURE, JobFailure, type JobContext, type JobHandler } from './jobs.js';
 
 // The jobs the runner dispatches (#81). Secrets are decrypted here, passed to the provider, and
@@ -27,16 +28,30 @@ const providerFor = (job: JobContext) => {
 };
 
 /**
- * A scheduled sync. For now it checks the connection still works, by listing its accounts; #80
- * replaces this with fetching and ingesting transactions and balances.
+ * A scheduled sync (#80): the connection's new, changed and removed transactions, its balances,
+ * and its card and loan details, written for its household in system context and recorded as
+ * the system's, for the connection's owner. A connection whose owner has left isn't synced.
  */
 export const syncJob: JobHandler = {
   kind: 'sync',
   async run(job) {
     const provider = providerFor(job);
+    const state = await readSyncState(job, job);
+    if (!state) throw new JobFailure(FAILURE.internal);
+    if (state.ownerLeft) throw new JobFailure(FAILURE.ownerLeft);
     const secret = await readSecret(job);
     if (secret === null) throw new JobFailure(FAILURE.secretMissing);
-    await provider.listAccounts(secret);
+    await syncConnection(
+      job,
+      provider,
+      secret,
+      {
+        householdId: job.householdId,
+        connectionId: job.connectionId,
+        ownerMemberId: state.ownerMemberId,
+      },
+      state,
+    );
     return 'synced';
   },
 };

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { FieldCrypto } from '@fiscus/crypto';
+import { createDb, systemContext, withContext } from '@fiscus/db';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
+import { guardActivity } from '@fiscus/ledger';
 import type { TransactionHistoryEntry } from '@fiscus/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import pg from 'pg';
@@ -324,5 +327,46 @@ describe('transaction history', () => {
       'transaction.updated by Ada',
       'transaction.created by Ada',
     ]);
+  });
+
+  it('shows what a sync did as the bank’s (#80)', async () => {
+    const id = await txn(A, shared, 'Dinner', -5200);
+    // As the worker records it: the system, for the connection's owner (apps/worker/src/sync).
+    const worker = createDb(tdb.workerUrl, { max: 1 });
+    try {
+      await withContext(worker.db, systemContext(hh), (tx) =>
+        guardActivity(
+          tx,
+          hh,
+          { kind: 'system', userId: null, memberId: member.A },
+          app.get(FieldCrypto),
+          async (_tx, activity) => {
+            await activity.record({
+              action: 'transaction.provider_updated',
+              targetType: 'transaction',
+              targetId: id,
+              accountId: shared,
+              metadata: { fields: ['amountMinor', 'pending'] },
+              changes: {
+                before: { amountMinor: -5200, pending: true },
+                after: { amountMinor: -6100, pending: false },
+              },
+              transactionIds: [id],
+            });
+          },
+        ),
+      );
+    } finally {
+      await worker.close();
+    }
+    const [latest] = await history(B, id);
+    expect(latest).toMatchObject({
+      action: 'transaction.provider_updated',
+      actor: { kind: 'bank', label: 'Bank' },
+      changes: [
+        { field: 'amountMinor', from: -5200, to: -6100 },
+        { field: 'pending', from: true, to: false },
+      ],
+    });
   });
 });

@@ -259,6 +259,8 @@ export interface TransactionHistoryEntry {
     bulk?: boolean;
     /** Recorded as the other side of a transfer. */
     otherSide?: boolean;
+    /** The bank removed its copy of a transaction that was yours first: yours stays. */
+    kept?: boolean;
   };
 }
 

@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { ProviderRegistry } from '@fiscus/aggregation';
 import { FakeAggregationProvider } from '@fiscus/aggregation/testing';
-import { ProviderError, type ProviderAccount, type ProviderBalance } from '@fiscus/domain';
+import {
+  ProviderError,
+  type ProviderAccount,
+  type ProviderBalance,
+  type SyncPage,
+  type SyncRequest,
+} from '@fiscus/domain';
 import type { LoggerService } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -85,11 +91,29 @@ describe('no financial data in the worker logs (#308)', () => {
         secret: ACCESS_TOKEN,
         accounts,
         balances,
-        updates: [[{}]],
+        updates: [
+          [
+            {
+              added: [
+                {
+                  providerTransactionId: `txn-${NAME}`,
+                  providerAccountId: `acct-${NAME}`,
+                  amountMinor: -BALANCE,
+                  currency: 'USD',
+                  pending: false,
+                  postedDate: '2026-10-20',
+                  authorizedDate: '2026-10-20',
+                  description: `PAYMENT TO ${NAME}`,
+                  merchantName: NAME,
+                },
+              ],
+            },
+          ],
+        ],
       });
     }
 
-    override async listAccounts(secret: string): Promise<ProviderAccount[]> {
+    override async sync(secret: string, request: SyncRequest): Promise<SyncPage> {
       if (secret.endsWith('-provider-error')) {
         throw new ProviderError('institution_down', {
           providerCode: 'INSTITUTION_DOWN',
@@ -99,7 +123,7 @@ describe('no financial data in the worker logs (#308)', () => {
       if (secret.endsWith('-bug')) {
         throw new TypeError(`Cannot read ${secret} of Checking ${NAME} (${BALANCE})`);
       }
-      return super.listAccounts(ACCESS_TOKEN);
+      return super.sync(ACCESS_TOKEN, request);
     }
 
     override async remove(secret: string): Promise<void> {
@@ -126,6 +150,14 @@ describe('no financial data in the worker logs (#308)', () => {
         secret: `${ACCESS_TOKEN}-remove-fails`,
       }),
     ];
+    // Synced into an account, so ingest, rules, transfers and balances all run.
+    await h.account({
+      householdId: h.householdId,
+      owners: [h.memberId],
+      name: `Checking ${NAME}`,
+      connectionId: ids[0],
+      providerAccountId: `acct-${NAME}`,
+    });
     const app = await NestFactory.createApplicationContext(
       WorkerModule.forRoot({
         db: h.worker.db,
@@ -140,6 +172,12 @@ describe('no financial data in the worker logs (#308)', () => {
     await runner.idle();
     await app.close();
 
+    // The sync did ingest: what it wrote is in the ledger, not the logs.
+    const { rows } = await h.owner.query(
+      'SELECT count(*)::int AS n FROM transactions WHERE provider_transaction_id = $1',
+      [`txn-${NAME}`],
+    );
+    expect(rows).toEqual([{ n: 1 }]);
     const text = captured.join('\n');
     // What was logged, so the capture works: ids, outcomes, and codes.
     expect(

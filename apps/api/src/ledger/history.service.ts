@@ -164,7 +164,10 @@ export class TransactionHistoryService {
       };
     }
     if (event.action === 'import.rows_added') return { kind: 'import', label: 'Import' };
-    if (event.action.startsWith('sync.')) return { kind: 'bank', label: 'Bank' };
+    // What sync wrote (#80), recorded as the system's for the connection's owner.
+    if (event.action.startsWith('sync.') || event.action.startsWith('transaction.provider_')) {
+      return { kind: 'bank', label: 'Bank' };
+    }
     // Linked by transfer detection, not by a person choosing the pair.
     if (event.action === 'transaction.transfer_linked' && event.metadata.automatic === true) {
       return { kind: 'system', label: 'Fiscus' };
@@ -189,7 +192,8 @@ export class TransactionHistoryService {
     switch (event.action) {
       case 'transaction.created':
         return Object.entries(after).map(([field, to]) => ({ field, to }));
-      case 'transaction.updated': {
+      case 'transaction.updated':
+      case 'transaction.provider_updated': {
         const fields = (event.metadata.fields as string[] | undefined) ?? Object.keys(after);
         return fields.map((field) =>
           field === 'tagIds'
@@ -249,6 +253,8 @@ export class TransactionHistoryService {
       detail.bulk = true;
     }
     if (event.action === 'transaction.created' && m.by === 'rule') detail.otherSide = true;
+    // The bank no longer has it, and it was yours first (D7): it stays, without the bank's id.
+    if (event.action === 'transaction.provider_removed' && m.kept === true) detail.kept = true;
     return detail;
   }
 
