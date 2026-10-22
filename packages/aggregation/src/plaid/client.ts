@@ -50,7 +50,12 @@ export interface TransactionsSyncRequest {
   cursor?: string | null;
   /** 1 to 500; Plaid's default is 100. */
   count?: number;
-  options?: { days_requested?: number; include_original_description?: boolean };
+  options?: {
+    days_requested?: number;
+    include_original_description?: boolean;
+    /** Pinned, so the taxonomy can't change under Fiscus (TXN-006). */
+    personal_finance_category_version?: 'v1' | 'v2';
+  };
 }
 
 /**

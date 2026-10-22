@@ -22,10 +22,12 @@ const readSecret = (job: JobContext) =>
     readConnectionSecret(tx, job.crypto, job.householdId, job.connectionId),
   );
 
-const providerFor = (job: JobContext) => {
-  if (!job.providers.has(job.provider)) throw new JobFailure(FAILURE.providerUnavailable);
-  return job.providers.get(job.provider);
-};
+/**
+ * The adapter for this connection, with the keys it was made with (ADR 0008; Plaid's per
+ * connection, #82). Not enabled here: `provider_unavailable`; made with other keys:
+ * `credentials_changed` (failureOf).
+ */
+const providerFor = (job: JobContext) => job.providers.forConnection(job);
 
 /**
  * A scheduled sync (#80): the connection's new, changed and removed transactions, its balances,

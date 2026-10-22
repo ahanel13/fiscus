@@ -1,7 +1,7 @@
 # Bank aggregation: the provider interface (M2)
 
 - Status: Accepted
-- Issue: #78 (part 1: the interface, a fake provider, and a conformance suite); #81 (the runner); #80 (sync ingest); #79 (connecting through Plaid Link)
+- Issue: #78 (part 1: the interface, a fake provider, and a conformance suite); #81 (the runner); #80 (sync ingest); #79 (connecting through Plaid Link); #82 (the Plaid adapter)
 - Builds on: [ADR 0004](../adr/0004-pluggable-providers.md), [ADR 0008](../adr/0008-plaid-credentials-and-webhooks.md), the [bank connections walkthrough](walkthroughs/bank-sync.md) (D1, D2, D4–D6, D8, D10, D14, D17)
 
 Plaid and SimpleFIN sit behind one interface, designed against both from the start (D1), so
@@ -46,7 +46,8 @@ older history has all arrived.
 
 **Errors** are a `ProviderError` with a `kind` (`login_required`, `consent_expired`,
 `rate_limited`, `institution_down`, `invalid_credentials`, `mutation_during_pagination`,
-`transient`), the provider's `providerCode`, and `retryAfterMs` when the provider says. The
+`transient`), the provider's `providerCode`, `retryAfterMs` when the provider says, and
+`providerRequestId` (Plaid's `request_id`, safe to log, for its support) when it has one. The
 provider's own message is untrusted display text: it is kept out of `message` and out of the
 error's JSON, so logging the error can't log it.
 
@@ -57,7 +58,12 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
 ## 2. `@fiscus/aggregation`
 
 - `ProviderRegistry`: the providers this server has enabled, looked up by a connection's
-  `provider`. Per-connection credentials (ADR 0008) build on it in #83.
+  `provider` with `forConnection({ provider, credentialSetId, providerEnv, providerClientId })`.
+  An adapter that serves every connection alike registers as itself; one whose keys are per
+  connection (Plaid, ADR 0008) registers a `ProviderSource`, which picks the adapter for each
+  connection or throws `ProviderUnavailableError` with a reason (`not_configured`,
+  `household_keys_unavailable`, `credentials_changed`). A household's own keys (#83) resolve
+  through the same seam.
 - Plaid (#82): `PlaidClient`, a small `fetch` client for the endpoints M2 uses, with zod-checked
   responses and Plaid's errors mapped to `ProviderError` kinds; `plaidEnvVars` and
   `instancePlaidConfig` for the server's keys (all three or none); `resolvePlaidCredentials`,
@@ -65,6 +71,47 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
   `credentialsChanged`, true when a connection's recorded `provider_env` or `provider_client_id`
   no longer matches (a rotated secret isn't a change). The base URL comes from `PLAID_ENV`; a
   test-only override is honored only in sandbox.
+- The Plaid adapter (#82, `plaid/provider.ts`): `PlaidProvider`, for one set of keys, and
+  `plaidProviderSource(instanceConfig)`, which the worker registers. Each connection gets the keys
+  it was made with: the server's when `credential_set_id` is null; a household's own set is
+  refused as `household_keys_unavailable` until #83; a recorded `provider_env` or
+  `provider_client_id` that no longer matches is `credentials_changed`. One `PlaidProvider` per
+  set of keys.
+  - `sync` is one `/transactions/sync` page, never `/transactions/get` (Plaid's TXN-001), with
+    `count: 500` (TXN-011), `include_original_description` (the bank's own text is the
+    description, else Plaid's `name`; TXN-013) and `personal_finance_category_version: 'v2'`
+    pinned (TXN-006). The sync loop (§5) buffers pages to `has_more: false` and restarts on
+    `TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION` (TXN-002, TXN-007). `added` and `modified`
+    keep `transaction_id`; a posted row's `pending_transaction_id` is its `pendingTransactionId`
+    (TXN-004); a pending row has no posted date (Plaid's `date` is when it happened). Amounts are
+    reversed, Plaid's positive being money out (TXN-005), into integer minor units by the
+    currency's exponent; the currency is `iso_currency_code`, else `unofficial_currency_code`, and
+    a row in neither, or in a code Fiscus can't hold, is skipped, as is a removal without its
+    `account_id`. The merchant is `merchant_name`, never `name` (TXN-023). Categories and
+    `payment_channel` have no place in `ProviderTransaction` yet and aren't read; the legacy
+    `category` fields never are. Plaid has no original foreign amount here.
+  - The page that ends a sync (`has_more: false`) carries the accounts and balances from
+    `/accounts/get`, the authoritative list (TXN-012), at no extra charge. Balances follow the
+    api's mapping (`plaid/mapping.ts`, shared): a card's or loan's current balance negated,
+    available and limit as they are, `asOf` from `last_updated_datetime` or the time of the sync.
+  - `HISTORICAL_UPDATE_COMPLETE` in `transactions_update_status` is `historicalComplete`
+    (TXN-008). An empty first sync is normal; Plaid's empty cursor then keeps the one asked with.
+  - `liabilities` reads `/accounts/get` and calls `/liabilities/get` only when the Item has a
+    card or a loan (LIAB-008). Cards, student loans and mortgages are mapped (Plaid's other loan
+    kinds have no place yet); the card's APR is the `purchase_apr` entry, chosen by `apr_type`,
+    never by position (LIAB-003); every field is read on its own and left out when null
+    (LIAB-002). `NO_LIABILITY_ACCOUNTS`, `PRODUCTS_NOT_SUPPORTED`, `ADDITIONAL_CONSENT_REQUIRED`
+    (an Item linked before liabilities were consented) and `INVALID_PRODUCT` give no details
+    rather than a failed sync; `PRODUCT_NOT_READY` fails it, to be retried with backoff.
+  - `remove` is `/item/remove` (ITEM-005); `ITEM_NOT_FOUND` counts as removed already.
+  - No `refresh`: `/transactions/refresh` is a separately billed add-on (TXN-010). Investment
+    accounts are listed but nothing reads investments (TXN-022).
+  - Errors branch on `error_type` and `error_code` only (ITEM-002): `ITEM_LOGIN_REQUIRED` and the
+    other sign-in codes are `login_required`, `PENDING_EXPIRATION` and the consent codes
+    `consent_expired`, `INSTITUTION_DOWN` and `INSTITUTION_NOT_RESPONDING` `institution_down`,
+    `RATE_LIMIT_EXCEEDED` `rate_limited`, `ITEM_NOT_FOUND` `invalid_credentials` (the Item is
+    gone), and `PRODUCT_NOT_READY` and anything unknown `transient`, all retried with the runner's
+    capped, jittered backoff (ITEM-004, ITEM-013).
 - `@fiscus/aggregation/testing`, for tests only:
   - `FakeAggregationProvider`: scripted and deterministic. Accounts, balances, liabilities, a list
     of **updates** (each the pages one sync returns, made visible with `release()`), `delta` or
@@ -75,11 +122,14 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
   - `startStubServer(routes)`: a Node `http` server on an ephemeral local port that answers from
     route handlers and records requests, for adapters to talk to instead of Plaid or the Bridge (D17).
   - `startFakePlaid()`: Plaid's endpoints on a stub server, answering the Riveras' scenario in
-    Plaid's format and sign, checking keys and tokens, with scripted failures.
+    Plaid's format and sign, checking keys and tokens, with scripted failures. It sends
+    `original_description` only when asked, cards, student loans and mortgages from
+    `/liabilities/get`, and `NO_LIABILITY_ACCOUNTS` for an Item without a card or loan, as Plaid
+    does.
 
 ## 3. The conformance suite
 
-`describeProviderConformance(name, create, { errorKinds, unsupportedFields? })` runs the cases
+`describeProviderConformance(name, create, { errorKinds, unsupportedFields?, unsupportedAccountFields? })` runs the cases
 every adapter must pass. `create` gets the scenario and returns a harness: the provider (usually
 the adapter pointed at a stub server answering the scenario in the provider's own format), its
 secret, and `release()` for the next update. It checks:
@@ -97,8 +147,9 @@ secret, and `release()` for the next update. It checks:
   message in what gets logged, and retrying the same request returns the page;
 - liabilities match when the provider has them, and `remove` resolves.
 
-The fake passes it in both modes, as the reference. The Plaid (#79) and SimpleFIN (#91) adapters
-run it against stub servers.
+The fake passes it in both modes, as the reference. The Plaid adapter (#82) passes it against
+the fake Plaid server, with every error kind, Plaid's foreign amounts and accounts' `closed` left
+out (Plaid reports neither); the SimpleFIN adapter (#91) will against its stub.
 
 ## 4. The runner
 
@@ -117,7 +168,10 @@ The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives 
   one transaction recorded as activity by the system, deletes the secret and clears
   `disconnect_requested`. If remove fails, or this server has no adapter for the provider, the
   secret stays and the job is retried. A connection whose provider has no adapter here fails as
-  `provider_unavailable`; a job running past 10 minutes fails as `timeout`.
+  `provider_unavailable`, as does a Plaid connection on a server without Plaid keys; one made
+  with a household's own Plaid keys fails as `household_keys_unavailable` (#83), and one made
+  with another Plaid client id or environment as `credentials_changed` ("reconnect"), without
+  calling Plaid. A job running past 10 minutes fails as `timeout`.
 - **When it's next due.** After a sync: the interval, `sync.intervalHours` (an instance setting,
   read each pass, default 4 h; `SYNC_INTERVAL_HOURS` overrides it), plus up to 10% at random. After
   a failure: 1 min, 5 min, 30 min, 2 h, 6 h, 12 h for the 1st, 2nd, … failure in a row, never more
@@ -134,7 +188,8 @@ The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives 
   the leases of any still running, so another worker takes them right away.
 - **Readiness.** `/readyz` on the worker's health port fails when no pass has finished in the last
   minute (or three poll intervals), and reports the last pass's time and the running jobs.
-- **Logs** carry connection ids, outcomes and codes only; errors are logged with `describeError`.
+- **Logs** carry connection ids, outcomes and codes only, and the provider's request id with a
+  failure when it gave one (Plaid's `request_id`, DATA-006); errors are logged with `describeError`.
   `apps/worker/src/no-financial-data-in-logs.test.ts` checks that secrets, account names and
   amounts never appear, even when a provider's message or an error carries them.
 

@@ -209,7 +209,11 @@ export class Runner {
           status: failure.status,
           code: failure.code,
         });
-        this.#logger.warn(`${kind} ${id} failed (${failure.code}), retry in ${minutes(nextInMs)}`);
+        // Plaid's request id is safe to log, and what its support asks for (DATA-006).
+        const request = failure.requestId ? `, request ${failure.requestId}` : '';
+        this.#logger.warn(
+          `${kind} ${id} failed (${failure.code}${request}), retry in ${minutes(nextInMs)}`,
+        );
       } catch (finishing) {
         // The lease expires on its own; the connection is claimed again then.
         this.#logger.error(

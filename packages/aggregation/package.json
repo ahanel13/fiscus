@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@fiscus/domain": "workspace:*",
+    "@fiscus/shared": "workspace:*",
     "zod": "catalog:"
   }
 }

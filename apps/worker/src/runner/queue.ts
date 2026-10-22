@@ -40,6 +40,9 @@ export async function readTarget(db: Database, claimed: Claimed): Promise<JobTar
         status: connections.status,
         disconnectRequested: connections.disconnectRequested,
         consecutiveFailures: connections.consecutiveFailures,
+        credentialSetId: connections.credentialSetId,
+        providerEnv: connections.providerEnv,
+        providerClientId: connections.providerClientId,
       })
       .from(connections)
       .where(eq(connections.id, claimed.connectionId)),

@@ -2,6 +2,7 @@
 import {
   isProviderError,
   type AggregationProvider,
+  type ProviderAccount,
   type ProviderErrorKind,
   type ProviderSecret,
   type ProviderTransaction,
@@ -39,6 +40,8 @@ export interface ConformanceOptions {
   errorKinds: readonly ProviderErrorKind[];
   /** Fields the provider never reports (SimpleFIN has no merchant names), left out of comparisons. */
   unsupportedFields?: readonly (keyof ProviderTransaction)[];
+  /** Account fields the provider never reports (Plaid doesn't say an account is closed). */
+  unsupportedAccountFields?: readonly (keyof ProviderAccount)[];
   /** Defaults to the Riveras' Harbor Credit Union. */
   scenario?: () => ConformanceScenario;
 }
@@ -187,7 +190,12 @@ export function describeProviderConformance(
         const accounts = await provider.listAccounts(secret);
         const byId = (a: { providerAccountId: string }, b: { providerAccountId: string }) =>
           a.providerAccountId.localeCompare(b.providerAccountId);
-        expect([...accounts].sort(byId)).toEqual([...scenario.accounts].sort(byId));
+        const omit = new Set<string>(options.unsupportedAccountFields ?? []);
+        const comparable = (list: ProviderAccount[]) =>
+          [...list]
+            .sort(byId)
+            .map((a) => Object.fromEntries(Object.entries(a).filter(([f]) => !omit.has(f))));
+        expect(comparable(accounts)).toEqual(comparable(scenario.accounts));
       }));
 
     it("converges on the bank's transactions after every update", () =>

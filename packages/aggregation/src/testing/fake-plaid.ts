@@ -109,7 +109,33 @@ export function plaidTransaction(t: ProviderTransaction) {
     name: t.description,
     merchant_name: t.merchantName ?? null,
     payment_channel: 'in store',
-    personal_finance_category: { primary: 'GENERAL_MERCHANDISE', detailed: 'OTHER' },
+    personal_finance_category: {
+      primary: 'GENERAL_MERCHANDISE',
+      detailed: 'GENERAL_MERCHANDISE_OTHER_GENERAL_MERCHANDISE',
+      confidence_level: 'HIGH',
+    },
+  };
+}
+
+/** A student loan or mortgage's details in Plaid's format and sign (owed = positive). */
+export function plaidLoanLiability(l: ProviderLiability) {
+  const amount = (minor: number | undefined) => (minor === undefined ? null : major(minor));
+  if (l.kind === 'mortgage') {
+    return {
+      account_id: l.providerAccountId,
+      interest_rate: { percentage: l.aprBps === undefined ? null : l.aprBps / 100, type: 'fixed' },
+      next_monthly_payment: amount(l.minimumPaymentMinor),
+      next_payment_due_date: l.nextPaymentDueDate ?? null,
+    };
+  }
+  return {
+    account_id: l.providerAccountId,
+    interest_rate_percentage: l.aprBps === undefined ? null : l.aprBps / 100,
+    last_statement_balance:
+      l.lastStatementBalanceMinor === undefined ? null : major(-l.lastStatementBalanceMinor),
+    last_statement_issue_date: l.lastStatementDate ?? null,
+    minimum_payment_amount: amount(l.minimumPaymentMinor),
+    next_payment_due_date: l.nextPaymentDueDate ?? null,
   };
 }
 
@@ -266,10 +292,16 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
       }
       const page = all[at];
       const seen = all.slice(0, at + 1);
+      // Plaid sends the bank's own text only when asked (TXN-013).
+      const original = (body.options as Body | undefined)?.include_original_description === true;
+      const format = (t: ProviderTransaction) => ({
+        ...plaidTransaction(t),
+        original_description: original ? t.description : null,
+      });
       return {
         body: {
-          added: (page?.added ?? []).map(plaidTransaction),
-          modified: (page?.modified ?? []).map(plaidTransaction),
+          added: (page?.added ?? []).map(format),
+          modified: (page?.modified ?? []).map(format),
           removed: (page?.removed ?? []).map((r) => ({
             transaction_id: r.providerTransactionId,
             account_id: r.providerAccountId,
@@ -285,18 +317,27 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
       };
     },
     '/transactions/refresh': (_, request_id) => ({ body: { request_id } }),
-    '/liabilities/get': (_, request_id) => ({
-      body: {
-        accounts: accounts().filter((a) => a.type === 'credit' || a.type === 'loan'),
-        item: item(),
-        liabilities: {
-          credit: scenario.liabilities.filter((l) => l.kind === 'credit').map(plaidCreditLiability),
-          mortgage: null,
-          student: null,
+    '/liabilities/get': (_, request_id) => {
+      const covered = accounts().filter((a) => a.type === 'credit' || a.type === 'loan');
+      // As Plaid answers an Item with no card or loan (LIAB-008).
+      if (covered.length === 0) {
+        return error({ error_type: 'ITEM_ERROR', error_code: 'NO_LIABILITY_ACCOUNTS' }, request_id);
+      }
+      const of = (kind: ProviderLiability['kind']) =>
+        scenario.liabilities.filter((l) => l.kind === kind);
+      return {
+        body: {
+          accounts: covered,
+          item: item(),
+          liabilities: {
+            credit: of('credit').map(plaidCreditLiability),
+            mortgage: of('mortgage').length ? of('mortgage').map(plaidLoanLiability) : null,
+            student: of('student').length ? of('student').map(plaidLoanLiability) : null,
+          },
+          request_id,
         },
-        request_id,
-      },
-    }),
+      };
+    },
     '/item/get': (_, request_id) => ({
       body: {
         item: item(),

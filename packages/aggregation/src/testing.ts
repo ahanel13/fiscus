@@ -38,6 +38,7 @@ export {
 export {
   plaidAccount,
   plaidCreditLiability,
+  plaidLoanLiability,
   plaidTransaction,
   startFakePlaid,
   type FakePlaid,

@@ -8,7 +8,6 @@ import {
   type PlaidInstanceConfig,
 } from '@fiscus/aggregation';
 import { isProviderError } from '@fiscus/domain';
-import { type AccountType, minorUnitExponent } from '@fiscus/shared';
 import { Problem } from '../common/problem.js';
 
 // The api's side of Plaid (#79): a client per connection's keys, Plaid's failures as api
@@ -77,7 +76,7 @@ export function plaidProblem(err: unknown): never {
           ext,
         );
       }
-      if (err.providerCode === 'INVALID_ACCESS_TOKEN') {
+      if (err.providerCode === 'INVALID_ACCESS_TOKEN' || err.providerCode === 'ITEM_NOT_FOUND') {
         throw new Problem(
           409,
           'connection_gone',
@@ -143,44 +142,10 @@ export function plaidProblem(err: unknown): never {
   }
 }
 
-const TYPES: Record<string, AccountType> = {
-  depository: 'depository',
-  credit: 'credit',
-  loan: 'loan',
-  investment: 'investment',
-  // Plaid's older name for investment accounts.
-  brokerage: 'investment',
-};
-
-/** Plaid's account type in Fiscus's terms; anything new is `other`. */
-export const plaidAccountType = (type: string): AccountType => TYPES[type] ?? 'other';
-
-/**
- * The bank's current balance in Fiscus's sign and minor units: Plaid reports what a card or a loan
- * owes as positive, Fiscus as negative. Null when Plaid has none, or no ISO currency for it.
- */
-export function plaidCurrentBalance(
-  account: PlaidAccount,
-): { amountMinor: number; currency: string } | null {
-  const { current, iso_currency_code: currency } = account.balances;
-  if (current === null || current === undefined || !currency) return null;
-  let exponent: number;
-  try {
-    exponent = minorUnitExponent(currency);
-  } catch {
-    return null;
-  }
-  const type = plaidAccountType(account.type);
-  const sign = type === 'credit' || type === 'loan' ? -1 : 1;
-  const amountMinor = Math.round(sign * current * 10 ** exponent) || 0;
-  return Number.isSafeInteger(amountMinor) ? { amountMinor, currency } : null;
-}
-
-/** The last 4 characters of Plaid's mask, when they're what an account's mask may hold. */
-export const plaidMask = (mask: string | null | undefined): string | null => {
-  const last4 = mask?.trim().slice(-4);
-  return last4 && /^[0-9A-Za-z]{4}$/.test(last4) ? last4 : null;
-};
+// Plaid's accounts in Fiscus's terms live in `@fiscus/aggregation`, shared with the worker's sync
+// (#82): Plaid's type (anything new is `other`), the current balance in Fiscus's sign and minor
+// units (null without one, or without an ISO currency), and the last 4 of the mask.
+export { plaidAccountType, plaidCurrentBalance, plaidMask } from '@fiscus/aggregation';
 
 /** A name an account may have (1 to 120 characters), from the bank's. */
 export const accountNameFrom = (account: PlaidAccount): string =>
