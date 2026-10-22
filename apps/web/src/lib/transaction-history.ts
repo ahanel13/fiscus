@@ -72,6 +72,11 @@ export function historyLine(entry: TransactionHistoryEntry, names: HistoryNames)
       return detail.kept
         ? 'The bank no longer lists it, so it stays here without syncing'
         : 'The bank removed it';
+    case 'transaction.posted': {
+      // Pending → posted (#88): the same transaction, now as the bank posted it.
+      const phrases = entry.changes.flatMap((c) => phrase(c, names) ?? []);
+      return `${who} ${andList(['posted it', ...phrases])}`;
+    }
     case 'transaction.created':
       return detail.otherSide
         ? `${who} recorded it as the other side of a transfer`

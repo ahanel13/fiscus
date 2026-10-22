@@ -94,6 +94,25 @@ describe('historyLine', () => {
         names,
       ),
     ).toBe('The bank changed the amount from -$52.00 to -$61.00 and posted it');
+    // Pending → posted (#88): the same transaction, with what the bank changed as it posted.
+    expect(historyLine(entry({ action: 'transaction.posted', actor: bank }), names)).toBe(
+      'The bank posted it',
+    );
+    expect(
+      historyLine(
+        entry({
+          action: 'transaction.posted',
+          actor: bank,
+          changes: [
+            { field: 'amountMinor', from: -5200, to: -6100 },
+            { field: 'date', from: '2026-10-04', to: '2026-10-06' },
+          ],
+        }),
+        names,
+      ),
+    ).toBe(
+      'The bank posted it, changed the amount from -$52.00 to -$61.00 and moved it from 2026-10-04 to 2026-10-06',
+    );
     expect(
       historyLine(
         entry({ action: 'transaction.provider_removed', actor: bank, detail: { kept: true } }),
