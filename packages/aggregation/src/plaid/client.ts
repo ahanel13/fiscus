@@ -37,6 +37,7 @@ export interface LinkTokenCreateRequest {
   user: { client_user_id: string };
   products?: string[];
   optional_products?: string[];
+  additional_consented_products?: string[];
   access_token?: string;
   webhook?: string;
   redirect_uri?: string;

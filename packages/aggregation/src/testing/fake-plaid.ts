@@ -7,7 +7,13 @@ import type {
   ProviderTransaction,
 } from '@fiscus/domain';
 import { riveraScenario, type ConformanceScenario } from './rivera.js';
-import { jsonBody, startStubServer, type StubRequest, type StubResponse } from './stub-server.js';
+import {
+  jsonBody,
+  startStubServer,
+  type StubListen,
+  type StubRequest,
+  type StubResponse,
+} from './stub-server.js';
 import type { ScriptedPage } from './fake-provider.js';
 
 // A fake Plaid for tests (D17: nothing in the test suite talks to Plaid): Plaid's endpoints on a
@@ -19,6 +25,8 @@ export interface FakePlaidOptions {
   clientId?: string;
   secret?: string;
   scenario?: ConformanceScenario;
+  /** Defaults to an ephemeral port on loopback; the e2e stack's `plaid-stub` service sets both. */
+  listen?: StubListen;
 }
 
 /** A Plaid error to answer with. `status` defaults by type, as Plaid's do. */
@@ -344,6 +352,7 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
         return [`POST ${path}`, plaid(path, handler, opts)];
       }),
     ),
+    options.listen,
   );
 
   return {

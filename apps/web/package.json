@@ -25,6 +25,7 @@
     "react": "catalog:",
     "react-aria-components": "catalog:",
     "react-dom": "catalog:",
+    "react-plaid-link": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

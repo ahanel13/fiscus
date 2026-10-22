@@ -30,8 +30,8 @@ import {
   Plus,
   Upload,
 } from 'lucide-react';
-import { useLocale } from 'react-aria-components';
-import { type FormEvent, useState } from 'react';
+import { Text, useLocale } from 'react-aria-components';
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
   accountLayoutQuery,
@@ -42,6 +42,7 @@ import {
   householdQuery,
   membersQuery,
   netWorthRangeQuery,
+  plaidAvailabilityQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { CardDetails } from '../components/CardDetails.js';
@@ -106,6 +107,7 @@ import {
   typeSectionKey,
   VISIBILITY,
 } from '../lib/accounts.js';
+import { leaveTo, takeFlash } from '../lib/flash.js';
 import { type Lens, lensVisible, parseLens } from '../lib/lens.js';
 import { formatSpan, type RangeSelection, rangeParams, selectionLabel } from '../lib/ranges.js';
 import { useRange } from '../lib/use-range.js';
@@ -148,7 +150,19 @@ export function AccountsPage() {
   const [adding, setAdding] = useState(false);
   const canAdd = household.you.role !== 'viewer';
   const arrange = useArrange(householdId);
-  // One way in, which asks how: by hand, or from a file (bank connections join it in M2).
+  // Viewers can't connect banks (ACC-01), and the entry shows only where Plaid is set up (#79).
+  const plaid = useQuery({ ...plaidAvailabilityQuery(householdId), enabled: canAdd }).data;
+  // Coming back from connecting a bank (a full page load): how it went.
+  useEffect(() => {
+    const flash = takeFlash();
+    if (flash) {
+      toast(flash.title, {
+        tone: flash.tone,
+        ...(flash.description ? { description: flash.description } : {}),
+      });
+    }
+  }, []);
+  // One way in, which asks how: from the bank, by hand, or from a file (walkthrough §1).
   // In the header it's an icon on a phone, as on Transactions; the empty state keeps its label.
   const addMenu = (compact: boolean) => (
     <MenuTrigger>
@@ -156,12 +170,27 @@ export function AccountsPage() {
         <Plus aria-hidden className="size-4" />
         <span className={compact ? 'sr-only sm:not-sr-only' : undefined}>Add account</span>
       </Button>
-      <Menu placement="bottom end" aria-label="Add an account">
-        <MenuItem onAction={() => setAdding(true)}>
-          <Pencil aria-hidden /> Enter it yourself
+      <Menu placement="bottom end" aria-label="Add an account" className="max-w-xs">
+        {plaid?.available ? (
+          // A full page load, never the router: only the connect page may run Plaid's script.
+          <MenuItem
+            textValue="Connect a bank"
+            onAction={() => leaveTo(`/h/${householdId}/connect/plaid`)}
+          >
+            <AddOption icon={<Landmark aria-hidden />} label="Connect a bank">
+              Sign in through Plaid. Updates several times a day.
+            </AddOption>
+          </MenuItem>
+        ) : null}
+        <MenuItem textValue="Enter it yourself" onAction={() => setAdding(true)}>
+          <AddOption icon={<Pencil aria-hidden />} label="Enter it yourself">
+            For cash, a house, a car, or a bank without a feed.
+          </AddOption>
         </MenuItem>
-        <MenuItem href={`/h/${householdId}/import`}>
-          <Upload aria-hidden /> Import from Monarch or a bank file
+        <MenuItem textValue="Import from Monarch or a bank file" href={`/h/${householdId}/import`}>
+          <AddOption icon={<Upload aria-hidden />} label="Import from Monarch or a bank file">
+            A Monarch export, CSV, OFX or QFX.
+          </AddOption>
         </MenuItem>
       </Menu>
     </MenuTrigger>
@@ -191,8 +220,10 @@ export function AccountsPage() {
           <EmptyState icon={Landmark} title="No accounts yet">
             <p>
               Add the accounts you want to track: checking, savings, credit cards, loans, and things
-              you own, like a home or a car. Enter them yourself, or import them from a Monarch
-              export or a bank’s file. Bank connections arrive later.
+              you own, like a home or a car.{' '}
+              {plaid?.available
+                ? 'Connect your bank, enter them yourself, or import them from a Monarch export or a bank’s file.'
+                : 'Enter them yourself, or import them from a Monarch export or a bank’s file.'}
             </p>
             {canAdd ? addMenu(false) : null}
           </EmptyState>
@@ -264,6 +295,29 @@ export function AccountsPage() {
         />
       ) : null}
     </>
+  );
+}
+
+/** One way to add an account, with what it's for (walkthrough §1). */
+function AddOption({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: string;
+}) {
+  return (
+    <span className="flex items-start gap-2.5 py-1.5">
+      <span className="mt-0.5">{icon}</span>
+      <span className="flex flex-col">
+        <Text slot="label">{label}</Text>
+        <Text slot="description" className="text-xs text-muted">
+          {children}
+        </Text>
+      </span>
+    </span>
   );
 }
 

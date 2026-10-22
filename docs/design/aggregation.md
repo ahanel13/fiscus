@@ -210,22 +210,39 @@ recorded as activity by the system with the connection owner's member id.
 
 ## 6. Connecting a bank through Plaid Link
 
-The api's side of D2 (#79, `apps/api/src/connections/`). The connect screens, Link's loader and
-the connect page's Content-Security-Policy come in a later part of #79.
+D2, #79: the api in `apps/api/src/connections/`, the connect pages in
+`apps/web/src/routes/connect-plaid.tsx`. Plaid's own integration rules (its Build Kit) are
+tracked in [PLAID_PLAN.md](../../PLAID_PLAN.md), with what's left for the server's admin to set
+up in Plaid's dashboard.
 
 1. **Link token.** `POST /api/v1/households/:id/plaid/link-token`, for owners and members;
    viewers get 403 (ACC-01). The keys are the household's, through `resolvePlaidCredentials`: its
    own set if it has one (#83; until then such a household gets 409 `plaid_unavailable`), else
    the server's, and without either also 409 `plaid_unavailable`. The token asks for
-   `products: ['transactions']`, `country_codes: ['US', 'CA']`, `transactions.days_requested:
+   `products: ['transactions']`, with `additional_consented_products: ['liabilities',
+   'investments']` (consented at Link, billed only once called, and hiding no bank: card and
+   loan details are #86's, investments aren't read yet), `country_codes: ['US', 'CA']`,
+   `transactions.days_requested:
    730` (it can't be raised once the Item exists; D6's 90 days is applied when syncing, #80), and
-   `redirect_uri` only when `PLAID_REDIRECT_URI` is set. No webhook until #84. `client_user_id` is
+   `redirect_uri` only when `PLAID_REDIRECT_URI` is set (on every token, update mode's too). It
+   must be the server's https origin followed by `/connect/plaid/oauth`, the web app's one
+   return page: Plaid matches it exactly, so it can't name a household. Without it, OAuth banks
+   sign in in a pop-up, which works except in phone browsers that block them. No webhook until #84. `client_user_id` is
    a hash of the member id: stable, and neither an email nor the id itself.
    With `?connection=<id>` it's update mode, for signing in again (ACC-03, #81): only the
    connection's owner, only once its setup is done, with the Item's own access token and no
    products, and refused (409 `credentials_changed`) when the keys it was made with are gone.
-2. **Exchange.** `POST /api/v1/households/:id/plaid/exchange` with `{ publicToken }`. The token
-   is exchanged once; the api then reads the accounts (`/accounts/get`) and the bank
+2. **Exchange.** `POST /api/v1/households/:id/plaid/exchange` with `{ publicToken, link? }`,
+   `link` being Link's metadata as the browser has it: the session id, the institution, and each
+   account's last 4 and subtype. Before the exchange (which is when Plaid starts billing for the
+   Item), a bank already connected is refused with 409 `bank_already_connected`, its
+   `connectionId` and `status` in the problem: one of the caller's own connections at that
+   institution still in `setup`, or a live one tracking an account with the same last 4 (and
+   subtype, when both have one). The connect page offers that connection (finish choosing,
+   sign in again there, or go to accounts) or "Connect it anyway", which resends with
+   `duplicateOk: true` for a separate login at the same bank. Link's word is only used for this
+   and kept for support: the session id goes in the `connection.setup_started` activity. The
+   token is exchanged once; the api then reads the accounts (`/accounts/get`) and the bank
    (`/institutions/get_by_id`) from Plaid, never from Link's metadata, and upserts the
    institution. The connection is stored in `setup`, owned by the caller, with `provider_env`,
    `provider_client_id` and `provider_item_id`; the access token goes to `connection_secrets`,
@@ -253,6 +270,22 @@ the connect page's Content-Security-Policy come in a later part of #79.
 its owner, and its accounts don't exist (or aren't linked) until confirm, so no one else sees
 anything of it, and the runner never claims it. Clearing setups that are never confirmed is left
 to #81.
+
+**Link stopping** without connecting is recorded too: `POST …/plaid/link-exit` with the session
+id, Link's `status`, the institution, Plaid's error type and code, and its request id (a strict
+schema: never Plaid's message), as a `connection.link_exited` activity only its actor sees. It's
+what Plaid's support asks for when a connection keeps failing.
+
+**The connect pages** load Link through Plaid's react-plaid-link. The link token is asked for as
+the page loads, so Link is ready the moment you continue; a fresh one after Link stops, which
+leaves you on the page with Plaid's `display_message` (when it has one) and the button to try
+again. Before Link opens, the link token, household and connection are kept in local storage
+for four hours at most, so `/connect/plaid/oauth` can resume Link with them and the received
+URL (`receivedRedirectUri`) when a bank's own sign-in page sends the browser back; it opens
+Link at once, and is cleared once Link finishes or stops. Their Content-Security-Policy is the
+only one that allows Plaid: `https://cdn.plaid.com` for scripts and frames, and Plaid's sandbox
+and production api hosts for requests (`apps/web/docker/nginx.conf`, threat model T4). Every
+other page refuses them, and the connect pages are entered and left with full page loads.
 
 **Plaid's failures** become api problems by kind: 422 `invalid_public_token`, 409
 `login_required`, 429 `rate_limited` (with `retry-after`), 503 `institution_down`, 502

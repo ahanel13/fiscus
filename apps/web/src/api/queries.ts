@@ -7,6 +7,7 @@ import type {
   BankConnectionsOverview,
   CashFlow,
   CategoryGroup,
+  ConnectionSetup,
   Household,
   HouseholdMember,
   ImportBatch,
@@ -15,6 +16,7 @@ import type {
   Lens,
   Me,
   NetWorth,
+  PlaidAvailability,
   ReviewCount,
   ServerInvite,
   ServerInvitePreview,
@@ -80,6 +82,24 @@ export const bankConnectionsQuery = queryOptions({
 });
 
 const hh = (id: string) => `/api/v1/households/${id}`;
+
+/** Whether "Connect a bank" can use Plaid in this household (#79); owners and members only. */
+export const plaidAvailabilityQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'plaid'],
+    queryFn: async () => (await api<Data<PlaidAvailability>>('GET', `${hh(id)}/plaid`)).data,
+    staleTime: 60_000,
+  });
+
+/** A connection being set up: what the bank offers, again, after a reload (#79, D4). */
+export const connectionSetupQuery = (id: string, connectionId: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'connections', connectionId, 'setup'],
+    queryFn: async () =>
+      (await api<Data<ConnectionSetup>>('GET', `${hh(id)}/connections/${connectionId}/setup`)).data,
+    retry: false,
+    staleTime: Infinity,
+  });
 
 /** With range parameters (rangeParams()), each account carries its change over the range (#353). */
 /** Your own arrangement of the accounts list: groups and order (#48). */

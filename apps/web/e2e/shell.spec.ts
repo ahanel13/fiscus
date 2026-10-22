@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from './test.js';
 import { axeViolations } from './axe.js';
 import { rewriteHistory } from './database.js';
+import { stubPlaidLink } from './plaid-link.js';
 
 // One journey through a fresh instance: setup → household → navigate → sign out → sign in.
 test.describe.configure({ mode: 'serial' });
@@ -167,10 +168,11 @@ test('the admin invites someone to the server, who makes an account and their ow
   await expect(page.getByRole('heading', { level: 1, name: 'Server' })).toBeVisible();
   await expect(waiting).toHaveCount(0);
 
-  // Server → Bank connections (#400): no Plaid keys on this server, SimpleFIN on, every 4 hours.
+  // Server → Bank connections (#400): the e2e stack's sandbox keys for its fake Plaid
+  // (docker-compose.plaid-stub.yml), SimpleFIN on, every 4 hours.
   const banks = page.getByRole('region', { name: 'Bank connections' });
-  await expect(banks.getByText('Not configured')).toBeVisible();
-  await expect(banks.getByText('Sandbox: no real banks')).toHaveCount(0);
+  await expect(banks.getByText('Configured', { exact: true })).toBeVisible();
+  await expect(banks.getByText('Sandbox: no real banks')).toBeVisible();
   await expect(banks.getByRole('switch', { name: /through SimpleFIN/ })).toBeChecked();
   await expect(banks.getByRole('switch', { name: /their own Plaid keys/ })).toBeChecked();
   await expect(banks.getByRole('switch', { name: /Refresh now/ })).toBeChecked();
@@ -973,6 +975,112 @@ test('imports an OFX file, and finds its accounts by their last 4 digits the nex
   await expect(page.getByText('3 new transactions.')).toBeVisible();
   await page.getByRole('button', { name: 'Import 3 transactions' }).click();
   await expect(page.getByRole('heading', { name: 'Imported' })).toBeVisible();
+});
+
+test('connects a bank through Plaid Link, on its own page, and chooses what to track (#79)', async ({
+  page,
+}) => {
+  // Link is stubbed at Plaid's real URL, and the api talks to the stack's fake Plaid: the
+  // Riveras' Harbor Credit Union, with checking ••4410, savings ••8812, a Visa and an old savings.
+  const link = await stubPlaidLink(page);
+  const plaidLoaded = () => page.evaluate(() => 'Plaid' in window);
+  const connect = async () => {
+    await page.getByRole('button', { name: 'Add account' }).first().click();
+    await page.getByRole('menuitem', { name: 'Connect a bank' }).click();
+    // A full page load, onto the one page whose policy allows Plaid's script.
+    await expect(page).toHaveURL(/\/h\/[0-9a-f-]{36}\/connect\/plaid$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Add a bank account' })).toBeFocused();
+  };
+
+  await signIn(page);
+  await page.goto(`${householdUrl}/accounts`);
+  // Link stops with an error: you stay, told so, ready to try again.
+  link.outcome = 'error';
+  await connect();
+  await expect(page.getByText('What Fiscus gets')).toBeVisible();
+  await expect(page.getByText('Sandbox: Plaid’s test banks only')).toBeVisible();
+  const go = page.getByRole('button', { name: 'Continue to Plaid' });
+  // Link is made ready as the page loads, not when you press.
+  await expect(go).toBeEnabled();
+  expect(await axeViolations(page)).toEqual([]);
+  await go.click();
+  await expect(
+    page.getByText('Plaid stopped with an error. Try again in a few minutes.'),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/connect\/plaid$/);
+  await expect(go).toBeEnabled();
+  // Out with a full page load: Plaid's script stays behind.
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
+  expect(await plaidLoaded()).toBe(false);
+
+  link.outcome = 'success';
+  await connect();
+  await page.getByRole('button', { name: 'Continue to Plaid' }).click();
+  await expect(page).toHaveURL(/\/connect\/plaid\/[0-9a-f-]{36}$/);
+  const choose = page.getByRole('heading', {
+    level: 1,
+    name: 'Harbor Credit Union: choose what to track',
+  });
+  await expect(choose).toBeFocused();
+  const setupUrl = page.url();
+  expect(link.loads).toBe(2);
+  // A reload during setup asks the api for the offer again.
+  await page.reload();
+  await expect(choose).toBeVisible();
+  await expect(page.getByText('Harbor CU Checking')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+
+  // Link the checking account to the one already here, create the savings, skip the rest.
+  const becomes = (name: RegExp) => page.getByRole('button', { name });
+  await becomes(/What Harbor CU Checking ending in 4410 becomes/).click();
+  await page.getByRole('option', { name: 'Link to Everyday checking' }).click();
+  await expect(page.getByText('Keeps its history; sync fills in after it.')).toBeVisible();
+  await expect(becomes(/What Harbor CU Savings ending in 8812 becomes/)).toContainText(
+    'New account',
+  );
+  for (const name of [/What Harbor CU Visa/, /What Old savings/]) {
+    await becomes(name).click();
+    // Its own menu: the last one may still be closing.
+    await page.getByRole('listbox', { name }).getByRole('option', { name: 'Don’t track' }).click();
+  }
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Track 2 accounts' }).click();
+
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Harbor Credit Union is connected' }),
+  ).toBeFocused();
+  const tracked = page.getByRole('list', { name: 'Tracked accounts' }).getByRole('listitem');
+  await expect(tracked).toHaveCount(2);
+  await expect(tracked.filter({ hasText: 'Everyday checking' })).toContainText('Linked');
+  await expect(tracked.filter({ hasText: 'Harbor CU Savings' })).toContainText('New');
+  expect(await axeViolations(page)).toEqual([]);
+
+  // Out with a full page load: Plaid's script stays behind.
+  await page.getByRole('link', { name: 'Go to accounts' }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(page.getByRole('link', { name: /Harbor CU Savings/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Everyday checking/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Harbor CU Visa/ })).toHaveCount(0);
+  expect(await plaidLoaded()).toBe(false);
+
+  // The same accounts at the same bank again: Fiscus says so before Plaid is asked for them.
+  await connect();
+  await page.getByRole('button', { name: 'Continue to Plaid' }).click();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'You’ve connected Harbor Credit Union already' }),
+  ).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Connect it anyway' })).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  // "Go to accounts" when it syncs, else "Cancel" beside the fix (a failing sync, here: the
+  // stack's fake Plaid isn't a provider the worker has).
+  await page.getByRole('link', { name: /^(Go to accounts|Cancel)$/ }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
+  // The setup is over: its page says so, and sends you back.
+  await page.goto(setupUrl);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'This bank is already connected' }),
+  ).toBeVisible();
 });
 
 // Last, since it rewrites the household's history in the database. It needs the docker CLI, for

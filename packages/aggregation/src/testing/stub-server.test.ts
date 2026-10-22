@@ -58,4 +58,16 @@ describe('startStubServer', () => {
     });
     expect((await fetch(`${server.url}/boom`)).status).toBe(500);
   });
+
+  it('listens where it’s told, as the e2e stack’s plaid-stub service does', async () => {
+    const free = await startStubServer();
+    const port = Number(new URL(free.url).port);
+    await free.close();
+    server = await startStubServer(
+      { 'GET /up': () => ({ body: 'up' }) },
+      { host: '0.0.0.0', port },
+    );
+    expect(server.url).toBe(`http://127.0.0.1:${port}`);
+    expect(await (await fetch(`${server.url}/up`)).text()).toBe('up');
+  });
 });

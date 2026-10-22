@@ -123,7 +123,7 @@ No Node 26 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
 - Structure follows [information architecture](docs/design/information-architecture.md). Sections are defined once in `apps/web/src/lib/nav.ts`; the sidebar, phone tabs, command palette, and `g <key>` shortcuts all read from it.
 - **Components** come from `apps/web/src/components/ui.tsx` (React Aria Components styled with our tokens; see [style guide §11](docs/design/style-guide.md#11-components)). Don't hand-roll buttons, dialogs, menus, or inputs, and don't format money or dates by hand.
 - Unit tests: `pnpm --filter @fiscus/web test` (Vitest + happy-dom).
-- End-to-end: start the compose stack, then `E2E_SETUP_TOKEN=<token from api logs> pnpm --filter @fiscus/web e2e` (first run: `pnpm --filter @fiscus/web exec playwright install chromium`). The journey needs a **fresh** instance (it performs first-run setup). CI runs it on every PR.
+- End-to-end: start the compose stack with the fake Plaid layered on (`docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.plaid-stub.yml up -d --build --wait`), then `E2E_SETUP_TOKEN=<token from api logs> pnpm --filter @fiscus/web e2e` (first run: `pnpm --filter @fiscus/web exec playwright install chromium`). The journey needs a **fresh** instance (it performs first-run setup), and connects a bank through the fake Plaid with Link stubbed in the browser, so no Plaid account or secret is needed. CI runs it on every PR.
 - Accessibility: `e2e/a11y.spec.ts` runs axe (WCAG 2.2 A/AA) on `/styleguide` in both themes, with overlays open too. Any violation fails CI, so a new component belongs on `/styleguide`.
 
 ### Household data access

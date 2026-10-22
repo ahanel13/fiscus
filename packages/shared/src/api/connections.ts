@@ -29,14 +29,72 @@ export interface Connection {
 
 // Connecting a bank through Plaid Link (#79, the walkthrough §2–§3, D2, D4–D6).
 
+/**
+ * `GET /households/:id/plaid`: whether the household can connect a bank through Plaid, so "Connect
+ * a bank" shows only when it can. The environment lets the connect page say "sandbox" (D17).
+ */
+export type PlaidAvailability =
+  | { available: true; env: 'sandbox' | 'production' }
+  | { available: false; reason: 'not_configured' | 'household_keys_unavailable' };
+
 /** `POST /households/:id/plaid/link-token`: what the browser opens Plaid Link with. */
 export interface PlaidLinkToken {
   linkToken: string;
   expiration: string;
 }
 
+const linkSessionId = z.string().trim().min(1).max(200);
+const plaidInstitutionId = z.string().trim().min(1).max(100);
+const plaidCode = z.string().trim().min(1).max(100);
+
+/**
+ * What Link's metadata says, passed on as is. It's the browser's word: kept for support (Plaid
+ * asks for the `link_session_id`) and used to spot a bank that's already connected, but the
+ * accounts and the institution Fiscus stores always come from Plaid's api.
+ */
+export const plaidLinkMetadataSchema = z.object({
+  sessionId: linkSessionId,
+  institutionId: plaidInstitutionId.nullish(),
+  accounts: z
+    .array(z.object({ mask: z.string().max(20).nullish(), subtype: z.string().max(60).nullish() }))
+    .max(100)
+    .default([]),
+});
+
 /** `POST /households/:id/plaid/exchange`: the `public_token` Link handed the browser. */
-export const plaidExchangeSchema = z.object({ publicToken: z.string().trim().min(1).max(500) });
+export const plaidExchangeSchema = z.object({
+  publicToken: z.string().trim().min(1).max(500),
+  link: plaidLinkMetadataSchema.optional(),
+  /** Connect it even though you've connected this bank already: a separate login there. */
+  duplicateOk: z.boolean().optional(),
+});
+
+/**
+ * `POST /households/:id/plaid/link-exit`: Link closed without connecting. Recorded, only for you,
+ * so a failed connection can be traced with Plaid's support. Plaid's codes, never its messages.
+ */
+export const plaidLinkExitSchema = z
+  .object({
+    sessionId: linkSessionId,
+    /** Link's `status`: the step it stopped at. */
+    status: plaidCode.nullish(),
+    institutionId: plaidInstitutionId.nullish(),
+    errorType: plaidCode.nullish(),
+    errorCode: plaidCode.nullish(),
+    requestId: plaidCode.nullish(),
+  })
+  .strict();
+export type PlaidLinkExit = z.infer<typeof plaidLinkExitSchema>;
+
+/**
+ * The 409 `bank_already_connected` problem's extensions: one of your connections already reaches
+ * these accounts at this bank. Sign in again there, or finish its setup, rather than paying Plaid
+ * for the same accounts twice.
+ */
+export interface BankAlreadyConnected {
+  connectionId: string;
+  status: ConnectionStatus;
+}
 
 /** What each account the bank offers is suggested to become (the walkthrough §3). */
 export type ConnectSuggestion =

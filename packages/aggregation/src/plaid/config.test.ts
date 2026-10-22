@@ -85,9 +85,17 @@ describe('the Plaid keys in the env (#82)', () => {
       /PLAID_REDIRECT_URI: must be an https URL/,
     );
     const config = instancePlaidConfig(
-      load({ ...KEYS, PLAID_REDIRECT_URI: 'https://fiscus.example/plaid/oauth' }),
+      load({ ...KEYS, PLAID_REDIRECT_URI: 'https://fiscus.example/connect/plaid/oauth' }),
     );
-    expect(config?.redirectUri).toBe('https://fiscus.example/plaid/oauth');
+    expect(config?.redirectUri).toBe('https://fiscus.example/connect/plaid/oauth');
+    // The web app's one return page, exactly: Plaid matches it exactly too.
+    for (const other of [
+      'https://fiscus.example/plaid/oauth',
+      'https://fiscus.example/connect/plaid/oauth?x=1',
+      'https://fiscus.example/connect/plaid/oauth#x',
+    ]) {
+      expect(() => load({ ...KEYS, PLAID_REDIRECT_URI: other })).toThrow(/connect\/plaid\/oauth/);
+    }
   });
 
   describe('the test-only base URL', () => {
