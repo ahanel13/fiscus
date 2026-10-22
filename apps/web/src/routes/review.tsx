@@ -99,15 +99,27 @@ export function ReviewPage() {
       await invalidate();
     },
   });
+  // The checked ones at once: marked reviewed (which takes them out of the queue), or given a
+  // category (they stay checked, so they can be marked reviewed next).
   const bulk = useMutation({
-    mutationFn: (ids: string[]) =>
+    mutationFn: (changes: { reviewStatus: 'reviewed' } | { categoryId: string }) =>
       api<Data<BulkUpdateResult>>('PATCH', `/api/v1/households/${householdId}/transactions`, {
-        body: { ids, changes: { reviewStatus: 'reviewed' } },
+        body: { ids: checked.map((t) => t.id), changes },
       }),
-    onSuccess: async (r) => {
-      setSelected(new Set());
+    onSuccess: async (r, changes) => {
+      const n = r.data.updated.length;
+      const refused = r.data.refused.length;
+      if ('reviewStatus' in changes) {
+        setSelected(new Set());
+        toast(`${n} marked reviewed.`);
+      } else {
+        const message = `Category set to ${names.get(changes.categoryId)} on ${n} ${n === 1 ? 'transaction' : 'transactions'}.`;
+        toast(refused ? `${message} ${refused} couldn’t be changed.` : message, {
+          ...(refused ? { tone: 'error' as const } : {}),
+        });
+        setAnnounce(message);
+      }
       await invalidate();
-      toast(`${r.data.updated.length} marked reviewed.`);
     },
     onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
   });
@@ -171,6 +183,12 @@ export function ReviewPage() {
   }, []);
 
   const allSelected = items.length > 0 && items.every((t) => selected.has(t.id));
+  // Only the checked ones still in the queue (categorizing can mark them reviewed).
+  const checked = items.filter((t) => selected.has(t.id));
+  // The checked ones' category when they share one, else none shown.
+  const checkedCategories = new Set(checked.map((t) => t.categoryId ?? null));
+  const mixedCategories = checkedCategories.size > 1;
+  const sameCategory = mixedCategories ? null : ([...checkedCategories][0] ?? null);
   const body = query.isPending ? (
     <LoadingRegion label="Loading the review queue">
       <div className="space-y-2">
@@ -199,22 +217,11 @@ export function ReviewPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Checkbox
             isSelected={allSelected}
-            isIndeterminate={selected.size > 0 && !allSelected}
+            isIndeterminate={checked.length > 0 && !allSelected}
             onChange={(on) => setSelected(on ? new Set(items.map((t) => t.id)) : new Set())}
           >
             Select all shown
           </Checkbox>
-          {selected.size ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="ml-auto"
-              onPress={() => bulk.mutate([...selected])}
-              isPending={bulk.isPending}
-            >
-              Mark {selected.size} reviewed
-            </Button>
-          ) : null}
         </div>
         <ul className="divide-y divide-border rounded-xl border border-border bg-surface">
           {items.map((t, i) => (
@@ -241,7 +248,8 @@ export function ReviewPage() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{t.displayName}</span>
                   <span className="block truncate text-xs text-muted">
-                    <DateText value={t.date} /> ·{' '}
+                    <DateText value={t.date} />
+                    {t.account ? ` · ${t.account.name}` : null} ·{' '}
                     {t.transfer
                       ? transferLabel(t, members)
                       : t.categoryId
@@ -272,34 +280,57 @@ export function ReviewPage() {
         >
           <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
             <div ref={categoryRef} className="min-w-48 flex-1">
-              <CategorySelect
-                groups={groups}
-                value={current.categoryId}
-                onChange={(categoryId) =>
-                  categoryId !== current.categoryId &&
-                  patch.mutate(
-                    { t: current, body: { categoryId } },
-                    { onSuccess: () => setAnnounce(`Category set to ${names.get(categoryId)}.`) },
-                  )
-                }
-                isDisabled={Boolean(current.transfer) || current.hasSplits}
-              />
+              {checked.length ? (
+                // With some checked, the category is theirs, all at once.
+                <CategorySelect
+                  groups={groups}
+                  label={`Category for ${checked.length} checked`}
+                  value={sameCategory}
+                  {...(mixedCategories ? { placeholder: 'Different categories' } : {})}
+                  onChange={(categoryId) => bulk.mutate({ categoryId })}
+                  isDisabled={bulk.isPending}
+                />
+              ) : (
+                <CategorySelect
+                  groups={groups}
+                  value={current.categoryId}
+                  onChange={(categoryId) =>
+                    categoryId !== current.categoryId &&
+                    patch.mutate(
+                      { t: current, body: { categoryId } },
+                      { onSuccess: () => setAnnounce(`Category set to ${names.get(categoryId)}.`) },
+                    )
+                  }
+                  isDisabled={Boolean(current.transfer) || current.hasSplits}
+                />
+              )}
             </div>
-            {current.can.edit ? (
+            {checked.length ? (
               <Button
-                variant="secondary"
-                onPress={() => toggleExcluded(current)}
-                isPending={patch.isPending && patch.variables?.body.excluded !== undefined}
+                onPress={() => bulk.mutate({ reviewStatus: 'reviewed' })}
+                isPending={bulk.isPending && 'reviewStatus' in (bulk.variables ?? {})}
               >
-                {current.excluded ? 'Count it again' : 'Exclude'}
+                Mark {checked.length} reviewed
               </Button>
-            ) : null}
-            <Button
-              onPress={() => markReviewed(current)}
-              isPending={patch.isPending && patch.variables?.body.reviewStatus !== undefined}
-            >
-              Mark reviewed
-            </Button>
+            ) : (
+              <>
+                {current.can.edit ? (
+                  <Button
+                    variant="secondary"
+                    onPress={() => toggleExcluded(current)}
+                    isPending={patch.isPending && patch.variables?.body.excluded !== undefined}
+                  >
+                    {current.excluded ? 'Count it again' : 'Exclude'}
+                  </Button>
+                ) : null}
+                <Button
+                  onPress={() => markReviewed(current)}
+                  isPending={patch.isPending && patch.variables?.body.reviewStatus !== undefined}
+                >
+                  Mark reviewed
+                </Button>
+              </>
+            )}
           </div>
           {suggestion ? (
             <RuleSuggestion

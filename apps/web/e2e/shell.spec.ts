@@ -663,6 +663,18 @@ test('links a transfer between accounts, and works through the review queue by k
   await expect(page.getByText('1 to review, oldest first.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Reviewing Coffee' })).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
+  // Each row says which account it's in.
+  const queue = page.getByRole('region', { name: 'To review' });
+  await expect(queue.getByRole('listitem')).toHaveText(/Coffee.* · .+ · /);
+  // With some checked, the category picker and Mark reviewed are theirs, all at once.
+  const coffeeBox = queue.getByRole('checkbox', { name: 'Select Coffee' });
+  await coffeeBox.check({ force: true });
+  await expect(page.getByRole('button', { name: /Category for 1 checked/ })).toContainText(
+    'Coffee',
+  );
+  await expect(page.getByRole('button', { name: 'Mark 1 reviewed' })).toBeVisible();
+  await coffeeBox.uncheck({ force: true });
+  await expect(page.getByRole('button', { name: 'Mark reviewed' })).toBeVisible();
   // c opens the category list, ready to search: typing narrows it, Enter picks the first. That
   // closes it, and the keys work again.
   await page.keyboard.press('c');
@@ -1115,11 +1127,27 @@ test('your browser notices when the history was rewritten, even consistently (#2
   await page.getByLabel('Your name here').fill('Ada Lovelace');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Ada Lovelace (you)')).toBeVisible();
+  // The bank connected earlier syncs in the background, and its syncs are history too: wait
+  // until the head stays put, so the one this browser verifies is the one rewritten below.
+  const headNow = async () =>
+    (
+      (await (await page.request.get(`${activity}/proof`)).json()) as {
+        data: { head: { seq: number; hash: string } };
+      }
+    ).data.head;
+  let head = await headNow();
+  await expect
+    .poll(
+      async () => {
+        const before = head.seq;
+        await page.waitForTimeout(2000);
+        head = await headNow();
+        return head.seq === before;
+      },
+      { timeout: 60_000, intervals: [0] },
+    )
+    .toBe(true);
   await page.goto(`${householdUrl}/settings`);
-  const proof = (await (await page.request.get(`${activity}/proof`)).json()) as {
-    data: { head: { seq: number; hash: string } };
-  };
-  const head = proof.data.head;
   const print = `${head.hash.slice(0, 4)} ${head.hash.slice(4, 8)}`;
   await expect(check).toContainText('Verified on');
   await expect(check).toContainText(`at entry ${head.seq}, fingerprint ${print}`);
