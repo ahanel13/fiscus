@@ -7,6 +7,7 @@ import type {
   BankConnectionsOverview,
   CashFlow,
   CategoryGroup,
+  Connection,
   ConnectionSetup,
   Household,
   HouseholdMember,
@@ -89,6 +90,25 @@ export const plaidAvailabilityQuery = (id: string) =>
     queryKey: ['households', id, 'plaid'],
     queryFn: async () => (await api<Data<PlaidAvailability>>('GET', `${hh(id)}/plaid`)).data,
     staleTime: 60_000,
+  });
+
+/**
+ * The bank connections behind the accounts you see, and your own (ACC-02, #81). While one is due
+ * (just refreshed or signed in again), asked again every few seconds, so its sync shows up.
+ */
+export const connectionsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'connections'],
+    queryFn: async () => (await api<Data<Connection[]>>('GET', `${hh(id)}/connections`)).data,
+    refetchInterval: (q) =>
+      q.state.data?.some(
+        (c) =>
+          (c.status === 'ok' || c.status === 'error') &&
+          c.nextSyncAt &&
+          Date.parse(c.nextSyncAt) <= Date.now(),
+      )
+        ? 5_000
+        : 60_000,
   });
 
 /** A connection being set up: what the bank offers, again, after a reload (#79, D4). */

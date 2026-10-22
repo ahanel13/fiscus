@@ -104,7 +104,13 @@ Sync (worker, #80, #88):
 - [ ] Errors by `error_type` and `error_code`; capped backoff with jitter for INSTITUTION_DOWN,
       PRODUCT_NOT_READY, RATE_LIMIT_EXCEEDED; ITEM_LOGIN_REQUIRED asks the owner to sign in again
       (ITEM-002, ITEM-004, ITEM-013, #81)
-- [ ] Disconnect calls `/item/remove` (ITEM-005)
+- [x] Disconnect calls `/item/remove` (ITEM-005), and so does a setup left unfinished for a day
+      (#81), so an Item nobody uses isn't billed
+- [x] ITEM_LOGIN_REQUIRED: the owner gets "Sign in again" on Accounts, which opens Link's update
+      mode and keeps the same Item (ITEM-003, #81); everyone else who sees its accounts is told
+- [x] "Refresh now" re-reads what Plaid has, at most every 15 minutes; `/transactions/refresh`
+      (billed per call; the team has it in production) stays off until an admin switch exists
+      (TXN-010, GUIDE-016)
 - [ ] Plaid's `request_id` kept with failures, never a token (DATA-006)
 
 Webhooks (#84, #85), only for instances Plaid can reach:

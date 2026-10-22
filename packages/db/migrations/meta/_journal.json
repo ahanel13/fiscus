@@ -330,6 +330,20 @@
       "when": 1792680050738,
       "tag": "0046_pending_posted",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792711305877,
+      "tag": "0047_connection_refresh",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792711306810,
+      "tag": "0048_abandoned_setups",
+      "breakpoints": true
     }
   ]
 }

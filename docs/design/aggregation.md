@@ -184,6 +184,12 @@ The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives 
   `fiscus_steward` that works only for a session logged in as `fiscus_worker`, only on a leased
   connection, and changes only the timing and status columns. It's bookkeeping rather than a change
   anyone made, so it records no activity.
+- **Abandoned setups.** About once an hour a pass calls `fiscus_abandon_setups(24 hours)`, a
+  definer like the claim (worker only): a connection still in `setup` a day after it was made
+  (its owner never chose its accounts) is disconnected with `disconnect_requested`, so the same
+  pass's `remove` job ends it at the provider and nobody pays for it. It has no accounts yet.
+- **Refresh now and signing in again** come from the api (§7) and only set `next_sync_at` to now:
+  the next pass syncs them like any due connection.
 - **Shutdown.** The runner stops claiming, gives running jobs 30 seconds to finish, then releases
   the leases of any still running, so another worker takes them right away.
 - **Readiness.** `/readyz` on the worker's health port fails when no pass has finished in the last
@@ -349,3 +355,31 @@ other page refuses them, and the connect pages are entered and left with full pa
 `plaid_keys_refused` or `provider_unavailable`, each with Plaid's code as `providerCode` and
 never Plaid's message. `no-financial-data-in-logs.test.ts` runs the flow with the fake Plaid
 server, including a failure whose message names an account and its balance.
+
+## 7. A connection day to day
+
+The api's side of the walkthrough's §5–§6 (#81, `apps/api/src/connections/connections.*`), and
+the line per connection at the top of Accounts (`apps/web/src/components/BankConnections.tsx`).
+
+- **What everyone sees.** `GET …/connections` lists, for anyone who sees one of its accounts (and
+  its owner), each connection's status, owner, `lastSyncedAt`, `nextSyncAt`, the ids of the
+  accounts it syncs that the caller sees, `failingSince` (the start of a run of failures, while
+  `error` or `login_required`), `notWorking` (failing 3 days or more), and `refreshAvailableAt`.
+  Accounts shows each with how fresh it is ("Synced 2 hours ago · next in 2 hours"); a broken one
+  is highlighted, says what's wrong and whose it is to fix (D11), and names the accounts it leaves
+  stale, with the date their balances are from (D12).
+- **Refresh now** (D10). `POST …/connections/:id/refresh`, its owner only (ACC-03): `next_sync_at`
+  becomes now and `refresh_requested_at` is stamped. Another within the provider's limit
+  (`REFRESH_LIMIT_MS`: Plaid 15 minutes, SimpleFIN 6 hours) is 429 `refresh_too_soon`, with
+  `retry-after` and `availableAt`, and the button says when it works again. Not while
+  `login_required` (409: signing in again is the fix) or in `setup`. It re-reads what the provider
+  has; Plaid's `/transactions/refresh` (making Plaid check the bank now, billed per call) isn't
+  called yet: that's behind the admin switch #81 describes, still to come.
+- **Signing in again** (D11). For `login_required`, its owner's "Sign in again" opens the connect
+  page in Link's update mode (`?connection=`, §6); when Link succeeds, the page calls `POST
+  …/connections/:id/reauthed`, which sets it `ok`, clears its failures, and makes it due now. The
+  sync that follows is what shows it's fixed: if the bank still refuses, the worker puts it back.
+  Recorded as `connection.signed_in_again`, seen by whoever sees its accounts.
+- **Not working.** After 3 days of failures, the line says so, and its owner gets "Disconnect"
+  beside "Refresh now".
+

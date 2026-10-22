@@ -45,6 +45,7 @@ import {
   plaidAvailabilityQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
+import { BankConnections } from '../components/BankConnections.js';
 import { CardDetails } from '../components/CardDetails.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -207,6 +208,11 @@ export function AccountsPage() {
       />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
         <MakeJointOffer householdId={householdId} />
+        <BankConnections
+          householdId={householdId}
+          accounts={accounts.data ?? []}
+          members={members}
+        />
         {accounts.isPending ? (
           <LoadingRegion label="Loading accounts">
             <div className="space-y-3">

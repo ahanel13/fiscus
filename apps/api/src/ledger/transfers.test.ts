@@ -6,7 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TestClient } from '../testing/test-app.js';
 
 /** Transfers between accounts (#40, imports.md §5) and the review queue (#44). */
-describe('transfers and the review queue', () => {
+// Each test makes many requests against Postgres: CI's runners need more than the default 5 s.
+describe('transfers and the review queue', { timeout: 20_000 }, () => {
   let tdb: TestDatabase;
   let app: NestFastifyApplication;
   let A: TestClient;

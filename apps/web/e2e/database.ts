@@ -105,3 +105,17 @@ export function rewriteHistory(householdId: string): { seq: number; hash: string
   );
   return JSON.parse(out.trim().split('\n').at(-1)!) as { seq: number; hash: string };
 }
+
+/**
+ * Breaks a household's working connections as a bank would: their login needs signing in again
+ * (Plaid's ITEM_LOGIN_REQUIRED), as the worker records it.
+ */
+export function breakConnections(householdId: string): void {
+  if (!/^[0-9a-f-]{36}$/.test(householdId)) throw new Error('Not a household id');
+  compose(
+    ['exec', '-T', 'db', 'psql', '-U', 'fiscus_owner', '-d', 'fiscus', '-v', 'ON_ERROR_STOP=1'],
+    `UPDATE connections SET status = 'login_required', last_error_code = 'ITEM_LOGIN_REQUIRED',
+       first_failed_at = now(), next_sync_at = NULL
+     WHERE household_id = '${householdId}' AND status = 'ok';`,
+  );
+}

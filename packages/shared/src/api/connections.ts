@@ -23,8 +23,35 @@ export interface Connection {
   owner: { memberId: string; name: string };
   /** The accounts it syncs that you can see. */
   accountCount: number;
+  /** Their ids, so the accounts it leaves stale can say so (D12). */
+  accountIds: string[];
   lastSyncedAt: string | null;
   nextSyncAt: string | null;
+  /** When the current run of failures began (`error` or `login_required`); null while it works. */
+  failingSince: string | null;
+  /** Failing for {@link NOT_WORKING_AFTER_MS} or more: it says so, and offers to disconnect. */
+  notWorking: boolean;
+  /**
+   * When its owner may next press "Refresh now" (D10): null = now. Set by the provider's limit
+   * ({@link REFRESH_LIMIT_MS}) from the last time it was asked for.
+   */
+  refreshAvailableAt: string | null;
+}
+
+/** "Refresh now" at most this often, per connection (D10). */
+export const REFRESH_LIMIT_MS: Record<ConnectionProvider, number> = {
+  // Plaid itself checks banks 1–4 times a day; more often would only re-read what it has.
+  plaid: 15 * 60_000,
+  // The Bridge refreshes daily and allows about 24 requests a day.
+  simplefin: 6 * 60 * 60_000,
+};
+
+/** A connection failing this long is "not working" (walkthrough §6). */
+export const NOT_WORKING_AFTER_MS = 3 * 24 * 60 * 60_000;
+
+/** The 429 `refresh_too_soon` problem's extension: when "Refresh now" works again. */
+export interface RefreshTooSoon {
+  availableAt: string;
 }
 
 // Connecting a bank through Plaid Link (#79, the walkthrough §2–§3, D2, D4–D6).

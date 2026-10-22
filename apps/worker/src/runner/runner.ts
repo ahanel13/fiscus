@@ -5,7 +5,14 @@ import type { Database } from '@fiscus/db';
 import { describeError } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
 import { failureOf, FAILURE, JobFailure, jobKindFor, type JobHandlers } from './jobs.js';
-import { claimDue, finishJob, readTarget, syncIntervalHours, type Claimed } from './queue.js';
+import {
+  abandonSetups,
+  claimDue,
+  finishJob,
+  readTarget,
+  syncIntervalHours,
+  type Claimed,
+} from './queue.js';
 import { backoffDelayMs, nextSyncDelayMs } from './schedule.js';
 
 export interface RunnerOptions {
@@ -19,6 +26,10 @@ export interface RunnerOptions {
   jobTimeoutMs: number;
   /** On shutdown, how long running jobs get to finish before their leases are released. */
   shutdownTimeoutMs: number;
+  /** A connection still in `setup` this long was abandoned: it's ended at the provider (#81). */
+  abandonSetupsAfterMs: number;
+  /** How often a pass looks for abandoned setups. */
+  abandonCheckEveryMs: number;
   /** Overrides `sync.intervalHours` (SYNC_INTERVAL_HOURS). */
   intervalHours?: number;
   random?: () => number;
@@ -34,6 +45,8 @@ export const DEFAULT_RUNNER_OPTIONS: RunnerOptions = {
   leaseMs: 15 * 60_000,
   jobTimeoutMs: 10 * 60_000,
   shutdownTimeoutMs: 30_000,
+  abandonSetupsAfterMs: 24 * 60 * 60_000,
+  abandonCheckEveryMs: 60 * 60_000,
 };
 
 export interface RunnerDeps {
@@ -81,6 +94,7 @@ export class Runner {
   readonly #abort = new AbortController();
   #loop: Promise<void> | undefined;
   #lastPassAt: Date | null = null;
+  #lastAbandonCheckAt: Date | null = null;
 
   constructor(deps: RunnerDeps, options: Partial<RunnerOptions> = {}) {
     this.#deps = deps;
@@ -129,6 +143,7 @@ export class Runner {
    */
   async pass(): Promise<void> {
     if (this.stopping) return;
+    await this.#abandonSetups();
     const free = this.#options.concurrency - this.#running.size;
     if (free > 0) {
       const intervalHours = this.#options.intervalHours ?? (await syncIntervalHours(this.#deps.db));
@@ -139,6 +154,23 @@ export class Runner {
       }
     }
     this.#lastPassAt = this.#now;
+  }
+
+  /**
+   * Now and then, setups nobody finished become disconnects, which the next passes end at the
+   * provider (so they aren't paid for). A failure here doesn't stop syncing.
+   */
+  async #abandonSetups(): Promise<void> {
+    const now = this.#now;
+    const last = this.#lastAbandonCheckAt;
+    if (last && now.getTime() - last.getTime() < this.#options.abandonCheckEveryMs) return;
+    this.#lastAbandonCheckAt = now;
+    try {
+      const n = await abandonSetups(this.#deps.db, this.#options.abandonSetupsAfterMs);
+      if (n) this.#logger.log(`Ended ${n} abandoned setup${n === 1 ? '' : 's'}`);
+    } catch (error) {
+      this.#logger.error(`Ending abandoned setups failed: ${describeError(error)}`);
+    }
   }
 
   /** Resolves once every job started so far has finished. */

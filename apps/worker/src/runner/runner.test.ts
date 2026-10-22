@@ -336,6 +336,51 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
     });
   });
 
+  describe('abandoned setups', () => {
+    const age = (id: string, hours: number) =>
+      h.owner.query(
+        `UPDATE connections SET created_at = now() - make_interval(hours => $2) WHERE id = $1`,
+        [id, hours],
+      );
+
+    it('ends a setup nobody finished in 24 hours at the provider, and leaves newer ones', async () => {
+      const old = await h.connection({ status: 'setup', next: null });
+      const fresh = await h.connection({ status: 'setup', next: null });
+      await age(old, 25);
+      await age(fresh, 23);
+      // The same pass that finds it ends it at the provider, as any disconnect.
+      await passOnce(runner());
+      expect(await h.row(old)).toMatchObject({
+        status: 'disconnected',
+        disconnectRequested: false,
+        hasSecret: false,
+      });
+      expect(await h.row(fresh)).toMatchObject({ status: 'setup', disconnectRequested: false });
+      expect(plaid.removed).toEqual(['fake-secret']);
+      expect(plaid.synced).toEqual([]);
+    });
+
+    it('looks once an hour, and only for the worker', async () => {
+      let now = new Date('2026-10-22T12:00:00Z');
+      const r = runner({ now: () => now });
+      await passOnce(r);
+      const late = await h.connection({ status: 'setup', next: null });
+      await age(late, 30);
+      await passOnce(r);
+      expect(await h.row(late)).toMatchObject({ status: 'setup' });
+      now = new Date('2026-10-22T13:00:00Z');
+      await passOnce(r);
+      expect(await h.row(late)).toMatchObject({ status: 'disconnected' });
+
+      // Anyone but the worker changes nothing.
+      const other = await h.connection({ status: 'setup', next: null });
+      await age(other, 30);
+      const { rows } = await h.owner.query(`SELECT fiscus_abandon_setups(interval '1 hour') AS n`);
+      expect(rows[0].n).toBe(0);
+      expect(await h.row(other)).toMatchObject({ status: 'setup' });
+    });
+  });
+
   describe('the loop', () => {
     it('passes every pollMs on its clock, and readiness reports it', async () => {
       const clock = new FakeClock('2026-10-21T12:00:00Z');

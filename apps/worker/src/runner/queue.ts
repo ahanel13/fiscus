@@ -31,6 +31,17 @@ export async function claimDue(db: Database, limit: number, leaseMs: number): Pr
   return rows.map((r) => ({ connectionId: r.connection_id, householdId: r.household_id }));
 }
 
+/**
+ * Connections left in `setup` for `ageMs` become disconnected, to be ended at the provider like
+ * any disconnect (migration abandoned_setups). Returns how many.
+ */
+export async function abandonSetups(db: Database, ageMs: number): Promise<number> {
+  const { rows } = await db.execute<{ n: number }>(
+    sql`SELECT fiscus_abandon_setups(${interval(ageMs)}::interval) AS n`,
+  );
+  return rows[0]?.n ?? 0;
+}
+
 /** The claimed connection, or null when it's gone. */
 export async function readTarget(db: Database, claimed: Claimed): Promise<JobTarget | null> {
   const [row] = await withContext(db, systemContext(claimed.householdId), (tx) =>
