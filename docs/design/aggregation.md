@@ -146,14 +146,19 @@ recorded as activity by the system with the connection owner's member id.
 - **Before anything:** a connection whose owner has left the household fails as `owner_left`
   (status `error`); only a household owner can disconnect it (D11, ACC-03).
 - **Pages.** `provider.sync(secret, { cursor, since })` from the stored `sync_cursor`, where
-  `since` is the earliest `sync_from` of the connection's tracked accounts. Each page is applied
-  in its own short transaction that also stores the page's `nextCursor` and `historical_complete`,
-  so the cursor moves only past pages that committed, and a failure keeps the pages before it.
-  The transaction locks the connection and checks its cursor is still the one this run last
-  stored: if another run moved it (a lease that ran out), the job fails as `sync_conflict`; if the
-  connection was disconnected meanwhile, the sync stops there. On `mutation_during_pagination` the
-  run starts again from the cursor it began with, up to 3 times; applying a page again changes
-  nothing.
+  `since` is the earliest `sync_from` of the connection's tracked accounts. Every page is fetched
+  first, following `nextCursor` while `hasMore`, and held in memory; nothing is written meanwhile.
+  Then the pages are merged (each transaction's latest add, change or removal wins) and applied in
+  **one** transaction that also stores the last page's `nextCursor` and `historical_complete`. A
+  cursor stored part way through would make the next run skip what the remaining pages said, and
+  a pending transaction's removal and its posted version can come on different pages; merged,
+  they are reconciled together. A failure anywhere writes nothing, and the next run asks again
+  from the same cursor. The transaction locks the connection and checks its cursor is still the
+  one this run began with: if another run moved it (a lease that ran out), the job fails as
+  `sync_conflict`; if the connection was disconnected meanwhile, nothing is written. On
+  `mutation_during_pagination` the pages fetched so far are dropped and the run asks again from
+  the cursor it began with, up to 3 times. After a re-auth the first sync can be large; it is
+  still one transaction. A `window` provider (SimpleFIN) sends a single page.
 - **Which accounts.** A transaction's `providerAccountId` maps to the account with that
   `provider_account_id` on this connection; anything else is ignored.
 - **New transactions** (upserted by `(account_id, provider_transaction_id)`) arrive as
@@ -172,17 +177,34 @@ recorded as activity by the system with the connection owner's member id.
   description and the foreign amount, and the name while it's still the one the bank's text gave.
   Never a field a person set (`field_versions`), the date override, or the category. A linked
   transfer whose amount changes is unlinked. A provider row a person deleted stays deleted.
+- **Pending → posted** (#88, #47, walkthrough D8; data model §5). A posted transaction naming the
+  pending one it replaces promotes that pending transaction in place: it takes the posted id, keeps
+  the pending id as `provider_pending_id`, and gets the bank's amount, dates and text, so every
+  edit, note, tag, attribution, transfer link and history entry stays with it. Its removal is not
+  a removal then. A pending transaction the bank removed in an earlier sync (`provider_removed_at`)
+  comes back as the posted one; one a person deleted takes the posted id and stays deleted, so the
+  posted version can't arrive on its own. A pending id that already posted is never added again.
+  When the posted transaction is already here on its own (`mergePosted()`), the pending one still
+  stays: the copy's edits fill in what it lacks, its tags, shared note and history move over, and
+  the copy is tombstoned without the bank's id. Without links (`capabilities.pendingLinks` false),
+  a pending transaction missing from a window is promoted to the only new posted one on the same
+  account with the same amount within 5 days that no other pending one could claim; otherwise it
+  is dropped as missing and the posted one stands alone. Rules don't run again on a promotion;
+  transfer detection does, since pending transactions are never linked. Each promotion records
+  `transaction.posted` with the amount and dates before and after.
 - **Removed**, and for a `window` page every provider row in its dates for the accounts it lists
   that it didn't return, is soft-deleted (a transfer it was in is unlinked). A transaction that was
-  yours before the bank's id attached to it lets go of the id and stays.
+  yours before the bank's id attached to it lets go of the id and stays. The bank's removals set
+  `provider_removed_at` with `deleted_at`.
 - **Balances** in the page go through `writeProviderBalances()`; card and loan details through
   `writeProviderLiabilities()` once the pages are done, when the provider has them. Touched
   accounts' computed balances are rebuilt.
-- **Activity.** `sync.transactions_added` per account per page (linked to each transaction, #46),
-  `sync.transactions_matched` per account per page for D7 matches, `transaction.provider_updated`
-  per changed row (its field changes encrypted), `transaction.provider_removed` per removal, and a
-  `sync.page_applied` per page with its counts (the cursor and balances, for the owner only). A
-  transaction's history shows these as the Bank.
+- **Activity.** `sync.transactions_added` per account per sync (linked to each transaction, #46),
+  `sync.transactions_matched` per account per sync for D7 matches, `transaction.provider_updated`
+  per changed row (its field changes encrypted), `transaction.posted` per pending transaction that
+  posted (its amount and dates before and after, encrypted), `transaction.provider_removed` per
+  removal, and one `sync.applied` per sync with its mode, page and restart counts and what it did,
+  as counts only (for the owner only). A transaction's history shows these as the Bank.
 - **Errors** map as in §4: `login_required` and `consent_expired` set `login_required`; anything
   else is `error` with backoff. The provider's code is stored; its message never is.
 

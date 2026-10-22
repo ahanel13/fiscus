@@ -163,7 +163,14 @@ export const transactions = pgTable(
     foreignCurrency: char({ length: 3 }),
     source: transactionSource().notNull(),
     providerTransactionId: text(),
+    /** On a posted transaction that was pending: the pending one's provider id (#88). */
     providerPendingId: text(),
+    /**
+     * When the bank removed it (sync), set with `deleted_at`: a tombstone the bank made, not a
+     * person. A removed pending transaction whose posted version arrives later comes back as it
+     * (#88); one a person deleted never does.
+     */
+    providerRemovedAt: timestamp({ withTimezone: true }),
     importBatchId: uuid(),
     /**
      * The account an import put it in. Moving it to another account (TXN-12) keeps this, so
@@ -219,6 +226,10 @@ export const transactions = pgTable(
     uniqueIndex('transactions_provider')
       .on(t.accountId, t.providerTransactionId)
       .where(sql`${t.providerTransactionId} IS NOT NULL`),
+    // A pending transaction that already posted, by its old id (#88).
+    index('transactions_provider_pending')
+      .on(t.accountId, t.providerPendingId)
+      .where(sql`${t.providerPendingId} IS NOT NULL`),
     index('transactions_import_dedupe')
       .on(t.importAccountId, t.dedupeKey)
       .where(sql`${t.importAccountId} IS NOT NULL`),

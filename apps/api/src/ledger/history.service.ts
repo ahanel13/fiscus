@@ -165,7 +165,11 @@ export class TransactionHistoryService {
     }
     if (event.action === 'import.rows_added') return { kind: 'import', label: 'Import' };
     // What sync wrote (#80), recorded as the system's for the connection's owner.
-    if (event.action.startsWith('sync.') || event.action.startsWith('transaction.provider_')) {
+    if (
+      event.action.startsWith('sync.') ||
+      event.action.startsWith('transaction.provider_') ||
+      event.action === 'transaction.posted'
+    ) {
       return { kind: 'bank', label: 'Bank' };
     }
     // Linked by transfer detection, not by a person choosing the pair.
@@ -192,8 +196,10 @@ export class TransactionHistoryService {
     switch (event.action) {
       case 'transaction.created':
         return Object.entries(after).map(([field, to]) => ({ field, to }));
+      // A posting (#88) shows what the bank changed as it posted, from what it was pending.
       case 'transaction.updated':
-      case 'transaction.provider_updated': {
+      case 'transaction.provider_updated':
+      case 'transaction.posted': {
         const fields = (event.metadata.fields as string[] | undefined) ?? Object.keys(after);
         return fields.map((field) =>
           field === 'tagIds'

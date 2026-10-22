@@ -1294,6 +1294,15 @@ export class TransactionsService {
       if (!this.#permissions(row, access).edit)
         throw forbidden('Only the account’s owners can split it.');
       if (row.parentId) throw new Problem(409, 'split_part', 'A part can’t be split again');
+      // Its amount can still change at the bank, and the parts must add up to it (#88).
+      if (row.pending) {
+        throw new Problem(
+          422,
+          'pending',
+          'Split it once it posts',
+          'A pending transaction’s amount can still change.',
+        );
+      }
       if (row.transferGroupId) {
         throw new Problem(409, 'transfer', 'Unlink the transfer before splitting it');
       }

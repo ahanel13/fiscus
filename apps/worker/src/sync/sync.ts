@@ -23,11 +23,20 @@ import {
 } from '@fiscus/ledger';
 import { and, eq, isNotNull, min } from 'drizzle-orm';
 import { FAILURE, JobFailure } from '../runner/jobs.js';
-import { advanceConnection, applyPage, type PageResult, type SyncTarget } from './ingest.js';
+import {
+  advanceConnection,
+  applyPage,
+  mergePages,
+  type PageResult,
+  type SyncTarget,
+} from './ingest.js';
 
-// A sync (#80): pages from the provider, each applied in its own short transaction with the
-// cursor it leads to, so the cursor only moves past what's committed and a failure part way
-// keeps what came before it. Everything runs in the connection's household's system context.
+// A sync (#80, #88): every page the provider has, fetched first and held in memory, then applied
+// together in one transaction that also stores the cursor they lead to. A cursor stored part way
+// through would skip what the rest of the pages say on the next run, and a pending transaction's
+// removal and its posted version can come on different pages: they're reconciled together. A
+// failure anywhere writes nothing, and the next run starts from the same cursor. Everything runs
+// in the connection's household's system context.
 
 /** Restarts after `mutation_during_pagination` before the sync fails with it. */
 export const MAX_RESTARTS = 3;
@@ -46,7 +55,7 @@ export interface SyncDeps {
   crypto: FieldCrypto;
 }
 
-/** Thrown inside a page's transaction when the connection was disconnected meanwhile. */
+/** Thrown inside the sync's transaction when the connection was disconnected meanwhile. */
 class SyncStopped extends Error {
   constructor() {
     super('Sync stopped: the connection was disconnected');
@@ -55,9 +64,10 @@ class SyncStopped extends Error {
 }
 
 export interface SyncSummary extends Omit<PageResult, 'balances'> {
+  /** The pages the provider sent, in the run that was applied. */
   pages: number;
   restarts: number;
-  /** Disconnected meanwhile: what came before is kept, and nothing more is asked for. */
+  /** Disconnected meanwhile: nothing from this run is written. */
   stopped: boolean;
 }
 
@@ -90,10 +100,12 @@ export async function readSyncState(
 }
 
 /**
- * Syncs a connection: pages through `provider.sync` from its stored cursor, applying each. On
- * `mutation_during_pagination` it starts over from the cursor this run began with, up to
- * MAX_RESTARTS times: what was applied already is applied again, which changes nothing. Then the
- * card and loan details, when the provider has them. Provider errors are thrown for the runner.
+ * Syncs a connection: pages through `provider.sync` from its stored cursor until the provider has
+ * no more, holding every page, then applies them as one in a single transaction that also stores
+ * the last page's cursor. On `mutation_during_pagination` it drops what it holds and starts over
+ * from the cursor it began with, up to MAX_RESTARTS times; nothing was written, so nothing is
+ * undone. A provider without a cursor (`window` mode) sends one page. Then the card and loan
+ * details, when the provider has them. Provider errors are thrown for the runner.
  */
 export async function syncConnection(
   deps: SyncDeps,
@@ -106,6 +118,7 @@ export async function syncConnection(
     added: 0,
     matched: 0,
     updated: 0,
+    posted: 0,
     removed: 0,
     skipped: 0,
     pages: 0,
@@ -118,72 +131,52 @@ export async function syncConnection(
       guardActivity(tx, target.householdId, actor, deps.crypto, fn),
     );
 
-  /** The cursor as committed: each page's transaction checks it's still the one it follows. */
-  let committed = state.cursor;
-  let cursor = state.cursor;
-  for (;;) {
-    let page: SyncPage;
-    try {
-      page = await provider.sync(secret, {
-        cursor,
-        ...(state.since !== null && { since: state.since }),
+  const pages = await fetchPages(provider, secret, state, summary);
+  const page = mergePages(pages);
+  summary.pages = pages.length;
+  try {
+    const result = await inHousehold(async (tx, activity) => {
+      const [now] = await tx
+        .select({ status: connections.status, cursor: connections.syncCursor })
+        .from(connections)
+        .where(eq(connections.id, target.connectionId))
+        .for('update');
+      if (!now || (now.status !== 'ok' && now.status !== 'error')) throw new SyncStopped();
+      // Another run moved it (a lease that ran out): this one stops rather than interleave.
+      if (now.cursor !== state.cursor) throw new JobFailure(FAILURE.syncConflict);
+      const applied = await applyPage(tx, activity, target, page, {
+        pendingLinks: provider.capabilities.pendingLinks,
+        crypto: deps.crypto,
       });
-    } catch (error) {
-      if (
-        isProviderError(error) &&
-        error.kind === 'mutation_during_pagination' &&
-        summary.restarts < MAX_RESTARTS
-      ) {
-        summary.restarts++;
-        cursor = state.cursor;
-        continue;
-      }
-      throw error;
-    }
-    try {
-      const result = await inHousehold(async (tx, activity) => {
-        const [now] = await tx
-          .select({ status: connections.status, cursor: connections.syncCursor })
-          .from(connections)
-          .where(eq(connections.id, target.connectionId))
-          .for('update');
-        if (!now || (now.status !== 'ok' && now.status !== 'error')) {
-          throw new SyncStopped();
-        }
-        // Another run moved it (a lease that ran out): this one stops rather than interleave.
-        if (now.cursor !== committed) throw new JobFailure(FAILURE.syncConflict);
-        const applied = await applyPage(tx, activity, target, page);
-        await advanceConnection(tx, target.connectionId, page);
-        // The page itself, as the system's bookkeeping: the cursor, the balances, and the counts.
-        await activity.record({
-          action: 'sync.page_applied',
-          targetType: 'connection',
-          targetId: target.connectionId,
-          metadata: {
-            mode: page.mode,
-            ...applied,
-            ...(page.historicalComplete && { historicalComplete: true }),
-          },
-          visibleToHousehold: false,
-        });
-        return applied;
+      await advanceConnection(tx, target.connectionId, page);
+      // The sync itself, as the system's bookkeeping: the cursor, the balances, and the counts.
+      await activity.record({
+        action: 'sync.applied',
+        targetType: 'connection',
+        targetId: target.connectionId,
+        metadata: {
+          mode: page.mode,
+          pages: pages.length,
+          restarts: summary.restarts,
+          ...applied,
+          ...(page.historicalComplete && { historicalComplete: true }),
+        },
+        visibleToHousehold: false,
       });
-      summary.pages++;
-      summary.added += result.added;
-      summary.matched += result.matched;
-      summary.updated += result.updated;
-      summary.removed += result.removed;
-      summary.skipped += result.skipped;
-    } catch (error) {
-      if (error instanceof SyncStopped) {
-        summary.stopped = true;
-        return summary;
-      }
-      throw error;
+      return applied;
+    });
+    summary.added = result.added;
+    summary.matched = result.matched;
+    summary.updated = result.updated;
+    summary.posted = result.posted;
+    summary.removed = result.removed;
+    summary.skipped = result.skipped;
+  } catch (error) {
+    if (error instanceof SyncStopped) {
+      summary.stopped = true;
+      return summary;
     }
-    if (page.mode === 'delta' && page.nextCursor !== null) committed = page.nextCursor;
-    if (page.mode === 'window' || !page.hasMore || page.nextCursor === null) break;
-    cursor = page.nextCursor;
+    throw error;
   }
 
   if (provider.capabilities.liabilities && provider.liabilities) {
@@ -204,4 +197,43 @@ export async function syncConnection(
     }
   }
   return summary;
+}
+
+/**
+ * Every page the provider has from the stored cursor, in order, until it says there are no more.
+ * Nothing is written meanwhile. When the data changed under it (`mutation_during_pagination`), the
+ * pages so far are dropped and it asks again from the cursor it started with.
+ */
+async function fetchPages(
+  provider: AggregationProvider,
+  secret: ProviderSecret,
+  state: SyncState,
+  summary: SyncSummary,
+): Promise<SyncPage[]> {
+  let pages: SyncPage[] = [];
+  let cursor = state.cursor;
+  for (;;) {
+    let page: SyncPage;
+    try {
+      page = await provider.sync(secret, {
+        cursor,
+        ...(state.since !== null && { since: state.since }),
+      });
+    } catch (error) {
+      if (
+        isProviderError(error) &&
+        error.kind === 'mutation_during_pagination' &&
+        summary.restarts < MAX_RESTARTS
+      ) {
+        summary.restarts++;
+        pages = [];
+        cursor = state.cursor;
+        continue;
+      }
+      throw error;
+    }
+    pages.push(page);
+    if (page.mode === 'window' || !page.hasMore || page.nextCursor === null) return pages;
+    cursor = page.nextCursor;
+  }
 }
