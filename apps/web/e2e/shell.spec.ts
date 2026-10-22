@@ -1127,11 +1127,27 @@ test('your browser notices when the history was rewritten, even consistently (#2
   await page.getByLabel('Your name here').fill('Ada Lovelace');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Ada Lovelace (you)')).toBeVisible();
+  // The bank connected earlier syncs in the background, and its syncs are history too: wait
+  // until the head stays put, so the one this browser verifies is the one rewritten below.
+  const headNow = async () =>
+    (
+      (await (await page.request.get(`${activity}/proof`)).json()) as {
+        data: { head: { seq: number; hash: string } };
+      }
+    ).data.head;
+  let head = await headNow();
+  await expect
+    .poll(
+      async () => {
+        const before = head.seq;
+        await page.waitForTimeout(2000);
+        head = await headNow();
+        return head.seq === before;
+      },
+      { timeout: 60_000, intervals: [0] },
+    )
+    .toBe(true);
   await page.goto(`${householdUrl}/settings`);
-  const proof = (await (await page.request.get(`${activity}/proof`)).json()) as {
-    data: { head: { seq: number; hash: string } };
-  };
-  const head = proof.data.head;
   const print = `${head.hash.slice(0, 4)} ${head.hash.slice(4, 8)}`;
   await expect(check).toContainText('Verified on');
   await expect(check).toContainText(`at entry ${head.seq}, fingerprint ${print}`);
