@@ -309,6 +309,20 @@
       "when": 1792650192309,
       "tag": "0043_connection_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1792650911461,
+      "tag": "0044_activity_transactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1792650912370,
+      "tag": "0045_activity_transactions_rls",
+      "breakpoints": true
     }
   ]
 }

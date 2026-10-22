@@ -521,13 +521,13 @@ export class TransactionsService {
         await this.#writeAttribution(tx, ctx, id, input.attribution);
       }
       await recomputeBalances(tx, input.accountId);
-      // A transfer you entered by hand finds its other leg as an import's would (#40).
-      await detectTransfers(tx, activity, [id], access.levels);
+      // Recorded first, so its history starts with being added and the link comes after.
       await activity.record({
         action: 'transaction.created',
         targetType: 'transaction',
         targetId: id,
         accountId: input.accountId,
+        transactionIds: [id],
         changes: {
           after: {
             amountMinor: input.amountMinor,
@@ -536,6 +536,8 @@ export class TransactionsService {
           },
         },
       });
+      // A transfer you entered by hand finds its other leg as an import's would (#40).
+      await detectTransfers(tx, activity, [id], access.levels);
       const row = await this.#visible(tx, id);
       return (await this.#present(tx, ctx, await this.#access(tx, ctx), [row]))[0]!;
     });
@@ -665,6 +667,7 @@ export class TransactionsService {
         targetType: 'transaction',
         targetId: id,
         accountId: row.accountId,
+        transactionIds: [id],
         metadata: { fields: changed },
         changes: {
           before: Object.fromEntries(changed.map((k) => [k, current[k as keyof typeof current]])),
@@ -686,10 +689,11 @@ export class TransactionsService {
         throw new Problem(409, 'split_part', 'Delete the whole transaction, or remove the split');
       }
       const now = new Date();
-      await tx
+      const removed = await tx
         .update(transactions)
         .set({ deletedAt: now, version: row.version + 1 })
-        .where(or(eq(transactions.id, id), eq(transactions.parentId, id)));
+        .where(or(eq(transactions.id, id), eq(transactions.parentId, id)))
+        .returning({ id: transactions.id });
       // The other leg of a transfer stands alone again.
       if (row.transferGroupId) {
         await unlinkTransfers(tx, activity, [row.transferGroupId], 'deleted');
@@ -700,6 +704,7 @@ export class TransactionsService {
         targetType: 'transaction',
         targetId: id,
         accountId: row.accountId,
+        transactionIds: removed.map((r) => r.id),
       });
     });
   }
@@ -803,7 +808,10 @@ export class TransactionsService {
           targetId: accountId,
           accountId,
           metadata: { count: ids.length, fields: Object.keys(changes) },
-          changes: { after: { ids, ...changes } },
+          transactionIds: ids,
+          changes: {
+            after: { ids, ...changes, ...(marksReviewed ? { reviewStatus: 'reviewed' } : {}) },
+          },
         });
       }
       return result;
@@ -935,6 +943,9 @@ export class TransactionsService {
     for (const r of updated.rows as { id: string; account_id: string }[]) {
       byAccount.set(r.account_id, [...(byAccount.get(r.account_id) ?? []), r.id]);
     }
+    const byId = new Map(changes.map((c) => [c.id, c]));
+    const names = (ids: string[], side: 'from' | 'to') =>
+      Object.fromEntries(ids.map((id) => [id, byId.get(id)![side]]));
     for (const [accountId, ids] of byAccount) {
       await activity.record({
         action: 'transaction.bulk_updated',
@@ -942,7 +953,12 @@ export class TransactionsService {
         targetId: accountId,
         accountId,
         metadata: { count: ids.length, fields: ['displayName'], via: 'name_cleanup' },
-        changes: { after: { ids } },
+        transactionIds: ids,
+        // Each one's name before and after, for its history (#46).
+        changes: {
+          before: { names: names(ids, whereWas) },
+          after: { ids, names: names(ids, setTo) },
+        },
       });
     }
     return updated.rows.length;
@@ -1057,6 +1073,7 @@ export class TransactionsService {
       for (const [accountId, ids] of from) {
         await recomputeBalances(tx, accountId);
         // One event per account, so each is visible only to members who can see that account.
+        // Not part of the transactions' history: moved_in is, in the account they're in now.
         await activity.record({
           action: 'transaction.moved_out',
           targetType: 'account',
@@ -1073,6 +1090,7 @@ export class TransactionsService {
         targetId: input.accountId,
         accountId: input.accountId,
         metadata: { count: result.updated.length, from: [...from.keys()] },
+        transactionIds: result.updated,
         changes: { after: { ids: result.updated } },
       });
       return result;
@@ -1261,6 +1279,7 @@ export class TransactionsService {
         targetType: 'transaction',
         targetId: id,
         accountId: row.accountId,
+        transactionIds: [id],
         metadata: { members: after.map((a) => a.memberId), inherited: after.length === 0 },
         changes: { before: { attribution: before }, after: { attribution: after } },
       });
@@ -1333,6 +1352,7 @@ export class TransactionsService {
         targetType: 'transaction',
         targetId: id,
         accountId: row.accountId,
+        transactionIds: [id, ...childIds],
         metadata: { parts: input.parts.length },
       });
       const children = await tx
@@ -1361,6 +1381,7 @@ export class TransactionsService {
         targetType: 'transaction',
         targetId: id,
         accountId: row.accountId,
+        transactionIds: [id],
       });
     });
   }
@@ -1415,6 +1436,7 @@ export class TransactionsService {
         targetType: 'transaction',
         targetId: id,
         accountId: row.accountId,
+        transactionIds: [id],
         visibleToHousehold: kind === 'shared',
       });
     });

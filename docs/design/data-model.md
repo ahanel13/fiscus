@@ -40,6 +40,7 @@ erDiagram
     household_members ||--o{ account_groups : arranges
     household_members ||--o{ account_placements : arranges
     households ||--o{ audit_events : "scoped to"
+    audit_events ||--o{ activity_transactions : "touched"
 
     households ||--o{ aggregation_credentials : "own Plaid keys"
     households ||--o{ connections : has
@@ -159,7 +160,9 @@ Deleting all rows for a household is the **crypto-shred**.
 | metadata | jsonb | **No financial plaintext.** IDs, field names, old/new *category ids*, never notes or amounts of hidden rows |
 | ip | inet null | |
 
-Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plus `changes_enc` (encrypted before/after values) per [ADR 0013](../adr/0013-tamper-evident-activity-history.md). The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. `hash_version` (smallint, default 1) says how `entry_hash` was computed, and version 2 entries also store their `leaf`, SHA-256 of the canonical entry, which history proofs are made of (#264). A check constraint ties the two: version 1 has no leaf, version 2 has a 32-byte one. Per-transaction edit history (M1) is a filtered view over `audit_events`.
+Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plus `changes_enc` (encrypted before/after values) per [ADR 0013](../adr/0013-tamper-evident-activity-history.md). The app DB role has `INSERT` + `SELECT` only. `UPDATE`/`DELETE` are revoked. `hash_version` (smallint, default 1) says how `entry_hash` was computed, and version 2 entries also store their `leaf`, SHA-256 of the canonical entry, which history proofs are made of (#264). A check constraint ties the two: version 1 has no leaf, version 2 has a 32-byte one.
+
+**`activity_transactions`**: append-only, which transactions each household event touched (#46, migrations `0044`, `0045`): `household_id`, `seq` (the event's position in the household's chain), `transaction_id`, PK `(household_id, transaction_id, seq)`. Each transaction's history (TXN-11) is the events linked to it. The links are needed because bulk edits, rules, imports, and sync batches name their transactions only inside the encrypted `changes`, one event per account. `HouseholdActivity.record({ transactionIds })` writes them in the same transaction as the event, and every change to a transaction passes its ids. No foreign keys: links outlive purged transactions, as events do. A link is visible to whoever can see its transaction, and can only name a transaction its writer can see. The event is still filtered by its own policy, so a transaction seen only through attribution (F1) shows nothing about the account it was paid from. The app role has `INSERT` + `SELECT` only.
 
 ### 3.2 Aggregation
 
@@ -493,7 +496,8 @@ otherwise, the function can be backed by a table without changing any policy.
 | balance_snapshots | PK `(account_id, as_of)` | Net worth and balance charts |
 | transaction_notes | `(transaction_id)` | Load notes with a transaction |
 | fx_rates | PK `(rate_date, base, quote)` | Conversion join |
-| audit_events | `(household_id, occurred_at DESC)`, `(target_type, target_id)` | Activity feed, transaction history |
+| audit_events | `(household_id, occurred_at DESC)`, `(target_type, target_id)` | Activity feed |
+| activity_transactions | PK `(household_id, transaction_id, seq)` | Transaction history |
 
 ## 8. Encrypted columns summary
 

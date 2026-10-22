@@ -27,6 +27,7 @@ import {
   type RangeMeta,
   type ReviewCount,
   type Transaction,
+  type TransactionHistoryEntry,
   type TransferReview,
   transactionsQuerySchema,
   updateCategoryGroupSchema,
@@ -62,6 +63,7 @@ import {
 } from '../households/household-context.js';
 import { CashFlowService } from './cash-flow.service.js';
 import { CategoriesService } from './categories.service.js';
+import { TransactionHistoryService } from './history.service.js';
 import { TransactionsService } from './transactions.service.js';
 
 const noteKind = z.enum(['shared', 'mine']);
@@ -192,7 +194,10 @@ export class CategoriesController {
 @Controller('api/v1/households/:householdId/transactions')
 @UseGuards(HouseholdGuard)
 export class TransactionsController {
-  constructor(private readonly transactions: TransactionsService) {}
+  constructor(
+    private readonly transactions: TransactionsService,
+    private readonly history: TransactionHistoryService,
+  ) {}
 
   @Get()
   async list(
@@ -331,6 +336,15 @@ export class TransactionsController {
     @Param('transactionId', UuidPipe) id: string,
   ): Promise<void> {
     await this.transactions.remove(ctx, id);
+  }
+
+  /** Its history, newest first: what you may see of who changed what, and when (TXN-11). */
+  @Get(':transactionId/history')
+  async listHistory(
+    @Household() ctx: HouseholdContext,
+    @Param('transactionId', UuidPipe) id: string,
+  ): Promise<{ data: TransactionHistoryEntry[] }> {
+    return { data: await this.history.list(ctx, id) };
   }
 
   /** Possible other legs to link it to as a transfer, closest date first (TXN-08). */

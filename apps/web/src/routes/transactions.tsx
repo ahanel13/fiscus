@@ -35,7 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import type { Key, SortDescriptor } from 'react-aria-components';
+import { type Key, type SortDescriptor, useLocale } from 'react-aria-components';
 import { api, type ApiError } from '../api/client.js';
 import {
   accountsQuery,
@@ -45,6 +45,7 @@ import {
   reviewCountQuery,
   tagsQuery,
   type TransactionFilters,
+  transactionHistoryQuery,
   transactionQuery,
   transactionsQuery,
 } from '../api/queries.js';
@@ -89,6 +90,7 @@ import {
   useToday,
 } from '../components/ui.js';
 import { categoryIndex, byDay, forLabel, paidByLabel } from '../lib/transactions.js';
+import { historyLine } from '../lib/transaction-history.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
 import { RangeSelect } from '../components/RangeControls.js';
 import { rangeParams, selectionLabel } from '../lib/ranges.js';
@@ -1341,6 +1343,8 @@ export function TransactionDetails({
 
       <Notes householdId={householdId} t={t} />
 
+      <History householdId={householdId} t={t} members={members} groups={groups} />
+
       {t.can.edit && !t.parentId ? (
         <div className="border-t border-border pt-4">
           <DialogTrigger>
@@ -1459,6 +1463,75 @@ function Notes({ householdId, t }: { householdId: string; t: Transaction }) {
           Save my note
         </Button>
       ) : null}
+    </section>
+  );
+}
+
+/** The first entries shown; the rest are a click away. */
+const HISTORY_SHOWN = 5;
+
+/** Who changed what, and when, newest first (TXN-11): what you may see of it. */
+function History({
+  householdId,
+  t,
+  members,
+  groups,
+}: {
+  householdId: string;
+  t: Transaction;
+  members: HouseholdMember[];
+  groups: CategoryGroup[];
+}) {
+  const query = useQuery(transactionHistoryQuery(householdId, t.id));
+  const tags = useQuery(tagsQuery(householdId)).data;
+  const accounts = useQuery(accountsQuery(householdId, 'all')).data;
+  const { locale } = useLocale();
+  const [all, setAll] = useState(false);
+  const names = useMemo(() => {
+    const categories = categoryIndex(groups).names;
+    const day = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' });
+    return {
+      you: members.find((m) => m.isYou)?.id,
+      category: (id: string) => categories.get(id),
+      tag: (id: string) => tags?.find((x) => x.id === id)?.name,
+      member: (id: string) => members.find((m) => m.id === id)?.displayName,
+      account: (id: string) => accounts?.find((a) => a.id === id)?.name,
+      currency: t.currency,
+      date: (iso: string) => day.format(new Date(`${iso}T00:00:00Z`)),
+    };
+  }, [groups, members, tags, accounts, locale, t.currency]);
+  const entries = query.data ?? [];
+  const shown = all ? entries : entries.slice(0, HISTORY_SHOWN);
+  return (
+    <section className="space-y-2" aria-labelledby={`history-${t.id}`}>
+      <h3 id={`history-${t.id}`} className="text-sm font-medium">
+        History
+      </h3>
+      {query.isPending ? (
+        <LoadingRegion label="Loading history">
+          <Skeleton className="h-16" />
+        </LoadingRegion>
+      ) : query.isError ? (
+        <p className="text-sm text-muted">The history couldn’t be loaded.</p>
+      ) : entries.length === 0 ? (
+        <p className="text-sm text-muted">Nothing you can see has changed it yet.</p>
+      ) : (
+        <>
+          <ol className="space-y-2">
+            {shown.map((e) => (
+              <li key={e.id} className="text-sm">
+                <p>{historyLine(e, names)}</p>
+                <DateText value={e.occurredAt} format="datetime" className="text-xs text-muted" />
+              </li>
+            ))}
+          </ol>
+          {entries.length > HISTORY_SHOWN ? (
+            <Button variant="ghost" size="sm" onPress={() => setAll(!all)}>
+              {all ? 'Show less' : `Show all ${entries.length}`}
+            </Button>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }

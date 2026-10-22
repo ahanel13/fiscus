@@ -30,6 +30,16 @@ describe('audit_events', () => {
     await expect(app.query('TRUNCATE audit_events')).rejects.toThrow(/permission denied/);
   });
 
+  it('keeps the links to transactions (#46) as append-only as the events', async () => {
+    for (const statement of [
+      'UPDATE activity_transactions SET seq = seq + 1',
+      'DELETE FROM activity_transactions',
+      'TRUNCATE activity_transactions',
+    ]) {
+      await expect(app.query(statement)).rejects.toThrow(/permission denied/);
+    }
+  });
+
   it('keeps the hash format columns (#264) as append-only as the rest', async () => {
     for (const set of ['hash_version = 2', "leaf = '\\x00'", 'hash_version = 1, leaf = NULL']) {
       await expect(app.query(`UPDATE audit_events SET ${set}`)).rejects.toThrow(

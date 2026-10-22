@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { HouseholdsModule } from '../households/households.module.js';
 import { CashFlowService } from './cash-flow.service.js';
 import { CategoriesService } from './categories.service.js';
+import { TransactionHistoryService } from './history.service.js';
 import {
   CashFlowController,
   CategoriesController,
@@ -19,6 +20,6 @@ import { TransactionsService } from './transactions.service.js';
     CashFlowController,
     PreferencesController,
   ],
-  providers: [CategoriesService, TransactionsService, CashFlowService],
+  providers: [CategoriesService, TransactionsService, TransactionHistoryService, CashFlowService],
 })
 export class LedgerModule {}

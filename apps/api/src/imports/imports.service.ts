@@ -471,6 +471,22 @@ export class ImportsService {
         accepted,
         tagIds.ids,
       );
+      const txnDays = new Set(await this.#transactionDays(tx, batch.accountId));
+      const balances = this.#balancesToStore(input.balances, txnDays, today);
+      // Recorded before rules and transfers run, so each transaction's history starts with
+      // arriving and what rules did comes after (#46).
+      await activity.record({
+        action: 'import.rows_added',
+        targetType: 'import_batch',
+        targetId: batch.id,
+        accountId: batch.accountId,
+        metadata: {
+          format: batch.format,
+          transactions: accepted.length,
+          balances: balances.length,
+        },
+        transactionIds: inserted,
+      });
       // Rules run on what arrived, within each rule's author's reach (RULE-05): the household's,
       // then every owner's own, the other owners' included on a joint account (#58). They leave
       // alone what the file supplied: its names, categories, and tags (marked in
@@ -490,8 +506,6 @@ export class ImportsService {
         await detectTransfers(tx, activity, inserted, await accessLevels(tx))
       ).length;
 
-      const txnDays = new Set(await this.#transactionDays(tx, batch.accountId));
-      const balances = this.#balancesToStore(input.balances, txnDays, today);
       if (input.balances.some((b) => b.date > today)) {
         results.push({ line: 1, status: 'skipped', message: 'Balances dated in the future' });
       }
@@ -506,18 +520,6 @@ export class ImportsService {
         })
         .where(eq(importBatches.id, batch.id));
       await recomputeBalances(tx, batch.accountId);
-      await activity.record({
-        action: 'import.rows_added',
-        targetType: 'import_batch',
-        targetId: batch.id,
-        accountId: batch.accountId,
-        metadata: {
-          transactions: accepted.length,
-          balances: balances.length,
-          changedByRules: ruled.length,
-          transfersLinked,
-        },
-      });
       results.sort((x, y) => x.line - y.line);
       return {
         added: accepted.length,
@@ -1253,7 +1255,8 @@ export class ImportsService {
       targetType: 'import_batch',
       targetId: batch.id,
       accountId: batch.accountId,
-      metadata: { transactions: reverted.length },
+      metadata: { format: batch.format, transactions: reverted.length },
+      transactionIds: reverted.map((r) => r.id),
     });
   }
 
