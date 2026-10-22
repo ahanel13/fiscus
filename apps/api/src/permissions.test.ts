@@ -227,7 +227,8 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'HH-19/VIEW': async () => checkHistory(f.V),
 
   // ── 4.2 Accounts ──
-  // Connections are made by the link flow (ACC-01, #79); here, straight in the database.
+  // Connections are made by the link flow (ACC-01: connections/plaid-link.test.ts); here,
+  // straight in the database.
   // Visible to their owner and to anyone who sees one of their accounts.
   'ACC-02/OWN': async () => {
     const ids = await connectionIds(f.A);

@@ -21,7 +21,6 @@ const NOT_BUILT: Record<string, string> = {
   'HH-15': 'Departure protection (#62)',
   'HH-16': 'Departure package (#62)',
   'HH-17': 'Ownership claims (#62)',
-  'ACC-01': 'Bank connections (M2)',
   'ACC-10': 'Full account numbers (M2)',
   'TXN-07': 'Assigning reviewers (#45)',
   'ATT-03': 'Flagging attribution changes (M3)',
