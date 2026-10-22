@@ -20,6 +20,13 @@ export const LINK_COUNTRY_CODES = ['US', 'CA'];
 /** Always 730: it can't be raised once the Item exists. D6's 90 days is applied locally (#80). */
 export const LINK_DAYS_REQUESTED = 730;
 export const LINK_CLIENT_NAME = 'Fiscus';
+/**
+ * Transactions is the one product a bank must support, so Link hides no bank that has it. Card
+ * and loan details (#86) and investments are consented at Link but billed only once called, so a
+ * later feature needs no second consent. Investments isn't read yet.
+ */
+export const LINK_PRODUCTS = ['transactions'];
+export const LINK_CONSENTED_PRODUCTS = ['liabilities', 'investments'];
 
 /**
  * The `client_user_id` Plaid sees: stable per member, and opaque (not an email or a name, nor

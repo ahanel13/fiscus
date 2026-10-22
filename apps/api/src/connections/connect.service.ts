@@ -25,13 +25,17 @@ import {
   type ConnectionConfirmed,
   type ConnectionSetup,
   type confirmConnectionSchema,
+  type BankAlreadyConnected,
   type ConnectSuggestion,
   matchAccounts,
   type OfferedAccount,
+  type PlaidAvailability,
+  type PlaidLinkExit,
   type PlaidLinkToken,
+  type plaidExchangeSchema,
 } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, max, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, max, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { AccountsService, STYLE_VISIBILITY } from '../accounts/accounts.service.js';
@@ -44,8 +48,10 @@ import { HouseholdScope } from '../households/household-scope.js';
 import {
   accountNameFrom,
   LINK_CLIENT_NAME,
+  LINK_CONSENTED_PRODUCTS,
   LINK_COUNTRY_CODES,
   LINK_DAYS_REQUESTED,
+  LINK_PRODUCTS,
   linkRedirect,
   plaidAccountType,
   plaidClientFor,
@@ -56,6 +62,7 @@ import {
 } from './plaid.js';
 
 type ConfirmInput = z.infer<typeof confirmConnectionSchema>;
+type ExchangeInput = z.infer<typeof plaidExchangeSchema>;
 
 /** How far back a new account's first sync starts (D6); Plaid keeps up to 730 days for #80. */
 const NEW_ACCOUNT_DAYS = 90;
@@ -88,6 +95,14 @@ export class ConnectService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
+  /** Whether the household can connect a bank through Plaid now, and in which environment. */
+  async availability(ctx: HouseholdContext): Promise<PlaidAvailability> {
+    const result = await this.#householdCredentials(ctx);
+    return result.available
+      ? { available: true, env: result.credentials.env }
+      : { available: false, reason: result.reason };
+  }
+
   /**
    * A link token (ACC-01). With `connectionId`, for update mode (re-auth, ACC-03): only the
    * connection's owner, with the Item's own keys.
@@ -106,7 +121,8 @@ export class ConnectService {
       ({ client } = plaidClientFor(await this.#householdCredentials(ctx)));
       request = {
         ...base,
-        products: ['transactions'],
+        products: LINK_PRODUCTS,
+        additional_consented_products: LINK_CONSENTED_PRODUCTS,
         transactions: { days_requested: LINK_DAYS_REQUESTED },
       };
     } else {
@@ -123,10 +139,12 @@ export class ConnectService {
    * Exchanges Link's public token once, and records the connection in `setup` with the caller as
    * its owner. Returns the accounts the bank offers, each with a suggested choice.
    */
-  async exchange(ctx: HouseholdContext, publicToken: string): Promise<ConnectionSetup> {
+  async exchange(ctx: HouseholdContext, input: ExchangeInput): Promise<ConnectionSetup> {
     const { client, credentials } = plaidClientFor(await this.#householdCredentials(ctx));
+    // Before the exchange, which is when Plaid starts billing for the Item (ITEM-011).
+    if (input.link && !input.duplicateOk) await this.#refuseDuplicate(ctx, input.link);
     const { access_token: secret, item_id: itemId } = await client
-      .itemPublicTokenExchange(publicToken)
+      .itemPublicTokenExchange(input.publicToken)
       .catch(plaidProblem);
 
     let offered: PlaidAccount[];
@@ -186,7 +204,11 @@ export class ConnectService {
           action: 'connection.setup_started',
           targetType: 'connection',
           targetId: id,
-          metadata: { provider: 'plaid' },
+          metadata: {
+            provider: 'plaid',
+            ...(input.link && { linkSessionId: input.link.sessionId }),
+            ...(input.link?.institutionId && { institutionId: input.link.institutionId }),
+          },
           visibleToHousehold: false,
         });
         return {
@@ -203,6 +225,104 @@ export class ConnectService {
       await removeQuietly(client, secret);
       throw err;
     }
+  }
+
+  /**
+   * Link closed without connecting a bank. Recorded only for the caller, with Plaid's codes (never
+   * its messages), so a failure can be traced with Plaid's support by its session id.
+   */
+  async linkExit(ctx: HouseholdContext, exit: PlaidLinkExit): Promise<void> {
+    await this.scope.run(ctx, async (_tx, activity) => {
+      await activity.record({
+        action: 'connection.link_exited',
+        metadata: {
+          provider: 'plaid',
+          linkSessionId: exit.sessionId,
+          ...(exit.status && { status: exit.status }),
+          ...(exit.institutionId && { institutionId: exit.institutionId }),
+          ...(exit.errorType && { errorType: exit.errorType }),
+          ...(exit.errorCode && { errorCode: exit.errorCode }),
+          ...(exit.requestId && { requestId: exit.requestId }),
+        },
+        visibleToHousehold: false,
+      });
+    });
+  }
+
+  /**
+   * Refuses a second connection to accounts the caller already connected at this bank: Plaid
+   * bills each Item, and never notices the duplicate itself. By Link's word (its institution and
+   * the accounts' last 4 digits and subtypes), so only as a warning: `duplicateOk` goes ahead. A
+   * setup left unfinished at the bank counts too, as finishing it is what was meant.
+   */
+  async #refuseDuplicate(
+    ctx: HouseholdContext,
+    link: NonNullable<ExchangeInput['link']>,
+  ): Promise<void> {
+    if (!link.institutionId) return;
+    const institutionId = link.institutionId;
+    const found = await this.scope.run(ctx, async (tx) => {
+      const mine = await tx
+        .select({ id: connections.id, status: connections.status })
+        .from(connections)
+        .innerJoin(institutions, eq(institutions.id, connections.institutionId))
+        .where(
+          and(
+            eq(connections.householdId, ctx.householdId),
+            eq(connections.ownerMemberId, ctx.memberId),
+            eq(connections.provider, 'plaid'),
+            ne(connections.status, 'disconnected'),
+            eq(institutions.providerInstitutionId, institutionId),
+          ),
+        );
+      const setup = mine.find((c) => c.status === 'setup');
+      if (setup) return setup;
+      const live = mine.filter((c) => c.status !== 'setup');
+      if (!live.length) return undefined;
+      const subtypeOf = (s: string | null | undefined) => s?.trim().toLowerCase() || null;
+      const offered = link.accounts.flatMap((a) => {
+        const mask = plaidMask(a.mask);
+        return mask ? [{ mask, subtype: subtypeOf(a.subtype) }] : [];
+      });
+      // The same last 4 digits, and the same subtype unless either has none (a linked account
+      // keeps the subtype it had here).
+      const matches = (mask: string, subtype: string | null) =>
+        offered.some(
+          (o) =>
+            o.mask === mask && (o.subtype === null || subtype === null || o.subtype === subtype),
+        );
+      const tracked = await tx
+        .select({
+          connectionId: accounts.connectionId,
+          mask: accounts.maskLast4,
+          subtype: accounts.subtype,
+        })
+        .from(accounts)
+        .where(
+          inArray(
+            accounts.connectionId,
+            live.map((c) => c.id),
+          ),
+        );
+      const same = tracked.find((a) => a.mask && matches(a.mask, subtypeOf(a.subtype)));
+      return same ? live.find((c) => c.id === same.connectionId) : undefined;
+    });
+    if (!found) return;
+    const extensions: BankAlreadyConnected = {
+      connectionId: found.id,
+      status: found.status as BankAlreadyConnected['status'],
+    };
+    throw new Problem(
+      409,
+      'bank_already_connected',
+      'You’ve connected this bank already',
+      found.status === 'setup'
+        ? 'Finish choosing its accounts instead.'
+        : 'Its accounts sync through your existing connection. To fix it, sign in to the bank again there.',
+      undefined,
+      {},
+      { ...extensions },
+    );
   }
 
   /** The accounts offered again, for a setup still in progress (the page was reloaded). */

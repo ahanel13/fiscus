@@ -2,6 +2,9 @@
 import { z } from 'zod';
 
 /** Plaid's environments Fiscus uses: sandbox for tests and trying it out, production for banks (D17). */
+/** The web app's page for Link's return from a bank's own sign-in page (apps/web, #79). */
+export const PLAID_OAUTH_PATH = '/connect/plaid/oauth';
+
 export const PLAID_ENVIRONMENTS = ['sandbox', 'production'] as const;
 export type PlaidEnvironment = (typeof PLAID_ENVIRONMENTS)[number];
 
@@ -41,10 +44,20 @@ export const plaidEnvVars = {
       'separate instance rather than switching a real one (README, Plaid keys).',
   },
   PLAID_REDIRECT_URI: {
-    schema: z.url({ protocol: /^https$/, error: 'must be an https URL' }).optional(),
+    schema: z
+      .url({ protocol: /^https$/, error: 'must be an https URL' })
+      .refine((u) => {
+        try {
+          const url = new URL(u);
+          return url.pathname === PLAID_OAUTH_PATH && !url.search && !u.includes('#');
+        } catch {
+          return false;
+        }
+      }, `must be this server's https origin followed by ${PLAID_OAUTH_PATH}`)
+      .optional(),
     description:
-      "Optional: the https URL Plaid Link returns to after a bank's own sign-in page (OAuth). " +
-      "It must also be listed in Plaid's dashboard.",
+      "Optional: the https URL Plaid Link returns to after a bank's own sign-in page (OAuth): " +
+      `this server's origin followed by ${PLAID_OAUTH_PATH}. It must also be listed in Plaid's dashboard.`,
   },
   PLAID_API_BASE_URL: {
     schema: z.url().optional(),

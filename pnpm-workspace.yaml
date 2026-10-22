@@ -51,6 +51,7 @@ catalog:
   pg: 8.23.0
   prettier: 3.9.9
   react-dom: 19.3.0
+  react-plaid-link: 5.0.0
   react: 19.3.0
   react-aria-components: 1.21.1
   reflect-metadata: 0.2.2

@@ -18,8 +18,14 @@ import { AppShell } from './components/AppShell.js';
 import { AuthLayout } from './components/AuthLayout.js';
 import { Toaster } from './components/ui.js';
 import { lastHousehold } from './lib/last-household.js';
+import { PLAID_OAUTH_PATH } from './lib/plaid-link.js';
 import { type SectionId, SECTIONS } from './lib/nav.js';
 import { AccountDetailPage, AccountsPage } from './routes/accounts.js';
+import {
+  ConnectPlaidPage,
+  ConnectSetupPage,
+  PlaidOAuthReturnPage,
+} from './routes/connect-plaid.js';
 import { DashboardPage } from './routes/dashboard.js';
 import { TransactionsPage } from './routes/transactions.js';
 import {
@@ -169,6 +175,42 @@ const householdRoute = createRoute({
   errorComponent: NotFound,
 });
 
+/**
+ * Connecting a bank (#79): outside the shell, since its Content-Security-Policy is the one that
+ * allows Plaid Link (nginx.conf). Only ever entered and left with a full page load.
+ */
+const connectPlaidRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/h/$householdId/connect/plaid',
+  // `?connection=`: Link's update mode, for its owner to sign in again (#81).
+  validateSearch: (s: Record<string, unknown>) => ({
+    connection: typeof s.connection === 'string' ? s.connection : undefined,
+  }),
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(householdQuery(params.householdId)),
+  component: ConnectPlaidPage,
+  errorComponent: NotFound,
+});
+const connectSetupRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/h/$householdId/connect/plaid/$connectionId',
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(householdQuery(params.householdId)),
+  component: ConnectSetupPage,
+  errorComponent: NotFound,
+});
+
+/**
+ * Back from a bank's own sign-in page (OAuth, #79): one fixed path for every household, since
+ * Plaid matches the redirect URI exactly. Plaid adds `?oauth_state_id=`, read by Link itself.
+ */
+const plaidOAuthRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: PLAID_OAUTH_PATH,
+  component: PlaidOAuthReturnPage,
+  errorComponent: NotFound,
+});
+
 /** Sections that have shipped; the rest show their "on the way" page. */
 const SECTION_PAGES: Partial<Record<SectionId, () => React.JSX.Element>> = {
   dashboard: DashboardPage,
@@ -231,6 +273,9 @@ const routeTree = rootRoute.addChildren([
     welcomeRoute,
     personalSettingsRoute,
     serverRoute,
+    connectPlaidRoute,
+    connectSetupRoute,
+    plaidOAuthRoute,
     householdRoute.addChildren([
       ...sectionRoutes,
       accountDetailRoute,

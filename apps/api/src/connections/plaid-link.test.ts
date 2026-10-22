@@ -155,9 +155,18 @@ describe('connecting a bank through Plaid Link (#79)', () => {
   });
 
   it('[ACC-01/VIEW] viewers can’t ask for a link token or connect a bank', async () => {
+    refused(await V.get(url('/plaid')), 403);
     refused(await V.post(url('/plaid/link-token')), 403);
     refused(await exchange(V), 403);
     expect(linkTokenRequests()).toEqual([]);
+  });
+
+  it('says Plaid is available, and in which environment, to owners and members', async () => {
+    for (const c of [A, B]) {
+      const r = await c.get(url('/plaid'));
+      ok(r);
+      expect(r.body.data).toEqual({ available: true, env: 'sandbox' });
+    }
   });
 
   it('[ACC-01/OWN] gives a link token for the household’s keys: transactions, US/CA, 730 days', async () => {
@@ -176,6 +185,8 @@ describe('connecting a bank through Plaid Link (#79)', () => {
       country_codes: ['US', 'CA'],
       user: { client_user_id: expect.stringMatching(/^[0-9a-f]{32}$/) },
       products: ['transactions'],
+      // Consented now, billed only once called: no bank is hidden for them (LIAB-007).
+      additional_consented_products: ['liabilities', 'investments'],
       transactions: { days_requested: 730 },
     });
     // Opaque: not the member id, nor an email; and the same for the same person.
@@ -426,6 +437,112 @@ describe('connecting a bank through Plaid Link (#79)', () => {
     refused(await A.get(url(`/connections/${connA}/setup`)), 409, 'not_in_setup');
   });
 
+  describe('Link’s metadata', () => {
+    const link = (masks: (string | null)[], extra: Record<string, unknown> = {}) => ({
+      sessionId: 'link-session-1',
+      institutionId: plaid.institutionId,
+      accounts: masks.map((mask) => ({ mask, subtype: 'checking' })),
+      ...extra,
+    });
+    const exchangeWith = (c: TestClient, body: Record<string, unknown>) =>
+      c.post(url('/plaid/exchange'), { publicToken: plaid.publicToken, ...body });
+    /** Events only their actor sees, which the household's feed leaves out. */
+    const privateEvents = async (action: string, targetId?: string) =>
+      (
+        await db.query(
+          `SELECT metadata, actor_member_id, visible_to_household FROM audit_events
+            WHERE household_id = $1 AND action = $2 AND ($3::text IS NULL OR target_id = $3)`,
+          [hh, action, targetId ?? null],
+        )
+      ).rows;
+    const cancel = async (c: TestClient, id: string) =>
+      expect((await c.delete(url(`/connections/${id}`))).status).toBeLessThan(300);
+
+    it('[ITEM-011] refuses connecting the same accounts at a bank twice, before the exchange', async () => {
+      const exchanges = () =>
+        plaid.requests.filter((r) => r.path === '/item/public_token/exchange').length;
+      // The replayed Item from the first test is still in setup: finish it, rather than another.
+      const [replay] = (
+        await db.query(
+          `SELECT id FROM connections WHERE provider_item_id = 'item-replay' AND status = 'setup'`,
+        )
+      ).rows;
+      const before = exchanges();
+      let r = await exchangeWith(A, { link: link(['9999']) });
+      refused(r, 409, 'bank_already_connected');
+      expect(r.body).toMatchObject({ connectionId: replay.id, status: 'setup' });
+      await cancel(A, replay.id);
+
+      // connA tracks the checking account ending 4410.
+      r = await exchangeWith(A, { link: link(['4410', null]) });
+      refused(r, 409, 'bank_already_connected');
+      expect(r.body).toMatchObject({ connectionId: connA, status: 'ok' });
+      expect(r.body.detail).toContain('sign in to the bank again');
+      expect(exchanges()).toBe(before);
+
+      // Other accounts at the same bank, another bank, someone else's connection, or on purpose.
+      for (const [c, body] of [
+        [A, { link: link(['9999']) }],
+        [A, { link: link(['4410'], { institutionId: 'ins_another' }) }],
+        [B, { link: link(['4410']) }],
+        [A, { link: link(['4410']), duplicateOk: true }],
+      ] as const) {
+        r = await exchangeWith(c, body);
+        expect(r.status, JSON.stringify(r.body)).toBe(201);
+        await cancel(c, r.body.data.connectionId);
+      }
+      expect(exchanges()).toBe(before + 4);
+    });
+
+    it('keeps the Link session id with the setup, for Plaid’s support', async () => {
+      const r = await exchangeWith(A, { link: link(['9999']) });
+      expect(r.status).toBe(201);
+      const [started] = await privateEvents('connection.setup_started', r.body.data.connectionId);
+      expect(started.metadata).toEqual({
+        provider: 'plaid',
+        linkSessionId: 'link-session-1',
+        institutionId: plaid.institutionId,
+      });
+      await cancel(A, r.body.data.connectionId);
+    });
+
+    it('records Link’s exits for the person only, with Plaid’s codes and never its message', async () => {
+      const exit = {
+        sessionId: 'link-session-2',
+        status: 'requires_credentials',
+        institutionId: plaid.institutionId,
+        errorType: 'ITEM_ERROR',
+        errorCode: 'INVALID_CREDENTIALS',
+        requestId: 'req-1',
+      };
+      expect((await A.post(url('/plaid/link-exit'), exit)).status).toBe(204);
+      expect((await A.post(url('/plaid/link-exit'), { sessionId: 'link-session-3' })).status).toBe(
+        204,
+      );
+      const mine = await privateEvents('connection.link_exited');
+      expect(mine.every((e) => e.actor_member_id === member.A && !e.visible_to_household)).toBe(
+        true,
+      );
+      expect(mine.map((e) => e.metadata)).toEqual(
+        expect.arrayContaining([
+          {
+            provider: 'plaid',
+            linkSessionId: 'link-session-2',
+            status: 'requires_credentials',
+            institutionId: plaid.institutionId,
+            errorType: 'ITEM_ERROR',
+            errorCode: 'INVALID_CREDENTIALS',
+            requestId: 'req-1',
+          },
+          { provider: 'plaid', linkSessionId: 'link-session-3' },
+        ]),
+      );
+      refused(await V.post(url('/plaid/link-exit'), exit), 403);
+      refused(await A.post(url('/plaid/link-exit'), { ...exit, errorMessage: UNTRUSTED }), 422);
+      refused(await A.post(url('/plaid/link-exit'), {}), 422);
+    });
+  });
+
   it('[ACC-01/MEM] members connect too, and a private account keeps its connection theirs', async () => {
     ok(await B.post(url('/plaid/link-token')));
     const r = await exchange(B);
@@ -539,6 +656,10 @@ describe('connecting a bank through Plaid Link (#79)', () => {
         [hh, Buffer.from([0])],
       );
       try {
+        expect((await A.get(url('/plaid'))).body.data).toEqual({
+          available: false,
+          reason: 'household_keys_unavailable',
+        });
         refused(await A.post(url('/plaid/link-token')), 409, 'plaid_unavailable');
         refused(await exchange(A), 409, 'plaid_unavailable');
       } finally {
@@ -562,6 +683,10 @@ describe('connecting a bank through Plaid Link (#79)', () => {
             timezone: 'UTC',
           })
         ).body.data.id;
+        expect((await c.get(`/api/v1/households/${id}/plaid`)).body.data).toEqual({
+          available: false,
+          reason: 'not_configured',
+        });
         const r = await c.post(`/api/v1/households/${id}/plaid/link-token`);
         refused(r, 409, 'plaid_unavailable');
         expect(r.body.detail).toContain('no Plaid keys');

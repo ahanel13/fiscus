@@ -29,7 +29,7 @@ export type StubHandler = (request: StubRequest) => StubResponse | Promise<StubR
 export type StubRoutes = Record<string, StubHandler>;
 
 export interface StubServer {
-  /** `http://127.0.0.1:<port>`, without a trailing slash. */
+  /** `http://127.0.0.1:<port>` (or the host it listens on), without a trailing slash. */
   url: string;
   /** Every request received, in order, including ones no route matched. */
   requests: StubRequest[];
@@ -41,7 +41,16 @@ export interface StubServer {
 /** Parses a recorded request's body as JSON. */
 export const jsonBody = <T = unknown>(request: StubRequest): T => JSON.parse(request.body) as T;
 
-export async function startStubServer(routes: StubRoutes = {}): Promise<StubServer> {
+/** Where the server listens: an ephemeral port on loopback unless told otherwise (a service). */
+export interface StubListen {
+  host?: string;
+  port?: number;
+}
+
+export async function startStubServer(
+  routes: StubRoutes = {},
+  { host = '127.0.0.1', port = 0 }: StubListen = {},
+): Promise<StubServer> {
   const handlers = new Map(Object.entries(routes));
   const requests: StubRequest[] = [];
 
@@ -87,12 +96,12 @@ export async function startStubServer(routes: StubRoutes = {}): Promise<StubServ
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve());
+    server.listen(port, host, () => resolve());
   });
-  const { port } = server.address() as AddressInfo;
+  const address = server.address() as AddressInfo;
 
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${address.port}`,
     requests,
     route(key, handler) {
       handlers.set(key, handler);
