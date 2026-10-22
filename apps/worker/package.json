@@ -15,16 +15,22 @@
     "@fiscus/aggregation": "workspace:*",
     "@fiscus/crypto": "workspace:*",
     "@fiscus/db": "workspace:*",
+    "@fiscus/domain": "workspace:*",
     "@fiscus/env": "workspace:*",
+    "@fiscus/ledger": "workspace:*",
     "@fiscus/shared": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
+    "drizzle-orm": "catalog:",
     "reflect-metadata": "catalog:",
-    "rxjs": "catalog:"
+    "rxjs": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@fiscus/config": "workspace:*",
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "pg": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

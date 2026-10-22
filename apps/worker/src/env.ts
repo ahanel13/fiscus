@@ -7,6 +7,7 @@ import {
   previousEncryptionKeyVersionEnv,
 } from '@fiscus/crypto';
 import { databaseUrl, defineEnv, logLevel, nodeEnv, port } from '@fiscus/env';
+import { z } from 'zod';
 
 export default defineEnv('worker', {
   NODE_ENV: nodeEnv,
@@ -19,4 +20,15 @@ export default defineEnv('worker', {
   APP_ENCRYPTION_KEY_PREVIOUS_VERSION: previousEncryptionKeyVersionEnv,
   // The server's own Plaid keys (ADR 0008, #82): all three or none, checked at startup.
   ...plaidEnvVars,
+  SYNC_INTERVAL_HOURS: {
+    schema: z.coerce.number().int().min(1).max(24).optional(),
+    description:
+      "Hours between scheduled bank syncs, overriding the instance admin's setting (Server → Bank " +
+      'connections). Leave empty to use that setting (default 4).',
+  },
+  SYNC_POLL_SECONDS: {
+    schema: z.coerce.number().int().min(1).max(300).default(5),
+    description: "Seconds between the worker's checks for connections that are due to sync.",
+    example: '5',
+  },
 });
