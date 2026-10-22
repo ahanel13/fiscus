@@ -397,10 +397,10 @@ describe('rules', () => {
         actions: { categoryId: dining },
       };
       // As the household's, Bea's rule would reach Ada's full account; as hers, only her own.
-      const asHousehold = (await B.post(url('/rules/preview'), draft)).body.data.changes;
-      expect(
-        asHousehold.map((c: { amountMinor: number }) => c.amountMinor).sort((x, y) => x - y),
-      ).toEqual([-1801, -1800]);
+      const asHousehold = (await B.post(url('/rules/preview'), draft)).body.data.changes as {
+        amountMinor: number;
+      }[];
+      expect(asHousehold.map((c) => c.amountMinor).sort((x, y) => x - y)).toEqual([-1801, -1800]);
       const preview = await B.post(url('/rules/preview'), { scope: 'mine', ...draft });
       expect(preview.body.data.changes).toEqual([expect.objectContaining({ amountMinor: -1801 })]);
       const id = await rule(B, { scope: 'mine', ...draft });
