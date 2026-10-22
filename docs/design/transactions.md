@@ -67,10 +67,12 @@ balances you entered by hand become **anchors**, and every other day is computed
 - Anchors always win: a computed value never overwrites an entered one.
 - **Bank-connected accounts (M2) are different: the bank's balance is the truth.** Their
   transaction history is never complete (Plaid returns about 24 months, and never an opening
-  balance), so transactions never move a connected account's balance. Each sync records the
-  reported balance for that day, and days between syncs carry it forward. History before the first
-  sync is empty by default; an estimate built backward from transactions, clearly labeled as one,
-  can be an option (M2). Manual accounts can still be tracked by balance alone: enter balances and
+  balance), so synced transactions never move a connected account's balance. Each sync records
+  the reported balance for that day, and days between syncs carry it forward. History before the
+  first reported balance is what the account had before it was linked (imported or entered, D5),
+  and is kept: it's computed only from those transactions and balances, never from synced ones
+  ([data model §3.3](data-model.md)). A new connected account's history starts at its first sync;
+  an estimate built backward from transactions, clearly labeled as one, can be an option later. Manual accounts can still be tracked by balance alone: enter balances and
   no transactions, or use the "valued by hand" mode.
 - An entered balance is the balance **at the end of that day**, so it already includes that day's
   transactions: copying today's balance from your bank and then recording today's purchases

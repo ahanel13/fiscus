@@ -728,6 +728,9 @@ importers:
       '@fiscus/db':
         specifier: workspace:*
         version: link:../db
+      '@fiscus/domain':
+        specifier: workspace:*
+        version: link:../domain
       '@fiscus/shared':
         specifier: workspace:*
         version: link:../shared

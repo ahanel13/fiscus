@@ -28,6 +28,7 @@
   "dependencies": {
     "@fiscus/crypto": "workspace:*",
     "@fiscus/db": "workspace:*",
+    "@fiscus/domain": "workspace:*",
     "@fiscus/shared": "workspace:*",
     "drizzle-orm": "catalog:",
     "uuid": "catalog:"

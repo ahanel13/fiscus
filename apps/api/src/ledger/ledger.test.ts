@@ -239,10 +239,8 @@ describe('ledger', () => {
     });
 
     it('never computes a bank-connected account’s balance from its transactions', async () => {
-      const acct = await account(A, {
-        openingBalance: { amountMinor: 500000, asOf: '2026-03-10' },
-      });
-      // Simulate a bank connection (M2): the reported balance is the truth.
+      const acct = await account(A, {});
+      // Simulate a bank connection (M2): the reported balance is the truth from its day on.
       const connection = crypto.randomUUID();
       await sql(
         `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id, status)
@@ -250,8 +248,13 @@ describe('ledger', () => {
         [connection, hh, member.A, `item-${connection}`],
       );
       await sql('UPDATE accounts SET connection_id = $1 WHERE id = $2', [connection, acct]);
+      await sql(
+        `INSERT INTO balance_snapshots (account_id, household_id, as_of, balance_minor, source)
+         VALUES ($1, $2, '2026-03-10', 500000, 'provider')`,
+        [acct, hh],
+      );
       await txn(A, acct, '2026-03-12', -2000);
-      await txn(A, acct, '2026-03-01', -1000);
+      await txn(A, acct, '2026-03-10', -1000);
       expect(await balances(acct)).toEqual({ '2026-03-10': 500000 });
     });
 

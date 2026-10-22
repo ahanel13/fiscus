@@ -139,6 +139,10 @@ describe('account visibility (RLS)', () => {
         [f.id, H],
       );
       await owner.query(
+        `INSERT INTO account_liabilities (account_id, household_id, apr_bps) VALUES ($1, $2, 2149)`,
+        [f.id, H],
+      );
+      await owner.query(
         `INSERT INTO audit_events (actor_kind, household_id, action, account_id) VALUES ('system', $1, 'account.created', $2)`,
         [H, f.id],
       );
@@ -204,6 +208,30 @@ describe('account visibility (RLS)', () => {
         expect(new Set(deleted.rows.map((r) => r.account_id))).toEqual(new Set(owned));
       });
     });
+
+    it('sees card details only at owner or full access, and changes only its own (#86)', async () => {
+      await asMember(actor, async (q) => {
+        const seen = (await q.query('SELECT account_id FROM account_liabilities')).rows;
+        const detailed = [...expected].filter(([, l]) => l === 'owner' || l === 'full');
+        expect(new Set(seen.map((r) => r.account_id))).toEqual(new Set(detailed.map(([id]) => id)));
+        const updated = await q.query(
+          `UPDATE account_liabilities SET apr_bps = 1999 RETURNING account_id`,
+        );
+        const owned = fixtures.filter((f) => f.owners.includes(actor)).map((f) => f.id);
+        expect(new Set(updated.rows.map((r) => r.account_id))).toEqual(new Set(owned));
+        const deleted = await q.query(`DELETE FROM account_liabilities RETURNING account_id`);
+        expect(new Set(deleted.rows.map((r) => r.account_id))).toEqual(new Set(owned));
+        // Row-level security is checked before the primary key: writing one is refused outright.
+        const other = fixtures.find((f) => !f.owners.includes(actor));
+        if (!other) return; // A owns every account here
+        await expect(
+          q.query(
+            `INSERT INTO account_liabilities (account_id, household_id, apr_bps) VALUES ($1, $2, 1)`,
+            [other.id, H],
+          ),
+        ).rejects.toThrow(/row-level security/);
+      });
+    });
   });
 
   it('shows nothing to another household, to forged contexts, or without context', async () => {
@@ -227,6 +255,7 @@ describe('account visibility (RLS)', () => {
     await as({}, async (q) => {
       expect((await q.query('SELECT 1 FROM accounts')).rowCount).toBe(0);
       expect((await q.query('SELECT 1 FROM balance_snapshots')).rowCount).toBe(0);
+      expect((await q.query('SELECT 1 FROM account_liabilities')).rowCount).toBe(0);
     });
     void counts;
   });

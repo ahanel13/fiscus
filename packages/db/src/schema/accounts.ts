@@ -149,3 +149,35 @@ export const balanceSnapshots = pgTable(
     index().on(t.importBatchId),
   ],
 );
+
+/**
+ * A card's or loan's statement details, from the provider (#86; Plaid's `/liabilities/get`).
+ * SimpleFIN doesn't report them, so most accounts have none. Unlike the balance, visible at owner
+ * and full access only (migration 0039).
+ */
+export const accountLiabilities = pgTable(
+  'account_liabilities',
+  {
+    accountId: uuid().primaryKey(),
+    householdId: uuid().notNull(),
+    /** Annual rate in basis points (24.99% = 2499). */
+    aprBps: integer(),
+    /** The amount due, as a positive number. */
+    minimumPaymentMinor: money('minimum_payment_minor'),
+    nextDueDate: date({ mode: 'string' }),
+    /** In Fiscus's sign: what was owed is negative. */
+    lastStatementBalanceMinor: money('last_statement_balance_minor'),
+    lastStatementDate: date({ mode: 'string' }),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.householdId, t.accountId],
+      foreignColumns: [accounts.householdId, accounts.id],
+    }).onDelete('cascade'),
+    index().on(t.householdId),
+  ],
+);

@@ -247,6 +247,15 @@ point across households.
 
 **`balance_snapshots`**: `(account_id, as_of)` PK, `household_id`, `balance_minor`, `available_minor` null, `credit_limit_minor` null, `source` enum `provider`/`computed`/`manual`. One row per account per day (end of day). Net-worth history and range charts read only this table (ADR 0011).
 
+Which source a day has (#86, `@fiscus/ledger`):
+- **`provider`**: what the bank reported, written by each sync (`writeProviderBalances`), with the available balance and credit limit. Dated by the provider's balance date in the household's time zone, never after today there; a later sync that day replaces it, as it does an entered or computed balance for that day.
+- **`manual`**: entered by hand or imported (Monarch balances). Anchors: never overwritten by a computed balance.
+- **`computed`**: rebuilt from transactions and anchors for accounts in `transactions` mode ([transactions §2](transactions.md)). For a bank-connected account, only **before its first `provider` snapshot**, from its own (imported or manual) transactions and entered balances, so linking an account keeps the history it had (D5); synced transactions never compute a balance. From the first provider snapshot on, the bank's balances win and carry forward between syncs. Once disconnected (D14), its balance follows its transactions again from the last provider snapshot.
+
+An account's current balance (`balance` in the api) is its latest snapshot; for a connected account, its latest `provider` snapshot, so a broken connection shows the date the bank last reported (D12).
+
+**`account_liabilities`** (#86, migrations `0038`, `0039`): a card's or loan's details from the provider (Plaid's `/liabilities/get`; SimpleFIN has none). `account_id` PK, `household_id` (composite FK to `accounts`, cascading), `apr_bps` int null, `minimum_payment_minor` bigint null (positive), `next_due_date` date null, `last_statement_balance_minor` bigint null (Fiscus's sign: owed is negative), `last_statement_date` date null, `updated_at`. Written by each sync for tracked `credit` and `loan` accounts (`writeProviderLiabilities`), replacing the last sync's. Visible at `owner` and `full` access only (RLS through `fiscus_account_access()`); written by owners or the worker. The api returns it as `liabilities` on the account itself, and leaves the field out below `full` access.
+
 ### 3.4 Currency
 
 **`currencies`**: global reference data: `code char(3)` PK, `exponent smallint`, `symbol`, `name`.
@@ -375,7 +384,7 @@ settings are missing, policies evaluate to false and the query returns **nothing
 ### 4.3 Policies
 1. **Household isolation** (every household-scoped table):
    `USING (household_id = current_setting('app.household_id', true)::uuid)`.
-2. **Account visibility** (`accounts`, `account_owners`, `balance_snapshots`; `connections` as in §3.2):
+2. **Account visibility** (`accounts`, `account_owners`, `balance_snapshots`; `account_liabilities` at `owner` and `full` only; `connections` as in §3.2):
    ```sql
    account_id IN (SELECT account_id FROM fiscus_account_access())
    ```
