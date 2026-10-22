@@ -60,6 +60,9 @@ export interface ConnectionOptions {
   disconnectRequested?: boolean;
   /** Stored encrypted, as the link flow does; null = none. Defaults to the fake's. */
   secret?: string | null;
+  /** The Plaid keys it was made with (#82), as the exchange records them. Default null. */
+  providerEnv?: string | null;
+  providerClientId?: string | null;
 }
 
 export interface ConnectionRow {
@@ -157,8 +160,8 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
       const next = opts.next === undefined ? '-1 minute' : opts.next;
       await owner.query(
         `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id,
-           status, next_sync_at, lease_until, disconnect_requested)
-         VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval, now() + $8::interval, $9)`,
+           status, next_sync_at, lease_until, disconnect_requested, provider_env, provider_client_id)
+         VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval, now() + $8::interval, $9, $10, $11)`,
         [
           id,
           opts.householdId ?? householdId,
@@ -169,6 +172,8 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
           next,
           opts.lease ?? null,
           opts.disconnectRequested ?? false,
+          opts.providerEnv ?? null,
+          opts.providerClientId ?? null,
         ],
       );
       const secret = opts.secret === undefined ? 'fake-secret' : opts.secret;

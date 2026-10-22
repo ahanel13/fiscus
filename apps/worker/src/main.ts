@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'reflect-metadata';
-import { instancePlaidConfigOrExit, plaidStatus, ProviderRegistry } from '@fiscus/aggregation';
+import {
+  instancePlaidConfigOrExit,
+  plaidProviderSource,
+  plaidStatus,
+  ProviderRegistry,
+} from '@fiscus/aggregation';
 import { envKeyProvider, FieldCrypto, masterKeysOrExit } from '@fiscus/crypto';
 import { createDb, HouseholdKeyStore, pingDatabase } from '@fiscus/db';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
@@ -26,9 +31,12 @@ const plaid = instancePlaidConfigOrExit(env, {
 });
 const db = createDb(env.DATABASE_URL, { max: 5 });
 const crypto = new FieldCrypto(new HouseholdKeyStore(db.db, master), master);
-// The adapters register here as they land (Plaid #79, SimpleFIN #91). Until then a connection's
-// jobs fail as provider_unavailable, and back off.
-const providers = new ProviderRegistry();
+// The adapters this worker has (SimpleFIN registers here with #91). Plaid serves each connection
+// with the keys it was made with (#82): without the server's keys, or for a household's own (#83),
+// its jobs fail as provider_unavailable or household_keys_unavailable and back off; made with
+// another client id or environment, as credentials_changed. A first sync after Plaid's history
+// arrives can be slow (TXN-024), hence the longer request timeout.
+const providers = new ProviderRegistry([plaidProviderSource(plaid, { timeoutMs: 120_000 })]);
 
 const app = await NestFactory.createApplicationContext(
   WorkerModule.forRoot({
@@ -47,7 +55,7 @@ const health = startHealthServer(
 );
 const logger = new Logger('Worker');
 logger.log(`Worker ready (health on :${env.HEALTH_PORT})`);
-// Only whether, and which environment: never the keys. Sync jobs use it with #80.
+// Only whether, and which environment: never the keys.
 plaidLogger.log(plaidStatus(plaid));
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {

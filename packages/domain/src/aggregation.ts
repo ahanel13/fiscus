@@ -197,6 +197,8 @@ export interface ProviderErrorOptions {
   /** The provider's own code (`ITEM_LOGIN_REQUIRED`), safe to log and store. */
   providerCode: string;
   retryAfterMs?: number;
+  /** The provider's id for the request (Plaid's `request_id`), safe to log, for its support. */
+  providerRequestId?: string;
   /** The provider's message. Untrusted display text: never logged. */
   providerMessage?: string;
 }
@@ -210,6 +212,7 @@ export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
   readonly providerCode: string;
   readonly retryAfterMs?: number;
+  readonly providerRequestId?: string;
   declare readonly providerMessage?: string;
 
   constructor(kind: ProviderErrorKind, options: ProviderErrorOptions) {
@@ -218,6 +221,9 @@ export class ProviderError extends Error {
     this.kind = kind;
     this.providerCode = options.providerCode;
     if (options.retryAfterMs !== undefined) this.retryAfterMs = options.retryAfterMs;
+    if (options.providerRequestId !== undefined) {
+      this.providerRequestId = options.providerRequestId;
+    }
     Object.defineProperty(this, 'providerMessage', {
       value: options.providerMessage,
       enumerable: false,

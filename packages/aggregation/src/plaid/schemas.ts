@@ -69,6 +69,7 @@ export const plaidTransactionSchema = z.object({
   /** As the bank reports it. Untrusted text (ADR 0009). */
   name: nullishString,
   original_description: nullishString,
+  /** Use this, never `name`, for the merchant (TXN-023); often null (TXN-013). */
   merchant_name: nullishString,
 });
 export type PlaidTransaction = z.infer<typeof plaidTransactionSchema>;
@@ -122,9 +123,11 @@ export type TransactionsSyncResponse = z.infer<typeof transactionsSyncResponseSc
 
 export const emptyResponseSchema = z.object({ ...requestId });
 
+// Every liabilities field may be null at some bank (LIAB-002): each is read on its own.
 const apr = z.object({
-  apr_percentage: z.number(),
-  apr_type: z.string(),
+  apr_percentage: nullishNumber,
+  /** `purchase_apr`, `cash_apr`, `balance_transfer_apr`, `special`, ... (LIAB-003). */
+  apr_type: nullishString,
   balance_subject_to_apr: nullishNumber,
 });
 
@@ -137,7 +140,7 @@ export const liabilitiesGetResponseSchema = z.object({
       .array(
         z.object({
           account_id: nullishString,
-          aprs: z.array(apr),
+          aprs: z.array(apr).nullish(),
           is_overdue: z.boolean().nullish(),
           last_payment_amount: nullishNumber,
           last_payment_date: nullishString,
@@ -152,7 +155,7 @@ export const liabilitiesGetResponseSchema = z.object({
       .array(
         z.object({
           account_id: nullishString,
-          interest_rate_percentage: z.number(),
+          interest_rate_percentage: nullishNumber,
           last_statement_balance: nullishNumber,
           last_statement_issue_date: nullishString,
           minimum_payment_amount: nullishNumber,
@@ -163,8 +166,8 @@ export const liabilitiesGetResponseSchema = z.object({
     mortgage: z
       .array(
         z.object({
-          account_id: z.string(),
-          interest_rate: z.object({ percentage: nullishNumber, type: nullishString }),
+          account_id: nullishString,
+          interest_rate: z.object({ percentage: nullishNumber, type: nullishString }).nullish(),
           next_monthly_payment: nullishNumber,
           next_payment_due_date: nullishString,
         }),

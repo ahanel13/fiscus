@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { UnknownProviderError, type ProviderRegistry } from '@fiscus/aggregation';
+import {
+  ProviderUnavailableError,
+  UnknownProviderError,
+  type ProviderRegistry,
+} from '@fiscus/aggregation';
 import { DecryptionError, type FieldCrypto } from '@fiscus/crypto';
 import type { Database } from '@fiscus/db';
 import { ProviderError } from '@fiscus/domain';
@@ -19,6 +23,10 @@ export interface JobTarget {
   status: string;
   disconnectRequested: boolean;
   consecutiveFailures: number;
+  /** The keys it was made with (ADR 0008): null = the server's. Never the secret. */
+  credentialSetId: string | null;
+  providerEnv: string | null;
+  providerClientId: string | null;
 }
 
 export interface JobContext extends JobTarget {
@@ -74,6 +82,8 @@ export class JobFailure extends Error {
     readonly code: string,
     /** `login_required` stops polling until its owner signs in again (D11). */
     readonly status: 'error' | 'login_required' = 'error',
+    /** The provider's id for the failed request (Plaid's `request_id`), for its support. */
+    readonly requestId?: string,
   ) {
     super(code);
     this.name = 'JobFailure';
@@ -84,6 +94,10 @@ export class JobFailure extends Error {
 export const FAILURE = {
   /** No adapter for this connection's provider in this build or configuration. */
   providerUnavailable: 'provider_unavailable',
+  /** Made with another Plaid client id or environment than this server's keys: reconnect (#82). */
+  credentialsChanged: 'credentials_changed',
+  /** Made with a household's own Plaid keys, which this server can't use yet (#83). */
+  householdKeysUnavailable: 'household_keys_unavailable',
   secretMissing: 'secret_missing',
   secretUnreadable: 'secret_unreadable',
   timeout: 'timeout',
@@ -99,15 +113,26 @@ const PROVIDER_CODE = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 /** What a failure is stored and logged as; `expected` is false for the ones worth a stack. */
 export function failureOf(error: unknown): JobFailure & { expected: boolean } {
-  const failure = (code: string, status: 'error' | 'login_required' = 'error', expected = true) =>
-    Object.assign(new JobFailure(code, status), { expected });
+  const failure = (
+    code: string,
+    status: 'error' | 'login_required' = 'error',
+    expected = true,
+    requestId?: string,
+  ) => Object.assign(new JobFailure(code, status, requestId), { expected });
   if (error instanceof JobFailure) return failure(error.code, error.status);
   if (error instanceof UnknownProviderError) return failure(FAILURE.providerUnavailable);
+  if (error instanceof ProviderUnavailableError) {
+    if (error.reason === 'credentials_changed') return failure(FAILURE.credentialsChanged);
+    if (error.reason === 'household_keys_unavailable') {
+      return failure(FAILURE.householdKeysUnavailable);
+    }
+    return failure(FAILURE.providerUnavailable);
+  }
   if (error instanceof DecryptionError) return failure(FAILURE.secretUnreadable, 'error', false);
   if (error instanceof ProviderError) {
     const code = PROVIDER_CODE.test(error.providerCode) ? error.providerCode : error.kind;
     const signIn = error.kind === 'login_required' || error.kind === 'consent_expired';
-    return failure(code, signIn ? 'login_required' : 'error');
+    return failure(code, signIn ? 'login_required' : 'error', true, error.providerRequestId);
   }
   return failure(FAILURE.internal, 'error', false);
 }
