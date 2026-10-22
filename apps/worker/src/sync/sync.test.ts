@@ -18,8 +18,8 @@ import { startWorkerHarness, type WorkerHarness } from '../testing/harness.js';
 
 /**
  * Sync (#80) against Postgres, logged in as the real fiscus_worker role, with the fake provider:
- * what lands in the ledger from each page, what the bank may change and remove, and how a sync
- * that's interrupted picks up again without adding or losing anything.
+ * what lands in the ledger from a sync's pages, what the bank may change and remove, and how a
+ * sync that's interrupted writes nothing and picks up again without adding or losing anything.
  */
 
 const quiet = { log: () => {}, warn: () => {}, error: () => {} };
@@ -260,12 +260,10 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
       original_description: 'CORNER COFFEE #12',
     });
 
-    // One entry per account per page, as the system for the connection's owner; every
-    // transaction in exactly one of them.
+    // One entry per account, as the system for the connection's owner; every transaction in
+    // exactly one of them.
     const added = await events(b.householdId, 'sync.transactions_added');
-    expect(added.length).toBe(
-      update.reduce((n, p) => n + new Set(p.added!.map((t) => t.providerAccountId)).size, 0),
-    );
+    expect(added.length).toBe(3);
     for (const e of added) {
       expect(e).toMatchObject({ actor_kind: 'system', actor_member_id: b.memberId });
       expect(e.metadata.count).toBe(e.ids.length);
@@ -287,6 +285,26 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
       sync_cursor: 'fake:1:0',
       historical_complete: true,
     });
+    // The five pages were applied as one: a single entry for the sync, with counts only.
+    const applied = await events(b.householdId, 'sync.applied');
+    expect(applied).toEqual([
+      expect.objectContaining({
+        actor_kind: 'system',
+        metadata: {
+          mode: 'delta',
+          pages: 5,
+          restarts: 0,
+          added: 1500,
+          matched: 0,
+          updated: 0,
+          posted: 0,
+          removed: 0,
+          skipped: 0,
+          balances: 3,
+          historicalComplete: true,
+        },
+      }),
+    ]);
     // The bank's balances for the three tracked accounts, and the card's statement details.
     expect(
       await sql(
@@ -315,7 +333,21 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
     const provider = fake([pages(list, 50)], {
       errors: [{ onSync: 2, kind: 'mutation_during_pagination' }],
     });
+    // What's in the ledger, and the stored cursor, each time a page is asked for.
+    const seen: { rows: number; cursor: string | null }[] = [];
+    const sync = provider.sync.bind(provider);
+    provider.sync = async (secret, request) => {
+      const [now] = await sql<{ rows: number; cursor: string | null }>(
+        `SELECT (SELECT count(*)::int FROM transactions WHERE household_id = $1) AS rows,
+                (SELECT sync_cursor FROM connections WHERE id = $2) AS cursor`,
+        [b.householdId, b.connectionId],
+      );
+      seen.push(now!);
+      return sync(secret, request);
+    };
     await run(provider);
+    // Nothing was written while it paged, before the restart or after it.
+    expect(seen).toEqual(Array.from({ length: 6 }, () => ({ rows: 0, cursor: null })));
     // The third page failed: it starts over from where this run began.
     expect(requests(provider).map((r) => r.cursor)).toEqual([
       null,
@@ -348,12 +380,12 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
     expect((await events(b.householdId, 'sync.transactions_added')).length).toBe(before);
   });
 
-  it('advances the cursor only with the page it belongs to', async () => {
+  it('writes nothing, and keeps the cursor, when any page can’t be applied', async () => {
     const b = await bank();
     const provider = fake([
       [
         { added: [txn('ok-1', RIVERA.checking, -100, '2026-10-01')] },
-        // Not a date: the page's transaction rolls back.
+        // Not a date: the sync's transaction rolls back, the pages either side of it too.
         { added: [txn('bad-1', RIVERA.checking, -200, '2026-02-30')] },
         { added: [txn('ok-2', RIVERA.checking, -300, '2026-10-02')] },
       ],
@@ -361,13 +393,21 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
     await run(provider);
     expect(await connection(b.connectionId)).toMatchObject({
       status: 'error',
-      sync_cursor: 'fake:0:1',
+      sync_cursor: null,
     });
-    expect([...(await byProviderId(b.householdId)).keys()]).toEqual(['ok-1']);
-    // The next run asks again from the page that didn't commit.
+    expect([...(await byProviderId(b.householdId)).keys()]).toEqual([]);
+    expect(await events(b.householdId, 'sync.applied')).toEqual([]);
+    // The next run asks again from where the last one began.
     await h.due(b.connectionId);
     await run(provider);
-    expect(requests(provider).map((r) => r.cursor)).toEqual([null, 'fake:0:1', 'fake:0:1']);
+    expect(requests(provider).map((r) => r.cursor)).toEqual([
+      null,
+      'fake:0:1',
+      'fake:0:2',
+      null,
+      'fake:0:1',
+      'fake:0:2',
+    ]);
   });
 
   it('lets the bank change what it owns, never what a person set, and never undelete', async () => {
@@ -754,7 +794,7 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
       ]);
       const sync = provider.sync.bind(provider);
       provider.sync = async (secret, request) => {
-        // As if a run whose lease ran out committed a page in between.
+        // As if a run whose lease ran out committed its sync in between.
         if (request.cursor !== null) {
           await sql(`UPDATE connections SET sync_cursor = 'fake:0:9' WHERE id = $1`, [
             b.connectionId,
@@ -767,7 +807,33 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
         status: 'error',
         code: 'sync_conflict',
       });
-      expect([...(await byProviderId(b.householdId)).keys()]).toEqual(['one']);
+      expect([...(await byProviderId(b.householdId)).keys()]).toEqual([]);
+    });
+
+    it('writes nothing when the connection is disconnected while it pages', async () => {
+      const b = await bank();
+      const provider = fake([
+        [
+          { added: [txn('one', RIVERA.checking, -100, '2026-10-01')] },
+          { added: [txn('two', RIVERA.checking, -200, '2026-10-02')] },
+        ],
+      ]);
+      const sync = provider.sync.bind(provider);
+      provider.sync = async (secret, request) => {
+        if (request.cursor !== null) {
+          await sql(`UPDATE connections SET status = 'disconnected' WHERE id = $1`, [
+            b.connectionId,
+          ]);
+        }
+        return sync(secret, request);
+      };
+      await run(provider);
+      expect(await connection(b.connectionId)).toMatchObject({
+        status: 'disconnected',
+        sync_cursor: null,
+      });
+      expect([...(await byProviderId(b.householdId)).keys()]).toEqual([]);
+      expect(await events(b.householdId, 'sync.applied')).toEqual([]);
     });
   });
 });

@@ -310,6 +310,19 @@ describe('ledger', () => {
       const after = (await A.get(url(`/transactions?accounts=${acct}`))).body.data;
       expect(after.map((t: { id: string }) => t.id)).toEqual([id]);
     });
+
+    it('waits for a pending transaction to post (#88)', async () => {
+      const acct = await account(A, {});
+      const id = await txn(A, acct, '2026-05-01', -10000, 'Hotel hold');
+      await sql('UPDATE transactions SET pending = true WHERE id = $1', [id]);
+      const r = await A.request('PUT', url(`/transactions/${id}/splits`), {
+        parts: [{ amountMinor: -6000 }, { amountMinor: -4000 }],
+      });
+      expect(r.status).toBe(422);
+      expect(r.body).toMatchObject({ code: 'pending', title: 'Split it once it posts' });
+      const [row] = await sql('SELECT has_splits FROM transactions WHERE id = $1', [id]);
+      expect(row).toEqual({ has_splits: false });
+    });
   });
 
   describe('lists', () => {

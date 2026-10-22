@@ -369,4 +369,57 @@ describe('transaction history', () => {
       ],
     });
   });
+  it('shows a pending transaction posting as the bank’s, with what it was (#88)', async () => {
+    const id = await txn(A, shared, 'Dinner', -5200);
+    const worker = createDb(tdb.workerUrl, { max: 1 });
+    try {
+      await withContext(worker.db, systemContext(hh), (tx) =>
+        guardActivity(
+          tx,
+          hh,
+          { kind: 'system', userId: null, memberId: member.A },
+          app.get(FieldCrypto),
+          async (_tx, activity) => {
+            await activity.record({
+              action: 'transaction.posted',
+              targetType: 'transaction',
+              targetId: id,
+              accountId: shared,
+              metadata: { fields: ['amountMinor', 'date'] },
+              changes: {
+                before: {
+                  amountMinor: -5200,
+                  date: '2026-10-04',
+                  postedDate: null,
+                  authorizedDate: '2026-10-04',
+                  pending: true,
+                },
+                after: {
+                  amountMinor: -6100,
+                  date: '2026-10-06',
+                  postedDate: '2026-10-06',
+                  authorizedDate: '2026-10-04',
+                  pending: false,
+                },
+              },
+              transactionIds: [id],
+            });
+          },
+        ),
+      );
+    } finally {
+      await worker.close();
+    }
+    const [latest, ...earlier] = await history(B, id);
+    expect(latest).toMatchObject({
+      action: 'transaction.posted',
+      actor: { kind: 'bank', label: 'Bank' },
+      changes: [
+        { field: 'amountMinor', from: -5200, to: -6100 },
+        { field: 'date', from: '2026-10-04', to: '2026-10-06' },
+      ],
+    });
+    // The rest of its life is still there, from before it posted.
+    expect(earlier.at(-1)).toMatchObject({ action: 'transaction.created' });
+  });
 });

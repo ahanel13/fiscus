@@ -303,7 +303,8 @@ An account's current balance (`balance` in the api) is its latest snapshot; for 
 | foreign_currency | char(3) null | |
 | source | enum `provider`/`import`/`manual` | |
 | provider_transaction_id | text null | |
-| provider_pending_id | text null | Plaid's link from posted → pending, used to carry edits over |
+| provider_pending_id | text null | On a posted transaction that was pending: the pending one's provider id (§5) |
+| provider_removed_at | timestamptz null | Set with `deleted_at` when the bank removed it (sync), so a removed pending row can still become its posted one; a row a person deleted never comes back (§5) |
 | import_batch_id | uuid FK null | |
 | dedupe_key | text null | For imports (§5) |
 | deleted_at | timestamptz null | Tombstone (§6) |
@@ -463,7 +464,7 @@ otherwise, the function can be backed by a table without changing any policy.
 | Source | Identity | Rule |
 |---|---|---|
 | Plaid / SimpleFIN | `provider_transaction_id` | UNIQUE `(account_id, provider_transaction_id) WHERE provider_transaction_id IS NOT NULL`. Upserts on sync |
-| Pending → posted | `provider_pending_id` | When a posted row arrives referencing a pending id, copy user edits (category, tags, notes, attribution, review state, **date override**) from the pending row, then tombstone the pending row |
+| Pending → posted | `provider_pending_id` | **Promoted in place** (#88): when a posted row arrives naming a pending id (Plaid's `pending_transaction_id`), the pending row becomes the posted one: `provider_transaction_id` is set to the posted id, `provider_pending_id` to the old pending id, `pending = false`, and the bank's amount, dates and text. Every edit (category, name, tags, notes, attribution, review state, **date override**), transfer link and history entry stays attached, with nothing copied. This holds whether the removal of the pending id comes before, with, or after the posted row, in one sync or across two; a pending row the bank removed comes back as its posted one, a row a person deleted takes the posted id and stays deleted. Fallback, when a separate posted row already exists: its edits fill in what the pending row lacks (tags add up), its shared note and history move over, and the copy is tombstoned. Without a link (SimpleFIN): a pending row gone from the synced window is promoted to the one new posted row on the same account with the same amount within 5 days; anything ambiguous, or a changed amount (a tip), leaves the pending row tombstoned with its edits and the posted one new. Rules don't re-run on promotion; transfer detection does. Pending rows can't be split |
 | File import | `dedupe_key` = hash(account_id, **reported** date, amount_minor, normalized description, **occurrence index**) | The occurrence index distinguishes two identical coffees on the same day. UNIQUE per account where `source = 'import'`. The dedupe preview shows collisions before commit |
 | Import vs provider overlap | Fuzzy match (same account, amount, reported date ±3 days) | Flagged in the import preview, never silently dropped |
 

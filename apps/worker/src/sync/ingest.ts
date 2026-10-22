@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { accounts, connections, type Executor, households, transactions } from '@fiscus/db';
-import type { ProviderTransaction, SyncPage } from '@fiscus/domain';
+import type { FieldCrypto } from '@fiscus/crypto';
+import { accounts, connections, type Executor, transactions } from '@fiscus/db';
+import type {
+  ProviderAccount,
+  ProviderBalance,
+  ProviderRemovedTransaction,
+  ProviderTransaction,
+  SyncPage,
+} from '@fiscus/domain';
 import {
   activeRules,
   detectTransfers,
@@ -11,15 +18,15 @@ import {
   unlinkTransfers,
   writeProviderBalances,
 } from '@fiscus/ledger';
-import { cleanMerchantName } from '@fiscus/shared';
+import type { AccessLevel } from '@fiscus/shared';
 import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { bankChanges, type Namer, namer, type Row, rowKey } from './fields.js';
 import { type Arrival, holdPossibleDuplicates, matchExisting, reportedDate } from './match.js';
+import { mergePosted, postedInWindow, postPending, removedByBank } from './pending.js';
 
-// Bringing one page of a sync into the ledger (#80, the bank connections walkthrough D5–D9), in
-// the caller's transaction, in the household's system context. Every write is recorded as
-// activity by the system, for the connection's owner; nothing here logs.
-
-type Row = typeof transactions.$inferSelect;
+// Bringing a sync's pages into the ledger (#80, the bank connections walkthrough D5–D9), merged
+// into one and applied in the caller's transaction, in the household's system context. Every
+// write is recorded as activity by the system, for the connection's owner; nothing here logs.
 
 export interface SyncTarget {
   householdId: string;
@@ -28,12 +35,21 @@ export interface SyncTarget {
   ownerMemberId: string;
 }
 
-/** What a page did, as counts: what the activity's metadata says, and what tests check. */
+export interface IngestOptions {
+  /** Posted transactions name the pending one they replace (`capabilities.pendingLinks`). */
+  pendingLinks: boolean;
+  /** For a shared note that moves when a pending transaction posts (#88). */
+  crypto: FieldCrypto;
+}
+
+/** What a sync did, as counts: what the activity's metadata says, and what tests check. */
 export interface PageResult {
   added: number;
   /** Attached to a transaction already here (D7). */
   matched: number;
   updated: number;
+  /** Pending transactions that became their posted ones (#88). */
+  posted: number;
   removed: number;
   /** Before the account's `sync_from`, in another currency, or a posted zero. */
   skipped: number;
@@ -52,25 +68,28 @@ const chunks = <T>(list: T[]) =>
     list.slice(i * CHUNK, (i + 1) * CHUNK),
   );
 
-const rowKey = (accountId: string, providerTransactionId: string) =>
-  `${accountId}\u0000${providerTransactionId}`;
+/** A pending transaction the posted one can still become: live, or removed by the bank. */
+const revivable = (r: Row) => !r.deletedAt || removedByBank(r);
 
 /**
- * Applies one page. New transactions arrive needing review, then rules run on them with their
+ * Applies a sync's pages, merged by mergePages. New transactions arrive needing review, then rules run on them with their
  * authors' reach (D9, RULE-05) and transfers are linked within the connection owner's reach;
- * changes from the bank touch only what the bank owns; removals soft-delete. Balances the page
- * reports are written last. The caller advances the cursor in the same transaction.
+ * changes from the bank touch only what the bank owns; a pending transaction that posted becomes
+ * the posted one, keeping everything a person did (#88); removals soft-delete. Balances the pages
+ * report are written last. The caller advances the cursor in the same transaction.
  */
 export async function applyPage(
   tx: Executor,
   activity: HouseholdActivity,
   target: SyncTarget,
   page: SyncPage,
+  options: IngestOptions,
 ): Promise<PageResult> {
   const result: PageResult = {
     added: 0,
     matched: 0,
     updated: 0,
+    posted: 0,
     removed: 0,
     skipped: 0,
     balances: 0,
@@ -94,8 +113,11 @@ export async function applyPage(
     ).map((a): [string, Tracked] => [a.providerAccountId!, a]),
   );
   const touched = new Set<string>();
+  let reach: Map<string, AccessLevel> | undefined;
+  // Within the owner's reach: sync never links across a line they couldn't (#80).
+  const ownerReach = async () => (reach ??= await memberAccessLevels(tx, target.ownerMemberId));
 
-  // The latest of each transaction on the page, in a tracked account; the rest are ignored.
+  // The latest of each transaction, in a tracked account; the rest are ignored.
   const incoming = new Map<string, Arrival>();
   for (const t of [...page.added, ...page.modified]) {
     const account = tracked.get(t.providerAccountId);
@@ -106,27 +128,89 @@ export async function applyPage(
     const account = tracked.get(r.providerAccountId);
     return account ? [rowKey(account.id, r.providerTransactionId)] : [];
   });
-  const existing = await rowsByKey(tx, [...incoming.keys(), ...removals]);
+  // A posted transaction naming the pending one it replaces (Plaid's link, #88).
+  const replaces = (a: Arrival) =>
+    !a.t.pending && a.t.pendingTransactionId
+      ? rowKey(a.accountId, a.t.pendingTransactionId)
+      : undefined;
+  const replaced = new Set([...incoming.values()].flatMap((a) => replaces(a) ?? []));
+  const existing = await rowsByKey(tx, [...incoming.keys(), ...removals, ...replaced]);
+  const postedAlready = await pendingIdsPosted(
+    tx,
+    [...incoming].flatMap(([key, a]) => (a.t.pending ? [key] : [])),
+  );
 
   const nameFrom = await namer(tx, target.householdId);
   const fresh: Arrival[] = [];
   const updates: { row: Row; t: ProviderTransaction }[] = [];
+  const promotions: { row: Row; t: ProviderTransaction }[] = [];
+  const merges: { pending: Row; posted: Row; t: ProviderTransaction }[] = [];
+  const claimed = new Set<string>();
   for (const [key, arrival] of incoming) {
     const { t } = arrival;
     const account = tracked.get(t.providerAccountId)!;
+    // It posted already, or posts in this sync: the pending version is history (#88).
+    if (t.pending && (replaced.has(key) || postedAlready.has(key))) continue;
     const row = existing.get(key);
     // A provider row a person deleted stays deleted.
     if (row?.deletedAt) continue;
+    const named = existing.get(replaces(arrival) ?? '');
+    const pending = named?.pending && !named.parentId && !claimed.has(named.id) ? named : undefined;
     if (t.currency !== account.currency || (t.amountMinor === 0 && !t.pending)) {
       result.skipped++;
+    } else if (row && pending && pending.id !== row.id && revivable(pending)) {
+      // Here twice: the posted one on its own, and the pending one it replaces.
+      claimed.add(pending.id);
+      merges.push({ pending, posted: row, t });
     } else if (row) {
       updates.push({ row, t });
+    } else if (pending) {
+      // Promoted in place, deleted or not: one a person deleted stays deleted, as the posted one.
+      claimed.add(pending.id);
+      promotions.push({ row: pending, t });
     } else if (account.syncFrom && reportedDate(t) < account.syncFrom) {
       // D6: providers send what they have (Plaid always 730 days); the account starts here.
       result.skipped++;
     } else {
       fresh.push(arrival);
     }
+  }
+
+  // Without links (SimpleFIN), a pending transaction a window no longer returns may have posted:
+  // matched before the window's missing rows are dropped, and before D7 could take its posted one.
+  if (!options.pendingLinks && page.mode === 'window' && page.window) {
+    const { accountIds, returned } = windowScope(page, tracked);
+    for (const m of await postedInWindow(tx, page.window, accountIds, returned, fresh)) {
+      if (m.arrival) {
+        fresh.splice(fresh.indexOf(m.arrival), 1);
+        promotions.push({ row: m.pending, t: m.arrival.t });
+      } else {
+        const posted = m.posted!;
+        const at = updates.findIndex((u) => u.row.id === posted.id);
+        if (at === -1) continue;
+        merges.push({ pending: m.pending, posted, t: updates[at]!.t });
+        updates.splice(at, 1);
+      }
+    }
+  }
+
+  // Pending → posted (#88): everything a person did stays, and rules don't run again. Pending
+  // transactions are never linked as transfers, so detection runs once they've posted.
+  const settled = new Set<string>();
+  const redetect: string[] = [];
+  for (const { row, t } of promotions) {
+    settled.add(row.id);
+    if (await postPending(tx, activity, row, t, nameFrom)) redetect.push(row.id);
+    touched.add(row.accountId);
+    result.posted++;
+  }
+  for (const { pending, posted, t } of merges) {
+    settled.add(pending.id).add(posted.id);
+    if (await mergePosted(tx, activity, options.crypto, pending, posted, t, nameFrom)) {
+      redetect.push(pending.id);
+    }
+    touched.add(pending.accountId);
+    result.posted++;
   }
 
   // D7: one you already have gets the bank's id instead of a copy.
@@ -172,26 +256,23 @@ export async function applyPage(
       null,
       activity,
     );
-    // Within the owner's reach: sync never links across a line they couldn't (#80).
-    await detectTransfers(
-      tx,
-      activity,
-      ids,
-      await memberAccessLevels(tx, target.ownerMemberId),
-      true,
-    );
+    await detectTransfers(tx, activity, ids, await ownerReach(), true);
   }
 
   for (const { row, t } of updates) {
     if (await applyChange(tx, activity, row, t, nameFrom)) {
       result.updated++;
       touched.add(row.accountId);
+      // Posted under the same id (SimpleFIN may keep it): now it can be a transfer.
+      if (row.pending && !t.pending) redetect.push(row.id);
     }
   }
+  if (redetect.length) await detectTransfers(tx, activity, redetect, await ownerReach(), true);
 
+  // What posted in this sync isn't removed with its pending id.
   const dropped = removals.flatMap((key) => {
     const row = existing.get(key);
-    return row && !row.deletedAt ? [row] : [];
+    return row && !row.deletedAt && !settled.has(row.id) ? [row] : [];
   });
   if (page.mode === 'window' && page.window) {
     dropped.push(...(await missingFromWindow(tx, page, tracked)));
@@ -206,7 +287,45 @@ export async function applyPage(
   return result;
 }
 
-/** Advances the connection past a page, in the page's transaction. */
+/**
+ * A sync's pages as one, in order: a transaction's latest word wins, whether that's an add, a
+ * change or a removal, so a pending transaction removed on one page and its posted version added
+ * on another are seen together and reconciled (#88). The cursor and `historicalComplete` are the
+ * last page's (the latter as soon as any page says so); balances and accounts the latest each.
+ * A `window` page is the only one its sync has.
+ */
+export function mergePages(pages: SyncPage[]): SyncPage {
+  const last = pages.at(-1);
+  if (!last) throw new Error('A sync has at least one page');
+  if (pages.length === 1) return last;
+  const key = (t: { providerAccountId: string; providerTransactionId: string }) =>
+    rowKey(t.providerAccountId, t.providerTransactionId);
+  const latest = new Map<
+    string,
+    | { kind: 'added' | 'modified'; t: ProviderTransaction }
+    | { kind: 'removed'; r: ProviderRemovedTransaction }
+  >();
+  const balances = new Map<string, ProviderBalance>();
+  const accountsSeen = new Map<string, ProviderAccount>();
+  for (const page of pages) {
+    for (const t of page.added) latest.set(key(t), { kind: 'added', t });
+    for (const t of page.modified) latest.set(key(t), { kind: 'modified', t });
+    for (const r of page.removed) latest.set(key(r), { kind: 'removed', r });
+    for (const b of page.balances ?? []) balances.set(b.providerAccountId, b);
+    for (const a of page.accounts ?? []) accountsSeen.set(a.providerAccountId, a);
+  }
+  const merged: SyncPage = { ...last, added: [], modified: [], removed: [] };
+  for (const entry of latest.values()) {
+    if (entry.kind === 'removed') merged.removed.push(entry.r);
+    else merged[entry.kind].push(entry.t);
+  }
+  if (balances.size) merged.balances = [...balances.values()];
+  if (accountsSeen.size) merged.accounts = [...accountsSeen.values()];
+  if (pages.some((p) => p.historicalComplete)) merged.historicalComplete = true;
+  return merged;
+}
+
+/** Advances the connection past a sync's pages, in the transaction that applied them. */
 export async function advanceConnection(
   tx: Executor,
   connectionId: string,
@@ -224,6 +343,10 @@ export async function advanceConnection(
     .where(eq(connections.id, connectionId));
 }
 
+const unnestKeys = (part: [string, string][]) =>
+  sql`SELECT * FROM unnest(${sql.param(part.map(([a]) => a))}::uuid[],
+                           ${sql.param(part.map(([, p]) => p))}::text[])`;
+
 /** Existing transactions by (account, provider id), deleted ones included. */
 async function rowsByKey(tx: Executor, keys: string[]): Promise<Map<string, Row>> {
   const unique = [...new Set(keys)].map((k) => k.split('\u0000') as [string, string]);
@@ -233,30 +356,28 @@ async function rowsByKey(tx: Executor, keys: string[]): Promise<Map<string, Row>
       .select()
       .from(transactions)
       .where(
-        sql`(${transactions.accountId}, ${transactions.providerTransactionId}) IN (
-          SELECT * FROM unnest(${sql.param(part.map(([a]) => a))}::uuid[],
-                               ${sql.param(part.map(([, p]) => p))}::text[]))`,
+        sql`(${transactions.accountId}, ${transactions.providerTransactionId}) IN (${unnestKeys(part)})`,
       );
     for (const r of rows) out.set(rowKey(r.accountId, r.providerTransactionId!), r);
   }
   return out;
 }
 
-/** The name a synced transaction gets: the bank's merchant name, or its cleaned-up text (#42). */
-async function namer(tx: Executor, householdId: string) {
-  const [household] = await tx
-    .select({ clean: households.cleanMerchantNames })
-    .from(households)
-    .where(eq(households.id, householdId));
-  const fromDescription = (description: string) =>
-    household?.clean === false ? description.trim() : cleanMerchantName(description);
-  return {
-    fromDescription,
-    of: (t: ProviderTransaction) =>
-      t.merchantName?.trim() || fromDescription(t.description) || t.description.trim(),
-  };
+/** Of these (account, pending id) keys, the ones a transaction here already posted from (#88). */
+async function pendingIdsPosted(tx: Executor, keys: string[]): Promise<Set<string>> {
+  const unique = [...new Set(keys)].map((k) => k.split('\u0000') as [string, string]);
+  const out = new Set<string>();
+  for (const part of chunks(unique)) {
+    const rows = await tx
+      .select({ accountId: transactions.accountId, pendingId: transactions.providerPendingId })
+      .from(transactions)
+      .where(
+        sql`(${transactions.accountId}, ${transactions.providerPendingId}) IN (${unnestKeys(part)})`,
+      );
+    for (const r of rows) out.add(rowKey(r.accountId, r.pendingId!));
+  }
+  return out;
 }
-type Namer = Awaited<ReturnType<typeof namer>>;
 
 /** New transactions: the provider's, needing review. One activity entry per account. */
 async function insertArrivals(
@@ -308,9 +429,7 @@ async function insertArrivals(
 }
 
 /**
- * What the bank changed about a transaction: only what it owns (the amount, its dates, pending,
- * its text, the foreign amount), never what a person set (field_versions) or a date override. The
- * name follows the bank's text only while it's still the name that text gave. A transfer whose
+ * What the bank changed about a transaction (bankChanges): only what it owns. A transfer whose
  * amount changed is unlinked: its legs no longer match. Returns whether anything changed.
  */
 async function applyChange(
@@ -320,30 +439,7 @@ async function applyChange(
   t: ProviderTransaction,
   name: Namer,
 ): Promise<boolean> {
-  const personSet = new Set(Object.keys(row.fieldVersions));
-  const description = t.description.trim() || row.originalDescription;
-  const next = {
-    amountMinor: t.amountMinor,
-    postedDate: t.postedDate ?? null,
-    authorizedDate: t.authorizedDate,
-    pending: t.pending,
-    originalDescription: description,
-    foreignAmountMinor: t.foreignAmountMinor ?? null,
-    foreignCurrency: t.foreignCurrency ?? null,
-  };
-  const set: Partial<typeof next & { displayName: string }> = {};
-  for (const field of Object.keys(next) as (keyof typeof next)[]) {
-    if (next[field] !== row[field] && !personSet.has(field))
-      Object.assign(set, { [field]: next[field] });
-  }
-  if (
-    !personSet.has('displayName') &&
-    row.displayName === name.fromDescription(row.originalDescription) &&
-    description !== row.originalDescription
-  ) {
-    const renamed = name.of(t);
-    if (renamed !== row.displayName) set.displayName = renamed;
-  }
+  const { set, before, after } = bankChanges(row, t, name);
   if (Object.keys(set).length === 0) return false;
   await tx
     .update(transactions)
@@ -352,36 +448,6 @@ async function applyChange(
   if (set.amountMinor !== undefined && row.transferGroupId) {
     await unlinkTransfers(tx, activity, [row.transferGroupId], 'bank_changed');
   }
-
-  // For the history: the fields as a person reads them; the bank's date is the date it reports.
-  const before: Record<string, unknown> = {};
-  const after: Record<string, unknown> = {};
-  const note = (field: string, from: unknown, to: unknown) => {
-    if (from === to) return;
-    before[field] = from;
-    after[field] = to;
-  };
-  note('amountMinor', row.amountMinor, set.amountMinor ?? row.amountMinor);
-  note(
-    'date',
-    reportedDate({ postedDate: row.postedDate ?? undefined, authorizedDate: row.authorizedDate }),
-    reportedDate({
-      postedDate: (set.postedDate === undefined ? row.postedDate : set.postedDate) ?? undefined,
-      authorizedDate: set.authorizedDate ?? row.authorizedDate,
-    }),
-  );
-  note('pending', row.pending, set.pending ?? row.pending);
-  note('displayName', row.displayName, set.displayName ?? row.displayName);
-  note(
-    'originalDescription',
-    row.originalDescription,
-    set.originalDescription ?? row.originalDescription,
-  );
-  note(
-    'foreignAmountMinor',
-    row.foreignAmountMinor,
-    set.foreignAmountMinor === undefined ? row.foreignAmountMinor : set.foreignAmountMinor,
-  );
   await activity.record({
     action: 'transaction.provider_updated',
     targetType: 'transaction',
@@ -394,6 +460,21 @@ async function applyChange(
   return true;
 }
 
+/** The accounts a window page covers, and the transactions it returned in them. */
+function windowScope(page: SyncPage, tracked: Map<string, Tracked>) {
+  const accountIds = page.window!.providerAccountIds.flatMap((p) => {
+    const account = tracked.get(p);
+    return account ? [account.id] : [];
+  });
+  const returned = new Set(
+    page.added.flatMap((t) => {
+      const account = tracked.get(t.providerAccountId);
+      return account ? [rowKey(account.id, t.providerTransactionId)] : [];
+    }),
+  );
+  return { accountIds, returned };
+}
+
 /**
  * A window page is everything in its dates for the accounts it lists: the provider's rows there
  * that it didn't return are gone at the bank (SimpleFIN never says so otherwise).
@@ -404,17 +485,8 @@ async function missingFromWindow(
   tracked: Map<string, Tracked>,
 ): Promise<Row[]> {
   const window = page.window!;
-  const accountIds = window.providerAccountIds.flatMap((p) => {
-    const account = tracked.get(p);
-    return account ? [account.id] : [];
-  });
+  const { accountIds, returned } = windowScope(page, tracked);
   if (accountIds.length === 0) return [];
-  const returned = new Set(
-    page.added.flatMap((t) => {
-      const account = tracked.get(t.providerAccountId);
-      return account ? [rowKey(account.id, t.providerTransactionId)] : [];
-    }),
-  );
   const reported = sql`coalesce(${transactions.postedDate}, ${transactions.authorizedDate})`;
   const rows = await tx
     .select()
@@ -433,8 +505,10 @@ async function missingFromWindow(
 
 /**
  * Transactions the bank removed. The provider's own are soft-deleted, their split parts with
- * them, and a transfer they were in is unlinked. One that was yours before the bank's id was
- * attached to it (D7) stays yours: it lets go of the id instead. Returns how many.
+ * them, and a transfer they were in is unlinked; `provider_removed_at` says the bank did it, so a
+ * pending one can still come back as its posted version in a later sync (#88). One that was yours
+ * before the bank's id was attached to it (D7) stays yours: it lets go of the id instead. Returns
+ * how many.
  */
 async function drop(tx: Executor, activity: HouseholdActivity, rows: Row[]): Promise<number> {
   const seen = new Set<string>();
@@ -450,10 +524,15 @@ async function drop(tx: Executor, activity: HouseholdActivity, rows: Row[]): Pro
         .set({ providerTransactionId: null, version: sql`${transactions.version} + 1` })
         .where(eq(transactions.id, row.id));
     } else {
+      const at = new Date();
       ids = (
         await tx
           .update(transactions)
-          .set({ deletedAt: new Date(), version: sql`${transactions.version} + 1` })
+          .set({
+            deletedAt: at,
+            providerRemovedAt: at,
+            version: sql`${transactions.version} + 1`,
+          })
           .where(or(eq(transactions.id, row.id), eq(transactions.parentId, row.id)))
           .returning({ id: transactions.id })
       ).map((r) => r.id);
