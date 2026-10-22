@@ -1,7 +1,7 @@
 # Bank aggregation: the provider interface (M2)
 
 - Status: Accepted
-- Issue: #78 (part 1: the interface, a fake provider, and a conformance suite)
+- Issue: #78 (part 1: the interface, a fake provider, and a conformance suite); #81 (the runner)
 - Builds on: [ADR 0004](../adr/0004-pluggable-providers.md), [ADR 0008](../adr/0008-plaid-credentials-and-webhooks.md), the [bank connections walkthrough](walkthroughs/bank-sync.md) (D1, D6, D8, D10, D14, D17)
 
 Plaid and SimpleFIN sit behind one interface, designed against both from the start (D1), so
@@ -99,3 +99,41 @@ secret, and `release()` for the next update. It checks:
 
 The fake passes it in both modes, as the reference. The Plaid (#79) and SimpleFIN (#91) adapters
 run it against stub servers.
+
+## 4. The runner
+
+The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives in Postgres, on
+`connections`, so any number of workers can run.
+
+- **Claiming.** Every few seconds (`SYNC_POLL_SECONDS`, default 5) a pass claims up to its free
+  job slots through `fiscus_claim_due_connections(limit, lease)`: `ok` and `error` connections
+  whose `next_sync_at` has come, and disconnected ones still owed to their provider; never `setup`
+  or `login_required`. Claims are leased (15 minutes, longer than a job may take) with `SKIP
+  LOCKED`, so two workers never run one connection at once. The claim returns ids only; the runner
+  then reads each connection in its household's system context.
+- **Jobs**, by kind, from a handler registry: `sync` for a polled connection, `remove` for a
+  disconnected one with `disconnect_requested`. Until #80, `sync` decrypts the secret and lists the
+  accounts, to check the connection still works. `remove` calls `provider.remove(secret)`, then, in
+  one transaction recorded as activity by the system, deletes the secret and clears
+  `disconnect_requested`. If remove fails, or this server has no adapter for the provider, the
+  secret stays and the job is retried. A connection whose provider has no adapter here fails as
+  `provider_unavailable`; a job running past 10 minutes fails as `timeout`.
+- **When it's next due.** After a sync: the interval, `sync.intervalHours` (an instance setting,
+  read each pass, default 4 h; `SYNC_INTERVAL_HOURS` overrides it), plus up to 10% at random. After
+  a failure: 1 min, 5 min, 30 min, 2 h, 6 h, 12 h for the 1st, 2nd, … failure in a row, never more
+  than the interval, also with up to 10% added. `consecutive_failures` counts them,
+  `first_failed_at` is when the run began (for "not working" after 3 days), and `last_error_code`
+  holds the provider's code or the worker's own; all three clear on success. A provider error
+  meaning only its owner can fix it (`login_required`, `consent_expired`) sets `login_required`,
+  which isn't polled.
+- **Finishing** goes through `fiscus_finish_connection_job(id, outcome, …)`, a definer owned by
+  `fiscus_steward` that works only for a session logged in as `fiscus_worker`, only on a leased
+  connection, and changes only the timing and status columns. It's bookkeeping rather than a change
+  anyone made, so it records no activity.
+- **Shutdown.** The runner stops claiming, gives running jobs 30 seconds to finish, then releases
+  the leases of any still running, so another worker takes them right away.
+- **Readiness.** `/readyz` on the worker's health port fails when no pass has finished in the last
+  minute (or three poll intervals), and reports the last pass's time and the running jobs.
+- **Logs** carry connection ids, outcomes and codes only; errors are logged with `describeError`.
+  `apps/worker/src/no-financial-data-in-logs.test.ts` checks that secrets, account names and
+  amounts never appear, even when a provider's message or an error carries them.

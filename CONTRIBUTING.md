@@ -142,7 +142,7 @@ No Node 26 yet? `nvm install` (or `fnm use`) reads `.nvmrc`.
 - Log ids, counts, route patterns, and codes, never values. `${req.method} ${req.routeOptions.url}` names a route without its ids or query string.
 - Log an error with `describeError(e)` from `@fiscus/env`, never `e.message`, `e.stack`, or the error itself. A failed query's message holds its SQL **and parameters**, and Postgres's `detail` quotes rows ("Key (name)=(…) already exists"). `describeError` keeps the class, the SQLSTATE code, the table and constraint, and the stack frames, for each `cause`.
 - The API's error filter and the API and worker's handlers for uncaught errors already do this; nginx logs the path without its query string or referrer.
-- `apps/api/src/no-financial-data-in-logs.test.ts` runs the app with every log level and stdout/stderr captured while it handles recognizable values, including a server error that carries them, and fails if any appear. Add a flow to it when a feature logs something new.
+- `apps/api/src/no-financial-data-in-logs.test.ts` runs the app with every log level and stdout/stderr captured while it handles recognizable values, including a server error that carries them, and fails if any appear. `apps/worker/src/no-financial-data-in-logs.test.ts` does the same for the worker's runner and its jobs. Add a flow to them when a feature logs something new.
 
 ### Docker images
 
