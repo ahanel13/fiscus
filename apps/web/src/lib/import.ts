@@ -25,6 +25,7 @@ import {
   isMonarchTransactions,
   looksLikeOfx,
   looseName,
+  matchAccounts,
   type MonarchAccount,
   type OfxAccount,
   type OfxAccountType,
@@ -268,28 +269,25 @@ const newAccountName = (a: OfxAccount) =>
  * matched once at most, and never to a statement in another currency.
  */
 export function suggestOfxAccounts(found: OfxAccount[], existing: Account[]): AccountChoice[] {
-  const owned = existing
-    .filter((a) => a.yourAccess === 'owner')
-    // An open account first; a closed one only when no open one matches.
-    .sort((a, b) => Number(!!a.closedAt) - Number(!!b.closedAt));
-  const taken = new Set<string>();
-  return found.map((a): AccountChoice => {
+  const matches = matchAccounts(
+    found.map((a) => ({
+      names: [newAccountName(a)],
+      type: a.suggestedType,
+      mask: a.mask,
+      currency: a.currency,
+    })),
+    existing.filter((a) => a.yourAccess === 'owner'),
+  );
+  return found.map((a, i): AccountChoice => {
     const name = newAccountName(a);
-    const fits = (e: Account) =>
-      !taken.has(e.id) && (!a.currency || !e.currency || e.currency === a.currency);
-    const byMask = a.mask
-      ? owned.find((e) => fits(e) && e.mask === a.mask && e.type === a.suggestedType)
-      : undefined;
-    const byName = byMask ? undefined : owned.find((e) => fits(e) && lower(e.name) === lower(name));
-    const match = byMask ?? byName;
-    if (match) taken.add(match.id);
+    const matched = matches[i];
     const days = [a.firstDate, a.lastDate, a.ledgerBalance?.date]
       .filter((d): d is string => !!d)
       .sort();
     return {
       key: a.key,
-      mode: match ? 'existing' : 'new',
-      accountId: match?.id ?? null,
+      mode: matched ? 'existing' : 'new',
+      accountId: matched?.accountId ?? null,
       sameAs: null,
       name,
       type: a.suggestedType,
@@ -314,7 +312,7 @@ export function suggestOfxAccounts(found: OfxAccount[], existing: Account[]): Ac
         ledgerBalance: a.ledgerBalance,
         amountsLookReversed: a.amountsLookReversed,
       },
-      ...(match ? { matched: { accountId: match.id, by: byMask ? 'mask' : 'name' } } : {}),
+      ...(matched ? { matched } : {}),
       reversed: false,
     };
   });

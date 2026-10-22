@@ -78,7 +78,7 @@ const DEFAULT_BALANCE_MODE: Record<AccountType, BalanceMode> = {
 };
 
 /** New-account visibility per finance style (ADR 0006 §8). */
-const STYLE_VISIBILITY: Record<string, AccountVisibility> = {
+export const STYLE_VISIBILITY: Record<string, AccountVisibility> = {
   combined: 'full',
   hybrid: 'full',
   separate: 'view_only',

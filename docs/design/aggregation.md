@@ -1,8 +1,8 @@
 # Bank aggregation: the provider interface (M2)
 
 - Status: Accepted
-- Issue: #78 (part 1: the interface, a fake provider, and a conformance suite); #81 (the runner); #80 (sync ingest)
-- Builds on: [ADR 0004](../adr/0004-pluggable-providers.md), [ADR 0008](../adr/0008-plaid-credentials-and-webhooks.md), the [bank connections walkthrough](walkthroughs/bank-sync.md) (D1, D6, D8, D10, D14, D17)
+- Issue: #78 (part 1: the interface, a fake provider, and a conformance suite); #81 (the runner); #80 (sync ingest); #79 (connecting through Plaid Link)
+- Builds on: [ADR 0004](../adr/0004-pluggable-providers.md), [ADR 0008](../adr/0008-plaid-credentials-and-webhooks.md), the [bank connections walkthrough](walkthroughs/bank-sync.md) (D1, D2, D4–D6, D8, D10, D14, D17)
 
 Plaid and SimpleFIN sit behind one interface, designed against both from the start (D1), so
 sync, ingest and the UI never branch on which provider a connection uses. They branch on what it
@@ -185,3 +185,55 @@ recorded as activity by the system with the connection owner's member id.
   transaction's history shows these as the Bank.
 - **Errors** map as in §4: `login_required` and `consent_expired` set `login_required`; anything
   else is `error` with backoff. The provider's code is stored; its message never is.
+
+## 6. Connecting a bank through Plaid Link
+
+The api's side of D2 (#79, `apps/api/src/connections/`). The connect screens, Link's loader and
+the connect page's Content-Security-Policy come in a later part of #79.
+
+1. **Link token.** `POST /api/v1/households/:id/plaid/link-token`, for owners and members;
+   viewers get 403 (ACC-01). The keys are the household's, through `resolvePlaidCredentials`: its
+   own set if it has one (#83; until then such a household gets 409 `plaid_unavailable`), else
+   the server's, and without either also 409 `plaid_unavailable`. The token asks for
+   `products: ['transactions']`, `country_codes: ['US', 'CA']`, `transactions.days_requested:
+   730` (it can't be raised once the Item exists; D6's 90 days is applied when syncing, #80), and
+   `redirect_uri` only when `PLAID_REDIRECT_URI` is set. No webhook until #84. `client_user_id` is
+   a hash of the member id: stable, and neither an email nor the id itself.
+   With `?connection=<id>` it's update mode, for signing in again (ACC-03, #81): only the
+   connection's owner, only once its setup is done, with the Item's own access token and no
+   products, and refused (409 `credentials_changed`) when the keys it was made with are gone.
+2. **Exchange.** `POST /api/v1/households/:id/plaid/exchange` with `{ publicToken }`. The token
+   is exchanged once; the api then reads the accounts (`/accounts/get`) and the bank
+   (`/institutions/get_by_id`) from Plaid, never from Link's metadata, and upserts the
+   institution. The connection is stored in `setup`, owned by the caller, with `provider_env`,
+   `provider_client_id` and `provider_item_id`; the access token goes to `connection_secrets`,
+   encrypted with the household key, and is never returned. If Plaid fails after the exchange,
+   or storing fails, the Item is removed at Plaid so it isn't left behind (and billed). The
+   same Item twice is 409 `already_connected`.
+3. **Choosing.** The exchange returns the connection id and each account the bank offers (its
+   name, official name, type and subtype in Fiscus's terms, last 4, currency, and current balance
+   in Fiscus's sign) with a suggestion: `link` to one of the caller's accounts no other connection
+   syncs (last 4 and type, then name: `matchAccounts` in `@fiscus/shared`, as OFX import uses),
+   `skip` when that match is an account they closed, else `new`, owned by the caller with the
+   finance style's visibility (ADR 0006 §8). `GET /connections/:id/setup` offers them again,
+   from Plaid, while the setup lasts.
+4. **Confirm.** `POST /api/v1/households/:id/connections/:id/confirm`, one choice per offered
+   account: `link` (an account the caller owns, in the same currency, not synced by another
+   connection), `new` (optionally a name, owners including the caller, and visibility), or
+   `skip`; at least one tracked. Only the connection's owner, only in `setup` (a second confirm
+   is 409 `not_in_setup`). Linked accounts keep their history (D5) and sync from a week before
+   their latest transaction, or 90 days back without one; new ones from 90 days back (D6). Then
+   the connection is `ok` with `next_sync_at = now()`, so the runner syncs it on its next pass.
+   Activity records `connection.added` once per tracked account, seen by whoever sees that
+   account, with the provider and whether it was linked: no names, numbers or balances.
+
+**Nothing is seen before confirm (D4).** Row-level security shows a connection in `setup` only to
+its owner, and its accounts don't exist (or aren't linked) until confirm, so no one else sees
+anything of it, and the runner never claims it. Clearing setups that are never confirmed is left
+to #81.
+
+**Plaid's failures** become api problems by kind: 422 `invalid_public_token`, 409
+`login_required`, 429 `rate_limited` (with `retry-after`), 503 `institution_down`, 502
+`plaid_keys_refused` or `provider_unavailable`, each with Plaid's code as `providerCode` and
+never Plaid's message. `no-financial-data-in-logs.test.ts` runs the flow with the fake Plaid
+server, including a failure whose message names an account and its balance.

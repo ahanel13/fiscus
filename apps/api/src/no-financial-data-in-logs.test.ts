@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { riveraScenario, startFakePlaid, type FakePlaid } from '@fiscus/aggregation/testing';
 import { FieldCrypto } from '@fiscus/crypto';
 import { createDb, saveConnectionSecret, withContext } from '@fiscus/db';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
@@ -14,8 +15,9 @@ import { createTestApp, TestClient } from './testing/test-app.js';
  * No financial data in logs, errors, or metrics (ADR 0014 §2.3, #308). The app runs with every
  * log level captured, and stdout and stderr too, while it handles recognizable values the way a
  * person would: an account and its balance, transactions and their notes, a search, an import,
- * refused requests, a bank connection and its secret (#78), and a server error whose message holds
- * the values, as a failed query's does. None of the values may appear in what was captured.
+ * refused requests, a bank connection and its secret (#78), connecting a bank through Plaid Link,
+ * a failure Plaid's message describes (#79), and a server error whose message holds the values,
+ * as a failed query's does. None of the values may appear in what was captured.
  */
 describe('no financial data in logs (#308)', () => {
   // Distinctive, and not hex, so no id or timestamp matches them by chance.
@@ -48,6 +50,7 @@ describe('no financial data in logs (#308)', () => {
 
   let tdb: TestDatabase;
   let app: NestFastifyApplication;
+  let plaid: FakePlaid;
   let A: TestClient;
   let hh = '';
   const url = (p = '') => `/api/v1/households/${hh}${p}`;
@@ -61,13 +64,31 @@ describe('no financial data in logs (#308)', () => {
       }) as typeof process.stdout.write;
     }
     tdb = await startTestDatabase();
-    app = await createTestApp(tdb.appUrl, { signupMode: 'open' }, logger);
+    // The bank's accounts carry the name and the balance too.
+    const scenario = riveraScenario();
+    for (const a of scenario.accounts) a.name = `${a.name} ${NAME}`;
+    scenario.balances[0]!.currentMinor = BALANCE;
+    plaid = await startFakePlaid({ scenario });
+    app = await createTestApp(
+      tdb.appUrl,
+      {
+        signupMode: 'open',
+        plaid: {
+          clientId: plaid.clientId,
+          secret: plaid.secret,
+          env: 'sandbox',
+          apiBaseUrl: plaid.url,
+        },
+      },
+      logger,
+    );
   }, 180_000);
 
   afterAll(async () => {
     process.stdout.write = writes.stdout;
     process.stderr.write = writes.stderr;
     await app?.close();
+    await plaid?.close();
     await tdb?.stop();
   });
 
@@ -160,6 +181,31 @@ describe('no financial data in logs (#308)', () => {
     ).toBe(true);
     for (const r of responses) expect(JSON.stringify(r.body ?? '')).not.toContain(ACCESS_TOKEN);
 
+    // Connecting a bank through Plaid Link (#79): the link token, the exchange, the accounts the
+    // bank offers (names and balances), confirming, and a failure carrying Plaid's own message.
+    expect((await A.post(url('/plaid/link-token'))).status).toBe(200);
+    const setup = await A.post(url('/plaid/exchange'), { publicToken: plaid.publicToken });
+    expect(setup.status).toBe(201);
+    expect(JSON.stringify(setup.body)).toContain(NAME);
+    const linked = setup.body.data.connectionId as string;
+    expect(
+      (
+        await A.post(url(`/connections/${linked}/confirm`), {
+          accounts: (setup.body.data.accounts as { providerAccountId: string }[]).map((a) => ({
+            providerAccountId: a.providerAccountId,
+            choice: 'new',
+          })),
+        })
+      ).status,
+    ).toBe(200);
+    plaid.failNext('/link/token/create', {
+      error_type: 'API_ERROR',
+      error_code: 'INTERNAL_SERVER_ERROR',
+      error_message: `Checking ${NAME} has ${BALANCE}`,
+    });
+    expect((await A.post(url('/plaid/link-token'))).status).toBe(502);
+    expect(JSON.stringify(setup.body)).not.toContain(plaid.accessToken);
+
     // Refused: a change without If-Match, and a body that doesn't validate.
     expect(
       (await A.request('PATCH', url(`/transactions/${id}`), { displayName: `Renamed ${NAME}` }))
@@ -189,7 +235,9 @@ describe('no financial data in logs (#308)', () => {
     expect(text).toContain('GET /api/v1/households/:householdId/transactions');
     expect(text).toContain('DrizzleQueryError');
     expect(text).toContain('code=23505');
-    expect(text).not.toContain(ACCESS_TOKEN);
+    for (const value of [ACCESS_TOKEN, plaid.accessToken, plaid.secret, plaid.publicToken]) {
+      expect(text).not.toContain(value);
+    }
     for (const secret of SECRETS) {
       expect(text.toLowerCase(), `"${secret}" appeared in the logs`).not.toContain(secret);
     }
