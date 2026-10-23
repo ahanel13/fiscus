@@ -49,7 +49,10 @@ services:
         condition: service_healthy
 
   worker:
-    environment: *plaid-stub-env
+    environment:
+      <<: *plaid-stub-env
+      SIMPLEFIN_BRIDGE_HOSTS: plaid-stub
+      SIMPLEFIN_ALLOW_HTTP: 'true'
     depends_on:
       plaid-stub:
         condition: service_healthy

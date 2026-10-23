@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { plaidEnvVars } from '@fiscus/aggregation';
+import { plaidEnvVars, simpleFinEnvVars } from '@fiscus/aggregation';
 import {
   encryptionKeyEnv,
   encryptionKeyVersionEnv,
@@ -20,6 +20,8 @@ export default defineEnv('worker', {
   APP_ENCRYPTION_KEY_PREVIOUS_VERSION: previousEncryptionKeyVersionEnv,
   // The server's own Plaid keys (ADR 0008, #82): all three or none, checked at startup.
   ...plaidEnvVars,
+  // Where SimpleFIN access URLs may point (#91, threat model T28): the same as the api's.
+  ...simpleFinEnvVars,
   SYNC_INTERVAL_HOURS: {
     schema: z.coerce.number().int().min(1).max(24).optional(),
     description:

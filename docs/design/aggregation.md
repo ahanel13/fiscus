@@ -218,6 +218,8 @@ The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives 
   `fiscus_steward` that works only for a session logged in as `fiscus_worker`, only on a leased
   connection, and changes only the timing and status columns. It's bookkeeping rather than a change
   anyone made, so it records no activity.
+- **Provider floors.** A provider can need more room than these defaults: SimpleFIN is never
+  due sooner than 6 hours after a sync, and its backoff starts at 15 minutes (§8).
 - **Abandoned setups.** About once an hour a pass calls `fiscus_abandon_setups(24 hours)`, a
   definer like the claim (worker only): a connection still in `setup` a day after it was made
   (its owner never chose its accounts) is disconnected with `disconnect_requested`, so the same
@@ -443,6 +445,13 @@ dialog in `apps/web/src/components/SimpleFinDialog.tsx`.
   it.
 - **Fixing it is at the Bridge.** Plaid Link's update mode isn't offered for a SimpleFIN
   connection (409 `fix_at_the_bridge`).
-- **Syncing** a SimpleFIN connection comes in #91's third part: until then the worker has no
-  SimpleFIN adapter registered, and the connection shows as not syncing.
+- **Syncing.** The worker registers `SimpleFinProvider` with the same `SIMPLEFIN_BRIDGE_HOSTS`.
+  Each sync is one window (§2) dated in the household's time zone, from a fortnight before the
+  latest transaction the Bridge sent (`WINDOW_OVERLAP_DAYS`), or the accounts' `sync_from` the
+  first time, rather than the whole history again. The Bridge refreshes about daily and allows
+  about 24 requests a day, so a SimpleFIN connection is never due sooner than 6 hours after a
+  sync, and its retries start at 15 minutes (`SCHEDULE_FLOORS`); "Refresh now" waits 6 hours too
+  (§7). A pending transaction that posts under a new id is matched to its pending row by #88's
+  rule for providers without links (same account and amount, within 5 days, one candidate).
+  A revoked token (403) needs its owner: a new token from the Bridge.
 

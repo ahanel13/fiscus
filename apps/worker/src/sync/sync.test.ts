@@ -551,6 +551,7 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
     expect(requests(provider)[0]).toEqual({
       cursor: null,
       since: '2026-10-01',
+      timeZone: expect.any(String),
     } satisfies SyncRequest);
 
     const rows = await byProviderId(b.householdId);
