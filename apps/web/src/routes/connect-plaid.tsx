@@ -300,6 +300,25 @@ function ConnectFlow({
     }
   };
 
+  // Update mode worked: the connection is fixed, and syncs now. If saying so fails, its next
+  // scheduled sync still finds it working.
+  const signedInAgain = async (id: string) => {
+    try {
+      await api('POST', `${base(householdId)}/connections/${id}/reauthed`);
+      leaveTo(back, {
+        title: 'Signed in to your bank again.',
+        description: 'It’s syncing now.',
+        tone: 'success',
+      });
+    } catch {
+      leaveTo(back, {
+        title: 'Signed in to your bank again.',
+        description: 'It syncs again on its next scheduled sync.',
+        tone: 'success',
+      });
+    }
+  };
+
   // Link's callbacks, kept stable: react-plaid-link starts Link again whenever they change.
   const callbacks = useRef<{ onSuccess: PlaidLinkOnSuccess; onExit: PlaidLinkOnExit }>(null!);
   useLayoutEffect(() => {
@@ -307,7 +326,7 @@ function ConnectFlow({
       onSuccess: (publicToken, metadata) => {
         clearOAuthState();
         // Update mode keeps the same connection: there's nothing to exchange.
-        if (connection) leaveTo(back, { title: 'Signed in to your bank again.', tone: 'success' });
+        if (connection) void signedInAgain(connection);
         else if (publicToken) void exchange(publicToken, metadata);
       },
       onExit: (err, metadata) => {

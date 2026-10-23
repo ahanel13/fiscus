@@ -452,15 +452,25 @@ describe('cross-member visibility (generated)', () => {
           expect(Object.keys(c).sort()).toEqual(
             [
               'accountCount',
+              'accountIds',
+              'failingSince',
               'id',
               'institutionName',
               'lastSyncedAt',
               'nextSyncAt',
+              'notWorking',
               'owner',
               'provider',
+              'refreshAvailableAt',
               'status',
             ].sort(),
           );
+          // Only accounts this member sees: never a hidden one's id.
+          expect(c.accountIds).toHaveLength(c.accountCount);
+          for (const id of c.accountIds) {
+            const f = fixtures.find((x) => x.id === id);
+            expect(f && expectedLevel(actor, f), `${actor} sees ${id}`).toBeTruthy();
+          }
         }
       },
     );

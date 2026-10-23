@@ -54,6 +54,28 @@ export class ConnectionsController {
     return { data: await this.connect.confirm(ctx, id, body) };
   }
 
+  /** "Refresh now" (D10): a sync on the worker's next pass. Its owner only (ACC-03). */
+  @Post(':connectionId/refresh')
+  @HouseholdRoles('owner', 'member')
+  @HttpCode(200)
+  async refresh(
+    @Household() ctx: HouseholdContext,
+    @Param('connectionId', UuidPipe) id: string,
+  ): Promise<{ data: Connection }> {
+    return { data: await this.connections.refresh(ctx, id) };
+  }
+
+  /** Signed in again through the provider (D11): it's `ok`, and syncs now. Its owner only. */
+  @Post(':connectionId/reauthed')
+  @HouseholdRoles('owner', 'member')
+  @HttpCode(200)
+  async reauthed(
+    @Household() ctx: HouseholdContext,
+    @Param('connectionId', UuidPipe) id: string,
+  ): Promise<{ data: Connection }> {
+    return { data: await this.connections.reauthed(ctx, id) };
+  }
+
   /** Disconnects it (D14): its accounts and their history stay. ACC-03. */
   @Delete(':connectionId')
   @HouseholdRoles('owner', 'member')

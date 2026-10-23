@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from './test.js';
 import { axeViolations } from './axe.js';
-import { rewriteHistory } from './database.js';
+import { breakConnections, rewriteHistory } from './database.js';
 import { stubPlaidLink } from './plaid-link.js';
 
 // One journey through a fresh instance: setup → household → navigate → sign out → sign in.
@@ -1099,6 +1099,38 @@ test('connects a bank through Plaid Link, on its own page, and chooses what to t
   // stack's fake Plaid isn't a provider the worker has).
   await page.getByRole('link', { name: /^(Go to accounts|Cancel)$/ }).click();
   await expect(page).toHaveURL(/\/accounts$/);
+  // On Accounts: the connection, how fresh it is, and "Refresh now" with its limit (#81, D10).
+  const connections = page.getByRole('region', { name: 'Bank connections' });
+  await expect(connections).toContainText('Harbor Credit Union · Plaid');
+  const refresh = connections.getByRole('button', { name: 'Refresh Harbor Credit Union now' });
+  // Enabled once its first sync is done.
+  await expect(refresh).toBeEnabled({ timeout: 30_000 });
+  await expect(connections).toContainText(/Synced (just now|\d+ minutes? ago) · next in/);
+  expect(await axeViolations(page)).toEqual([]);
+  await refresh.click();
+  await expect(page.getByText('Syncing Harbor Credit Union now.')).toBeVisible();
+  await expect(refresh).toBeDisabled();
+  await expect(refresh).toHaveText(/Refresh in 1[45] minutes/);
+  await expect(connections).toContainText(/Syncing…|Synced just now · next in \d hours?/);
+
+  // The bank wants a sign-in: everyone sees it, with the accounts it leaves stale (D11, D12), and
+  // its owner signs in again through Link's update mode, which keeps the same connection.
+  breakConnections(householdUrl.split('/h/')[1]!);
+  await page.reload();
+  await expect(connections).toContainText('Harbor Credit Union needs you to sign in again');
+  await expect(connections).toContainText(/Everyday checking and Harbor CU Savings show balances/);
+  expect(await axeViolations(page)).toEqual([]);
+  await connections.getByRole('button', { name: 'Sign in again' }).click();
+  await expect(page).toHaveURL(/\/connect\/plaid\?connection=[0-9a-f-]{36}$/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Sign in to your bank again' }),
+  ).toBeFocused();
+  await page.getByRole('button', { name: 'Continue to Plaid' }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(page.getByText('Signed in to your bank again.')).toBeVisible();
+  await expect(connections).not.toContainText('sign in again');
+  expect(await plaidLoaded()).toBe(false);
+
   // The setup is over: its page says so, and sends you back.
   await page.goto(setupUrl);
   await expect(

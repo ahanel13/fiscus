@@ -106,6 +106,8 @@ export const connections = pgTable(
     /** When the current run of failures began: after 3 days, the connection says so (D10). */
     firstFailedAt: timestamp({ withTimezone: true }),
     lastSyncedAt: timestamp({ withTimezone: true }),
+    /** When its owner last pressed "Refresh now": the next is allowed after the provider's limit (D10). */
+    refreshRequestedAt: timestamp({ withTimezone: true }),
     /** When the worker next syncs it; null = never (setup, disconnected). */
     nextSyncAt: timestamp({ withTimezone: true }),
     /** A worker holds it until then. */

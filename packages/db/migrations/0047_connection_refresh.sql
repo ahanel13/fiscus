@@ -1,0 +1,1 @@
+ALTER TABLE "connections" ADD COLUMN "refresh_requested_at" timestamp with time zone;
