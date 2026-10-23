@@ -2,9 +2,11 @@
 import 'reflect-metadata';
 import {
   instancePlaidConfigOrExit,
+  instanceSimpleFinConfig,
   plaidProviderSource,
   plaidStatus,
   ProviderRegistry,
+  SimpleFinProvider,
 } from '@fiscus/aggregation';
 import { envKeyProvider, FieldCrypto, masterKeysOrExit } from '@fiscus/crypto';
 import { createDb, HouseholdKeyStore, pingDatabase } from '@fiscus/db';
@@ -31,12 +33,17 @@ const plaid = instancePlaidConfigOrExit(env, {
 });
 const db = createDb(env.DATABASE_URL, { max: 5 });
 const crypto = new FieldCrypto(new HouseholdKeyStore(db.db, master), master);
-// The adapters this worker has (SimpleFIN registers here with #91). Plaid serves each connection
+// The adapters this worker has. Plaid serves each connection
 // with the keys it was made with (#82): without the server's keys, or for a household's own (#83),
 // its jobs fail as provider_unavailable or household_keys_unavailable and back off; made with
 // another client id or environment, as credentials_changed. A first sync after Plaid's history
 // arrives can be slow (TXN-024), hence the longer request timeout.
-const providers = new ProviderRegistry([plaidProviderSource(plaid, { timeoutMs: 120_000 })]);
+// SimpleFIN (#91) reads one access URL per connection, only on the Bridge's hosts (threat model
+// T28), and needs no keys of the server's.
+const providers = new ProviderRegistry([
+  plaidProviderSource(plaid, { timeoutMs: 120_000 }),
+  new SimpleFinProvider(instanceSimpleFinConfig(env)),
+]);
 
 const app = await NestFactory.createApplicationContext(
   WorkerModule.forRoot({

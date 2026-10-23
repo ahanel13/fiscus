@@ -1180,9 +1180,21 @@ test('connects the SimpleFIN Bridge with a setup token, claimed once (#91)', asy
   ).toBeFocused();
   await page.getByRole('link', { name: 'Go to accounts' }).click();
   await expect(page).toHaveURL(/\/accounts$/);
-  await expect(page.getByRole('region', { name: 'Bank connections' })).toContainText(
-    'SimpleFIN Bridge · SimpleFIN',
+  const bridgeLine = page
+    .getByRole('region', { name: 'Bank connections' })
+    .locator('div', { hasText: 'SimpleFIN Bridge · SimpleFIN' })
+    .last();
+  await expect(bridgeLine).toBeVisible();
+  // The worker syncs it from the stub Bridge: the card and its balance arrive, and the next
+  // sync is 6 hours away (the Bridge's daily budget).
+  await expect(bridgeLine).toContainText(
+    /Synced (just now|\d+ minutes? ago) · next in [56] hours/,
+    {
+      timeout: 30_000,
+    },
   );
+  await page.reload();
+  await expect(page.getByRole('link', { name: /Harbor CU Visa/ })).toBeVisible();
 
   // Claimed once: the same token again is refused, and says where a new one comes from.
   dialog = await paste();

@@ -247,7 +247,8 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
     expect(await h.row(unavailable)).toMatchObject({
       status: 'error',
       lastErrorCode: 'provider_unavailable',
-      nextInMinutes: 1,
+      // SimpleFIN's retries start at 15 minutes (the Bridge's daily budget, #91).
+      nextInMinutes: 15,
       leased: false,
     });
     expect(await h.row(noSecret)).toMatchObject({
@@ -324,7 +325,7 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
         disconnectRequested: true,
         hasSecret: true,
         lastErrorCode: 'provider_unavailable',
-        nextInMinutes: 1,
+        nextInMinutes: 15,
       });
     });
 
@@ -454,7 +455,8 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
       resume();
       await r.idle();
       expect(await h.row(slow)).toEqual(row);
-      expect(await h.row(quick)).toMatchObject({ status: 'ok', nextInMinutes: 240 });
+      // SimpleFIN: never sooner than 6 hours (#91).
+      expect(await h.row(quick)).toMatchObject({ status: 'ok', nextInMinutes: 360 });
     });
   });
 });

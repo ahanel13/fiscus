@@ -6,7 +6,9 @@ import {
   type Database,
   type Executor,
   householdMembers,
+  households,
   systemContext,
+  transactions,
   withContext,
 } from '@fiscus/db';
 import {
@@ -21,7 +23,7 @@ import {
   type HouseholdActivity,
   writeProviderLiabilities,
 } from '@fiscus/ledger';
-import { and, eq, isNotNull, min } from 'drizzle-orm';
+import { and, eq, isNotNull, max, min, sql } from 'drizzle-orm';
 import { FAILURE, JobFailure } from '../runner/jobs.js';
 import {
   advanceConnection,
@@ -48,6 +50,25 @@ export interface SyncState {
   cursor: string | null;
   /** The earliest `sync_from` of its tracked accounts, for providers without a cursor (D6). */
   since: string | null;
+  /**
+   * The latest date of a transaction the provider sent for its accounts. A provider without a
+   * cursor asks again from a fortnight before it, not the whole history every time (#91).
+   */
+  lastProviderDate: string | null;
+  /** The household's time zone: providers reporting instants date transactions in it (#91). */
+  timeZone: string;
+}
+
+/** How far before its latest transaction a provider without a cursor asks again (#91). */
+export const WINDOW_OVERLAP_DAYS = 14;
+
+/** Where a provider without a cursor starts: its accounts' `sync_from`, or a fortnight back. */
+export function windowStart(state: Pick<SyncState, 'since' | 'lastProviderDate'>): string | null {
+  if (!state.lastProviderDate) return state.since;
+  const d = new Date(`${state.lastProviderDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - WINDOW_OVERLAP_DAYS);
+  const recent = d.toISOString().slice(0, 10);
+  return state.since && state.since > recent ? state.since : recent;
 }
 
 export interface SyncDeps {
@@ -81,20 +102,38 @@ export async function readSyncState(
         ownerMemberId: connections.ownerMemberId,
         leftAt: householdMembers.leftAt,
         cursor: connections.syncCursor,
+        timeZone: households.timezone,
       })
       .from(connections)
       .innerJoin(householdMembers, eq(householdMembers.id, connections.ownerMemberId))
+      .innerJoin(households, eq(households.id, connections.householdId))
       .where(eq(connections.id, target.connectionId));
     if (!row) return null;
     const [since] = await tx
       .select({ since: min(accounts.syncFrom) })
       .from(accounts)
       .where(and(eq(accounts.connectionId, target.connectionId), isNotNull(accounts.syncFrom)));
+    const [latest] = await tx
+      .select({
+        date: max(
+          sql<string>`coalesce(${transactions.postedDate}, ${transactions.authorizedDate})`,
+        ),
+      })
+      .from(transactions)
+      .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+      .where(
+        and(
+          eq(accounts.connectionId, target.connectionId),
+          isNotNull(transactions.providerTransactionId),
+        ),
+      );
     return {
       ownerMemberId: row.ownerMemberId,
       ownerLeft: row.leftAt !== null,
       cursor: row.cursor,
       since: since?.since ?? null,
+      lastProviderDate: latest?.date ?? null,
+      timeZone: row.timeZone,
     };
   });
 }
@@ -215,9 +254,11 @@ async function fetchPages(
   for (;;) {
     let page: SyncPage;
     try {
+      const since = provider.capabilities.cursorSync ? state.since : windowStart(state);
       page = await provider.sync(secret, {
         cursor,
-        ...(state.since !== null && { since: state.since }),
+        ...(since !== null && { since }),
+        timeZone: state.timeZone,
       });
     } catch (error) {
       if (

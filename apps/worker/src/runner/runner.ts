@@ -13,7 +13,7 @@ import {
   syncIntervalHours,
   type Claimed,
 } from './queue.js';
-import { backoffDelayMs, nextSyncDelayMs } from './schedule.js';
+import { backoffDelayMs, nextSyncDelayMs, scheduleFloor } from './schedule.js';
 
 export interface RunnerOptions {
   /** Between passes. */
@@ -209,10 +209,12 @@ export class Runner {
     const { db, crypto, providers, handlers } = this.#deps;
     let failuresBefore = 0;
     let kind = 'job';
+    let provider: string | undefined;
     try {
       const target = await readTarget(db, claimed);
       if (!target) return; // Deleted since it was claimed: nothing to finish.
       failuresBefore = target.consecutiveFailures;
+      provider = target.provider;
       const jobKind = jobKindFor(target);
       if (!jobKind) {
         await this.#finish(id, { outcome: target.status === 'disconnected' ? 'done' : 'released' });
@@ -226,13 +228,22 @@ export class Runner {
         await this.#finish(id, { outcome: 'done' });
         this.#logger.log(`${kind} ${id}: done`);
       } else {
-        const nextInMs = nextSyncDelayMs(intervalHours, this.#options.random);
+        const nextInMs = nextSyncDelayMs(
+          intervalHours,
+          this.#options.random,
+          scheduleFloor(provider),
+        );
         await this.#finish(id, { outcome: 'synced', nextInMs });
         this.#logger.log(`${kind} ${id}: ok, next in ${minutes(nextInMs)}`);
       }
     } catch (error) {
       const failure = failureOf(error);
-      const nextInMs = backoffDelayMs(failuresBefore, intervalHours, this.#options.random);
+      const nextInMs = backoffDelayMs(
+        failuresBefore,
+        intervalHours,
+        this.#options.random,
+        scheduleFloor(provider),
+      );
       if (!failure.expected) this.#logger.error(`${kind} ${id}: ${describeError(error)}`);
       try {
         await this.#finish(id, {
