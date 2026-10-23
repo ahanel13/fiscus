@@ -1138,6 +1138,62 @@ test('connects a bank through Plaid Link, on its own page, and chooses what to t
   ).toBeVisible();
 });
 
+test('connects the SimpleFIN Bridge with a setup token, claimed once (#91)', async ({ page }) => {
+  // The stack's fake Bridge (docker-compose.plaid-stub.yml): its token is base64 of its claim URL.
+  const token = Buffer.from('http://plaid-stub:4011/claim/rivera-setup').toString('base64');
+  const paste = async () => {
+    await page.getByRole('button', { name: 'Add account' }).first().click();
+    await page.getByRole('menuitem', { name: 'Connect with SimpleFIN' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Connect with SimpleFIN' });
+    await expect(dialog.getByRole('textbox', { name: 'Setup token' })).toBeFocused();
+    return dialog;
+  };
+  await signIn(page);
+  await page.goto(`${householdUrl}/accounts`);
+  let dialog = await paste();
+  expect(await axeViolations(page)).toEqual([]);
+  // Not a token: said so, nothing claimed.
+  await dialog.getByRole('textbox', { name: 'Setup token' }).fill('my bank password');
+  await dialog.getByRole('button', { name: 'Connect' }).click();
+  await expect(dialog.getByText('This isn’t a SimpleFIN setup token.')).toBeVisible();
+  await dialog.getByRole('textbox', { name: 'Setup token' }).fill(token);
+  await dialog.getByRole('button', { name: 'Connect' }).click();
+
+  // The same choose step as Plaid's, on the page every page has (no Plaid script).
+  await expect(page).toHaveURL(/\/connect\/setup\/[0-9a-f-]{36}$/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'SimpleFIN Bridge: choose what to track' }),
+  ).toBeFocused();
+  expect(await axeViolations(page)).toEqual([]);
+  const becomes = (name: RegExp) => page.getByRole('combobox', { name });
+  for (const name of [/What Harbor CU Checking/, /What Harbor CU Savings/, /What Old savings/]) {
+    await becomes(name).click();
+    // Rows above change height as choices change; the arrow key opens it as a click would.
+    const list = page.getByRole('listbox', { name });
+    if (!(await list.isVisible())) await becomes(name).press('ArrowDown');
+    await list.getByRole('option', { name: 'Don’t track' }).click();
+  }
+  await expect(becomes(/What Harbor CU Visa/)).toHaveValue('New account');
+  await page.getByRole('button', { name: 'Track 1 account' }).click();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'SimpleFIN Bridge is connected' }),
+  ).toBeFocused();
+  await page.getByRole('link', { name: 'Go to accounts' }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(page.getByRole('region', { name: 'Bank connections' })).toContainText(
+    'SimpleFIN Bridge · SimpleFIN',
+  );
+
+  // Claimed once: the same token again is refused, and says where a new one comes from.
+  dialog = await paste();
+  await dialog.getByRole('textbox', { name: 'Setup token' }).fill(token);
+  await dialog.getByRole('button', { name: 'Connect' }).click();
+  await expect(
+    dialog.getByText('This token has been used. Create a new one at the SimpleFIN Bridge.'),
+  ).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+});
+
 // Last, since it rewrites the household's history in the database. It needs the docker CLI, for
 // the compose project in E2E_COMPOSE_PROJECT (default `fiscus`, as CI runs it): e2e/database.ts.
 test('your browser notices when the history was rewritten, even consistently (#264)', async ({

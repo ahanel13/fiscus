@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { PlaidInstanceConfig } from '@fiscus/aggregation';
+import type { PlaidInstanceConfig, SimpleFinInstanceConfig } from '@fiscus/aggregation';
 import type { SignupMode } from '@fiscus/shared';
 
 export interface AppConfig {
@@ -17,6 +17,8 @@ export interface AppConfig {
    * connection's keys with `resolvePlaidCredentials`, never from here directly.
    */
   plaid?: PlaidInstanceConfig | undefined;
+  /** Where SimpleFIN setup tokens may point (#91). Defaults to the Bridge's hosts. */
+  simplefin?: SimpleFinInstanceConfig | undefined;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

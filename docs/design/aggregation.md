@@ -417,3 +417,32 @@ the line per connection at the top of Accounts (`apps/web/src/components/BankCon
 - **Not working.** After 3 days of failures, the line says so, and its owner gets "Disconnect"
   beside "Refresh now".
 
+## 8. Connecting the SimpleFIN Bridge
+
+D3, #91: the api in `apps/api/src/connections/simplefin*.ts` and `connect.service.ts`, the paste
+dialog in `apps/web/src/components/SimpleFinDialog.tsx`.
+
+- **Offered when on.** `GET …/simplefin` says whether the admin has `simplefin.enabled` (#400, on
+  by default); Accounts → Add account shows "Connect with SimpleFIN" to owners and members when
+  it is (viewers can't connect banks, ACC-01).
+- **The token.** The person creates a setup token at the Bridge and pastes it. `POST
+  …/simplefin/connect` claims it, once, from the server (D3), within `SIMPLEFIN_BRIDGE_HOSTS`
+  (§2, threat model T28; `SIMPLEFIN_ALLOW_HTTP` is for the e2e stack's stub only). A token that
+  isn't one is 422 `not_a_setup_token`, one pointing elsewhere `setup_token_host`, one already
+  used `setup_token_used` ("Create a new one at the SimpleFIN Bridge"). The same token's access
+  again is 409 `already_connected` (`provider_item_id` is a hash of its username).
+- **Kept at once.** A claimed token can't be claimed again, so the connection is stored in `setup`
+  with its access URL (encrypted, `connection_secrets`) before the accounts are read. If the
+  Bridge then fails, the problem carries `connectionId` and says the connection was kept; its
+  owner finishes it from Accounts ("Choose accounts" on its line) once the Bridge answers.
+- **Choosing** is the same step as Plaid's (§6, D4, D5), at `/h/:id/connect/setup/:connectionId`
+  (no Plaid script, so the policy every page has). Setup and confirm read the offered accounts
+  from the connection's provider through one provider-neutral shape: Plaid's `/accounts/get`, or
+  the Bridge's accounts with balances only, their types and last 4 guessed from names (§2). The
+  institution is "SimpleFIN Bridge"; one connection for the token, however many banks are behind
+  it.
+- **Fixing it is at the Bridge.** Plaid Link's update mode isn't offered for a SimpleFIN
+  connection (409 `fix_at_the_bridge`).
+- **Syncing** a SimpleFIN connection comes in #91's third part: until then the worker has no
+  SimpleFIN adapter registered, and the connection shows as not syncing.
+

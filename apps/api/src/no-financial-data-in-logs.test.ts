@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { riveraScenario, startFakePlaid, type FakePlaid } from '@fiscus/aggregation/testing';
+import {
+  riveraScenario,
+  startFakePlaid,
+  startFakeSimpleFin,
+  type FakePlaid,
+  type FakeSimpleFin,
+} from '@fiscus/aggregation/testing';
 import { FieldCrypto } from '@fiscus/crypto';
 import { createDb, saveConnectionSecret, withContext } from '@fiscus/db';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
@@ -51,6 +57,7 @@ describe('no financial data in logs (#308)', () => {
   let tdb: TestDatabase;
   let app: NestFastifyApplication;
   let plaid: FakePlaid;
+  let bridge: FakeSimpleFin;
   let A: TestClient;
   let hh = '';
   const url = (p = '') => `/api/v1/households/${hh}${p}`;
@@ -69,6 +76,7 @@ describe('no financial data in logs (#308)', () => {
     for (const a of scenario.accounts) a.name = `${a.name} ${NAME}`;
     scenario.balances[0]!.currentMinor = BALANCE;
     plaid = await startFakePlaid({ scenario });
+    bridge = await startFakeSimpleFin({ scenario });
     app = await createTestApp(
       tdb.appUrl,
       {
@@ -79,6 +87,7 @@ describe('no financial data in logs (#308)', () => {
           env: 'sandbox',
           apiBaseUrl: plaid.url,
         },
+        simplefin: { allowedHosts: [bridge.host], allowHttp: true },
       },
       logger,
     );
@@ -89,6 +98,7 @@ describe('no financial data in logs (#308)', () => {
     process.stderr.write = writes.stderr;
     await app?.close();
     await plaid?.close();
+    await bridge?.close();
     await tdb?.stop();
   });
 
@@ -206,6 +216,29 @@ describe('no financial data in logs (#308)', () => {
     expect((await A.post(url('/plaid/link-token'))).status).toBe(502);
     expect(JSON.stringify(setup.body)).not.toContain(plaid.accessToken);
 
+    // Connecting the SimpleFIN Bridge (#91): the token claimed, the accounts it offers (names and
+    // balances), confirming one, a used token, and a Bridge failure carrying its own message.
+    const bridged = await A.post(url('/simplefin/connect'), { setupToken: bridge.setupToken });
+    expect(bridged.status).toBe(201);
+    expect(JSON.stringify(bridged.body)).toContain(NAME);
+    expect(
+      (
+        await A.post(url(`/connections/${bridged.body.data.connectionId}/confirm`), {
+          accounts: (bridged.body.data.accounts as { providerAccountId: string }[]).map((a, i) => ({
+            providerAccountId: a.providerAccountId,
+            choice: i === 0 ? 'new' : 'skip',
+          })),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await A.post(url('/simplefin/connect'), { setupToken: bridge.setupToken })).status,
+    ).toBe(422);
+    bridge.failNext({ status: 500, body: `Checking ${NAME} has ${BALANCE}` });
+    expect(
+      (await A.get(url(`/connections/${bridged.body.data.connectionId}/setup`))).status,
+    ).toBeGreaterThanOrEqual(400);
+
     // Refused: a change without If-Match, and a body that doesn't validate.
     expect(
       (await A.request('PATCH', url(`/transactions/${id}`), { displayName: `Renamed ${NAME}` }))
@@ -235,7 +268,15 @@ describe('no financial data in logs (#308)', () => {
     expect(text).toContain('GET /api/v1/households/:householdId/transactions');
     expect(text).toContain('DrizzleQueryError');
     expect(text).toContain('code=23505');
-    for (const value of [ACCESS_TOKEN, plaid.accessToken, plaid.secret, plaid.publicToken]) {
+    for (const value of [
+      ACCESS_TOKEN,
+      plaid.accessToken,
+      plaid.secret,
+      plaid.publicToken,
+      bridge.setupToken,
+      bridge.accessUrl,
+      new URL(bridge.accessUrl).password,
+    ]) {
       expect(text).not.toContain(value);
     }
     for (const secret of SECRETS) {

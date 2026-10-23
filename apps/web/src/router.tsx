@@ -201,6 +201,19 @@ const connectSetupRoute = createRoute({
 });
 
 /**
+ * Choosing what a connection tracks, for one that doesn't need Plaid's script (SimpleFIN, #91, or
+ * a setup finished later from Accounts): the same page, under the policy every page has.
+ */
+const connectionSetupRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/h/$householdId/connect/setup/$connectionId',
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(householdQuery(params.householdId)),
+  component: ConnectSetupPage,
+  errorComponent: NotFound,
+});
+
+/**
  * Back from a bank's own sign-in page (OAuth, #79): one fixed path for every household, since
  * Plaid matches the redirect URI exactly. Plaid adds `?oauth_state_id=`, read by Link itself.
  */
@@ -275,6 +288,7 @@ const routeTree = rootRoute.addChildren([
     serverRoute,
     connectPlaidRoute,
     connectSetupRoute,
+    connectionSetupRoute,
     plaidOAuthRoute,
     householdRoute.addChildren([
       ...sectionRoutes,
