@@ -65,3 +65,30 @@ export type {
   PlaidTransaction,
   TransactionsSyncResponse,
 } from './plaid/schemas.js';
+export {
+  allowedUrl,
+  claimSetupToken,
+  decodeSetupToken,
+  SIMPLEFIN_BRIDGE_HOSTS,
+  SIMPLEFIN_VERSION,
+  SimpleFinClient,
+  simpleFinItemId,
+  SimpleFinTokenError,
+  type AccountsRequest,
+  type SimpleFinClientOptions,
+} from './simplefin/client.js';
+export {
+  guessAccountType,
+  simpleFinCurrency,
+  simpleFinDate,
+  simpleFinMinor,
+  simpleFinProviderAccount,
+  simpleFinProviderBalance,
+  simpleFinProviderTransaction,
+} from './simplefin/mapping.js';
+export {
+  SIMPLEFIN_CAPABILITIES,
+  SIMPLEFIN_PROVIDER_ID,
+  SimpleFinProvider,
+  type SimpleFinProviderOptions,
+} from './simplefin/provider.js';

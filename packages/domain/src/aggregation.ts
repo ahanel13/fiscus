@@ -118,6 +118,18 @@ export interface SyncRequest {
   cursor: string | null;
   /** The earliest date wanted (D6). Providers without a cursor ask for it every time. */
   since?: string;
+  /**
+   * The household's IANA time zone, for providers that report instants rather than dates
+   * (SimpleFIN): a transaction's date is the day it happened there. Defaults to UTC.
+   */
+  timeZone?: string;
+}
+
+/** An account the provider couldn't update this time, and its code (SimpleFIN's `errlist`). */
+export interface ProviderAccountError {
+  providerAccountId: string;
+  /** The provider's code, safe to store (`act.auth`). Never its message. */
+  code: string;
 }
 
 /**
@@ -143,6 +155,11 @@ export interface SyncPage {
   hasMore: boolean;
   /** All the history the provider will send has arrived (Plaid's `HISTORICAL_UPDATE`). */
   historicalComplete?: boolean;
+  /**
+   * Accounts the provider reported a problem with. They're left out of `window`, so what they
+   * had is kept, and their connection can say which need attention at the provider (D12).
+   */
+  accountErrors?: ProviderAccountError[];
 }
 
 export interface AggregationProvider {

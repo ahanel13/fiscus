@@ -5,6 +5,7 @@ export {
   ProviderError,
   type AggregationProvider,
   type ProviderAccount,
+  type ProviderAccountError,
   type ProviderAccountType,
   type ProviderBalance,
   type ProviderCapabilities,

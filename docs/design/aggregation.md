@@ -112,6 +112,34 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
     `RATE_LIMIT_EXCEEDED` `rate_limited`, `ITEM_NOT_FOUND` `invalid_credentials` (the Item is
     gone), and `PRODUCT_NOT_READY` and anything unknown `transient`, all retried with the runner's
     capped, jittered backoff (ITEM-004, ITEM-013).
+- **The SimpleFIN adapter** (`SimpleFinProvider`, `src/simplefin/`, #91), over `fetch`, protocol
+  v2 (`version=2`: `errlist`, `connections`, accounts' `conn_id`):
+  - **Tokens.** A setup token is base64 of a claim URL. `decodeSetupToken` checks it, and
+    `claimSetupToken` POSTs to it once (a used one answers 403: "Create a new one at the Bridge")
+    and returns the access URL, which carries Basic credentials. Both URLs must be https on a host
+    in `SIMPLEFIN_BRIDGE_HOSTS` (by default `bridge.simplefin.org`, `beta-bridge.simplefin.org`),
+    the access URL on the claim's host, before any request (threat model T28). Requests refuse
+    redirects, time out after 15 s and read at most 10 MB; the credentials go in an
+    `Authorization` header, never the URL, and never appear in an error or the client's printed
+    form. `simpleFinItemId` is a hash of the token's username: stable, and says nothing.
+  - **`sync`** is one `window` page: `GET /accounts?start-date=…&pending=1`, from `since` (90 days
+    back by default) to today. Dates are the day a transaction happened in the household's time
+    zone (`SyncRequest.timeZone`), except a time of exactly 00:00:00Z, which Bridges send for a
+    bare date and which is that date in UTC. A pending transaction (`pending`, or `posted` of 0)
+    has no posted date; one that posts under a new id replaces it through the window (ingest
+    drops what's no longer there). Amounts are decimal strings turned into minor units by their
+    digits, never through a float; SimpleFIN's sign is already Fiscus's.
+  - **Accounts.** SimpleFIN gives a name, a currency and balances only, so the type, subtype and
+    last 4 are guessed from the name (a negative balance with no other hint is a card). An account
+    in a custom currency (a URL rather than an ISO code) is left out. The balance, available
+    balance and `balance-date` are one snapshot; there's no credit limit.
+  - **Errors.** 403 is `login_required` (`SIMPLEFIN_ACCESS_REVOKED`: a new token from the Bridge),
+    402 `consent_expired` (`SIMPLEFIN_PAYMENT_REQUIRED`: the Bridge subscription), 429
+    `rate_limited`, anything else `transient`. An `errlist` entry naming an account, or its
+    connection, leaves that account out of the window (so what it had is kept) and lists it in
+    `accountErrors` with the code, never the message. Errors with no accounts at all fail the sync.
+  - **`remove`** calls nothing: the Bridge can't end a token's access from here, so its owner
+    revokes it at the Bridge (D14) and Fiscus deletes the access URL.
 - `@fiscus/aggregation/testing`, for tests only:
   - `FakeAggregationProvider`: scripted and deterministic. Accounts, balances, liabilities, a list
     of **updates** (each the pages one sync returns, made visible with `release()`), `delta` or
@@ -126,6 +154,9 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
     `original_description` only when asked, cards, student loans and mortgages from
     `/liabilities/get`, and `NO_LIABILITY_ACCOUNTS` for an Item without a card or loan, as Plaid
     does.
+  - `startFakeSimpleFin()`: the Bridge's claim and accounts endpoints on a stub server, answering
+    the same scenario in SimpleFIN's format (decimal strings, bare dates at midnight UTC), checking
+    Basic credentials, claiming a token once, with scripted statuses and `errlist` entries.
 
 ## 3. The conformance suite
 
@@ -149,7 +180,10 @@ secret, and `release()` for the next update. It checks:
 
 The fake passes it in both modes, as the reference. The Plaid adapter (#82) passes it against
 the fake Plaid server, with every error kind, Plaid's foreign amounts and accounts' `closed` left
-out (Plaid reports neither); the SimpleFIN adapter (#91) will against its stub.
+out (Plaid reports neither). The SimpleFIN adapter (#91) passes it against the fake Bridge, with
+the kinds the Bridge can report (`login_required`, `consent_expired`, `rate_limited`,
+`transient`), and merchant names, foreign amounts, accounts' official names, last 4 and `closed`,
+and credit limits left out (`unsupportedBalanceFields`).
 
 ## 4. The runner
 
