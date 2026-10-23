@@ -45,3 +45,11 @@ export {
   type FakePlaidError,
   type FakePlaidOptions,
 } from './testing/fake-plaid.js';
+export {
+  simpleFinAccount,
+  simpleFinTransaction,
+  startFakeSimpleFin,
+  type FakeSimpleFin,
+  type FakeSimpleFinFailure,
+  type FakeSimpleFinOptions,
+} from './testing/fake-simplefin.js';

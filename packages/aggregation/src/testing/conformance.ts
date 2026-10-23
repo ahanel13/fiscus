@@ -3,6 +3,7 @@ import {
   isProviderError,
   type AggregationProvider,
   type ProviderAccount,
+  type ProviderBalance,
   type ProviderErrorKind,
   type ProviderSecret,
   type ProviderTransaction,
@@ -42,6 +43,8 @@ export interface ConformanceOptions {
   unsupportedFields?: readonly (keyof ProviderTransaction)[];
   /** Account fields the provider never reports (Plaid doesn't say an account is closed). */
   unsupportedAccountFields?: readonly (keyof ProviderAccount)[];
+  /** Balance fields the provider never reports (SimpleFIN has no credit limit). */
+  unsupportedBalanceFields?: readonly (keyof ProviderBalance)[];
   /** Defaults to the Riveras' Harbor Credit Union. */
   scenario?: () => ConformanceScenario;
 }
@@ -222,8 +225,14 @@ export function describeProviderConformance(
         const last = runs.at(-1)!.requests.at(-1)!.page;
         if (last.balances) {
           const byId = new Map(last.balances.map((b) => [b.providerAccountId, b]));
+          const omit = new Set<string>(options.unsupportedBalanceFields ?? []);
+          const comparable = (b: ProviderBalance | undefined) =>
+            b && Object.fromEntries(Object.entries(b).filter(([f]) => !omit.has(f)));
           for (const balance of scenario.balances) {
-            expect(byId.get(balance.providerAccountId), balance.providerAccountId).toEqual(balance);
+            expect(
+              comparable(byId.get(balance.providerAccountId)),
+              balance.providerAccountId,
+            ).toEqual(comparable(balance));
           }
         }
       }));
