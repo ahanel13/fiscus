@@ -25,6 +25,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Landmark,
+  Link2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -43,9 +44,11 @@ import {
   membersQuery,
   netWorthRangeQuery,
   plaidAvailabilityQuery,
+  simpleFinAvailabilityQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { BankConnections } from '../components/BankConnections.js';
+import { SimpleFinDialog } from '../components/SimpleFinDialog.js';
 import { CardDetails } from '../components/CardDetails.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -153,6 +156,8 @@ export function AccountsPage() {
   const arrange = useArrange(householdId);
   // Viewers can't connect banks (ACC-01), and the entry shows only where Plaid is set up (#79).
   const plaid = useQuery({ ...plaidAvailabilityQuery(householdId), enabled: canAdd }).data;
+  const simplefin = useQuery({ ...simpleFinAvailabilityQuery(householdId), enabled: canAdd }).data;
+  const [bridging, setBridging] = useState(false);
   // Coming back from connecting a bank (a full page load): how it went.
   useEffect(() => {
     const flash = takeFlash();
@@ -180,6 +185,13 @@ export function AccountsPage() {
           >
             <AddOption icon={<Landmark aria-hidden />} label="Connect a bank">
               Sign in through Plaid. Updates several times a day.
+            </AddOption>
+          </MenuItem>
+        ) : null}
+        {simplefin?.available ? (
+          <MenuItem textValue="Connect with SimpleFIN" onAction={() => setBridging(true)}>
+            <AddOption icon={<Link2 aria-hidden />} label="Connect with SimpleFIN">
+              Paste a token from the SimpleFIN Bridge. Updates about once a day.
             </AddOption>
           </MenuItem>
         ) : null}
@@ -291,6 +303,9 @@ export function AccountsPage() {
             else arrange.change(arrange.draft!, name);
           }}
         />
+      ) : null}
+      {canAdd ? (
+        <SimpleFinDialog householdId={householdId} isOpen={bridging} onOpenChange={setBridging} />
       ) : null}
       {canAdd ? (
         <AddAccountDialog

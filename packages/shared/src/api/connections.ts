@@ -64,6 +64,21 @@ export type PlaidAvailability =
   | { available: true; env: 'sandbox' | 'production' }
   | { available: false; reason: 'not_configured' | 'household_keys_unavailable' };
 
+// Connecting the SimpleFIN Bridge (#91, D3).
+
+/** `GET /households/:id/simplefin`: whether the server's admin has SimpleFIN on. */
+export interface SimpleFinAvailability {
+  available: boolean;
+}
+
+/**
+ * `POST /households/:id/simplefin/connect`: the setup token the Bridge showed, claimed once by
+ * the server. Then the same choose step as Plaid's (`ConnectionSetup`).
+ */
+export const simpleFinConnectSchema = z.object({
+  setupToken: z.string().trim().min(1).max(2000),
+});
+
 /** `POST /households/:id/plaid/link-token`: what the browser opens Plaid Link with. */
 export interface PlaidLinkToken {
   linkToken: string;

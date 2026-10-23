@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'reflect-metadata';
-import { instancePlaidConfigOrExit, plaidStatus } from '@fiscus/aggregation';
+import {
+  instancePlaidConfigOrExit,
+  instanceSimpleFinConfig,
+  plaidStatus,
+} from '@fiscus/aggregation';
 import { masterKeysOrExit } from '@fiscus/crypto';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
@@ -32,6 +36,7 @@ const config: AppConfig = {
   signupMode: env.SIGNUP_MODE,
   cookieSecure: env.COOKIE_SECURE,
   plaid,
+  simplefin: instanceSimpleFinConfig(env),
 };
 // Fail closed, and say why: keys that can't work stop the api before it serves anything (#307).
 await masterKeysOrExit({ masterKeys: () => masterKeysFrom(config) }, (message) =>

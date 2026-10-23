@@ -1,5 +1,5 @@
-# For tests only, never a real install: a fake Plaid for the end-to-end tests (#79, D17), so they
-# connect a bank with no Plaid account and no secrets. Layer it on the main file:
+# For tests only, never a real install: a fake Plaid and a fake SimpleFIN Bridge for the
+# end-to-end tests (#79, #91, D17), so they connect a bank with no accounts and no secrets. Layer it on the main file:
 #   docker compose -f deploy/compose/docker-compose.yml \
 #     -f deploy/compose/docker-compose.plaid-stub.yml up -d --build --wait
 #
@@ -24,6 +24,8 @@ services:
     restart: 'no'
     environment:
       PLAID_STUB_PORT: '4010'
+      SIMPLEFIN_STUB_PORT: '4011'
+      SIMPLEFIN_STUB_URL: http://plaid-stub:4011
     healthcheck:
       test:
         [
@@ -37,7 +39,11 @@ services:
       retries: 20
 
   api:
-    environment: *plaid-stub-env
+    environment:
+      <<: *plaid-stub-env
+      # SimpleFIN tokens may point only at the stub, over plain http (tests only).
+      SIMPLEFIN_BRIDGE_HOSTS: plaid-stub
+      SIMPLEFIN_ALLOW_HTTP: 'true'
     depends_on:
       plaid-stub:
         condition: service_healthy

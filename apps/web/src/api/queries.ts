@@ -19,6 +19,7 @@ import type {
   NetWorth,
   PlaidAvailability,
   ReviewCount,
+  SimpleFinAvailability,
   ServerInvite,
   ServerInvitePreview,
   SessionSummary,
@@ -89,6 +90,15 @@ export const plaidAvailabilityQuery = (id: string) =>
   queryOptions({
     queryKey: ['households', id, 'plaid'],
     queryFn: async () => (await api<Data<PlaidAvailability>>('GET', `${hh(id)}/plaid`)).data,
+    staleTime: 60_000,
+  });
+
+/** Whether the server's admin has SimpleFIN on (#91). */
+export const simpleFinAvailabilityQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'simplefin'],
+    queryFn: async () =>
+      (await api<Data<SimpleFinAvailability>>('GET', `${hh(id)}/simplefin`)).data,
     staleTime: 60_000,
   });
 

@@ -92,3 +92,9 @@ export {
   SimpleFinProvider,
   type SimpleFinProviderOptions,
 } from './simplefin/provider.js';
+export {
+  instanceSimpleFinConfig,
+  simpleFinEnvVars,
+  type SimpleFinEnv,
+  type SimpleFinInstanceConfig,
+} from './simplefin/config.js';

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  claimSetupToken,
   credentialsChanged,
   credentialStamp,
   type LinkTokenCreateRequest,
@@ -7,6 +8,8 @@ import {
   type PlaidClient,
   type PlaidCredentialsResult,
   resolvePlaidCredentials,
+  SimpleFinClient,
+  simpleFinItemId,
 } from '@fiscus/aggregation';
 import { FieldCrypto } from '@fiscus/crypto';
 import {
@@ -22,6 +25,7 @@ import {
 } from '@fiscus/db';
 import { accessLevels } from '@fiscus/ledger';
 import {
+  type AccountType,
   type ConnectionConfirmed,
   type ConnectionSetup,
   type confirmConnectionSchema,
@@ -42,6 +46,7 @@ import { AccountsService } from '../accounts/accounts.service.js';
 import { violatedConstraint } from '../common/db-errors.js';
 import { addDays, todayIn } from '../common/dates.js';
 import { Problem, type ProblemFieldError, problems } from '../common/problem.js';
+import { InstanceSettingsService } from '../admin/instance-settings.service.js';
 import { APP_CONFIG, type AppConfig } from '../config.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
@@ -60,6 +65,7 @@ import {
   plaidMask,
   plaidProblem,
 } from './plaid.js';
+import { fromSimpleFin, simpleFinProblem } from './simplefin.js';
 
 type ConfirmInput = z.infer<typeof confirmConnectionSchema>;
 type ExchangeInput = z.infer<typeof plaidExchangeSchema>;
@@ -68,6 +74,45 @@ type ExchangeInput = z.infer<typeof plaidExchangeSchema>;
 const NEW_ACCOUNT_DAYS = 90;
 /** A linked account syncs from this long before its history ends, so the overlap matches (D6). */
 const LINKED_OVERLAP_DAYS = 7;
+
+/** An account a bank offers, whoever the provider: what choosing and confirming read (D4, D5). */
+interface BankAccount {
+  providerAccountId: string;
+  /** 1 to 120 characters. */
+  name: string;
+  officialName: string | null;
+  type: AccountType;
+  subtype: string | null;
+  mask: string | null;
+  /** Null when the provider doesn't say: the household's base currency is used. */
+  currency: string | null;
+  /** The provider's current balance, in Fiscus's sign. */
+  balance: { amountMinor: number; currency: string } | null;
+}
+
+const fromPlaid = (a: PlaidAccount): BankAccount => ({
+  providerAccountId: a.account_id,
+  name: accountNameFrom(a),
+  officialName: a.official_name?.trim() || null,
+  type: plaidAccountType(a.type),
+  subtype: a.subtype?.trim() || null,
+  mask: plaidMask(a.mask),
+  currency: a.balances.iso_currency_code ?? null,
+  balance: plaidCurrentBalance(a),
+});
+
+/** The connection its owner works on: Plaid's comes with a client for its keys. */
+type OwnConnection = { secret: string; institutionName: string | null } & (
+  { provider: 'plaid'; client: PlaidClient } | { provider: 'simplefin' }
+);
+
+const signInAtTheBridge = () =>
+  new Problem(
+    409,
+    'fix_at_the_bridge',
+    'SimpleFIN connections are fixed at the SimpleFIN Bridge',
+    'Sign in to the bank again at the Bridge, or replace its token.',
+  );
 
 const notInSetup = () =>
   new Problem(
@@ -93,7 +138,103 @@ export class ConnectService {
     private readonly crypto: FieldCrypto,
     private readonly accountsService: AccountsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly settings: InstanceSettingsService,
   ) {}
+
+  /** Whether the server's admin has SimpleFIN on (#400). */
+  async simpleFinAvailable(): Promise<boolean> {
+    return this.settings.get('simplefin.enabled');
+  }
+
+  /**
+   * Connects the SimpleFIN Bridge with a setup token (#91, D3): claimed once, here, and only the
+   * access URL is kept, encrypted with the household key. One connection for the token, however
+   * many banks are behind it, in `setup` until its owner chooses what to track (D4), as Plaid's.
+   * The token can't be claimed twice, so the connection is stored as soon as it is: if reading
+   * the accounts then fails, the setup is still there to come back to.
+   */
+  async connectSimpleFin(ctx: HouseholdContext, setupToken: string): Promise<ConnectionSetup> {
+    if (!(await this.simpleFinAvailable())) {
+      throw new Problem(
+        409,
+        'simplefin_unavailable',
+        'SimpleFIN isn’t available on this server',
+        'Its admin can turn it on in Server → Bank connections.',
+      );
+    }
+    const options = this.config.simplefin ?? {};
+    const secret = await claimSetupToken(setupToken, options).catch(simpleFinProblem);
+    const id = uuidv7();
+    try {
+      await this.scope.run(ctx, async (tx, activity) => {
+        const [institution] = await tx
+          .insert(institutions)
+          .values({
+            provider: 'simplefin',
+            providerInstitutionId: 'simplefin-bridge',
+            name: 'SimpleFIN Bridge',
+            url: 'https://beta-bridge.simplefin.org',
+          })
+          .onConflictDoUpdate({
+            target: [institutions.provider, institutions.providerInstitutionId],
+            set: { updatedAt: new Date() },
+          })
+          .returning({ id: institutions.id });
+        await tx.insert(connections).values({
+          id,
+          householdId: ctx.householdId,
+          ownerMemberId: ctx.memberId,
+          provider: 'simplefin',
+          institutionId: institution!.id,
+          credentialSetId: null,
+          providerItemId: simpleFinItemId(secret),
+          status: 'setup',
+          nextSyncAt: null,
+        });
+        await saveConnectionSecret(tx, this.crypto, ctx.householdId, id, secret);
+        await activity.record({
+          action: 'connection.setup_started',
+          targetType: 'connection',
+          targetId: id,
+          metadata: { provider: 'simplefin' },
+          visibleToHousehold: false,
+        });
+      });
+    } catch (err) {
+      if (violatedConstraint(err) === 'connections_provider_item') {
+        throw new Problem(409, 'already_connected', 'This SimpleFIN token is already connected');
+      }
+      throw err;
+    }
+    const set = await new SimpleFinClient(secret, options)
+      .accounts({ balancesOnly: true })
+      .catch((err: unknown) => {
+        // Kept: its owner comes back to it from Accounts once the Bridge answers.
+        try {
+          simpleFinProblem(err);
+        } catch (problem) {
+          if (problem instanceof Problem) {
+            throw new Problem(
+              problem.getStatus(),
+              problem.code,
+              problem.title,
+              'Fiscus kept the connection: choose its accounts once the Bridge answers.',
+              undefined,
+              problem.headers,
+              { ...problem.extensions, connectionId: id },
+            );
+          }
+          throw problem;
+        }
+        throw err;
+      });
+    const offered = set.accounts.flatMap((a) => fromSimpleFin(a) ?? []);
+    return this.scope.run(ctx, async (tx) => ({
+      connectionId: id,
+      institutionName: 'SimpleFIN Bridge',
+      accounts: await this.#offer(tx, ctx, offered),
+    }));
+  }
 
   /** Whether the household can connect a bank through Plaid now, and in which environment. */
   async availability(ctx: HouseholdContext): Promise<PlaidAvailability> {
@@ -127,6 +268,7 @@ export class ConnectService {
       };
     } else {
       const own = await this.#ownConnection(ctx, connectionId, { update: true });
+      if (own.provider !== 'plaid') throw signInAtTheBridge();
       client = own.client;
       // Update mode names the Item; products and history were fixed when it was made.
       request = { ...base, access_token: own.secret };
@@ -147,11 +289,11 @@ export class ConnectService {
       .itemPublicTokenExchange(input.publicToken)
       .catch(plaidProblem);
 
-    let offered: PlaidAccount[];
+    let offered: BankAccount[];
     let institution: { id: string; name: string; url: string | null } | null = null;
     try {
       const got = await client.accountsGet(secret);
-      offered = got.accounts;
+      offered = got.accounts.map(fromPlaid);
       if (got.item.institution_id) {
         const { institution: i } = await client.institutionsGetById(
           got.item.institution_id,
@@ -328,7 +470,7 @@ export class ConnectService {
   /** The accounts offered again, for a setup still in progress (the page was reloaded). */
   async setup(ctx: HouseholdContext, connectionId: string): Promise<ConnectionSetup> {
     const own = await this.#ownConnection(ctx, connectionId, { setup: true });
-    const { accounts: offered } = await own.client.accountsGet(own.secret).catch(plaidProblem);
+    const offered = await this.#offered(own);
     return this.scope.run(ctx, async (tx) => ({
       connectionId,
       institutionName: own.institutionName,
@@ -347,7 +489,7 @@ export class ConnectService {
     input: ConfirmInput,
   ): Promise<ConnectionConfirmed> {
     const own = await this.#ownConnection(ctx, connectionId, { setup: true });
-    const { accounts: offered } = await own.client.accountsGet(own.secret).catch(plaidProblem);
+    const offered = await this.#offered(own);
 
     return this.scope.run(ctx, async (tx, activity) => {
       const [c] = await tx
@@ -358,14 +500,14 @@ export class ConnectService {
       if (c?.status !== 'setup') throw notInSetup();
 
       const choices = new Map(input.accounts.map((a) => [a.providerAccountId, a]));
-      const offeredIds = new Set(offered.map((a) => a.account_id));
+      const offeredIds = new Set(offered.map((a) => a.providerAccountId));
       const errors: ProblemFieldError[] = [
         ...offered
-          .filter((a) => !choices.has(a.account_id))
+          .filter((a) => !choices.has(a.providerAccountId))
           .map((a) => ({
             path: 'accounts',
             code: 'missing_choice',
-            message: `No choice for ${a.account_id}`,
+            message: `No choice for ${a.providerAccountId}`,
           })),
         ...input.accounts
           .filter((a) => !offeredIds.has(a.providerAccountId))
@@ -425,10 +567,10 @@ export class ConnectService {
 
       const tracked: ConnectionConfirmed['accounts'] = [];
       for (const bank of offered) {
-        const choice = choices.get(bank.account_id)!;
+        const choice = choices.get(bank.providerAccountId)!;
         if (choice.choice === 'skip') continue;
-        const mask = plaidMask(bank.mask);
-        const currency = bank.balances.iso_currency_code ?? hh!.baseCurrency;
+        const mask = bank.mask;
+        const currency = bank.currency ?? hh!.baseCurrency;
         let accountId: string;
         let syncFrom: string;
         if (choice.choice === 'link') {
@@ -465,7 +607,7 @@ export class ConnectService {
             .update(accounts)
             .set({
               connectionId,
-              providerAccountId: bank.account_id,
+              providerAccountId: bank.providerAccountId,
               syncFrom,
               ...(setMask
                 ? { maskLast4: mask, fieldVersions: { ...row.fieldVersions, mask: version } }
@@ -476,9 +618,9 @@ export class ConnectService {
             .where(eq(accounts.id, row.id));
         } else {
           accountId = await this.accountsService.createWithin(tx, activity, ctx, {
-            name: choice.name ?? accountNameFrom(bank),
-            type: plaidAccountType(bank.type),
-            ...(bank.subtype?.trim() ? { subtype: bank.subtype.trim().slice(0, 60) } : {}),
+            name: choice.name ?? bank.name,
+            type: bank.type,
+            ...(bank.subtype ? { subtype: bank.subtype.slice(0, 60) } : {}),
             currency,
             ...(mask ? { mask } : {}),
             // The connecting member owns new accounts unless they say otherwise (ACC-01, D4).
@@ -496,14 +638,14 @@ export class ConnectService {
             .update(accounts)
             .set({
               connectionId,
-              providerAccountId: bank.account_id,
-              officialName: bank.official_name?.trim() || null,
+              providerAccountId: bank.providerAccountId,
+              officialName: bank.officialName,
               syncFrom,
             })
             .where(eq(accounts.id, accountId));
         }
         tracked.push({
-          providerAccountId: bank.account_id,
+          providerAccountId: bank.providerAccountId,
           accountId,
           linked: choice.choice === 'link',
           syncFrom,
@@ -514,7 +656,7 @@ export class ConnectService {
           targetType: 'connection',
           targetId: connectionId,
           accountId,
-          metadata: { provider: 'plaid', linked: choice.choice === 'link' },
+          metadata: { provider: own.provider, linked: choice.choice === 'link' },
         });
       }
 
@@ -556,7 +698,7 @@ export class ConnectService {
     ctx: HouseholdContext,
     id: string,
     want: { setup?: boolean; update?: boolean },
-  ): Promise<{ client: PlaidClient; secret: string; institutionName: string | null }> {
+  ): Promise<OwnConnection> {
     const found = await this.scope.run(ctx, async (tx) => {
       const [c] = await tx
         .select({
@@ -571,7 +713,7 @@ export class ConnectService {
         .from(connections)
         .leftJoin(institutions, eq(institutions.id, connections.institutionId))
         .where(and(eq(connections.id, id), eq(connections.householdId, ctx.householdId)));
-      if (!c || c.provider !== 'plaid') throw problems.notFound();
+      if (!c || (c.provider !== 'plaid' && c.provider !== 'simplefin')) throw problems.notFound();
       if (c.ownerMemberId !== ctx.memberId) {
         throw problems.forbidden('Only the person who connected it can do this.');
       }
@@ -591,6 +733,13 @@ export class ConnectService {
     if (found.secret === null) {
       throw new Problem(409, 'connection_gone', 'This connection has no stored access');
     }
+    if (found.provider === 'simplefin') {
+      return {
+        provider: 'simplefin',
+        secret: found.secret,
+        institutionName: found.institutionName,
+      };
+    }
     const { client, credentials } = plaidClientFor(
       resolvePlaidCredentials(found.credentialSetId, this.config.plaid),
     );
@@ -609,14 +758,31 @@ export class ConnectService {
         'Disconnect it and connect the bank again.',
       );
     }
-    return { client, secret: found.secret, institutionName: found.institutionName };
+    return {
+      provider: 'plaid',
+      client,
+      secret: found.secret,
+      institutionName: found.institutionName,
+    };
+  }
+
+  /** What the bank offers now, from its provider (never from what the browser said). */
+  async #offered(own: OwnConnection): Promise<BankAccount[]> {
+    if (own.provider === 'plaid') {
+      const { accounts: got } = await own.client.accountsGet(own.secret).catch(plaidProblem);
+      return got.map(fromPlaid);
+    }
+    const set = await new SimpleFinClient(own.secret, this.config.simplefin ?? {})
+      .accounts({ balancesOnly: true })
+      .catch(simpleFinProblem);
+    return set.accounts.flatMap((a) => fromSimpleFin(a) ?? []);
   }
 
   /** The bank's accounts, each with a suggested choice for the caller (the walkthrough §3). */
   async #offer(
     tx: Executor,
     ctx: HouseholdContext,
-    offered: PlaidAccount[],
+    offered: BankAccount[],
   ): Promise<OfferedAccount[]> {
     const [hh] = await tx
       .select({ financeStyle: households.financeStyle, baseCurrency: households.baseCurrency })
@@ -642,10 +808,10 @@ export class ConnectService {
     const closed = new Set(candidates.filter((c) => c.closedAt).map((c) => c.id));
     const matches = matchAccounts(
       offered.map((a) => ({
-        names: [a.name, a.official_name ?? ''],
-        type: plaidAccountType(a.type),
-        mask: plaidMask(a.mask),
-        currency: a.balances.iso_currency_code ?? null,
+        names: [a.name, a.officialName ?? ''],
+        type: a.type,
+        mask: a.mask,
+        currency: a.currency,
       })),
       candidates.map((c) => ({ ...c, closedAt: c.closedAt?.toISOString() ?? null })),
     );
@@ -660,14 +826,14 @@ export class ConnectService {
           ? { choice: 'skip', reason: 'closed', accountId: match.accountId }
           : { choice: 'link', accountId: match.accountId, by: match.by };
       return {
-        providerAccountId: a.account_id,
+        providerAccountId: a.providerAccountId,
         name: a.name,
-        officialName: a.official_name ?? null,
-        type: plaidAccountType(a.type),
-        subtype: a.subtype ?? null,
-        mask: plaidMask(a.mask),
-        currency: a.balances.iso_currency_code ?? hh!.baseCurrency,
-        balance: plaidCurrentBalance(a),
+        officialName: a.officialName,
+        type: a.type,
+        subtype: a.subtype,
+        mask: a.mask,
+        currency: a.currency ?? hh!.baseCurrency,
+        balance: a.balance,
         suggestion,
       };
     });

@@ -16,6 +16,10 @@ import {
 
 export interface FakeSimpleFinOptions {
   scenario?: ConformanceScenario;
+  /** The access URL's username: the Bridge's id for the token. Another token, another user. */
+  user?: string;
+  /** The URL clients reach it at, when not the one it listens on (the e2e stack's `plaid-stub`). */
+  publicUrl?: string;
   listen?: StubListen;
 }
 
@@ -40,7 +44,6 @@ export interface FakeSimpleFin {
   close(): Promise<void>;
 }
 
-const USER = 'rivera-bridge-user';
 const PASSWORD = 'rivera-bridge-password';
 
 /** A date as the Bridge sends a bare date: exactly midnight UTC. */
@@ -88,6 +91,7 @@ export async function startFakeSimpleFin(
   options: FakeSimpleFinOptions = {},
 ): Promise<FakeSimpleFin> {
   const scenario = options.scenario ?? riveraScenario();
+  const USER = options.user ?? 'rivera-bridge-user';
   let released = 1;
   let claimed = false;
   const failures: FakeSimpleFinFailure[] = [];
@@ -144,7 +148,7 @@ export async function startFakeSimpleFin(
   };
 
   const server = await startStubServer({}, options.listen);
-  const base = new URL(server.url);
+  const base = new URL(options.publicUrl ?? server.url);
   const accessUrl = `${base.protocol}//${USER}:${PASSWORD}@${base.host}/simplefin`;
   server.route('POST /claim/rivera-setup', () => {
     if (claimed) return { status: 403, body: 'Forbidden' };
@@ -156,7 +160,7 @@ export async function startFakeSimpleFin(
   return {
     url: server.url,
     host: base.hostname,
-    setupToken: Buffer.from(`${server.url}/claim/rivera-setup`).toString('base64'),
+    setupToken: Buffer.from(`${base.origin}/claim/rivera-setup`).toString('base64'),
     accessUrl,
     requests: server.requests,
     release() {

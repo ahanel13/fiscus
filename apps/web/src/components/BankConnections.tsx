@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Account, Connection, HouseholdMember, RefreshTooSoon } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { clsx } from 'clsx';
 import { Landmark, RefreshCw, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -9,7 +10,7 @@ import { connectionsQuery } from '../api/queries.js';
 import { leaveTo } from '../lib/flash.js';
 import { relativeTime } from '../lib/relative-time.js';
 import { useInvalidateLedger } from '../routes/transactions.js';
-import { Button, ConfirmDialog, DateText, toast } from './ui.js';
+import { Button, buttonStyles, ConfirmDialog, DateText, toast } from './ui.js';
 
 // A household's bank connections, at the top of Accounts (the bank connections walkthrough §5–§6,
 // D10–D13): each with how fresh it is, "Refresh now" for its owner, and what's wrong when
@@ -179,6 +180,15 @@ function ConnectionLine({
       </div>
       {yours ? (
         <div className="flex flex-wrap gap-2">
+          {c.status === 'setup' ? (
+            <Link
+              to="/h/$householdId/connect/setup/$connectionId"
+              params={{ householdId, connectionId: c.id }}
+              className={buttonStyles({ size: 'sm' })}
+            >
+              Choose accounts
+            </Link>
+          ) : null}
           {c.status === 'login_required' && c.provider === 'plaid' ? (
             <Button size="sm" onPress={signIn}>
               Sign in again
