@@ -296,6 +296,7 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
           restarts: 0,
           added: 1500,
           matched: 0,
+          held: 0,
           updated: 0,
           posted: 0,
           removed: 0,
@@ -492,7 +493,7 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
     ]);
   });
 
-  it('skips what came before an account’s sync_from, and attaches an exact single match', async () => {
+  it('skips what came before an account’s sync_from, attaches an exact single match, and holds near ones', async () => {
     const b = await bank({ syncFrom: '2026-10-01' });
     const {
       rows: [tag],
@@ -555,7 +556,7 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
     } satisfies SyncRequest);
 
     const rows = await byProviderId(b.householdId);
-    expect([...rows.keys()].sort()).toEqual(['coffee', 'fuel', 'hold', 'rent']);
+    expect([...rows.keys()].sort()).toEqual(['hold', 'rent']);
     expect(rows.get('rent')).toMatchObject({
       id: rentId,
       source: 'import',
@@ -571,15 +572,124 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
         rentId,
       ]),
     ).toEqual([{ member_id: b.memberId }]);
-    for (const id of ['coffee', 'fuel', 'hold']) expect(rows.get(id)!.source).toBe('provider');
+    expect(rows.get('hold')!.source).toBe('provider');
+    // Near or ambiguous: held for a person to decide, outside the ledger (D7).
+    expect(
+      await sql(
+        `SELECT provider_transaction_id AS id, cardinality(candidate_ids) AS candidates
+         FROM sync_holds WHERE account_id = $1 ORDER BY 1`,
+        [b.checking],
+      ),
+    ).toEqual([
+      { id: 'coffee', candidates: 2 },
+      { id: 'fuel', candidates: 1 },
+    ]);
     expect(
       (
         await sql('SELECT count(*)::int AS n FROM transactions WHERE account_id = $1', [b.checking])
       )[0],
-    ).toEqual({ n: 8 });
+    ).toEqual({ n: 6 });
     expect((await events(b.householdId, 'sync.transactions_matched')).map((e) => e.ids)).toEqual([
       [rentId],
     ]);
+    expect(
+      (await events(b.householdId, 'sync.transactions_held')).map((e) => e.metadata.count),
+    ).toEqual([2]);
+  });
+
+  it('keeps a held transaction as the bank last said it, and drops it when the bank does', async () => {
+    const b = await bank();
+    const imported = async (amountMinor: number, date: string) =>
+      (
+        await sql<{ id: string }>(
+          `INSERT INTO transactions (id, household_id, account_id, amount_minor, currency, posted_date,
+             authorized_date, original_description, display_name, source)
+           VALUES (uuidv7(), $1, $2, $3, 'USD', $4, $4, 'FROM A FILE', 'From a file', 'import')
+           RETURNING id`,
+          [b.householdId, b.checking, amountMinor, date],
+        )
+      )[0]!.id;
+    const lunch = await imported(-1_550, '2026-10-06');
+    await imported(-2_000, '2026-10-08');
+    // Four days off: too far to be the same one.
+    await imported(-700, '2026-10-01');
+    const provider = fake([
+      [
+        {
+          added: [
+            txn('lunch', RIVERA.checking, -1_550, '2026-10-07'),
+            txn('books', RIVERA.checking, -2_000, '2026-10-09'),
+            txn('far', RIVERA.checking, -700, '2026-10-05'),
+          ],
+        },
+      ],
+      [
+        {
+          modified: [
+            txn('lunch', RIVERA.checking, -1_550, '2026-10-08', { description: 'LUNCH SPOT' }),
+          ],
+          removed: [{ providerTransactionId: 'books', providerAccountId: RIVERA.checking }],
+        },
+      ],
+    ]);
+    await run(provider);
+    const holds = () =>
+      sql<{ id: string; date: string; description: string; candidates: string[] }>(
+        `SELECT provider_transaction_id AS id, posted_date::text AS date,
+                original_description AS description, candidate_ids::text[] AS candidates
+         FROM sync_holds WHERE account_id = $1 ORDER BY 1`,
+        [b.checking],
+      );
+    expect((await holds()).map((x) => x.id)).toEqual(['books', 'lunch']);
+    expect((await holds())[1]!.candidates).toEqual([lunch]);
+    expect([...(await byProviderId(b.householdId)).keys()]).toEqual(['far']);
+
+    provider.release();
+    await h.due(b.connectionId);
+    await run(provider);
+    // The bank moved lunch and renamed it: still waiting, as the bank says it now. Books is gone.
+    expect(await holds()).toEqual([
+      { id: 'lunch', date: '2026-10-08', description: 'LUNCH SPOT', candidates: [lunch] },
+    ]);
+    expect([...(await byProviderId(b.householdId)).keys()]).toEqual(['far']);
+  });
+
+  it('keeps one hold through a window sent again, and drops it when the window leaves it out', async () => {
+    const b = await bank();
+    await sql(
+      `INSERT INTO transactions (id, household_id, account_id, amount_minor, currency, posted_date,
+         authorized_date, original_description, display_name, source)
+       VALUES (uuidv7(), $1, $2, -999, 'USD', '2026-10-04', '2026-10-04', 'FILE', 'File', 'import')`,
+      [b.householdId, b.checking],
+    );
+    const near = txn('near', RIVERA.checking, -999, '2026-10-05');
+    const other = txn('other', RIVERA.checking, -100, '2026-10-05');
+    const provider = new FakeAggregationProvider({
+      id: 'plaid',
+      mode: 'window',
+      accounts: riveraAccounts(),
+      updates: [
+        [{ added: [near, other] }],
+        [{ added: [near, other] }],
+        [{ removed: [{ providerTransactionId: 'near', providerAccountId: RIVERA.checking }] }],
+      ],
+    });
+    const count = async () =>
+      (
+        await sql<{ n: number }>(
+          'SELECT count(*)::int AS n FROM sync_holds WHERE account_id = $1',
+          [b.checking],
+        )
+      )[0]!.n;
+    await run(provider);
+    expect(await count()).toBe(1);
+    for (let i = 0; i < 2; i++) {
+      provider.release();
+      await h.due(b.connectionId);
+      await run(provider);
+    }
+    expect(await count()).toBe(0);
+    expect([...(await byProviderId(b.householdId)).keys()]).toEqual(['other']);
   });
 
   it("links transfers only where the connection's owner could", async () => {

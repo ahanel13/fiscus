@@ -20,6 +20,7 @@ const OWNER_SETS: Record<string, Actor[]> = {
 
 const H = randomUUID(); // the household under test
 const X = randomUUID(); // another household
+const CONNECTION = randomUUID(); // holds possible duplicates in every account (#80)
 const people = Object.fromEntries(
   (['A', 'B', 'C', 'V', 'Z'] as const).map((k) => [
     k,
@@ -115,6 +116,11 @@ describe('account visibility (RLS)', () => {
         [p.member, k === 'Z' ? X : H, p.user, k === 'Z' ? 'owner' : ROLES[k as Actor], k],
       );
     }
+    await owner.query(
+      `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id)
+       VALUES ($1, $2, $3, 'plaid', 'item-holds')`,
+      [CONNECTION, H, people.A.member],
+    );
     for (const f of fixtures) {
       const shares = f.owners.map((_, i) =>
         i === 0
@@ -141,6 +147,12 @@ describe('account visibility (RLS)', () => {
       await owner.query(
         `INSERT INTO account_liabilities (account_id, household_id, apr_bps) VALUES ($1, $2, 2149)`,
         [f.id, H],
+      );
+      await owner.query(
+        `INSERT INTO sync_holds (id, household_id, connection_id, account_id, provider_transaction_id,
+           amount_minor, currency, authorized_date, original_description, display_name, candidate_ids)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'held-1', -500, 'USD', '2026-03-01', 'COFFEE', 'Coffee', '{}')`,
+        [H, CONNECTION, f.id],
       );
       await owner.query(
         `INSERT INTO audit_events (actor_kind, household_id, action, account_id) VALUES ('system', $1, 'account.created', $2)`,
@@ -228,6 +240,32 @@ describe('account visibility (RLS)', () => {
           q.query(
             `INSERT INTO account_liabilities (account_id, household_id, apr_bps) VALUES ($1, $2, 1)`,
             [other.id, H],
+          ),
+        ).rejects.toThrow(/row-level security/);
+      });
+    });
+
+    it('sees and decides possible duplicates only in accounts it owns (#80)', async () => {
+      await asMember(actor, async (q) => {
+        const owned = new Set(fixtures.filter((f) => f.owners.includes(actor)).map((f) => f.id));
+        const accountsOf = (r: pg.QueryResult) => new Set(r.rows.map((x) => x.account_id));
+        expect(accountsOf(await q.query('SELECT account_id FROM sync_holds'))).toEqual(owned);
+        expect(
+          accountsOf(
+            await q.query(`UPDATE sync_holds SET display_name = 'Café' RETURNING account_id`),
+          ),
+        ).toEqual(owned);
+        expect(accountsOf(await q.query(`DELETE FROM sync_holds RETURNING account_id`))).toEqual(
+          owned,
+        );
+        const other = fixtures.find((f) => !f.owners.includes(actor));
+        if (!other) return;
+        await expect(
+          q.query(
+            `INSERT INTO sync_holds (id, household_id, connection_id, account_id, provider_transaction_id,
+               amount_minor, currency, authorized_date, original_description, display_name, candidate_ids)
+             VALUES (gen_random_uuid(), $1, $2, $3, 'held-2', -500, 'USD', '2026-03-01', 'X', 'X', '{}')`,
+            [H, CONNECTION, other.id],
           ),
         ).rejects.toThrow(/row-level security/);
       });

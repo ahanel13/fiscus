@@ -124,6 +124,27 @@ const importInto = async (
   });
   return Object.assign(rows, { batchId });
 };
+let held = 0;
+/** A synced transaction held as a possible duplicate of `candidate`, in its account (#80). */
+const hold = async (accountId: string, connectionId: string, candidate: string) =>
+  (
+    await f.db.query(
+      `INSERT INTO sync_holds (id, household_id, connection_id, account_id, provider_transaction_id,
+         amount_minor, currency, posted_date, authorized_date, original_description, display_name,
+         candidate_ids)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, -1500, 'USD', '2026-03-02', '2026-03-02',
+         'ITEM', 'Item', ARRAY[$5]::uuid[])
+       RETURNING id`,
+      [f.hh, connectionId, accountId, `held-${++held}`, candidate],
+    )
+  ).rows[0].id as string;
+const holdIds = async (c: TestClient) => {
+  const r = await c.get(url('/transactions/possible-duplicates'));
+  ok(r);
+  return r.body.data.map((x: { id: string }) => x.id) as string[];
+};
+const decide = (c: TestClient, id: string, body: unknown) =>
+  c.post(url(`/transactions/possible-duplicates/${id}`), body);
 const attribute = (c: TestClient, id: string, members: string[]) =>
   c.request('PUT', url(`/transactions/${id}/attribution`), {
     attribution: members.map((memberId) => ({ memberId })),
@@ -593,6 +614,29 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   },
   'TXN-12/VIEW': async () =>
     refused(await f.V.post(url('/transactions/move'), { ids: [f.tA], accountId: f.accA })),
+  // Possible duplicates from sync: the account's owners see and decide them, nobody else (#80).
+  'TXN-13/OWN': async () => {
+    const mine = await txn(f.A, f.accA);
+    const same = await hold(f.accA, f.connA, mine);
+    const different = await hold(f.accA, f.connA, mine);
+    expect(await holdIds(f.A)).toEqual(expect.arrayContaining([same, different]));
+    ok(await decide(f.A, same, { decision: 'same', transactionId: mine }));
+    ok(await decide(f.A, different, { decision: 'different' }));
+  },
+  'TXN-13/MEM': async () => {
+    const theirs = await hold(f.accA, f.connA, await txn(f.A, f.accA));
+    const own = await hold(f.accB, f.connB, await txn(f.B, f.accB));
+    const seen = await holdIds(f.B);
+    expect(seen).toContain(own);
+    expect(seen).not.toContain(theirs); // full access isn't enough
+    refused(await decide(f.B, theirs, { decision: 'different' }), 404);
+    ok(await decide(f.B, own, { decision: 'different' }));
+  },
+  'TXN-13/VIEW': async () => {
+    const theirs = await hold(f.accA, f.connA, await txn(f.A, f.accA));
+    expect(await holdIds(f.V)).toEqual([]);
+    refused(await decide(f.V, theirs, { decision: 'different' }));
+  },
   // Importing needs ownership of the account (acct-own); undoing, the importer or an owner.
   'TXN-09/OWN': async () => ok(await importInto(f.A, f.accA)),
   'TXN-09/MEM': async () => {

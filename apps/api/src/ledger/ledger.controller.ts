@@ -11,6 +11,7 @@ import {
   createCategorySchema,
   createTagSchema,
   createTransactionSchema,
+  decidePossibleDuplicateSchema,
   deleteCategoryQuerySchema,
   linkTransferPairsSchema,
   linkTransferSchema,
@@ -19,6 +20,8 @@ import {
   moveTransactionsSchema,
   type NameCleanup,
   type NameCleanupPreview,
+  type PossibleDuplicate,
+  type PossibleDuplicateDecision,
   undoNameCleanupSchema,
   noteSchema,
   setAttributionSchema,
@@ -63,6 +66,7 @@ import {
 } from '../households/household-context.js';
 import { CashFlowService } from './cash-flow.service.js';
 import { CategoriesService } from './categories.service.js';
+import { DuplicatesService } from './duplicates.service.js';
 import { TransactionHistoryService } from './history.service.js';
 import { TransactionsService } from './transactions.service.js';
 
@@ -197,6 +201,7 @@ export class TransactionsController {
   constructor(
     private readonly transactions: TransactionsService,
     private readonly history: TransactionHistoryService,
+    private readonly duplicates: DuplicatesService,
   ) {}
 
   @Get()
@@ -303,6 +308,26 @@ export class TransactionsController {
     @Body(new ZodPipe(linkTransferPairsSchema)) body: z.infer<typeof linkTransferPairsSchema>,
   ): Promise<{ data: LinkTransfersResult }> {
     return { data: await this.transactions.linkTransferPairs(ctx, body) };
+  }
+
+  /** Synced transactions that may be ones already here, in accounts you own (D7, #80). */
+  @Get('possible-duplicates')
+  async possibleDuplicates(
+    @Household() ctx: HouseholdContext,
+  ): Promise<{ data: PossibleDuplicate[] }> {
+    return { data: await this.duplicates.list(ctx) };
+  }
+
+  /** "Same transaction" keeps yours, with the bank's id; "Different" adds the bank's. */
+  @Post('possible-duplicates/:holdId')
+  @HttpCode(200)
+  async decidePossibleDuplicate(
+    @Household() ctx: HouseholdContext,
+    @Param('holdId', UuidPipe) holdId: string,
+    @Body(new ZodPipe(decidePossibleDuplicateSchema))
+    body: z.infer<typeof decidePossibleDuplicateSchema>,
+  ): Promise<{ data: PossibleDuplicateDecision }> {
+    return { data: await this.duplicates.decide(ctx, holdId, body) };
   }
 
   @Get(':transactionId')

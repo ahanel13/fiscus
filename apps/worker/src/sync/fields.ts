@@ -30,6 +30,22 @@ export async function namer(tx: Executor, householdId: string) {
 }
 export type Namer = Awaited<ReturnType<typeof namer>>;
 
+/**
+ * A new synced transaction's columns, as the bank sent it: what a new row gets, and what a
+ * possible duplicate keeps while it waits (#80).
+ */
+export const providerColumns = (t: ProviderTransaction, name: Namer) => ({
+  amountMinor: t.amountMinor,
+  currency: t.currency,
+  postedDate: t.postedDate ?? null,
+  authorizedDate: t.authorizedDate,
+  originalDescription: t.description.trim() || t.merchantName?.trim() || '',
+  displayName: name.of(t),
+  providerPendingId: t.pendingTransactionId ?? null,
+  foreignAmountMinor: t.foreignAmountMinor ?? null,
+  foreignCurrency: t.foreignCurrency ?? null,
+});
+
 type BankFields = Pick<
   Row,
   | 'amountMinor'

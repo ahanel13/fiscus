@@ -726,6 +726,7 @@ describe('transfers and the review queue', { timeout: 20_000 }, () => {
       count: 3,
       transactions: 3,
       transfers: 0,
+      duplicates: 0,
     });
     const page = await reviewer.get(
       `${base}/transactions?review=needs_review&order=oldest&limit=2`,

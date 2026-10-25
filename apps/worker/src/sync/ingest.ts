@@ -20,8 +20,16 @@ import {
 } from '@fiscus/ledger';
 import type { AccessLevel } from '@fiscus/shared';
 import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
-import { bankChanges, type Namer, namer, type Row, rowKey } from './fields.js';
-import { type Arrival, holdPossibleDuplicates, matchExisting, reportedDate } from './match.js';
+import { bankChanges, type Namer, namer, providerColumns, type Row, rowKey } from './fields.js';
+import {
+  dropHolds,
+  type Hold,
+  holdPossibleDuplicates,
+  holdsByKey,
+  holdsMissingFromWindow,
+  refreshHold,
+} from './holds.js';
+import { type Arrival, matchExisting, reportedDate } from './match.js';
 import { mergePosted, postedInWindow, postPending, removedByBank } from './pending.js';
 
 // Bringing a sync's pages into the ledger (#80, the bank connections walkthrough D5–D9), merged
@@ -47,6 +55,8 @@ export interface PageResult {
   added: number;
   /** Attached to a transaction already here (D7). */
   matched: number;
+  /** Held as possible duplicates, for a person to decide (D7). */
+  held: number;
   updated: number;
   /** Pending transactions that became their posted ones (#88). */
   posted: number;
@@ -88,6 +98,7 @@ export async function applyPage(
   const result: PageResult = {
     added: 0,
     matched: 0,
+    held: 0,
     updated: 0,
     posted: 0,
     removed: 0,
@@ -135,6 +146,7 @@ export async function applyPage(
       : undefined;
   const replaced = new Set([...incoming.values()].flatMap((a) => replaces(a) ?? []));
   const existing = await rowsByKey(tx, [...incoming.keys(), ...removals, ...replaced]);
+  const holds = await holdsByKey(tx, [...incoming.keys(), ...removals]);
   const postedAlready = await pendingIdsPosted(
     tx,
     [...incoming].flatMap(([key, a]) => (a.t.pending ? [key] : [])),
@@ -146,12 +158,24 @@ export async function applyPage(
   const promotions: { row: Row; t: ProviderTransaction }[] = [];
   const merges: { pending: Row; posted: Row; t: ProviderTransaction }[] = [];
   const claimed = new Set<string>();
+  const heldChanges: { hold: Hold; t: ProviderTransaction }[] = [];
+  // Holds the bank no longer has, or that no longer look like one already here (D7).
+  const staleHolds = removals.flatMap((key) => holds.get(key)?.id ?? []);
   for (const [key, arrival] of incoming) {
     const { t } = arrival;
     const account = tracked.get(t.providerAccountId)!;
     // It posted already, or posts in this sync: the pending version is history (#88).
     if (t.pending && (replaced.has(key) || postedAlready.has(key))) continue;
     const row = existing.get(key);
+    const hold = holds.get(key);
+    if (hold && !row) {
+      // Still waiting for a person: it keeps the bank's latest word, and stays out of the ledger.
+      if (!t.pending && t.currency === account.currency && t.amountMinor !== 0) {
+        heldChanges.push({ hold, t });
+        continue;
+      }
+      staleHolds.push(hold.id);
+    }
     // A provider row a person deleted stays deleted.
     if (row?.deletedAt) continue;
     const named = existing.get(replaces(arrival) ?? '');
@@ -193,6 +217,13 @@ export async function applyPage(
       }
     }
   }
+
+  if (page.mode === 'window' && page.window) {
+    const { accountIds, returned } = windowScope(page, tracked);
+    staleHolds.push(...(await holdsMissingFromWindow(tx, page, accountIds, returned)));
+  }
+  await dropHolds(tx, staleHolds);
+  for (const { hold, t } of heldChanges) await refreshHold(tx, hold, t, nameFrom);
 
   // Pending → posted (#88): everything a person did stays, and rules don't run again. Pending
   // transactions are never linked as transfers, so detection runs once they've posted.
@@ -236,13 +267,10 @@ export async function applyPage(
   }
   result.matched = attached.length;
 
-  const inserted = await insertArrivals(
-    tx,
-    activity,
-    target,
-    await holdPossibleDuplicates(tx, rest),
-    nameFrom,
-  );
+  // D7: one that looks like one you have, without matching it exactly, waits for you to decide.
+  const { insert, held } = await holdPossibleDuplicates(tx, activity, target, rest, nameFrom);
+  result.held = held;
+  const inserted = await insertArrivals(tx, activity, target, insert, nameFrom);
   result.added = inserted.length;
   for (const r of inserted) touched.add(r.accountId);
   if (inserted.length) {
@@ -396,19 +424,11 @@ async function insertArrivals(
           part.map(({ t, accountId }) => ({
             householdId: target.householdId,
             accountId,
-            amountMinor: t.amountMinor,
-            currency: t.currency,
-            postedDate: t.postedDate ?? null,
-            authorizedDate: t.authorizedDate,
+            ...providerColumns(t, name),
             pending: t.pending,
-            originalDescription: t.description.trim() || t.merchantName?.trim() || '',
-            displayName: name.of(t),
             reviewStatus: 'needs_review' as const,
             source: 'provider' as const,
             providerTransactionId: t.providerTransactionId,
-            providerPendingId: t.pendingTransactionId ?? null,
-            foreignAmountMinor: t.foreignAmountMinor ?? null,
-            foreignCurrency: t.foreignCurrency ?? null,
           })),
         )
         .returning({ id: transactions.id, accountId: transactions.accountId })),

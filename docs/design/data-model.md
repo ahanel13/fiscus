@@ -198,6 +198,8 @@ The provider interface these tables serve, and the conformance suite every adapt
 
 `accounts.sync_from` (date) is the first day sync asks for (D6). `accounts.connection_id` gets its foreign key to `connections` by `(household_id, connection_id)` a release later, as a new constraint ([upgrades](upgrades.md) §3): the previous release's api tests set connection ids that name no connection, and must still pass on this schema. Until then, an account pointing at a connection elsewhere shows nothing of it, since a connection is visible only in its own household.
 
+**`sync_holds`** (#80, migrations `0049`, `0050`): synced transactions held as possible duplicates (bank connections walkthrough D7). One looks like a transaction already in its account without matching it exactly: the same amount and currency within 3 days, in one that isn't the provider's, where the exact one-to-one match didn't apply. It waits here, outside the ledger, so totals don't count it twice. Columns: `household_id`, `connection_id` and `account_id` (composite FKs, cascading), `provider_transaction_id` (UNIQUE with `account_id`), `provider_pending_id`, and the bank's transaction as sync would insert it (`amount_minor`, `currency`, `posted_date`, `authorized_date`, `original_description`, `display_name`, `foreign_amount_minor`, `foreign_currency`), plus `candidate_ids uuid[]` (the closest few when it was held; checked again when shown and decided). Later syncs keep it as the bank last said it and drop it when the bank removes it. Only the account's owners see or change it (TXN-13): "different" adds the transaction and rebuilds the account's balances, which only owners may do.
+
 **Who sees and changes them (RLS, migration `0037`).**
 - A connection is visible to its owner, and to anyone who sees at least one of its accounts through `fiscus_account_access()` (ACC-02), except in `setup`, when only its owner sees it. Only its owner, or the worker in system context, inserts, changes, or deletes it.
 - `connection_secrets`: the connection's owner and the worker only, for reads and writes.
@@ -388,7 +390,7 @@ settings are missing, policies evaluate to false and the query returns **nothing
 ### 4.3 Policies
 1. **Household isolation** (every household-scoped table):
    `USING (household_id = current_setting('app.household_id', true)::uuid)`.
-2. **Account visibility** (`accounts`, `account_owners`, `balance_snapshots`; `account_liabilities` at `owner` and `full` only; `connections` as in §3.2):
+2. **Account visibility** (`accounts`, `account_owners`, `balance_snapshots`; `account_liabilities` at `owner` and `full` only; `sync_holds` at `owner` only; `connections` as in §3.2):
    ```sql
    account_id IN (SELECT account_id FROM fiscus_account_access())
    ```

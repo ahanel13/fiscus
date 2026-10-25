@@ -68,6 +68,11 @@ export function historyLine(entry: TransactionHistoryEntry, names: HistoryNames)
       return 'Came in from the bank';
     case 'sync.transactions_matched':
       return 'Matched to the bank’s copy of it, keeping everything here';
+    // A possible duplicate a person decided (#80, D7).
+    case 'transaction.matched_to_bank':
+      return `${who} matched it to the bank’s copy, keeping everything here`;
+    case 'transaction.added_from_bank':
+      return `Came in from the bank once ${who === 'You' ? 'you' : who} said it’s not one already here`;
     case 'transaction.provider_removed':
       return detail.kept
         ? 'The bank no longer lists it, so it stays here without syncing'

@@ -7,6 +7,7 @@ import {
   type Executor,
   householdMembers,
   households,
+  syncHolds,
   tags,
   transactionAttributions,
   transactionNotes,
@@ -309,7 +310,7 @@ export class TransactionsService {
    */
   async reviewCount(ctx: HouseholdContext): Promise<ReviewCount> {
     return this.scope.run(ctx, async (tx) => {
-      const none = { count: 0, transactions: 0, transfers: 0 };
+      const none = { count: 0, transactions: 0, transfers: 0, duplicates: 0 };
       if (ctx.role === 'viewer') return none;
       const access = await this.#access(tx, ctx);
       const accountIds = [...access.levels]
@@ -329,8 +330,11 @@ export class TransactionsService {
         );
       const review = await this.#transferReview(tx, access);
       const transfers = review.suggested.size + review.unmatched.length;
+      // Possible duplicates (#80): row-level security shows only those in accounts you own.
+      const [held] = await tx.select({ count: sql<number>`count(*)::int` }).from(syncHolds);
+      const duplicates = held?.count ?? 0;
       const count = row?.count ?? 0;
-      return { count: count + transfers, transactions: count, transfers };
+      return { count: count + transfers + duplicates, transactions: count, transfers, duplicates };
     });
   }
 
