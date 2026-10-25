@@ -202,14 +202,22 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'HH-08/MEM': async () => {
     refused(await f.B.get(url('/plaid-credentials')));
     refused(
-      await f.B.request('PUT', url('/plaid-credentials'), { clientId: 'x', secret: 'y', env: 'sandbox' }),
+      await f.B.request('PUT', url('/plaid-credentials'), {
+        clientId: 'x',
+        secret: 'y',
+        env: 'sandbox',
+      }),
     );
     refused(await f.B.request('DELETE', url('/plaid-credentials')));
   },
   'HH-08/VIEW': async () => {
     refused(await f.V.get(url('/plaid-credentials')));
     refused(
-      await f.V.request('PUT', url('/plaid-credentials'), { clientId: 'x', secret: 'y', env: 'sandbox' }),
+      await f.V.request('PUT', url('/plaid-credentials'), {
+        clientId: 'x',
+        secret: 'y',
+        env: 'sandbox',
+      }),
     );
   },
   'HH-10/OWN': async () => {
