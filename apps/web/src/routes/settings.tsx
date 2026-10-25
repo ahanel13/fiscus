@@ -131,6 +131,7 @@ const SETTINGS_SECTIONS = [
   { to: '/h/$householdId/settings/members', label: 'Members' },
   { to: '/h/$householdId/settings/categories', label: 'Categories' },
   { to: '/h/$householdId/settings/rules', label: 'Rules' },
+  { to: '/h/$householdId/settings/connections', label: 'Connections' },
 ] as const;
 
 /** Household settings: the header and the section links; each section renders below. */
