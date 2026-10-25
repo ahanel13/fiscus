@@ -1186,9 +1186,9 @@ test('connects the SimpleFIN Bridge with a setup token, claimed once (#91)', asy
     .last();
   await expect(bridgeLine).toBeVisible();
   // The worker syncs it from the stub Bridge: the card and its balance arrive, and the next
-  // sync is 6 hours away (the Bridge's daily budget).
+  // sync is 6 hours away (the Bridge's daily budget), plus up to 10% jitter: shown as 5 to 7.
   await expect(bridgeLine).toContainText(
-    /Synced (just now|\d+ minutes? ago) · next in [56] hours/,
+    /Synced (just now|\d+ minutes? ago) · next in [5-7] hours/,
     {
       timeout: 30_000,
     },
