@@ -89,21 +89,23 @@ Web (#79):
 
 Sync (worker, #80, #88):
 
-- [ ] The Plaid adapter, registered in the worker: `/transactions/sync` only (TXN-001), `count`
-      500 (TXN-011), PFC version pinned (TXN-006)
-- [ ] (#416) Sync fetches every page to `has_more: false`, then writes the transactions and the cursor in
+- [x] The Plaid adapter, registered in the worker: `/transactions/sync` only (TXN-001), `count`
+      500 (TXN-011), PFC version pinned (TXN-006) (#419)
+- [x] Sync fetches every page to `has_more: false`, then writes the transactions and the cursor in
       one transaction; on TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION it starts again from the
-      cursor it began with (TXN-002, TXN-007, DATA-007). Today each page commits with its cursor.
-- [ ] (#416) `removed` handled; pending to posted matched through `pending_transaction_id`, across pages,
-      keeping the person's edits (TXN-004, #88)
-- [ ] Plaid's sign reversed: positive is money out (TXN-005)
-- [ ] An empty first sync is normal; "still importing history" until `historical_update_complete`
-      (TXN-008)
-- [ ] `/liabilities/get` only on Items with a card or loan account; APRs chosen by type
-      (LIAB-008, LIAB-003, LIAB-002)
-- [ ] Errors by `error_type` and `error_code`; capped backoff with jitter for INSTITUTION_DOWN,
+      cursor it began with (TXN-002, TXN-007, DATA-007) (#416)
+- [x] `removed` handled; pending to posted matched through `pending_transaction_id`, across pages,
+      keeping the person's edits (TXN-004, #88, #416)
+- [x] Plaid's sign reversed: positive is money out (TXN-005) (#419)
+- [x] An empty first sync is normal; "still bringing in older transactions" on Accounts until
+      `HISTORICAL_UPDATE_COMPLETE` (TXN-008)
+- [x] `/liabilities/get` only on Items with a card or loan account; APRs chosen by type
+      (LIAB-008, LIAB-003, LIAB-002) (#419)
+- [x] Errors by `error_type` and `error_code`; capped backoff with jitter for INSTITUTION_DOWN,
       PRODUCT_NOT_READY, RATE_LIMIT_EXCEEDED; ITEM_LOGIN_REQUIRED asks the owner to sign in again
-      (ITEM-002, ITEM-004, ITEM-013, #81)
+      (ITEM-002, ITEM-004, ITEM-013, #81) (#412, #419, #425)
+- [ ] ITEM_NOT_FOUND during a sync purges the access token (ITEM-005); today the connection goes to
+      `error` with backoff (#419's notes)
 - [x] Disconnect calls `/item/remove` (ITEM-005), and so does a setup left unfinished for a day
       (#81), so an Item nobody uses isn't billed
 - [x] ITEM_LOGIN_REQUIRED: the owner gets "Sign in again" on Accounts, which opens Link's update
@@ -111,7 +113,9 @@ Sync (worker, #80, #88):
 - [x] "Refresh now" re-reads what Plaid has, at most every 15 minutes; `/transactions/refresh`
       (billed per call; the team has it in production) stays off until an admin switch exists
       (TXN-010, GUIDE-016)
-- [ ] Plaid's `request_id` kept with failures, never a token (DATA-006)
+- [x] Plaid's `request_id` kept with failures, never a token (DATA-006) (#419)
+- [ ] Synced transactions near one already here wait for a person (D7, #80, #429), so a linked
+      account's overlap isn't counted twice
 
 Webhooks (#84, #85), only for instances Plaid can reach:
 
@@ -128,6 +132,11 @@ Webhooks (#84, #85), only for instances Plaid can reach:
   fails until the worker's Plaid adapter lands; "sign in again" from the app is #81), 014
   (polling not yet accepted; since accepted by the user), 015 (no transactions arrive until the
   adapter lands; second persona not run).
+- Round 1 (2026-10-25, "still bringing in older transactions"): FAIL. Passed 001–005, 010–014;
+  006 not applicable (no webhook receiver). Failed: 007 (no redirect URI: the instance is still
+  plain HTTP), 008 and 015 (no real sandbox run yet: sandbox keys aren't in the env file, so no
+  user_good or second persona), 009 (needs_human and cannot_verify tasks remain). The sync
+  adapter (#419), sign in again (#425) and polling's acceptance closed round 0's 012 and 014.
 
 ## Maintenance
 

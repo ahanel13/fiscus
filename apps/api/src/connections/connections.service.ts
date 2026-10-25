@@ -6,6 +6,7 @@ import {
   type ConnectionStatus,
   NOT_WORKING_AFTER_MS,
   REFRESH_LIMIT_MS,
+  REPORTS_HISTORY,
   type RefreshTooSoon,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
@@ -58,6 +59,7 @@ export class ConnectionsService {
           nextSyncAt: connections.nextSyncAt,
           firstFailedAt: connections.firstFailedAt,
           refreshRequestedAt: connections.refreshRequestedAt,
+          historicalComplete: connections.historicalComplete,
         })
         .from(connections)
         .leftJoin(institutions, eq(institutions.id, connections.institutionId))
@@ -98,6 +100,8 @@ export class ConnectionsService {
           failingSince: failing ? r.firstFailedAt!.toISOString() : null,
           notWorking: failing ? now - r.firstFailedAt!.getTime() >= NOT_WORKING_AFTER_MS : false,
           refreshAvailableAt: refreshAvailableAt(provider, r.refreshRequestedAt, now),
+          importingHistory:
+            REPORTS_HISTORY[provider] && status !== 'setup' && !r.historicalComplete,
         };
       });
     });

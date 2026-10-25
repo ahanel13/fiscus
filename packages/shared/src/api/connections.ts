@@ -36,7 +36,19 @@ export interface Connection {
    * ({@link REFRESH_LIMIT_MS}) from the last time it was asked for.
    */
   refreshAvailableAt: string | null;
+  /**
+   * The bank is still sending older history (Plaid's `HISTORICAL_UPDATE_COMPLETE` hasn't come,
+   * TXN-008): a first sync can be empty, or recent only, for a few minutes. Only providers that
+   * report it ({@link REPORTS_HISTORY}); a SimpleFIN window is everything at once.
+   */
+  importingHistory: boolean;
 }
+
+/** Providers that say when the history they're sending is complete. */
+export const REPORTS_HISTORY: Record<ConnectionProvider, boolean> = {
+  plaid: true,
+  simplefin: false,
+};
 
 /** "Refresh now" at most this often, per connection (D10). */
 export const REFRESH_LIMIT_MS: Record<ConnectionProvider, number> = {
