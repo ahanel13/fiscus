@@ -29,10 +29,11 @@ place. A threat without a test is a gap, and gaps are issues (§5).
 
 ```
 Browser ──HTTPS (your proxy)──▶ web (nginx) ──▶ api ──▶ Postgres (RLS) ◀── worker
-                                                 │          ▲
-                                                 ▼          └── migrate, backup, maintenance jobs
-                                              Valkey
-Planned: worker ⇄ Plaid / SimpleFIN · api ⇄ AI provider · MCP client ──PAT──▶ mcp ──▶ api
+   │                                             │          ▲                 │
+   │ connect pages only                          ▼          └── migrate, backup, maintenance jobs
+   ▼                                          Valkey                          │
+Plaid Link (cdn.plaid.com)          api ──HTTPS──▶ Plaid · SimpleFIN Bridge ◀──HTTPS── worker
+Planned: api ⇄ AI provider · MCP client ──PAT──▶ mcp ──▶ api
 ```
 
 - **Browser ↔ server:** everything from the browser is untrusted input. Sessions are cookies;
@@ -42,7 +43,14 @@ Planned: worker ⇄ Plaid / SimpleFIN · api ⇄ AI provider · MCP client ─�
   and private rows apart ([data model §4](data-model.md#4-row-level-security)).
 - **The operator:** whoever runs the server is trusted ([ADR 0005](../adr/0005-tenancy-and-trust-model.md)).
   What they do can be made detectable, not impossible.
-- **Third parties** (planned): banks and Plaid, email, AI providers. They see what they're sent.
+- **Browser ↔ Plaid Link:** on the connect pages only, the browser loads Plaid's script and frame
+  from `cdn.plaid.com` (T4). The bank sign-in happens there: Fiscus never sees the password, and
+  gets back a one-time public token that only the api can exchange.
+- **api and worker ↔ Plaid and the SimpleFIN Bridge:** server-to-server HTTPS. Plaid's keys and
+  each connection's access token or access URL stay on the server ([aggregation](aggregation.md),
+  T27, T28).
+- **Third parties:** banks, Plaid and the SimpleFIN Bridge (built); email and AI providers
+  (planned). They see what they're sent.
 
 ## 3. Threats
 
@@ -56,7 +64,7 @@ disclosure, **D**enial of service, **E**levation of privilege.
 | T1 | Guessing passwords | S | argon2id (OWASP parameters); 10 failures per account and 30 per IP per 15 minutes; identical answers for an unknown email and a wrong password | Limits are per api process, in memory; a slow, distributed guess still gets through. No second factor yet | `auth.test.ts` (rate limits, identical answers, argon2id); 2FA #27, passkeys #227; shared limits #377 |
 | T2 | A stolen session cookie | S, I | `HttpOnly`, `Secure`, `SameSite=Lax`; only its hash is stored; rotated at login; ends after 7 days idle or 30 days; a password reset signs out everywhere; you can list and revoke your sessions; sensitive actions need re-authentication | A cookie taken from an unlocked device works until it expires or is revoked | `auth.test.ts` (rotation, revocation, reset, re-auth, hashes stored, idle and absolute expiry) |
 | T3 | Cross-site request forgery | S, T | Signed double-submit token in `X-CSRF-Token`, HMAC-bound to the session; `SameSite=Lax` | None known | `csrf.service.test.ts`, `auth.test.ts` |
-| T4 | Cross-site scripting: a merchant name or note that runs as script | E, I | React escapes everything it renders; no `dangerouslySetInnerHTML`; a strict Content-Security-Policy on every response: scripts and styles from this origin only, nothing inline, no `eval`, requests only to this origin (or `API_URL`'s); `Permissions-Policy` off for camera, microphone, location, and payment; `X-Content-Type-Options`, `X-Frame-Options: DENY`, `frame-ancestors 'none'` | Injected markup could still change the page's look (no script, no requests out) | `e2e/headers.spec.ts` (headers on pages, assets, errors, and api responses; an injected script is blocked); every e2e test fails on any CSP violation (`e2e/test.ts`) |
+| T4 | Cross-site scripting: a merchant name or note that runs as script | E, I | React escapes everything it renders; no `dangerouslySetInnerHTML`; a strict Content-Security-Policy on every response: scripts and styles from this origin only, nothing inline, no `eval`, requests only to this origin (or `API_URL`'s); `Permissions-Policy` off for camera, microphone, location, and payment; `X-Content-Type-Options`, `X-Frame-Options: DENY`, `frame-ancestors 'none'`. **One exception (#79):** the Plaid connect pages (`/h/:id/connect/plaid…` and `/connect/plaid/oauth`) also allow Plaid Link's script and frame from `https://cdn.plaid.com` and requests to Plaid's api hosts, still with nothing inline and no `eval`. They're entered and left with a full page load, so Plaid's script never runs under another page's URL | Injected markup could still change the page's look (no script, no requests out). On the connect pages, Plaid's script runs with the page's privileges: a compromise of `cdn.plaid.com` could read that page and call the api as you while it's open. It's loaded at run time, not part of any image, so a verified release doesn't cover it (verify-releases) | `e2e/headers.spec.ts` (headers on pages, assets, errors, and api responses; an injected script is blocked; only the connect pages allow `cdn.plaid.com`); every e2e test fails on any CSP violation (`e2e/test.ts`), the connect journey included |
 | T5 | SQL injection | T, I, E | Parameterized queries everywhere (Drizzle); row-level security on every household table, failing closed | Injected SQL acts as the api's role: what the session's member can see, nothing more. The worker writes in system context (from #81: ending connections at their provider, deleting their secrets; from #80: every synced transaction, balance and card detail), so a bug or injection there reaches the whole of one household, bounded by SYS-01 (every system-context write is in its job's household); what crosses households is only the claim and the job's finish, which take and return ids and change only scheduling columns | `rls.test.ts`, `system-context.test.ts` (the app role gets nothing from system context, and can't become the worker, claim, or finish a job); `accounts.test.ts`; architecture test keeps the api off system context; `sync.test.ts` (sync links transfers only within the connection owner's reach) |
 | T6 | Guessing or replaying an invite, setup, or reset link | S | 32 random bytes, stored only as a hash; single use; expiry; invite tokens travel in the URL fragment and request bodies, never paths (out of logs); a join needs the invited email | Anyone holding a live link can use it once: links are shared by hand until email exists (M4) | `households.test.ts`, `auth.test.ts` (ADM-08, reset) |
 | T7 | Taking over a fresh install before its owner | E | First-run setup needs a one-time token printed only in the api's logs; it closes after the first admin | Someone who can read the logs before the owner finishes setup | `auth.test.ts` (setup) |
