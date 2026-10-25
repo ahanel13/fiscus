@@ -20,6 +20,12 @@ images don't reproduce never goes out.
 All of this checks the image. It can't tell you what a server you don't control is running; for a
 hosted Fiscus that's "Verify this server" (#313), which builds on these digests.
 
+One thing a browser runs isn't in any image: **Plaid Link**. Connecting a bank through Plaid loads
+Plaid's script from `https://cdn.plaid.com` on the connect pages only (Plaid doesn't allow bundling
+or self-hosting it, and serves its latest version). A verified image tells you nothing about that
+script; the Content-Security-Policy keeps it off every other page ([threat model](../design/threat-model.md)
+T4). Instances that never connect through Plaid never load it.
+
 ## 1. Which image are you running?
 
 Each release's notes list every image's digest. That's what `docker pull` resolves the tag to.
