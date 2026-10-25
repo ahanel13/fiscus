@@ -18,6 +18,7 @@ import type {
   Me,
   NetWorth,
   PlaidAvailability,
+  PossibleDuplicate,
   ReviewCount,
   SimpleFinAvailability,
   ServerInvite,
@@ -255,6 +256,15 @@ export const reviewCountQuery = (id: string) =>
     queryFn: async () =>
       (await api<Data<ReviewCount>>('GET', `${hh(id)}/transactions/review-count`)).data,
     staleTime: 30_000,
+  });
+
+/** Synced transactions that may be ones already here, in accounts you own (#80, D7). */
+export const possibleDuplicatesQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'transactions', 'possible-duplicates'],
+    queryFn: async () =>
+      (await api<Data<PossibleDuplicate[]>>('GET', `${hh(id)}/transactions/possible-duplicates`))
+        .data,
   });
 
 /** Suggested transfer pairs, and transfers with no other side (transfers.md §2). */
