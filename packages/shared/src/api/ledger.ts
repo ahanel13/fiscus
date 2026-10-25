@@ -337,6 +337,8 @@ export interface ReviewCount {
   transactions: number;
   /** Suggested transfer pairs and transfers with no other side, in accounts you own. */
   transfers: number;
+  /** Synced transactions that may be ones already here, in accounts you own (#80). */
+  duplicates: number;
 }
 
 /**
@@ -377,6 +379,43 @@ export interface TransferReview {
   unmatched: TransferReviewTransaction[];
   /** The full counts: the lists stop at 1,000 each. */
   counts: { suggested: number; unmatched: number; unique: number };
+}
+
+/**
+ * A synced transaction held as a possible duplicate (bank connections walkthrough D7, #80): it
+ * looks like one already in the account without matching it exactly, so it isn't in the ledger
+ * until an owner of the account decides.
+ */
+export interface PossibleDuplicate {
+  id: string;
+  /** Accounts you own: always named. */
+  account: { id: string; name: string };
+  /** The bank's transaction, as it would come in. */
+  bank: {
+    date: string;
+    amountMinor: number;
+    currency: string;
+    displayName: string;
+    /** As the bank had it. Untrusted text. */
+    originalDescription: string;
+  };
+  /**
+   * Transactions already here it may be, closest date first. Empty once none still could be
+   * (deleted, or another bank transaction matched them): then it can only be added.
+   */
+  candidates: TransferReviewTransaction[];
+  heldAt: string;
+}
+
+/** "Same transaction" keeps yours, with the bank's id; "Different" adds the bank's (D7). */
+export const decidePossibleDuplicateSchema = z.discriminatedUnion('decision', [
+  z.object({ decision: z.literal('same'), transactionId: z.uuid() }),
+  z.object({ decision: z.literal('different') }),
+]);
+
+/** The transaction that has the bank's id now: yours, or the one added. */
+export interface PossibleDuplicateDecision {
+  transactionId: string;
 }
 
 export interface BulkUpdateResult {

@@ -35,6 +35,7 @@ describe('row-level security', () => {
     'import_profiles',
     'member_preferences',
     'rules',
+    'sync_holds',
     'tags',
     'transaction_attributions',
     'transaction_notes',

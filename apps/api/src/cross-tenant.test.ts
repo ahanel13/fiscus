@@ -150,6 +150,17 @@ describe('cross-tenant isolation (generated from routes)', () => {
           x.connectionId,
           x.accountId,
         ]);
+        // A synced transaction held as a possible duplicate (#80).
+        x.holdId = (
+          await db.query(
+            `INSERT INTO sync_holds (id, household_id, connection_id, account_id,
+               provider_transaction_id, amount_minor, currency, authorized_date,
+               original_description, display_name, candidate_ids)
+             VALUES (gen_random_uuid(), $1, $2, $3, 'held', -100, 'USD', '2026-03-01', $4, $4, '{}')
+             RETURNING id`,
+            [x.householdId, x.connectionId, x.accountId, name],
+          )
+        ).rows[0].id;
       }
     } finally {
       await db.end();

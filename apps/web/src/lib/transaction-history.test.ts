@@ -94,6 +94,14 @@ describe('historyLine', () => {
         names,
       ),
     ).toBe('The bank changed the amount from -$52.00 to -$61.00 and posted it');
+    // A possible duplicate a person decided (#80).
+    const sam = { kind: 'member', memberId: 'm-sam', label: 'Sam' } as const;
+    expect(historyLine(entry({ action: 'transaction.matched_to_bank', actor: sam }), names)).toBe(
+      'Sam matched it to the bank’s copy, keeping everything here',
+    );
+    expect(historyLine(entry({ action: 'transaction.added_from_bank', actor: sam }), names)).toBe(
+      'Came in from the bank once Sam said it’s not one already here',
+    );
     // Pending → posted (#88): the same transaction, with what the bank changed as it posted.
     expect(historyLine(entry({ action: 'transaction.posted', actor: bank }), names)).toBe(
       'The bank posted it',

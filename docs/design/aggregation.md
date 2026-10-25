@@ -264,9 +264,12 @@ recorded as activity by the system with the connection owner's member id.
   skipped. **Already here (D7):** a posted arrival that is the only one of its kind on its page,
   with exactly one transaction of that kind already in the account that isn't the provider's (same
   amount, currency and reported date), gets nothing new: that transaction takes the provider's id
-  and keeps everything a person did to it. Pending arrivals never match. Near or ambiguous matches
-  are inserted for now; `holdPossibleDuplicates()` is where #80's holds (`sync_holds`, the Possible
-  duplicates review) go next. Then rules run on what arrived with their authors' reach (D9,
+  and keeps everything a person did to it. Pending arrivals never match. **Possible duplicates
+  (D7):** a posted arrival left over with the same amount and currency as one of those within 3
+  days (another day, or more than one like it) isn't inserted: it's held in `sync_holds` with the
+  closest few as candidates (`holdPossibleDuplicates()`), and `sync.transactions_held` records the
+  count per account. A later add or change of a held transaction updates the hold; a removal, or a
+  window that leaves it out, drops it. An owner of the account decides in Review (§5a). Then rules run on what arrived with their authors' reach (D9,
   `caller = null`, as on import), and transfers are detected within the **connection owner's**
   reach: both accounts theirs, and only transactions they could see counted as other candidates,
   so sync never links, or is swayed by, what's behind a privacy line they can't cross.
@@ -297,13 +300,34 @@ recorded as activity by the system with the connection owner's member id.
   `writeProviderLiabilities()` once the pages are done, when the provider has them. Touched
   accounts' computed balances are rebuilt.
 - **Activity.** `sync.transactions_added` per account per sync (linked to each transaction, #46),
-  `sync.transactions_matched` per account per sync for D7 matches, `transaction.provider_updated`
+  `sync.transactions_matched` per account per sync for D7 matches, `sync.transactions_held` per
+  account per sync for holds (a count, no transactions), `transaction.provider_updated`
   per changed row (its field changes encrypted), `transaction.posted` per pending transaction that
   posted (its amount and dates before and after, encrypted), `transaction.provider_removed` per
   removal, and one `sync.applied` per sync with its mode, page and restart counts and what it did,
   as counts only (for the owner only). A transaction's history shows these as the Bank.
 - **Errors** map as in §4: `login_required` and `consent_expired` set `login_required`; anything
   else is `error` with backoff. The provider's code is stored; its message never is.
+
+## 5a. Possible duplicates
+
+D7, #80: `apps/api/src/ledger/duplicates.service.ts`. Only the account's owners see and decide
+holds (TXN-13, row-level security): deciding "different" adds a transaction and rebuilds the
+account's balances, which only owners may do, as for imports. Viewers get an empty list and 403.
+
+- `GET /api/v1/households/:id/transactions/possible-duplicates`: the holds you can see, oldest
+  first (at most 500), each with its account, the bank's transaction as it would come in, and its
+  candidates still unmatched (live, not the provider's, in the same account), closest date first.
+  One whose candidates are all gone lists none: it can only be added.
+- `POST …/possible-duplicates/:holdId` with `{ decision: 'same', transactionId }`: the candidate
+  takes the bank's id (and pending id), keeping everything a person did to it; later syncs update
+  it as a synced transaction. 422 `not_a_candidate` for a transaction the hold didn't name, 409
+  `candidate_gone` for one deleted or matched since. Recorded as `transaction.matched_to_bank`.
+- `{ decision: 'different' }`: the bank's transaction is added as sync would have added it
+  (`source = provider`, needing review), recorded as `transaction.added_from_bank`; then rules run
+  as on import, transfers are detected within the decider's reach, and balances are rebuilt.
+- Either way the hold is gone; deciding it again is 404. The review count (`GET
+  …/transactions/review-count`) counts holds as `duplicates`, in the badge's total.
 
 ## 6. Connecting a bank through Plaid Link
 

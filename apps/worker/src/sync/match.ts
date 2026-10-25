@@ -72,16 +72,3 @@ export async function matchExisting(
   }
   return { attached, rest: arrivals.filter((a) => !matched.has(a)) };
 }
-
-/**
- * The seam for D7's holds (#80, the next part): arrivals that look like a transaction already
- * here without matching it exactly (within a few days, or more than one candidate) will be held
- * in `sync_holds` for a person to decide, so totals don't count them twice meanwhile. Until then,
- * every one of them is inserted as new: returns the arrivals to insert.
- */
-export async function holdPossibleDuplicates(
-  _tx: Executor,
-  arrivals: Arrival[],
-): Promise<Arrival[]> {
-  return arrivals;
-}

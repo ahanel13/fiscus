@@ -156,6 +156,7 @@ export async function syncConnection(
   const summary: SyncSummary = {
     added: 0,
     matched: 0,
+    held: 0,
     updated: 0,
     posted: 0,
     removed: 0,
@@ -206,6 +207,7 @@ export async function syncConnection(
     });
     summary.added = result.added;
     summary.matched = result.matched;
+    summary.held = result.held;
     summary.updated = result.updated;
     summary.posted = result.posted;
     summary.removed = result.removed;
