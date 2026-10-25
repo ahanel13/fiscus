@@ -19,6 +19,7 @@ export {
   Alert,
   Avatar,
   Badge,
+  type BadgeTone,
   Card,
   initials,
   Kbd,

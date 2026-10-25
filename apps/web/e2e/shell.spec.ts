@@ -1120,6 +1120,22 @@ test('connects a bank through Plaid Link, on its own page, and chooses what to t
   await expect(connections).toContainText('Harbor Credit Union needs you to sign in again');
   await expect(connections).toContainText(/Everyday checking and Harbor CU Savings show balances/);
   expect(await axeViolations(page)).toEqual([]);
+  // Its accounts say so on their rows (D13), the dashboard shows it too, and Household settings →
+  // Connections lists it with who linked it and "Disconnect" (#89, D14).
+  await expect(page.getByRole('link', { name: /Everyday checking.*Needs sign-in/ })).toBeVisible();
+  await page.goto(householdUrl);
+  await expect(page.getByRole('region', { name: 'Bank connections to fix' })).toContainText(
+    'Harbor Credit Union needs you to sign in again',
+  );
+  expect(await axeViolations(page)).toEqual([]);
+  await page.goto(`${householdUrl}/settings/connections`);
+  const listed = page.getByRole('region', { name: 'Bank connections' });
+  await expect(listed).toContainText('Linked by you · 2 accounts');
+  await expect(listed).toContainText('Needs sign-in');
+  await expect(listed.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Disconnecting' })).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.goto(`${householdUrl}/accounts`);
   await connections.getByRole('button', { name: 'Sign in again' }).click();
   await expect(page).toHaveURL(/\/connect\/plaid\?connection=[0-9a-f-]{36}$/);
   await expect(

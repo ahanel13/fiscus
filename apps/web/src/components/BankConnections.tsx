@@ -10,27 +10,71 @@ import { connectionsQuery } from '../api/queries.js';
 import { leaveTo } from '../lib/flash.js';
 import { relativeTime } from '../lib/relative-time.js';
 import { useInvalidateLedger } from '../routes/transactions.js';
-import { Button, buttonStyles, ConfirmDialog, DateText, toast } from './ui.js';
+import {
+  Badge,
+  type BadgeTone,
+  Button,
+  buttonStyles,
+  ConfirmDialog,
+  DateText,
+  toast,
+} from './ui.js';
 
-// A household's bank connections, at the top of Accounts (the bank connections walkthrough §5–§6,
-// D10–D13): each with how fresh it is, "Refresh now" for its owner, and what's wrong when
-// something is. Whoever sees its accounts sees it, with whose it is: only its owner fixes it
-// (D11), and the accounts it leaves stale are named (D12).
+// A household's bank connections (the bank connections walkthrough §5–§7, D10–D14): at the top of
+// Accounts, each with how fresh it is, "Refresh now" for its owner, and what's wrong when
+// something is; on the dashboard, only the broken ones; in Household settings → Connections, all
+// of them with who linked them and "Disconnect". Whoever sees its accounts sees it, with whose it
+// is: only its owner fixes it (D11), and the accounts it leaves stale are named (D12).
 
 type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
 
 const PROVIDER: Record<Connection['provider'], string> = { plaid: 'Plaid', simplefin: 'SimpleFIN' };
 
-/** The connections, or nothing when there are none. */
+/** What's wrong with a connection, when something is that its accounts should say (D12, D13). */
+export type ConnectionTrouble = 'needs_sign_in' | 'not_working';
+
+export const TROUBLE: Record<ConnectionTrouble, { label: string; tone: BadgeTone }> = {
+  needs_sign_in: { label: 'Needs sign-in', tone: 'warning' },
+  not_working: { label: 'Not working', tone: 'danger' },
+};
+
+/** A sign-in it needs, or 3 days of failures. A failure Fiscus is still retrying isn't one yet. */
+export function connectionTrouble(c: Connection): ConnectionTrouble | null {
+  if (c.status === 'login_required') return 'needs_sign_in';
+  if (c.status === 'error' && c.notWorking) return 'not_working';
+  return null;
+}
+
+/** Each account's connection trouble, for the badge on its row (D13). */
+export function useAccountTrouble(householdId: string): Map<string, ConnectionTrouble> {
+  const data = useQuery(connectionsQuery(householdId)).data;
+  return useMemo(
+    () =>
+      new Map(
+        (data ?? []).flatMap((c) => {
+          const trouble = connectionTrouble(c);
+          return trouble ? c.accountIds.map((id) => [id, trouble] as const) : [];
+        }),
+      ),
+    [data],
+  );
+}
+
+/**
+ * The connections, or nothing when there are none. `dashboard` shows only the broken ones;
+ * `settings` adds who linked each, how many accounts, and "Disconnect" for its owner (D14).
+ */
 export function BankConnections({
   householdId,
   accounts,
   members,
+  variant = 'accounts',
 }: {
   householdId: string;
   accounts: Account[];
   members: HouseholdMember[];
+  variant?: 'accounts' | 'dashboard' | 'settings';
 }) {
   const data = useQuery(connectionsQuery(householdId)).data;
   const connections = useMemo(() => data ?? [], [data]);
@@ -47,17 +91,25 @@ export function BankConnections({
     if (changed) void invalidate();
   }, [connections, invalidate]);
 
-  if (connections.length === 0) return null;
+  const shown =
+    variant === 'dashboard'
+      ? connections.filter((c) => c.status === 'login_required' || c.status === 'error')
+      : connections;
+  if (shown.length === 0) return null;
   const me = members.find((m) => m.isYou)?.id;
   return (
-    <section aria-label="Bank connections" className="space-y-2">
-      {connections.map((c) => (
+    <section
+      aria-label={variant === 'dashboard' ? 'Bank connections to fix' : 'Bank connections'}
+      className="space-y-2"
+    >
+      {shown.map((c) => (
         <ConnectionLine
           key={c.id}
           householdId={householdId}
           connection={c}
           accounts={accounts.filter((a) => c.accountIds.includes(a.id))}
           yours={c.owner.memberId === me}
+          manage={variant === 'settings'}
         />
       ))}
     </section>
@@ -69,11 +121,14 @@ function ConnectionLine({
   connection: c,
   accounts,
   yours,
+  manage,
 }: {
   householdId: string;
   connection: Connection;
   accounts: Account[];
   yours: boolean;
+  /** In Household settings: who linked it, how many accounts, and "Disconnect" any time. */
+  manage: boolean;
 }) {
   const queryClient = useQueryClient();
   const [disconnecting, setDisconnecting] = useState(false);
@@ -159,6 +214,14 @@ function ConnectionLine({
       </p>
     ) : null;
 
+  const trouble = connectionTrouble(c);
+  const linked = manage ? (
+    <p className="text-xs text-muted">
+      Linked by {yours ? 'you' : c.owner.name} · {c.accountCount}{' '}
+      {c.accountCount === 1 ? 'account' : 'accounts'}
+    </p>
+  ) : null;
+
   return (
     <div
       className={clsx(
@@ -180,7 +243,13 @@ function ConnectionLine({
             {yours ? null : ` · ${c.owner.name}’s`}
           </span>
         </p>
+        {linked}
         <p className={clsx('text-xs', broken ? 'text-fg' : 'text-muted')} role="status">
+          {manage && trouble ? (
+            <Badge tone={TROUBLE[trouble].tone} className="mr-1.5">
+              {TROUBLE[trouble].label}
+            </Badge>
+          ) : null}
           {status}
         </p>
         {importing}
@@ -202,7 +271,7 @@ function ConnectionLine({
               Sign in again
             </Button>
           ) : null}
-          {c.status === 'error' && c.notWorking ? (
+          {(c.status === 'error' && c.notWorking) || manage ? (
             <Button size="sm" variant="secondary" onPress={() => setDisconnecting(true)}>
               Disconnect
             </Button>

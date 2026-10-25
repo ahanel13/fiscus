@@ -15,6 +15,7 @@ import {
   reviewCountQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
+import { BankConnections } from '../components/BankConnections.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { CompareSelect, GranularityToggle, PeriodStepper } from '../components/RangeControls.js';
 import { Alert, Button, ButtonLink, Card, LoadingRegion, Skeleton } from '../components/ui.js';
@@ -46,10 +47,30 @@ export function DashboardPage() {
       <PageHeader title="Dashboard" range={range} showLens={showLens} members={members} />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
         <FirstRunChecklist household={household} members={members} />
+        <BrokenConnections householdId={householdId} members={members} />
         <CashFlowCard household={household} lens={lens} range={range} />
         <NetWorthCard household={household} lens={lens} range={range} />
       </div>
     </>
+  );
+}
+
+/** A connection that needs fixing, to everyone who sees its accounts (D11, D13). */
+function BrokenConnections({
+  householdId,
+  members,
+}: {
+  householdId: string;
+  members: HouseholdMember[];
+}) {
+  const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
+  return (
+    <BankConnections
+      householdId={householdId}
+      accounts={accounts}
+      members={members}
+      variant="dashboard"
+    />
   );
 }
 

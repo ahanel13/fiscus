@@ -47,7 +47,7 @@ import {
   simpleFinAvailabilityQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
-import { BankConnections } from '../components/BankConnections.js';
+import { BankConnections, TROUBLE, useAccountTrouble } from '../components/BankConnections.js';
 import { SimpleFinDialog } from '../components/SimpleFinDialog.js';
 import { CardDetails } from '../components/CardDetails.js';
 import { EmptyState } from '../components/EmptyState.js';
@@ -537,6 +537,7 @@ function AccountGroup({
     ? arrange.sections.filter((s) => s.groupId !== null).findIndex((s) => s.key === section.key)
     : -1;
   const groupCount = arrange?.sections.filter((s) => s.groupId !== null).length ?? 0;
+  const trouble = useAccountTrouble(householdId);
   return (
     <section aria-labelledby={headingId}>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 px-1">
@@ -628,6 +629,11 @@ function AccountGroup({
                           <Badge>{VISIBILITY[a.visibility].label}</Badge>
                         ) : null}
                         {a.closedAt ? <Badge>Closed</Badge> : null}
+                        {trouble.has(a.id) ? (
+                          <Badge tone={TROUBLE[trouble.get(a.id)!].tone}>
+                            {TROUBLE[trouble.get(a.id)!].label}
+                          </Badge>
+                        ) : null}
                       </span>
                     </span>
                     {/* The change over the page's range, then the balance and when it's from. */}

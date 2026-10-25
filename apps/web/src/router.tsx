@@ -49,6 +49,7 @@ import {
   PersonalSettingsPage,
 } from './routes/settings.js';
 import { WelcomePage } from './routes/welcome.js';
+import { ConnectionsSettings } from './routes/connections-settings.js';
 
 interface Context {
   queryClient: QueryClient;
@@ -277,6 +278,7 @@ const settingsRoutes = [
   settingsSection('/members', MembersSettings),
   settingsSection('/categories', CategoriesSettingsPage),
   settingsSection('/rules', RulesSettings),
+  settingsSection('/connections', ConnectionsSettings),
 ];
 
 const routeTree = rootRoute.addChildren([
