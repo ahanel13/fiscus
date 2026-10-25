@@ -22,6 +22,15 @@ export {
   type HouseholdProof,
 } from './activity.js';
 export { readConnectionSecret, saveConnectionSecret } from './connection-secrets.js';
+export {
+  activePlaidKeySet,
+  type PlaidKeySet,
+  plaidKeySetUses,
+  readPlaidKeySet,
+  revokePlaidKeySet,
+  savePlaidKeySet,
+  shredPlaidKeySet,
+} from './plaid-credentials.js';
 export { setContext, systemContext, userContext, withContext, type DbContext } from './context.js';
 export { MAINTENANCE_JOBS, runMaintenanceJob, type MaintenanceJob } from './maintenance.js';
 export { pingDatabase } from './health.js';

@@ -83,7 +83,7 @@ caller can't see ("Transfer to Anthony").
 | HH-05 | Leave household | ✅ | ✅ | ✅ | Last owner must transfer ownership or delete the household first |
 | HH-06 | Demote a member who owns accounts to viewer | ❌ | ❌ | ❌ | Their accounts must be transferred first (viewers can't own accounts) |
 | HH-07 | Delete household | ✅ | ❌ | ❌ | Re-authentication required. Other members are notified. **7-day grace** before crypto-shred, cancellable by any owner |
-| HH-08 | Configure household Plaid keys | ✅ | ❌ | ❌ | Secret is write-only. Read returns `client_id` (masked) + created date only |
+| HH-08 | Configure household Plaid keys | ✅ | ❌ | ❌ | Secret is write-only. Read returns `client_id` (masked: last 4) + environment + created date only. Changing or removing them needs recent re-authentication (#83) |
 | HH-09 | Configure household AI settings (provider, on/off, write tools) | ✅ | ❌ | ❌ | Members can always opt themselves out (HH-10) |
 | HH-10 | Own preferences (range defaults, AI opt-out, notifications) | own | own | own | |
 | HH-11 | Read household audit log (household-visible events) | ✅ | ❌ | ❌ | Includes instance-admin actions affecting the household (ADR 0005) |

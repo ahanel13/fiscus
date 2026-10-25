@@ -63,7 +63,8 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
   connection (Plaid, ADR 0008) registers a `ProviderSource`, which picks the adapter for each
   connection or throws `ProviderUnavailableError` with a reason (`not_configured`,
   `household_keys_unavailable`, `credentials_changed`). A household's own keys (#83) resolve
-  through the same seam.
+  through the same seam: the caller reads and decrypts the connection's set and passes it as
+  `householdKeys`, for that call only.
 - Plaid (#82): `PlaidClient`, a small `fetch` client for the endpoints M2 uses, with zod-checked
   responses and Plaid's errors mapped to `ProviderError` kinds; `plaidEnvVars` and
   `instancePlaidConfig` for the server's keys (all three or none); `resolvePlaidCredentials`,
@@ -73,8 +74,8 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
   test-only override is honored only in sandbox.
 - The Plaid adapter (#82, `plaid/provider.ts`): `PlaidProvider`, for one set of keys, and
   `plaidProviderSource(instanceConfig)`, which the worker registers. Each connection gets the keys
-  it was made with: the server's when `credential_set_id` is null; a household's own set is
-  refused as `household_keys_unavailable` until #83; a recorded `provider_env` or
+  it was made with: the server's when `credential_set_id` is null, else the household's set the
+  caller passes (`household_keys_unavailable` when it's gone or unreadable); a recorded `provider_env` or
   `provider_client_id` that no longer matches is `credentials_changed`. One `PlaidProvider` per
   set of keys.
   - `sync` is one `/transactions/sync` page, never `/transactions/get` (Plaid's TXN-001), with
@@ -203,7 +204,8 @@ The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives 
   `disconnect_requested`. If remove fails, or this server has no adapter for the provider, the
   secret stays and the job is retried. A connection whose provider has no adapter here fails as
   `provider_unavailable`, as does a Plaid connection on a server without Plaid keys; one made
-  with a household's own Plaid keys fails as `household_keys_unavailable` (#83), and one made
+  with a household's own Plaid keys that are gone or unreadable fails as
+  `household_keys_unavailable` (#83), and one made
   with another Plaid client id or environment as `credentials_changed` ("reconnect"), without
   calling Plaid. A job running past 10 minutes fails as `timeout`.
 - **When it's next due.** After a sync: the interval, `sync.intervalHours` (an instance setting,
@@ -338,8 +340,10 @@ up in Plaid's dashboard.
 
 1. **Link token.** `POST /api/v1/households/:id/plaid/link-token`, for owners and members;
    viewers get 403 (ACC-01). The keys are the household's, through `resolvePlaidCredentials`: its
-   own set if it has one (#83; until then such a household gets 409 `plaid_unavailable`), else
-   the server's, and without either also 409 `plaid_unavailable`. The token asks for
+   own active set if it has one (#83), else the server's, and without either 409
+   `plaid_unavailable`. On a household's own keys the token has no `redirect_uri`: the server's
+   is registered in the server's Plaid dashboard only, so OAuth banks sign in through Link's
+   pop-up. The token asks for
    `products: ['transactions']`, with `additional_consented_products: ['liabilities',
    'investments']` (consented at Link, billed only once called, and hiding no bank: card and
    loan details are #86's, investments aren't read yet), `country_codes: ['US', 'CA']`,
@@ -415,6 +419,32 @@ other page refuses them, and the connect pages are entered and left with full pa
 `plaid_keys_refused` or `provider_unavailable`, each with Plaid's code as `providerCode` and
 never Plaid's message. `no-financial-data-in-logs.test.ts` runs the flow with the fake Plaid
 server, including a failure whose message names an account and its balance.
+
+## 6a. A household's own Plaid keys
+
+#83, ADR 0008 §Credentials 2–5, D15: `apps/api/src/connections/plaid-keys.*`, the keys in
+`aggregation_credentials` (`packages/db/src/plaid-credentials.ts`).
+
+- **Who.** Household owners only (HH-08): `GET`, `PUT` and `DELETE
+  /api/v1/households/:id/plaid-credentials`; changing or removing them needs a recent password check.
+  `GET` shows only the client id's last 4, the environment and when they were added, never the
+  secret, plus every Plaid connection the owner can see with the keys it was made with
+  (`current`, `server`, or `previous`): what the switch would ask to connect again (D15).
+- **Saving.** `PUT { clientId, secret, env }` is refused with 403 `household_keys_off` when the
+  admin's `plaid.allowHouseholdKeys` is off. Otherwise Plaid is asked first, with a free
+  `/institutions/get` (no Item), and keys it rejects are 422 `plaid_keys_rejected`, nothing saved.
+  The secret is encrypted with the household key, bound to its row. Activity records
+  `household.plaid_keys_added` or `_replaced`, with the environment only.
+- **One active set.** Saving revokes the active set (`revoked_at`), under an advisory lock per
+  household. A revoked set still serves the connections made with it, which keep syncing until
+  each is connected again; with no connection left needing it, its secret is shredded (emptied).
+  The row stays, since connections name it. The worker's `remove` job shreds a revoked set once
+  the last connection on it has been ended at Plaid (`/item/remove` needs those keys).
+- **Removing.** `DELETE` is 409 `keys_in_use` while live connections (or ones still being ended)
+  use the active set; otherwise the set is revoked and shredded (`household.plaid_keys_removed`).
+- **Using them.** New connections use the household's active set, else the server's; each
+  records its `credential_set_id` for good (an Item can't move between Plaid accounts). Turning
+  `plaid.allowHouseholdKeys` off later blocks only new keys: connections keep working.
 
 ## 7. A connection day to day
 

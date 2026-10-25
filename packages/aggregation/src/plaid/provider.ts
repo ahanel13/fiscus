@@ -148,10 +148,10 @@ export interface PlaidProviderSourceOptions extends PlaidProviderOptions {
 
 /**
  * Plaid for each connection, with the keys it was made with (ADR 0008 §Credentials 4): the
- * server's when its `credential_set_id` is null. A household's own keys (#83) aren't available
- * yet, a server without keys has none, and a connection recorded with another client id or
- * environment than the keys now configured is `credentials_changed` ("reconnect"); a rotated
- * secret is the same Plaid account, and keeps working. One provider per set of keys.
+ * server's when its `credential_set_id` is null, else the household's set the caller passes
+ * (#83). A server without keys has none, and a connection recorded with another client id or
+ * environment than its keys is `credentials_changed` ("reconnect"); a rotated secret is the same
+ * Plaid account, and keeps working. One provider per set of keys.
  */
 export function plaidProviderSource(
   instance: PlaidInstanceConfig | undefined,
@@ -161,7 +161,11 @@ export function plaidProviderSource(
   return {
     id: PLAID_PROVIDER_ID,
     forConnection(connection: ConnectionRef): AggregationProvider {
-      const resolved = resolvePlaidCredentials(connection.credentialSetId, instance);
+      const resolved = resolvePlaidCredentials(
+        connection.credentialSetId,
+        instance,
+        connection.householdKeys,
+      );
       if (!resolved.available) {
         throw new ProviderUnavailableError(PLAID_PROVIDER_ID, resolved.reason);
       }
@@ -176,7 +180,8 @@ export function plaidProviderSource(
       ) {
         throw new ProviderUnavailableError(PLAID_PROVIDER_ID, 'credentials_changed');
       }
-      const key = `${credentials.env}\u0000${credentials.clientId}`;
+      // The secret too: a household's rotated secret is a new client, not the cached one.
+      const key = `${credentials.env}\u0000${credentials.clientId}\u0000${credentials.secret}`;
       let provider = providers.get(key);
       if (!provider) {
         provider = new PlaidProvider(

@@ -655,7 +655,7 @@ describe('connecting a bank through Plaid Link (#79)', () => {
   });
 
   describe('when Plaid isn’t available to the household', () => {
-    it('says so when the household uses its own keys, which aren’t built yet (#83)', async () => {
+    it('says so when the household’s own keys can’t be read (#83)', async () => {
       const { rows } = await db.query(
         `INSERT INTO aggregation_credentials (id, household_id, provider, client_id, secret_enc, env)
          VALUES (gen_random_uuid(), $1, 'plaid', 'household-client', $2, 'sandbox') RETURNING id`,

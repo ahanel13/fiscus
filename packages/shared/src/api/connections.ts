@@ -64,6 +64,38 @@ export type PlaidAvailability =
   | { available: true; env: 'sandbox' | 'production' }
   | { available: false; reason: 'not_configured' | 'household_keys_unavailable' };
 
+// A household's own Plaid keys (#83, ADR 0008 §Credentials 2–5, D15).
+
+/** `PUT /households/:id/plaid-credentials`: write-only. The secret is never returned. */
+export const plaidKeysSchema = z.strictObject({
+  clientId: z.string().trim().min(1).max(64),
+  secret: z.string().trim().min(1).max(128),
+  env: z.enum(['sandbox', 'production']),
+});
+export type PlaidKeysInput = z.infer<typeof plaidKeysSchema>;
+
+/** `GET /households/:id/plaid-credentials`, for household owners (HH-08). */
+export interface HouseholdPlaidKeys {
+  /** The server's admin lets households bring their own keys (`plaid.allowHouseholdKeys`). */
+  allowed: boolean;
+  /** The server has keys of its own, used when the household has none. */
+  serverKeys: boolean;
+  /** The household's own, as far as they're shown: the client id's last 4 only (HH-08). */
+  keys: { clientIdEnding: string; env: 'sandbox' | 'production'; addedAt: string } | null;
+  /**
+   * Plaid connections you can see, and the keys each was made with: `current` is the household's
+   * set now, `server` the server's, `previous` a set since replaced. Any but `current` has to be
+   * connected again to move to the household's keys (D15).
+   */
+  connections: {
+    id: string;
+    institutionName: string | null;
+    owner: { memberId: string; name: string };
+    accountCount: number;
+    keys: 'current' | 'server' | 'previous';
+  }[];
+}
+
 // Connecting the SimpleFIN Bridge (#91, D3).
 
 /** `GET /households/:id/simplefin`: whether the server's admin has SimpleFIN on. */

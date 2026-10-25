@@ -7,6 +7,8 @@ import {
   riveraScenario,
   startFakePlaid,
 } from '@fiscus/aggregation/testing';
+import { randomUUID } from 'node:crypto';
+import { savePlaidKeySet, systemContext, withContext } from '@fiscus/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_JOB_HANDLERS } from '../runner/handlers.js';
 import { JobHandlers } from '../runner/jobs.js';
@@ -333,6 +335,84 @@ describe('Plaid sync, end to end (#82)', { timeout: 60_000 }, () => {
     expect(await h.row(other.connectionId)).toMatchObject({
       status: 'error',
       lastErrorCode: 'credentials_changed',
+    });
+    expect(fake.requests).toEqual([]);
+  });
+
+  it("syncs with the household's own keys, and shreds replaced ones once their last bank ends (#83)", async () => {
+    const HOUSEHOLD = { clientId: 'household-client-id-7731', secret: 'household-secret' };
+    fake = await startFakePlaid({ otherKeys: [HOUSEHOLD] });
+    const { householdId, memberId } = await h.household();
+    const setId = randomUUID();
+    await withContext(h.worker.db, systemContext(householdId), (tx) =>
+      savePlaidKeySet(tx, h.crypto, {
+        id: setId,
+        householdId,
+        createdByMemberId: memberId,
+        ...HOUSEHOLD,
+        env: 'sandbox',
+      }),
+    );
+    const connectionId = await h.connection({
+      householdId,
+      ownerMemberId: memberId,
+      secret: fake.accessToken,
+      providerEnv: 'sandbox',
+      providerClientId: HOUSEHOLD.clientId,
+      credentialSetId: setId,
+    });
+    await h.account({
+      householdId,
+      owners: [memberId],
+      connectionId,
+      providerAccountId: RIVERA.checking,
+      name: 'Checking',
+    });
+    await run(fake);
+    expect(await h.row(connectionId)).toMatchObject({ status: 'ok', lastErrorCode: null });
+    const clients = new Set(fake.requests.map((r) => JSON.parse(r.body).client_id));
+    expect([...clients]).toEqual([HOUSEHOLD.clientId]);
+    expect((await transactions(householdId)).length).toBeGreaterThan(0);
+
+    // Replaced since (revoked, still needed), then the bank is disconnected: ending it at Plaid
+    // uses the old keys, and then nothing needs them, so their secret goes.
+    await h.owner.query('UPDATE aggregation_credentials SET revoked_at = now() WHERE id = $1', [
+      setId,
+    ]);
+    await h.owner.query(
+      `UPDATE connections SET status = 'disconnected', disconnect_requested = true WHERE id = $1`,
+      [connectionId],
+    );
+    await h.due(connectionId);
+    await run(fake);
+    expect(paths(fake).at(-1)).toBe('/item/remove');
+    expect(
+      await sql('SELECT length(secret_enc) AS n FROM aggregation_credentials WHERE id = $1', [
+        setId,
+      ]),
+    ).toEqual([{ n: 0 }]);
+  });
+
+  it("fails as household_keys_unavailable when the household's keys are gone", async () => {
+    fake = await startFakePlaid();
+    const { householdId, memberId } = await h.household();
+    const setId = randomUUID();
+    await h.owner.query(
+      `INSERT INTO aggregation_credentials (id, household_id, provider, client_id, secret_enc, env, revoked_at)
+       VALUES ($1, $2, 'plaid', 'gone', ''::bytea, 'sandbox', now())`,
+      [setId, householdId],
+    );
+    const connectionId = await h.connection({
+      householdId,
+      ownerMemberId: memberId,
+      providerEnv: 'sandbox',
+      providerClientId: 'gone',
+      credentialSetId: setId,
+    });
+    await run(fake);
+    expect(await h.row(connectionId)).toMatchObject({
+      status: 'error',
+      lastErrorCode: 'household_keys_unavailable',
     });
     expect(fake.requests).toEqual([]);
   });

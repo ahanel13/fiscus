@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  aggregationCredentials,
   connections,
   connectionSecrets,
+  plaidKeySetUses,
   readConnectionSecret,
+  readPlaidKeySet,
+  shredPlaidKeySet,
   systemContext,
   withContext,
 } from '@fiscus/db';
 import { guardActivity, type Actor } from '@fiscus/ledger';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { readSyncState, syncConnection } from '../sync/sync.js';
 import { FAILURE, JobFailure, type JobContext, type JobHandler } from './jobs.js';
 
@@ -24,10 +28,19 @@ const readSecret = (job: JobContext) =>
 
 /**
  * The adapter for this connection, with the keys it was made with (ADR 0008; Plaid's per
- * connection, #82). Not enabled here: `provider_unavailable`; made with other keys:
- * `credentials_changed` (failureOf).
+ * connection, #82): the household's own set, decrypted for this job only, when it was made with
+ * one (#83). Not enabled here: `provider_unavailable`; made with other keys:
+ * `credentials_changed`; its household keys gone: `household_keys_unavailable` (failureOf).
  */
-const providerFor = (job: JobContext) => job.providers.forConnection(job);
+const providerFor = async (job: JobContext) =>
+  job.providers.forConnection({
+    ...job,
+    householdKeys: job.credentialSetId
+      ? await withContext(job.db, systemContext(job.householdId), (tx) =>
+          readPlaidKeySet(tx, job.crypto, job.householdId, job.credentialSetId!),
+        )
+      : null,
+  });
 
 /**
  * A scheduled sync (#80): the connection's new, changed and removed transactions, its balances,
@@ -37,7 +50,7 @@ const providerFor = (job: JobContext) => job.providers.forConnection(job);
 export const syncJob: JobHandler = {
   kind: 'sync',
   async run(job) {
-    const provider = providerFor(job);
+    const provider = await providerFor(job);
     const state = await readSyncState(job, job);
     if (!state) throw new JobFailure(FAILURE.internal);
     if (state.ownerLeft) throw new JobFailure(FAILURE.ownerLeft);
@@ -69,7 +82,7 @@ export const removeJob: JobHandler = {
   kind: 'remove',
   async run(job) {
     const secret = await readSecret(job);
-    if (secret !== null) await providerFor(job).remove(secret);
+    if (secret !== null) await (await providerFor(job)).remove(secret);
     await withContext(job.db, systemContext(job.householdId), (tx) =>
       guardActivity(tx, job.householdId, WORKER, job.crypto, async (tx, activity) => {
         await tx
@@ -81,6 +94,21 @@ export const removeJob: JobHandler = {
           .where(
             and(eq(connections.id, job.connectionId), eq(connections.disconnectRequested, true)),
           );
+        // Replaced household keys go once nothing needs them (#83): this was the last to end.
+        if (job.credentialSetId) {
+          const [revoked] = await tx
+            .select({ id: aggregationCredentials.id })
+            .from(aggregationCredentials)
+            .where(
+              and(
+                eq(aggregationCredentials.id, job.credentialSetId),
+                isNotNull(aggregationCredentials.revokedAt),
+              ),
+            );
+          if (revoked && (await plaidKeySetUses(tx, revoked.id)) === 0) {
+            await shredPlaidKeySet(tx, revoked.id);
+          }
+        }
         await activity.record({
           action: 'connection.ended_at_provider',
           targetType: 'connection',
