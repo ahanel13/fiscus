@@ -402,7 +402,7 @@ server, including a failure whose message names an account and its balance.
 `aggregation_credentials` (`packages/db/src/plaid-credentials.ts`).
 
 - **Who.** Household owners only (HH-08): `GET`, `PUT` and `DELETE
-  /api/v1/households/:id/plaid-keys`; changing or removing them needs a recent password check.
+  /api/v1/households/:id/plaid-credentials`; changing or removing them needs a recent password check.
   `GET` shows only the client id's last 4, the environment and when they were added, never the
   secret, plus every Plaid connection the owner can see with the keys it was made with
   (`current`, `server`, or `previous`): what the switch would ask to connect again (D15).

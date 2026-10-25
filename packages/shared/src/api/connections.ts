@@ -66,7 +66,7 @@ export type PlaidAvailability =
 
 // A household's own Plaid keys (#83, ADR 0008 §Credentials 2–5, D15).
 
-/** `PUT /households/:id/plaid-keys`: write-only. The secret is never returned. */
+/** `PUT /households/:id/plaid-credentials`: write-only. The secret is never returned. */
 export const plaidKeysSchema = z.strictObject({
   clientId: z.string().trim().min(1).max(64),
   secret: z.string().trim().min(1).max(128),
@@ -74,7 +74,7 @@ export const plaidKeysSchema = z.strictObject({
 });
 export type PlaidKeysInput = z.infer<typeof plaidKeysSchema>;
 
-/** `GET /households/:id/plaid-keys`, for household owners (HH-08). */
+/** `GET /households/:id/plaid-credentials`, for household owners (HH-08). */
 export interface HouseholdPlaidKeys {
   /** The server's admin lets households bring their own keys (`plaid.allowHouseholdKeys`). */
   allowed: boolean;

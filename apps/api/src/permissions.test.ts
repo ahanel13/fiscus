@@ -195,21 +195,21 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   // Your own preferences: anyone sets theirs, and nobody sees anyone else's.
   // A household's own Plaid keys: household owners only, and never the secret (#83).
   'HH-08/OWN': async () => {
-    const r = await f.A.get(url('/plaid-keys'));
+    const r = await f.A.get(url('/plaid-credentials'));
     ok(r);
     expect(r.body.data).toMatchObject({ keys: null });
   },
   'HH-08/MEM': async () => {
-    refused(await f.B.get(url('/plaid-keys')));
+    refused(await f.B.get(url('/plaid-credentials')));
     refused(
-      await f.B.request('PUT', url('/plaid-keys'), { clientId: 'x', secret: 'y', env: 'sandbox' }),
+      await f.B.request('PUT', url('/plaid-credentials'), { clientId: 'x', secret: 'y', env: 'sandbox' }),
     );
-    refused(await f.B.request('DELETE', url('/plaid-keys')));
+    refused(await f.B.request('DELETE', url('/plaid-credentials')));
   },
   'HH-08/VIEW': async () => {
-    refused(await f.V.get(url('/plaid-keys')));
+    refused(await f.V.get(url('/plaid-credentials')));
     refused(
-      await f.V.request('PUT', url('/plaid-keys'), { clientId: 'x', secret: 'y', env: 'sandbox' }),
+      await f.V.request('PUT', url('/plaid-credentials'), { clientId: 'x', secret: 'y', env: 'sandbox' }),
     );
   },
   'HH-10/OWN': async () => {

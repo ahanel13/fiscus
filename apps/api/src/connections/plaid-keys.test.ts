@@ -32,11 +32,11 @@ let A: TestClient;
 let B: TestClient;
 const url = (p = '') => `/api/v1/households/${hh}${p}`;
 const keys = async () => {
-  const r = await A.get(url('/plaid-keys'));
+  const r = await A.get(url('/plaid-credentials'));
   ok(r);
   return r.body.data;
 };
-const put = (body: Record<string, string>) => A.request('PUT', url('/plaid-keys'), body);
+const put = (body: Record<string, string>) => A.request('PUT', url('/plaid-credentials'), body);
 const sets = async () =>
   (
     await db.query(
@@ -197,21 +197,21 @@ describe("a household's own Plaid keys (#83)", () => {
   });
 
   it('refuses to remove keys banks still use, and removes them once none do', async () => {
-    refused(await A.request('DELETE', url('/plaid-keys')), 409, 'keys_in_use');
+    refused(await A.request('DELETE', url('/plaid-credentials')), 409, 'keys_in_use');
     // Disconnect everything on the current keys, as the worker would finish it.
     await db.query(
       `UPDATE connections SET status = 'disconnected', disconnect_requested = false
        WHERE household_id = $1`,
       [hh],
     );
-    ok(await A.request('DELETE', url('/plaid-keys')));
+    ok(await A.request('DELETE', url('/plaid-credentials')));
     expect((await sets()).at(-1)).toMatchObject({
       client_id: NEWER.clientId,
       revoked: true,
       secret: 0,
     });
     expect((await keys()).keys).toBeNull();
-    refused(await A.request('DELETE', url('/plaid-keys')), 404);
+    refused(await A.request('DELETE', url('/plaid-credentials')), 404);
   });
 
   it('is refused when the admin turns household keys off', async () => {
@@ -223,6 +223,6 @@ describe("a household's own Plaid keys (#83)", () => {
   });
 
   it('is for household owners: another owner may, members and viewers may not (HH-08)', async () => {
-    ok(await B.get(url('/plaid-keys')));
+    ok(await B.get(url('/plaid-credentials')));
   });
 });

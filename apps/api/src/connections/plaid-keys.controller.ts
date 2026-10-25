@@ -15,7 +15,7 @@ import { PlaidKeysService } from './plaid-keys.service.js';
  * A household's own Plaid keys (#83, ADR 0008 §Credentials 2): household owners only (HH-08).
  * The secret is write-only; changing or removing keys needs a recent password check.
  */
-@Controller('api/v1/households/:householdId/plaid-keys')
+@Controller('api/v1/households/:householdId/plaid-credentials')
 @UseGuards(HouseholdGuard)
 @HouseholdRoles('owner')
 export class PlaidKeysController {
