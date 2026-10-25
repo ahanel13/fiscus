@@ -151,6 +151,13 @@ function ConnectionLine({
       </>
     );
   }
+  // An empty or recent-only first sync is normal while the bank sends the rest (TXN-008).
+  const importing =
+    c.importingHistory && c.status === 'ok' ? (
+      <p className="text-xs text-muted">
+        Still bringing in older transactions. That usually takes a few minutes after connecting.
+      </p>
+    ) : null;
 
   return (
     <div
@@ -176,6 +183,7 @@ function ConnectionLine({
         <p className={clsx('text-xs', broken ? 'text-fg' : 'text-muted')} role="status">
           {status}
         </p>
+        {importing}
         {stale}
       </div>
       {yours ? (

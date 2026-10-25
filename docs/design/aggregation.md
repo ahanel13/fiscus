@@ -472,6 +472,10 @@ the line per connection at the top of Accounts (`apps/web/src/components/BankCon
   Recorded as `connection.signed_in_again`, seen by whoever sees its accounts.
 - **Not working.** After 3 days of failures, the line says so, and its owner gets "Disconnect"
   beside "Refresh now".
+- **Still bringing in history.** Until Plaid says `HISTORICAL_UPDATE_COMPLETE` (TXN-008), the
+  connection's `importingHistory` is true and its line says older transactions usually take a
+  few minutes: an empty or recent-only first sync is normal. Providers that never report it
+  (`REPORTS_HISTORY`: SimpleFIN, whose window is everything at once) never show it.
 
 ## 8. Connecting the SimpleFIN Bridge
 

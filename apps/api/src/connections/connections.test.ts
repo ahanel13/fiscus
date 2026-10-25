@@ -104,6 +104,15 @@ afterAll(async () => {
 });
 
 describe('a connection day to day (#81)', () => {
+  it('[TXN-008] says while Plaid is still sending older history; SimpleFIN never does', async () => {
+    const plaid = await connection(member.A, [await account(A)]);
+    const simplefin = await connection(member.A, [await account(A)], { provider: 'simplefin' });
+    expect((await listed(A, plaid)).importingHistory).toBe(true);
+    expect((await listed(A, simplefin)).importingHistory).toBe(false);
+    await db.query('UPDATE connections SET historical_complete = true WHERE id = $1', [plaid]);
+    expect((await listed(A, plaid)).importingHistory).toBe(false);
+  });
+
   it('[D11, D12] tells everyone who sees its accounts how it is, and which accounts', async () => {
     const shared = await account(A);
     const mine = await account(A, 'private');

@@ -455,6 +455,7 @@ describe('cross-member visibility (generated)', () => {
               'accountIds',
               'failingSince',
               'id',
+              'importingHistory',
               'institutionName',
               'lastSyncedAt',
               'nextSyncAt',
