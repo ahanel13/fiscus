@@ -46,7 +46,7 @@ export function plaidClientFor(result: PlaidCredentialsResult): {
       'Plaid isn’t available to this household',
       result.reason === 'not_configured'
         ? 'This server has no Plaid keys. Its admin can add them (PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV), or connect with SimpleFIN instead.'
-        : 'This household uses its own Plaid keys, which this server can’t use yet.',
+        : 'This household’s own Plaid keys can’t be read. A household owner can enter them again in Household settings → Connections.',
     );
   }
   return { client: new PlaidClient(result.credentials), credentials: result.credentials };

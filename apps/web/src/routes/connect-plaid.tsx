@@ -450,7 +450,7 @@ function ConnectFlow({
         <Alert tone="info">
           {unavailable === 'not_configured'
             ? 'This server has no Plaid keys, so banks can’t be connected through Plaid. Its admin can add them.'
-            : 'This household uses its own Plaid keys, which this server can’t use yet.'}
+            : 'This household’s own Plaid keys can’t be read. A household owner can enter them again in Household settings → Connections.'}
         </Alert>
       ) : null}
       {!connection ? (

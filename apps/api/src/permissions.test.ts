@@ -193,6 +193,25 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'HH-06/VIEW': async () =>
     refused(await f.V.request('PATCH', url(`/members/${f.member.B}`), { role: 'viewer' })),
   // Your own preferences: anyone sets theirs, and nobody sees anyone else's.
+  // A household's own Plaid keys: household owners only, and never the secret (#83).
+  'HH-08/OWN': async () => {
+    const r = await f.A.get(url('/plaid-keys'));
+    ok(r);
+    expect(r.body.data).toMatchObject({ keys: null });
+  },
+  'HH-08/MEM': async () => {
+    refused(await f.B.get(url('/plaid-keys')));
+    refused(
+      await f.B.request('PUT', url('/plaid-keys'), { clientId: 'x', secret: 'y', env: 'sandbox' }),
+    );
+    refused(await f.B.request('DELETE', url('/plaid-keys')));
+  },
+  'HH-08/VIEW': async () => {
+    refused(await f.V.get(url('/plaid-keys')));
+    refused(
+      await f.V.request('PUT', url('/plaid-keys'), { clientId: 'x', secret: 'y', env: 'sandbox' }),
+    );
+  },
   'HH-10/OWN': async () => {
     ok(await f.A.request('PUT', url('/preferences/range:reports'), { value: 'last_6m' }));
     expect((await f.A.get(url('/preferences'))).body.data['range:reports']).toBe('last_6m');

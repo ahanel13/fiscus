@@ -10,13 +10,24 @@ export interface PlaidCredentials {
   apiBaseUrl?: string;
 }
 
+/**
+ * A household's own Plaid keys (ADR 0008 §Credentials 2, #83), decrypted by whoever read them
+ * from `aggregation_credentials` for this one use. Never logged, stored elsewhere, or returned.
+ */
+export interface PlaidCredentialSet {
+  clientId: string;
+  secret: string;
+  env: PlaidEnvironment;
+}
+
 export type PlaidCredentialsResult =
   | { available: true; credentials: PlaidCredentials }
   | {
       available: false;
       /**
        * `not_configured`: the connection uses the server's keys and there are none.
-       * `household_keys_unavailable`: it uses a household's own keys, which arrive with #83.
+       * `household_keys_unavailable`: it uses a household's own keys, and they weren't given
+       * (removed, or unreadable).
        */
       reason: 'not_configured' | 'household_keys_unavailable';
     };
@@ -25,13 +36,22 @@ export type PlaidCredentialsResult =
  * The keys for a connection (ADR 0008 §Credentials 4): resolved per connection everywhere, for
  * the link token, the exchange, sync, webhook verification and update mode, never once per
  * process. `credentialSetId` is the connection's `credential_set_id`: null means the server's own
- * keys. A household's own keys (#83) resolve through the same seam.
+ * keys; otherwise `household` is that set, read and decrypted by the caller. The test-only base
+ * URL override applies to a household's sandbox keys too, and never to production.
  */
 export function resolvePlaidCredentials(
   credentialSetId: string | null,
   instance: PlaidInstanceConfig | undefined,
+  household?: PlaidCredentialSet | null,
 ): PlaidCredentialsResult {
-  if (credentialSetId !== null) return { available: false, reason: 'household_keys_unavailable' };
+  if (credentialSetId !== null) {
+    if (!household) return { available: false, reason: 'household_keys_unavailable' };
+    const credentials: PlaidCredentials = { ...household };
+    if (household.env === 'sandbox' && instance?.apiBaseUrl !== undefined) {
+      credentials.apiBaseUrl = instance.apiBaseUrl;
+    }
+    return { available: true, credentials };
+  }
   if (!instance) return { available: false, reason: 'not_configured' };
   const credentials: PlaidCredentials = {
     clientId: instance.clientId,

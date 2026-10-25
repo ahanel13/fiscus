@@ -63,6 +63,8 @@ export interface ConnectionOptions {
   /** The Plaid keys it was made with (#82), as the exchange records them. Default null. */
   providerEnv?: string | null;
   providerClientId?: string | null;
+  /** The household key set it was made with (#83). Default null: the server's keys. */
+  credentialSetId?: string | null;
 }
 
 export interface ConnectionRow {
@@ -160,8 +162,10 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
       const next = opts.next === undefined ? '-1 minute' : opts.next;
       await owner.query(
         `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id,
-           status, next_sync_at, lease_until, disconnect_requested, provider_env, provider_client_id)
-         VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval, now() + $8::interval, $9, $10, $11)`,
+           status, next_sync_at, lease_until, disconnect_requested, provider_env, provider_client_id,
+           credential_set_id)
+         VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval, now() + $8::interval, $9, $10, $11,
+           $12)`,
         [
           id,
           opts.householdId ?? householdId,
@@ -174,6 +178,7 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
           opts.disconnectRequested ?? false,
           opts.providerEnv ?? null,
           opts.providerClientId ?? null,
+          opts.credentialSetId ?? null,
         ],
       );
       const secret = opts.secret === undefined ? 'fake-secret' : opts.secret;

@@ -170,7 +170,7 @@ The provider interface these tables serve, and the conformance suite every adapt
 
 **`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id` (UNIQUE with `provider`), `name`, `url`. No logo: showing one would need the provider's image host in the Content-Security-Policy.
 
-**`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008; schema only until #83): `household_id`, `provider` (`plaid` only), `client_id`, `secret_enc`, `env`, `created_by_member_id`, `revoked_at`. Readable in the household (the api never returns the secret, HH-08), changed by household owners or the worker.
+**`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008, #83): `household_id`, `provider` (`plaid` only), `client_id`, `secret_enc` (encrypted with the household key, bound to the row; emptied once no connection needs it), `env`, `created_by_member_id`, `revoked_at`. At most one active set (`revoked_at` null) per household, kept by the api under an advisory lock: replacing keys revokes the old set, which still serves the connections made with it. Rows stay for the connections that name them. Readable in the household (members connecting a bank use the household's keys; the api never returns the secret, HH-08), changed by household owners or the worker. See [aggregation](aggregation.md) §6a.
 
 **`connections`**: one per Plaid Item or SimpleFIN access URL. File imports and manual accounts don't need one.
 

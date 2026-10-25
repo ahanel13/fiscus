@@ -96,7 +96,7 @@ export const FAILURE = {
   providerUnavailable: 'provider_unavailable',
   /** Made with another Plaid client id or environment than this server's keys: reconnect (#82). */
   credentialsChanged: 'credentials_changed',
-  /** Made with a household's own Plaid keys, which this server can't use yet (#83). */
+  /** Made with a household's own Plaid keys, which are gone or unreadable (#83). */
   householdKeysUnavailable: 'household_keys_unavailable',
   secretMissing: 'secret_missing',
   secretUnreadable: 'secret_unreadable',

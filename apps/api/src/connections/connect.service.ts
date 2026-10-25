@@ -14,12 +14,13 @@ import {
 import { FieldCrypto } from '@fiscus/crypto';
 import {
   accounts,
-  aggregationCredentials,
+  activePlaidKeySet,
   connections,
   type Executor,
   households,
   institutions,
   readConnectionSecret,
+  readPlaidKeySet,
   saveConnectionSecret,
   transactions,
 } from '@fiscus/db';
@@ -103,7 +104,8 @@ const fromPlaid = (a: PlaidAccount): BankAccount => ({
 
 /** The connection its owner works on: Plaid's comes with a client for its keys. */
 type OwnConnection = { secret: string; institutionName: string | null } & (
-  { provider: 'plaid'; client: PlaidClient } | { provider: 'simplefin' }
+  | { provider: 'plaid'; client: PlaidClient; credentialSetId: string | null }
+  | { provider: 'simplefin' }
 );
 
 const signInAtTheBridge = () =>
@@ -238,7 +240,7 @@ export class ConnectService {
 
   /** Whether the household can connect a bank through Plaid now, and in which environment. */
   async availability(ctx: HouseholdContext): Promise<PlaidAvailability> {
-    const result = await this.#householdCredentials(ctx);
+    const { result } = await this.#householdCredentials(ctx);
     return result.available
       ? { available: true, env: result.credentials.env }
       : { available: false, reason: result.reason };
@@ -254,14 +256,19 @@ export class ConnectService {
       language: 'en',
       country_codes: LINK_COUNTRY_CODES,
       user: { client_user_id: plaidClientUserId(ctx.memberId) },
-      ...linkRedirect(this.config.plaid),
     };
+    // The server's redirect URI is registered in the server's Plaid dashboard only: a household's
+    // own keys go without one, and OAuth banks sign in through Link's pop-up (#83).
+    const redirect = (credentialSetId: string | null) =>
+      credentialSetId === null ? linkRedirect(this.config.plaid) : {};
     let client: PlaidClient;
     let request: LinkTokenCreateRequest;
     if (connectionId === undefined) {
-      ({ client } = plaidClientFor(await this.#householdCredentials(ctx)));
+      const keys = await this.#householdCredentials(ctx);
+      ({ client } = plaidClientFor(keys.result));
       request = {
         ...base,
+        ...redirect(keys.credentialSetId),
         products: LINK_PRODUCTS,
         additional_consented_products: LINK_CONSENTED_PRODUCTS,
         transactions: { days_requested: LINK_DAYS_REQUESTED },
@@ -271,7 +278,7 @@ export class ConnectService {
       if (own.provider !== 'plaid') throw signInAtTheBridge();
       client = own.client;
       // Update mode names the Item; products and history were fixed when it was made.
-      request = { ...base, access_token: own.secret };
+      request = { ...base, ...redirect(own.credentialSetId), access_token: own.secret };
     }
     const token = await client.linkTokenCreate(request).catch(plaidProblem);
     return { linkToken: token.link_token, expiration: token.expiration };
@@ -282,7 +289,8 @@ export class ConnectService {
    * its owner. Returns the accounts the bank offers, each with a suggested choice.
    */
   async exchange(ctx: HouseholdContext, input: ExchangeInput): Promise<ConnectionSetup> {
-    const { client, credentials } = plaidClientFor(await this.#householdCredentials(ctx));
+    const keys = await this.#householdCredentials(ctx);
+    const { client, credentials } = plaidClientFor(keys.result);
     // Before the exchange, which is when Plaid starts billing for the Item (ITEM-011).
     if (input.link && !input.duplicateOk) await this.#refuseDuplicate(ctx, input.link);
     const { access_token: secret, item_id: itemId } = await client
@@ -333,8 +341,8 @@ export class ConnectService {
           ownerMemberId: ctx.memberId,
           provider: 'plaid',
           institutionId,
-          // The server's keys: a household's own (#83) are refused above until they're built.
-          credentialSetId: null,
+          // The keys it was made with, for good: an Item can't move to other keys (ADR 0008).
+          credentialSetId: keys.credentialSetId,
           providerItemId: itemId,
           ...credentialStamp(credentials),
           status: 'setup',
@@ -670,23 +678,19 @@ export class ConnectService {
   }
 
   /**
-   * The keys this household connects new banks with: its own set if it has one (#83), else the
-   * server's. Resolved for each request, never once per process (ADR 0008 §Credentials 4).
+   * The keys this household connects new banks with: its own active set if it has one (#83),
+   * else the server's. Resolved for each request, never once per process (ADR 0008 §Credentials 4).
    */
-  #householdCredentials(ctx: HouseholdContext): Promise<PlaidCredentialsResult> {
+  #householdCredentials(
+    ctx: HouseholdContext,
+  ): Promise<{ result: PlaidCredentialsResult; credentialSetId: string | null }> {
     return this.scope.run(ctx, async (tx) => {
-      const [own] = await tx
-        .select({ id: aggregationCredentials.id })
-        .from(aggregationCredentials)
-        .where(
-          and(
-            eq(aggregationCredentials.householdId, ctx.householdId),
-            eq(aggregationCredentials.provider, 'plaid'),
-            isNull(aggregationCredentials.revokedAt),
-          ),
-        )
-        .limit(1);
-      return resolvePlaidCredentials(own?.id ?? null, this.config.plaid);
+      const own = await activePlaidKeySet(tx, ctx.householdId);
+      const keys = own ? await readPlaidKeySet(tx, this.crypto, ctx.householdId, own.id) : null;
+      return {
+        result: resolvePlaidCredentials(own?.id ?? null, this.config.plaid, keys),
+        credentialSetId: own?.id ?? null,
+      };
     });
   }
 
@@ -728,7 +732,10 @@ export class ConnectService {
         );
       }
       const secret = await readConnectionSecret(tx, this.crypto, ctx.householdId, id);
-      return { ...c, secret };
+      const householdKeys = c.credentialSetId
+        ? await readPlaidKeySet(tx, this.crypto, ctx.householdId, c.credentialSetId)
+        : null;
+      return { ...c, secret, householdKeys };
     });
     if (found.secret === null) {
       throw new Problem(409, 'connection_gone', 'This connection has no stored access');
@@ -741,7 +748,7 @@ export class ConnectService {
       };
     }
     const { client, credentials } = plaidClientFor(
-      resolvePlaidCredentials(found.credentialSetId, this.config.plaid),
+      resolvePlaidCredentials(found.credentialSetId, this.config.plaid, found.householdKeys),
     );
     if (
       found.providerEnv !== null &&
@@ -761,6 +768,7 @@ export class ConnectService {
     return {
       provider: 'plaid',
       client,
+      credentialSetId: found.credentialSetId,
       secret: found.secret,
       institutionName: found.institutionName,
     };

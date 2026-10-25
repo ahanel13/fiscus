@@ -13,7 +13,6 @@ import { describe, expect, it } from 'vitest';
  */
 const NOT_BUILT: Record<string, string> = {
   'HH-07': 'Deleting a household (grace period, crypto-shred)',
-  'HH-08': 'Household Plaid keys (M2)',
   'HH-09': 'Household AI settings (M10)',
   'HH-11': 'Owner audit log, separate from the activity feed',
   'HH-13': 'Data export (M11, #254)',

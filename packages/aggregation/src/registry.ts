@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { AggregationProvider } from '@fiscus/domain';
+import type { PlaidCredentialSet } from './plaid/credentials.js';
 
 export class UnknownProviderError extends Error {
   constructor(readonly providerId: string) {
@@ -10,8 +11,8 @@ export class UnknownProviderError extends Error {
 
 /**
  * Why a registered provider can't serve a connection. `not_configured`: this server has no keys
- * for it. `household_keys_unavailable`: the connection uses a household's own keys, which arrive
- * with #83. `credentials_changed`: it was made with another client id or environment than the
+ * for it. `household_keys_unavailable`: the connection uses a household's own keys, which weren't
+ * given (removed, or unreadable). `credentials_changed`: it was made with another client id or environment than the
  * keys configured now, so it has to be connected again (ADR 0008 §Credentials 4).
  */
 export type ProviderUnavailableReason =
@@ -27,13 +28,18 @@ export class ProviderUnavailableError extends Error {
   }
 }
 
-/** What a connection says about its provider and the keys it was made with. Never the secret. */
+/** What a connection says about its provider and the keys it was made with. */
 export interface ConnectionRef {
   /** `connections.provider`. */
   provider: string;
   credentialSetId: string | null;
   providerEnv: string | null;
   providerClientId: string | null;
+  /**
+   * With a `credentialSetId`: that household key set, decrypted by the caller for this call only
+   * (#83). Never logged or kept.
+   */
+  householdKeys?: PlaidCredentialSet | null;
 }
 
 /**

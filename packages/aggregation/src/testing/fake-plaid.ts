@@ -24,6 +24,8 @@ import type { ScriptedPage } from './fake-provider.js';
 export interface FakePlaidOptions {
   clientId?: string;
   secret?: string;
+  /** More keys it accepts, as if one Plaid account had several (a household's own keys, #83). */
+  otherKeys?: { clientId: string; secret: string }[];
   scenario?: ConformanceScenario;
   /** Defaults to an ephemeral port on loopback; the e2e stack's `plaid-stub` service sets both. */
   listen?: StubListen;
@@ -226,7 +228,8 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
       } catch {
         return error({ error_type: 'INVALID_REQUEST', error_code: 'INVALID_BODY' }, requestId);
       }
-      if (body.client_id !== clientId || body.secret !== secret) {
+      const keys = [{ clientId, secret }, ...(options.otherKeys ?? [])];
+      if (!keys.some((k) => body.client_id === k.clientId && body.secret === k.secret)) {
         return error({ error_type: 'INVALID_INPUT', error_code: 'INVALID_API_KEYS' }, requestId);
       }
       if (token && (accessToken === undefined || body.access_token !== accessToken)) {
@@ -262,6 +265,11 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
     '/accounts/get': (_, request_id) => ({
       body: { accounts: accounts(), item: item(), request_id },
     }),
+    // The cheap call that checks a household's keys before they're saved (#83).
+    '/institutions/get': [
+      (_body, request_id) => ({ body: { institutions: [], total: 0, request_id } }),
+      { token: false },
+    ],
     '/institutions/get_by_id': [
       (body, request_id) =>
         body.institution_id === institutionId

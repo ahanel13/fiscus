@@ -8,6 +8,7 @@ import {
   accountsGetResponseSchema,
   emptyResponseSchema,
   institutionsGetByIdResponseSchema,
+  institutionsGetResponseSchema,
   itemGetResponseSchema,
   itemWebhookUpdateResponseSchema,
   liabilitiesGetResponseSchema,
@@ -99,6 +100,15 @@ export class PlaidClient {
 
   accountsGet(accessToken: string) {
     return this.#post('/accounts/get', { access_token: accessToken }, accountsGetResponseSchema);
+  }
+
+  /** One institution, to check that keys work before they're saved (#83): free, and no Item. */
+  institutionsGet(countryCodes: string[]) {
+    return this.#post(
+      '/institutions/get',
+      { count: 1, offset: 0, country_codes: countryCodes },
+      institutionsGetResponseSchema,
+    );
   }
 
   institutionsGetById(institutionId: string, countryCodes: string[]) {

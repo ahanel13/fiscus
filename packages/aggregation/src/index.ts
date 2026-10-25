@@ -32,6 +32,7 @@ export {
   resolvePlaidCredentials,
   type ConnectionCredentialStamp,
   type PlaidCredentials,
+  type PlaidCredentialSet,
   type PlaidCredentialsResult,
 } from './plaid/credentials.js';
 export { plaidErrorKind } from './plaid/errors.js';

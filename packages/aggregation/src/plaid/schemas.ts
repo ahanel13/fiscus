@@ -97,6 +97,9 @@ export const accountsGetResponseSchema = z.object({
   item: plaidItemSchema,
 });
 
+/** Only that it answered: the keys work (#83). */
+export const institutionsGetResponseSchema = z.object({ ...requestId });
+
 export const institutionsGetByIdResponseSchema = z.object({
   ...requestId,
   institution: z.object({
