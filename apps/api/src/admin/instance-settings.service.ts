@@ -7,6 +7,7 @@ import {
   withContext,
 } from '@fiscus/db';
 import {
+  type BankConnectionStats,
   INSTANCE_SETTING_KEYS,
   type InstanceSettingKey,
   type InstanceSettings,
@@ -90,5 +91,25 @@ export class InstanceSettingsService {
     });
     this.#cache = null;
     return this.all();
+  }
+
+  /**
+   * Connections across the instance, as counts (Server → Bank connections, D16), through
+   * fiscus_admin_bank_stats(), which checks the caller is an instance admin (migration 0051).
+   */
+  async bankStats(adminUserId: string): Promise<BankConnectionStats> {
+    return withContext(this.db.db, userContext(adminUserId), async (tx) => {
+      const [row] = (
+        await tx.execute<{ stats: BankConnectionStats }>(
+          sql`SELECT fiscus_admin_bank_stats() AS stats`,
+        )
+      ).rows;
+      const stats = row!.stats;
+      const last = stats.last24h.lastSyncedAt;
+      return {
+        ...stats,
+        last24h: { ...stats.last24h, lastSyncedAt: last && new Date(last).toISOString() },
+      };
+    });
   }
 }

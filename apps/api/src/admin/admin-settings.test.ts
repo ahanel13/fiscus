@@ -28,7 +28,7 @@ function paths(value: unknown, prefix = ''): string[] {
 
 /**
  * Instance settings and Server → Bank connections (#400): the settings part of permissions
- * ADM-05, and the start of ADM-07 (counts arrive with #78). Admin responses are allow-lists
+ * ADM-05, and connection counts (ADM-07, D16). Admin responses are allow-lists
  * (permissions §5, §7): these tests list every field, so adding one fails them.
  */
 describe('instance settings (ADM-05, in part)', () => {
@@ -182,6 +182,13 @@ describe('instance settings (ADM-05, in part)', () => {
       plaid: { configured: false, environment: null },
       simplefin: { enabled: false },
       settings: { ...DEFAULTS, 'sync.intervalHours': 6, 'simplefin.enabled': false },
+      stats: {
+        plaidInstanceKeys: { households: 0, connections: 0 },
+        plaidHouseholdKeys: { households: 0, connections: 0 },
+        simplefin: { households: 0, connections: 0 },
+        byStatus: { setup: 0, ok: 0, login_required: 0, error: 0 },
+        last24h: { synced: 0, failing: 0, lastSyncedAt: null },
+      },
     });
     // The complete allow-list (D16: counts, never content). A new field fails here until it's
     // added to permissions §5 and to this list.
@@ -194,6 +201,19 @@ describe('instance settings (ADM-05, in part)', () => {
         'data/settings/simplefin.enabled',
         'data/settings/sync.intervalHours',
         'data/settings/plaid.refreshNowEnabled',
+        'data/stats/plaidInstanceKeys/households',
+        'data/stats/plaidInstanceKeys/connections',
+        'data/stats/plaidHouseholdKeys/households',
+        'data/stats/plaidHouseholdKeys/connections',
+        'data/stats/simplefin/households',
+        'data/stats/simplefin/connections',
+        'data/stats/byStatus/setup',
+        'data/stats/byStatus/ok',
+        'data/stats/byStatus/login_required',
+        'data/stats/byStatus/error',
+        'data/stats/last24h/synced',
+        'data/stats/last24h/failing',
+        'data/stats/last24h/lastSyncedAt',
       ].sort(),
     );
     expect(paths((await admin.get('/api/v1/admin/settings')).body).sort()).toEqual(
@@ -204,6 +224,105 @@ describe('instance settings (ADM-05, in part)', () => {
         'data/plaid.refreshNowEnabled',
       ].sort(),
     );
+  });
+
+  it('counts connections across households, naming none of them (D16)', async () => {
+    const household = async (name: string) => {
+      const res = await bea.post('/api/v1/households', {
+        name,
+        baseCurrency: 'USD',
+        timezone: 'UTC',
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      const id: string = res.body.data.id;
+      const [m] = await sql('SELECT id FROM household_members WHERE household_id = $1', [id]);
+      return { id, member: m.id as string };
+    };
+    const riveras = await household('Riveras');
+    const okafors = await household('Okafors');
+    const [keys] = await sql(
+      `INSERT INTO aggregation_credentials
+         (id, household_id, provider, client_id, secret_enc, env, created_by_member_id)
+       VALUES (gen_random_uuid(), $1, 'plaid', 'their-client-id', '\\x00', 'sandbox', $2)
+       RETURNING id`,
+      [riveras.id, riveras.member],
+    );
+    let items = 0;
+    const connection = (
+      hh: { id: string; member: string },
+      provider: string,
+      status: string,
+      { syncedAgo = null as string | null, failures = 0, credentialSetId = null as string | null },
+    ) =>
+      sql(
+        `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id,
+           status, credential_set_id, last_synced_at, consecutive_failures)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now() - $7::interval, $8)`,
+        [
+          hh.id,
+          hh.member,
+          provider,
+          `item-${++items}`,
+          status,
+          credentialSetId,
+          syncedAgo,
+          failures,
+        ],
+      );
+    await connection(riveras, 'plaid', 'ok', { syncedAgo: '1 hour' });
+    await connection(riveras, 'plaid', 'error', { syncedAgo: '3 days', failures: 3 });
+    await connection(riveras, 'plaid', 'login_required', {
+      syncedAgo: '2 days',
+      failures: 1,
+      credentialSetId: keys.id,
+    });
+    // Disconnected: no longer reaches a bank, so not counted.
+    await connection(riveras, 'plaid', 'disconnected', { syncedAgo: '10 minutes' });
+    await connection(okafors, 'simplefin', 'ok', { syncedAgo: '30 minutes' });
+    await connection(okafors, 'plaid', 'setup', {});
+
+    const res = await admin.get('/api/v1/admin/bank-connections');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.data.stats).toEqual({
+      plaidInstanceKeys: { households: 2, connections: 3 },
+      plaidHouseholdKeys: { households: 1, connections: 1 },
+      simplefin: { households: 1, connections: 1 },
+      byStatus: { setup: 1, ok: 2, login_required: 1, error: 1 },
+      last24h: { synced: 2, failing: 2, lastSyncedAt: expect.any(String) },
+    });
+    // The most recent sync of a connection that's still connected: the SimpleFIN one.
+    const ago = Date.now() - Date.parse(res.body.data.stats.last24h.lastSyncedAt);
+    expect(ago).toBeGreaterThan(29 * 60_000);
+    expect(ago).toBeLessThan(31 * 60_000);
+    // Nothing in the response names a household.
+    expect(JSON.stringify(res.body)).not.toMatch(/Riveras|Okafors|item-|their-client-id/);
+  });
+
+  it('counts only for an instance admin outside any household, even through SQL', async () => {
+    const client = new pg.Client({ connectionString: tdb.appUrl });
+    await client.connect();
+    const [beaUser] = await sql(`SELECT id FROM users WHERE email = $1`, [BEA.email]);
+    const [adminUser] = await sql(`SELECT id FROM users WHERE email = $1`, [ADMIN.email]);
+    const [hh] = await sql(`SELECT household_id AS id FROM household_members LIMIT 1`);
+    const stats = async (user: string, household = '') => {
+      await client.query('BEGIN');
+      try {
+        await client.query(
+          `SELECT set_config('app.user_id', $1, true), set_config('app.household_id', $2, true)`,
+          [user, household],
+        );
+        return (await client.query('SELECT fiscus_admin_bank_stats() AS s')).rows[0].s;
+      } finally {
+        await client.query('ROLLBACK');
+      }
+    };
+    try {
+      expect(await stats(adminUser.id)).toMatchObject({ byStatus: { ok: 2 } });
+      await expect(stats(beaUser.id)).rejects.toThrow(/needs an instance admin/);
+      await expect(stats(adminUser.id, hh.id)).rejects.toThrow(/needs an instance admin/);
+    } finally {
+      await client.end();
+    }
   });
 
   it('show the Plaid environment when its keys are set', async () => {

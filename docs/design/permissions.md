@@ -198,7 +198,7 @@ The instance admin sees **metadata only**. These are the complete lists of what 
 | ADM-04 | Households: actions | Create (with first owner invite), disable, schedule deletion (same 7-day grace and notification as HH-07), disable Plaid or AI for a household, **grant ownership** (only if the instance setting *admin ownership recovery* is on, default off; reason required, all members notified) | Editing any household data |
 | ADM-05 | Instance settings | Signup mode, providers (Plaid instance keys, LLM providers, FX/price providers, SMTP), webhook URL + health, polling intervals, usage caps | Household Plaid secrets |
 | ADM-06 | Audit | Instance-level events and admin actions | Household-internal events (those belong to HH-11) |
-| ADM-07 | Usage | AI token usage and Plaid item counts per household | Prompt or response content |
+| ADM-07 | Usage | AI token usage and Plaid item counts per household. Bank connections across the instance, as counts: households and connections on the server's Plaid keys, on households' own keys, and on SimpleFIN; connections by status; connections synced in the last 24 hours, connections whose latest sync failed, and when the latest sync was (#400) | Prompt or response content. Which household, institution or account any bank count is about |
 | ADM-08 | Server invites | Email, inviter, created and expiry dates, whether used or cancelled. Creating one gives a single-use link for that email, valid 7 days, that makes an account even when signup is invite-only (not when closed); the new person then creates their own household | The token (only its hash is stored) |
 
 ## 6. Edge cases
