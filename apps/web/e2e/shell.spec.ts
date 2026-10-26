@@ -1154,6 +1154,74 @@ test('connects a bank through Plaid Link, on its own page, and chooses what to t
   ).toBeVisible();
 });
 
+test('moves a bank to the household’s own Plaid keys, keeping its accounts (#83)', async ({
+  page,
+}) => {
+  await stubPlaidLink(page);
+  await signIn(page);
+  await page.goto(`${householdUrl}/settings/connections`);
+  // Keys the stack's fake Plaid accepts as a household's own (plaid-stub.ts): Harbor Credit Union,
+  // connected above on the server's keys, stays on them until it's moved (D15).
+  await page.getByRole('button', { name: 'Add your keys' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add your Plaid keys' });
+  await expect(dialog.getByRole('list', { name: 'Banks that keep their keys' })).toContainText(
+    'Harbor Credit Union',
+  );
+  await dialog.getByLabel(/Client ID/).fill('fake-household-client-id-5150');
+  await dialog.getByLabel(/Secret/).fill('fake-household-secret-5150');
+  await dialog.getByRole('button', { name: /Environment/ }).click();
+  await page.getByRole('option', { name: 'Sandbox' }).click();
+  await dialog.getByRole('button', { name: 'Save keys' }).click();
+  await expect(page.getByText('ending 5150')).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Banks not on your keys' })).toContainText(
+    'Harbor Credit Union',
+  );
+  const listed = page.getByRole('region', { name: 'Bank connections' });
+  await expect(listed).toContainText('On Plaid keys this household doesn’t connect new banks with');
+  expect(await axeViolations(page)).toEqual([]);
+
+  // Moving is connecting it again with the new keys: a full page load onto the connect page.
+  await listed.getByRole('button', { name: 'Move to new keys' }).click();
+  await expect(page).toHaveURL(/\/connect\/plaid\?replaces=[0-9a-f-]{36}$/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Move Harbor Credit Union to new keys' }),
+  ).toBeFocused();
+  await expect(page.getByText('What stays')).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  // The same bank again, and not "connected already": that's the point.
+  await page.getByRole('button', { name: 'Continue to Plaid' }).click();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Harbor Credit Union: move to new keys' }),
+  ).toBeFocused();
+  // Its accounts are suggested, by their last 4 digits; the rest start as new ones.
+  const becomes = (name: RegExp) => page.getByRole('combobox', { name });
+  await expect(becomes(/What Harbor CU Checking ending in 4410 becomes/)).toHaveValue(
+    'Link to Everyday checking',
+  );
+  await expect(becomes(/What Harbor CU Savings ending in 8812 becomes/)).toHaveValue(
+    'Link to Harbor CU Savings',
+  );
+  for (const name of [/What Harbor CU Visa/, /What Old savings/]) {
+    await becomes(name).click();
+    await page.getByRole('listbox', { name }).getByRole('option', { name: 'Don’t track' }).click();
+  }
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Track 2 accounts' }).click();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Harbor Credit Union moved to new keys' }),
+  ).toBeFocused();
+  const tracked = page.getByRole('list', { name: 'Tracked accounts' }).getByRole('listitem');
+  await expect(tracked.filter({ hasText: 'Everyday checking' })).toContainText('Linked');
+  await expect(tracked.filter({ hasText: 'Harbor CU Savings' })).toContainText('Linked');
+
+  // One connection, on the household's keys, with the same two accounts.
+  await page.goto(`${householdUrl}/settings/connections`);
+  await expect(listed).toContainText('Linked by you · 2 accounts');
+  await expect(listed.getByText(/Harbor Credit Union · Plaid/)).toHaveCount(1);
+  await expect(listed.getByRole('button', { name: 'Move to new keys' })).toHaveCount(0);
+  await expect(page.getByRole('list', { name: 'Banks not on your keys' })).toHaveCount(0);
+});
+
 test('connects the SimpleFIN Bridge with a setup token, claimed once (#91)', async ({ page }) => {
   // The stack's fake Bridge (docker-compose.plaid-stub.yml): its token is base64 of its claim URL.
   const token = Buffer.from('http://plaid-stub:4011/claim/rivera-setup').toString('base64');

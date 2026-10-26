@@ -460,6 +460,7 @@ describe('cross-member visibility (generated)', () => {
               'lastSyncedAt',
               'nextSyncAt',
               'notWorking',
+              'onOldKeys',
               'owner',
               'provider',
               'refreshAvailableAt',

@@ -3,7 +3,8 @@ import type { HouseholdPlaidKeys, PlaidKeysInput } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
-import { plaidKeysQuery } from '../api/queries.js';
+import { connectionsQuery, householdQuery, plaidKeysQuery } from '../api/queries.js';
+import { leaveTo } from '../lib/flash.js';
 import { ReauthCancelled, useRecentAuth } from './RecentAuth.js';
 import {
   Alert,
@@ -40,11 +41,14 @@ const KEYS_LABELS: Record<Connections[number]['keys'], string> = {
   previous: 'Your earlier keys',
 };
 
-/** "Chase · Sam · 3 accounts", for a connection in a list. */
-function ConnectionLine({ c }: { c: Connections[number] }) {
+/**
+ * "Chase · Sam · 3 accounts", for a connection in a list. With `move`, the viewer connected it,
+ * and can connect it again to move it to the household's keys (#83).
+ */
+function ConnectionLine({ c, move }: { c: Connections[number]; move?: string }) {
   const accounts = `${c.accountCount} ${c.accountCount === 1 ? 'account' : 'accounts'}`;
   return (
-    <li className="flex flex-wrap items-baseline justify-between gap-x-3">
+    <li className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
       <span>
         <span className="font-medium text-fg">{c.institutionName ?? 'A bank'}</span>
         <span className="text-muted">
@@ -52,7 +56,19 @@ function ConnectionLine({ c }: { c: Connections[number] }) {
           · {c.owner.name} · {accounts}
         </span>
       </span>
-      <span className="text-xs text-muted">{KEYS_LABELS[c.keys]}</span>
+      <span className="flex items-center gap-3">
+        <span className="text-xs text-muted">{KEYS_LABELS[c.keys]}</span>
+        {move ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            onPress={() => leaveTo(move)}
+            aria-label={`Move ${c.institutionName ?? 'this bank'} to your keys`}
+          >
+            Move to your keys
+          </Button>
+        ) : null}
+      </span>
     </li>
   );
 }
@@ -89,6 +105,8 @@ function KeysDialog({
       ),
     onSuccess: (r) => {
       queryClient.setQueryData(plaidKeysQuery(householdId).queryKey, r.data);
+      // Which connections are on old keys changed with them.
+      void queryClient.invalidateQueries({ queryKey: connectionsQuery(householdId).queryKey });
       setKeys(empty);
       onOpenChange(false);
       toast(data.keys ? 'Your Plaid keys were replaced.' : 'Your Plaid keys were saved.');
@@ -209,6 +227,7 @@ function KeysDialog({
 export function PlaidKeysCard({ householdId }: { householdId: string }) {
   const queryClient = useQueryClient();
   const query = useQuery(plaidKeysQuery(householdId));
+  const me = useQuery(householdQuery(householdId)).data?.you.memberId;
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
   const { withRecentAuth, dialog } = useRecentAuth();
@@ -216,7 +235,10 @@ export function PlaidKeysCard({ householdId }: { householdId: string }) {
     mutationFn: () =>
       withRecentAuth(() => api('DELETE', `/api/v1/households/${householdId}/plaid-credentials`)),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: plaidKeysQuery(householdId).queryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: plaidKeysQuery(householdId).queryKey }),
+        queryClient.invalidateQueries({ queryKey: connectionsQuery(householdId).queryKey }),
+      ]);
       toast('Your Plaid keys were removed.');
     },
     onError: (e) => {
@@ -283,11 +305,17 @@ export function PlaidKeysCard({ householdId }: { householdId: string }) {
                 ? 'This bank isn’t on your keys yet.'
                 : `These ${notOnYours.length} banks aren’t on your keys yet.`}{' '}
               Each keeps syncing on the keys it was connected with until the person who connected it
-              connects it again.
+              moves it. Moving signs in to the bank again; its accounts and their history stay.
             </p>
-            <ul className="space-y-1" aria-label="Banks not on your keys">
+            <ul className="space-y-2" aria-label="Banks not on your keys">
               {notOnYours.map((c) => (
-                <ConnectionLine key={c.id} c={c} />
+                <ConnectionLine
+                  key={c.id}
+                  c={c}
+                  {...(c.owner.memberId === me && {
+                    move: `/h/${householdId}/connect/plaid?replaces=${encodeURIComponent(c.id)}`,
+                  })}
+                />
               ))}
             </ul>
           </div>

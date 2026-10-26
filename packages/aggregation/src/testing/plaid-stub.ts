@@ -10,7 +10,11 @@ import { startFakeSimpleFin } from './fake-simplefin.js';
 // It imports only the fake and its scenario (no vitest), so it runs with production dependencies.
 
 const port = Number(process.env.PLAID_STUB_PORT ?? 4010);
-const plaid = await startFakePlaid({ listen: { host: '0.0.0.0', port } });
+const plaid = await startFakePlaid({
+  listen: { host: '0.0.0.0', port },
+  // A household's own keys (#83), as fake as the server's: what the tests enter in the keys card.
+  otherKeys: [{ clientId: 'fake-household-client-id-5150', secret: 'fake-household-secret-5150' }],
+});
 // The client id and secret are the fake's own, not secrets: the compose override sets the same.
 console.log(`Fake Plaid (sandbox stub) listening on port ${port}, client id ${plaid.clientId}`);
 

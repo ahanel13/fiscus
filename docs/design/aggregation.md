@@ -264,7 +264,7 @@ recorded as activity by the system with the connection owner's member id.
   `source = provider`, needing review, named from the bank's merchant name or its cleaned-up text.
   Rows dated before the account's `sync_from` (D6), in another currency, or posted for nothing are
   skipped. **Already here (D7):** a posted arrival that is the only one of its kind on its page,
-  with exactly one transaction of that kind already in the account that isn't the provider's (same
+  with exactly one transaction of that kind already in the account without a provider id (same
   amount, currency and reported date), gets nothing new: that transaction takes the provider's id
   and keeps everything a person did to it. Pending arrivals never match. **Possible duplicates
   (D7):** a posted arrival left over with the same amount and currency as one of those within 3
@@ -319,7 +319,8 @@ account's balances, which only owners may do, as for imports. Viewers get an emp
 
 - `GET /api/v1/households/:id/transactions/possible-duplicates`: the holds you can see, oldest
   first (at most 500), each with its account, the bank's transaction as it would come in, and its
-  candidates still unmatched (live, not the provider's, in the same account), closest date first.
+  candidates still unmatched (live, without a provider id, in the same account), closest date
+  first.
   One whose candidates are all gone lists none: it can only be added.
 - `POST …/possible-duplicates/:holdId` with `{ decision: 'same', transactionId }`: the candidate
   takes the bank's id (and pending id), keeping everything a person did to it; later syncs update
@@ -365,7 +366,8 @@ up in Plaid's dashboard.
    institution still in `setup`, or a live one tracking an account with the same last 4 (and
    subtype, when both have one). The connect page offers that connection (finish choosing,
    sign in again there, or go to accounts) or "Connect it anyway", which resends with
-   `duplicateOk: true` for a separate login at the same bank. Link's word is only used for this
+   `duplicateOk: true` for a separate login at the same bank. With `replaces`, it's a move to new
+   keys (§6a), and isn't refused as a duplicate. Link's word is only used for this
    and kept for support: the session id goes in the `connection.setup_started` activity. The
    token is exchanged once; the api then reads the accounts (`/accounts/get`) and the bank
    (`/institutions/get_by_id`) from Plaid, never from Link's metadata, and upserts the
@@ -388,7 +390,11 @@ up in Plaid's dashboard.
    connection), `new` (optionally a name, owners including the caller, and visibility), or
    `skip`; at least one tracked. Only the connection's owner, only in `setup` (a second confirm
    is 409 `not_in_setup`). Linked accounts keep their history (D5) and sync from a week before
-   their latest transaction, or 90 days back without one; new ones from 90 days back (D6). Then
+   their latest transaction, or 90 days back without one; new ones from 90 days back (D6). A
+   linked account's bank transactions from an earlier connection, from that day on, would come
+   again under the new connection's ids: posted ones let go of the earlier ids (and are then
+   matched as already here, §5, or held), and pending ones are dropped as the bank removing them,
+   since it sends them again. Then
    the connection is `ok` with `next_sync_at = now()`, so the runner syncs it on its next pass.
    Activity records `connection.added` once per tracked account, seen by whoever sees that
    account, with the provider and whether it was linked: no names, numbers or balances.
@@ -452,6 +458,22 @@ server, including a failure whose message names an account and its balance.
 - **Using them.** New connections use the household's active set, else the server's; each
   records its `credential_set_id` for good (an Item can't move between Plaid accounts). Turning
   `plaid.allowHouseholdKeys` off later blocks only new keys: connections keep working.
+- **Moving a bank to them.** An Item can't change keys, so a bank moves by being connected again.
+  `GET …/connections` says `onOldKeys` for a Plaid connection made with other keys than new banks
+  use now. Household settings → Connections offers its owner "Move to new keys" (and the keys
+  card "Move to your keys"), which opens the connect page with `?replaces=<id>`; the link token is
+  a new connection's. The exchange with `replaces` is the connection owner's only (ACC-03), for
+  one through Plaid, set up and not ended, and on other keys (else 409 `same_keys`). The bank
+  must be the same: Link's institution is checked before the exchange, and Plaid's after it (the
+  new Item is removed), 422 `different_bank`. The new connection records
+  `replaces_connection_id`, and choosing (§6, step 3) offers the old connection's accounts too,
+  suggested by the usual matching. Until confirm the old one keeps syncing, and cancelling leaves
+  it as it was. Confirm locks the old connection before the accounts (its sync locks it first, and
+  writes nothing once it's ended), lets the new one link the old one's accounts, records
+  `connection.added` with `moved: true` for each, then disconnects the old one as §7 does:
+  accounts not linked stop syncing, and the worker removes the old Item at Plaid with the old
+  keys, shredding them once no connection needs them. What the new connection sends again of the
+  overlap is matched (§6, step 4).
 
 ## 7. A connection day to day
 

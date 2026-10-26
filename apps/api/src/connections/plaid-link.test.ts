@@ -165,7 +165,7 @@ describe('connecting a bank through Plaid Link (#79)', () => {
     for (const c of [A, B]) {
       const r = await c.get(url('/plaid'));
       ok(r);
-      expect(r.body.data).toEqual({ available: true, env: 'sandbox' });
+      expect(r.body.data).toEqual({ available: true, env: 'sandbox', keys: 'server' });
     }
   });
 

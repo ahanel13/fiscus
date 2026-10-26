@@ -193,6 +193,7 @@ The provider interface these tables serve, and the conformance suite every adapt
 | webhook_enabled, new_accounts_available | bool | Plaid (#82, #84) |
 | disconnect_requested | bool | Disconnected, and the worker still has to end it at the provider and delete its secret (D14) |
 | sync_cursor | text null | Plaid `/transactions/sync` cursor |
+| replaces_connection_id | uuid null | The connection this one moves to other Plaid keys (#83, D15): confirming it takes over that one's accounts and ends it. Same household (composite foreign key) |
 
 **`connection_secrets`**: `connection_id` PK, `household_id` (composite FK to `connections`, cascading), `secret_enc`: the access token or access URL, encrypted with the household key, with associated data binding it to `connection_secrets.secret_enc` and the connection id. Kept apart from `connections` so that RLS can let only the connection's owner and the worker read it: other members, household owners included, can't read even the ciphertext. Never returned, logged, or in activity metadata.
 

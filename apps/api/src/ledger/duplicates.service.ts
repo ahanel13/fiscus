@@ -16,7 +16,7 @@ import type {
   TransferReviewTransaction,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
@@ -208,7 +208,6 @@ export class DuplicatesService {
         and(
           inArray(transactions.id, [...new Set(ids)]),
           isNull(transactions.providerTransactionId),
-          ne(transactions.source, 'provider'),
           isNull(transactions.deletedAt),
           isNull(transactions.parentId),
         ),
@@ -231,11 +230,10 @@ export class DuplicatesService {
   }
 }
 
-/** A transaction in the hold's account that's still yours alone: live, and not the bank's. */
+/** A transaction in the hold's account with no bank id now: live, and not a split part. */
 const unattached = (hold: Hold) => [
   eq(transactions.accountId, hold.accountId),
   isNull(transactions.providerTransactionId),
-  ne(transactions.source, 'provider'),
   isNull(transactions.deletedAt),
   isNull(transactions.parentId),
 ];

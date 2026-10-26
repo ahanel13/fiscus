@@ -1,0 +1,2 @@
+ALTER TABLE "connections" ADD COLUMN "replaces_connection_id" uuid;--> statement-breakpoint
+ALTER TABLE "connections" ADD CONSTRAINT "connections_household_id_replaces_connection_id_connections_household_id_id_fk" FOREIGN KEY ("household_id","replaces_connection_id") REFERENCES "public"."connections"("household_id","id") ON DELETE no action ON UPDATE no action;

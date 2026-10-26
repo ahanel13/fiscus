@@ -123,6 +123,11 @@ export const connections = pgTable(
     disconnectRequested: boolean().notNull().default(false),
     /** Plaid's /transactions/sync cursor. */
     syncCursor: text(),
+    /**
+     * The connection this one moves to other Plaid keys (#83, D15): confirming it takes over that
+     * one's accounts, and ends it.
+     */
+    replacesConnectionId: uuid(),
     ...timestamps(),
   },
   (t) => [
@@ -136,6 +141,10 @@ export const connections = pgTable(
     foreignKey({
       columns: [t.householdId, t.credentialSetId],
       foreignColumns: [aggregationCredentials.householdId, aggregationCredentials.id],
+    }),
+    foreignKey({
+      columns: [t.householdId, t.replacesConnectionId],
+      foreignColumns: [t.householdId, t.id],
     }),
     index().on(t.householdId),
     index('connections_due')

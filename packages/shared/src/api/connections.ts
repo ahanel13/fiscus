@@ -42,6 +42,12 @@ export interface Connection {
    * report it ({@link REPORTS_HISTORY}); a SimpleFIN window is everything at once.
    */
   importingHistory: boolean;
+  /**
+   * Made with Plaid keys the household no longer connects banks with (a set since replaced, or the
+   * server's once it has its own): its owner can connect it again to move it, keeping its accounts
+   * and history (#83, D15). It keeps syncing meanwhile.
+   */
+  onOldKeys: boolean;
 }
 
 /** Providers that say when the history they're sending is complete. */
@@ -70,10 +76,11 @@ export interface RefreshTooSoon {
 
 /**
  * `GET /households/:id/plaid`: whether the household can connect a bank through Plaid, so "Connect
- * a bank" shows only when it can. The environment lets the connect page say "sandbox" (D17).
+ * a bank" shows only when it can. The environment lets the connect page say "sandbox" (D17), and
+ * `keys` whose Plaid account it goes through (#83).
  */
 export type PlaidAvailability =
-  | { available: true; env: 'sandbox' | 'production' }
+  | { available: true; env: 'sandbox' | 'production'; keys: 'household' | 'server' }
   | { available: false; reason: 'not_configured' | 'household_keys_unavailable' };
 
 // A household's own Plaid keys (#83, ADR 0008 §Credentials 2–5, D15).
@@ -153,6 +160,11 @@ export const plaidExchangeSchema = z.object({
   link: plaidLinkMetadataSchema.optional(),
   /** Connect it even though you've connected this bank already: a separate login there. */
   duplicateOk: z.boolean().optional(),
+  /**
+   * One of your connections on old keys that this one moves to the household's keys now (#83,
+   * D15): the same bank, whose accounts it's suggested to take over. Confirming ends that one.
+   */
+  replaces: z.uuid().optional(),
 });
 
 /**
@@ -211,6 +223,8 @@ export interface ConnectionSetup {
   connectionId: string;
   institutionName: string | null;
   accounts: OfferedAccount[];
+  /** The connection this one moves to new keys, ended once this is confirmed (#83); else null. */
+  replacesConnectionId: string | null;
 }
 
 const providerAccountId = z.string().min(1).max(200);

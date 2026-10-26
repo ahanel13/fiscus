@@ -185,7 +185,29 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
   const publicToken = 'public-sandbox-harbor-0001';
   const itemId = 'item-harbor-rivera';
   const institutionId = 'ins_harbor_cu';
-  let accessToken: string | undefined = 'access-sandbox-harbor-0001';
+  const firstToken = 'access-sandbox-harbor-0001';
+  /**
+   * One Item per Plaid account (client id), as an Item never moves between them (#83): the
+   * server's keys get the first, other keys their own. Removing one ends only that one.
+   */
+  const items = new Map<string, { itemId: string; accessToken: string | undefined }>();
+  const itemOf = (client: unknown) => {
+    const c = String(client);
+    let found = items.get(c);
+    if (!found) {
+      found =
+        c === clientId
+          ? { itemId, accessToken: firstToken }
+          : { itemId: `${itemId}-${c}`, accessToken: `${firstToken}-${c}` };
+      items.set(c, found);
+    }
+    return found;
+  };
+  /** The first Item's token works with any keys, for tests that hand it out themselves. */
+  const tokenWorks = (body: Record<string, unknown>) =>
+    (body.access_token === itemOf(body.client_id).accessToken ||
+      body.access_token === itemOf(clientId).accessToken) &&
+    body.access_token !== undefined;
   let webhook: string | null = null;
   let released = 1;
   let requestCount = 0;
@@ -199,8 +221,8 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
   const balances = new Map(scenario.balances.map((b) => [b.providerAccountId, b]));
   const accounts = () =>
     scenario.accounts.map((a) => plaidAccount(a, balances.get(a.providerAccountId)));
-  const item = () => ({
-    item_id: itemId,
+  const item = (body: Record<string, unknown>) => ({
+    item_id: itemOf(body.client_id).itemId,
     institution_id: institutionId,
     webhook,
     error: null,
@@ -232,7 +254,7 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
       if (!keys.some((k) => body.client_id === k.clientId && body.secret === k.secret)) {
         return error({ error_type: 'INVALID_INPUT', error_code: 'INVALID_API_KEYS' }, requestId);
       }
-      if (token && (accessToken === undefined || body.access_token !== accessToken)) {
+      if (token && !tokenWorks(body)) {
         return error(
           { error_type: 'INVALID_INPUT', error_code: 'INVALID_ACCESS_TOKEN' },
           requestId,
@@ -256,14 +278,16 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
       { token: false },
     ],
     '/item/public_token/exchange': [
-      (body, request_id) =>
-        body.public_token === publicToken && accessToken !== undefined
-          ? { body: { access_token: accessToken, item_id: itemId, request_id } }
-          : error({ error_type: 'INVALID_INPUT', error_code: 'INVALID_PUBLIC_TOKEN' }, request_id),
+      (body, request_id) => {
+        const made = itemOf(body.client_id);
+        return body.public_token === publicToken && made.accessToken !== undefined
+          ? { body: { access_token: made.accessToken, item_id: made.itemId, request_id } }
+          : error({ error_type: 'INVALID_INPUT', error_code: 'INVALID_PUBLIC_TOKEN' }, request_id);
+      },
       { token: false },
     ],
-    '/accounts/get': (_, request_id) => ({
-      body: { accounts: accounts(), item: item(), request_id },
+    '/accounts/get': (body, request_id) => ({
+      body: { accounts: accounts(), item: item(body), request_id },
     }),
     // The cheap call that checks a household's keys before they're saved (#83).
     '/institutions/get': [
@@ -325,7 +349,7 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
       };
     },
     '/transactions/refresh': (_, request_id) => ({ body: { request_id } }),
-    '/liabilities/get': (_, request_id) => {
+    '/liabilities/get': (body, request_id) => {
       const covered = accounts().filter((a) => a.type === 'credit' || a.type === 'loan');
       // As Plaid answers an Item with no card or loan (LIAB-008).
       if (covered.length === 0) {
@@ -336,7 +360,7 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
       return {
         body: {
           accounts: covered,
-          item: item(),
+          item: item(body),
           liabilities: {
             credit: of('credit').map(plaidCreditLiability),
             mortgage: of('mortgage').length ? of('mortgage').map(plaidLoanLiability) : null,
@@ -346,9 +370,9 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
         },
       };
     },
-    '/item/get': (_, request_id) => ({
+    '/item/get': (body, request_id) => ({
       body: {
-        item: item(),
+        item: item(body),
         status: {
           transactions: {
             last_successful_update: '2026-10-20T11:00:00Z',
@@ -359,13 +383,18 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
         request_id,
       },
     }),
-    '/item/remove': (_, request_id) => {
-      accessToken = undefined;
+    '/item/remove': (body, request_id) => {
+      // The Item the token names: the first one's token is good with any keys.
+      const ended =
+        body.access_token === itemOf(clientId).accessToken
+          ? itemOf(clientId)
+          : itemOf(body.client_id);
+      ended.accessToken = undefined;
       return { body: { request_id } };
     },
     '/item/webhook/update': (body, request_id) => {
       webhook = typeof body.webhook === 'string' ? body.webhook : null;
-      return { body: { item: item(), request_id } };
+      return { body: { item: item(body), request_id } };
     },
     '/webhook_verification_key/get': [
       (body, request_id) =>
