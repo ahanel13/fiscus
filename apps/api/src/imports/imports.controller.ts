@@ -26,6 +26,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
+import { RateLimiter } from '../auth/rate-limiter.js';
+import { problems } from '../common/problem.js';
 import { UuidPipe } from '../common/uuid-pipe.js';
 import { ZodPipe } from '../common/zod-pipe.js';
 import {
@@ -41,6 +43,17 @@ type StartBody = z.output<typeof startImportSchema>;
 type RowsBody = z.output<typeof importRowsSchema>;
 
 /**
+ * Per member, an hour (#377): well past a sitting of monthly statements, each previewed a few
+ * times, and short of one member parsing 25 MB bodies without end. Rows come a part at a time,
+ * and one file of 50,000 rows across 200 accounts needs about 210 parts.
+ */
+const IMPORT_LIMITS_PER_MEMBER = {
+  preview: { limit: 120, windowMs: 60 * 60_000 },
+  start: { limit: 60, windowMs: 60 * 60_000 },
+  rows: { limit: 2_000, windowMs: 60 * 60_000 },
+};
+
+/**
  * File imports (docs/design/imports.md): preview the whole file, start a run, add rows a part at
  * a time, list, and undo (TXN-09/10). Preview and rows bodies may be up to 25 MB
  * (configure-app.ts); everywhere else keeps Fastify's 1 MB.
@@ -48,7 +61,16 @@ type RowsBody = z.output<typeof importRowsSchema>;
 @Controller('api/v1/households/:householdId')
 @UseGuards(HouseholdGuard)
 export class ImportsController {
-  constructor(private readonly imports: ImportsService) {}
+  constructor(
+    private readonly imports: ImportsService,
+    private readonly limiter: RateLimiter,
+  ) {}
+
+  async #limit(ctx: HouseholdContext, what: keyof typeof IMPORT_LIMITS_PER_MEMBER) {
+    const { limit, windowMs } = IMPORT_LIMITS_PER_MEMBER[what];
+    const result = await this.limiter.consume(`import-${what}:${ctx.memberId}`, limit, windowMs);
+    if (!result.allowed) throw problems.rateLimited(result.retryAfterSeconds);
+  }
 
   @Get('imports')
   async list(@Household() ctx: HouseholdContext): Promise<{ data: ImportBatch[] }> {
@@ -73,6 +95,7 @@ export class ImportsController {
     @Household() ctx: HouseholdContext,
     @Body(new ZodPipe(importRequestSchema)) body: PreviewBody,
   ): Promise<{ data: ImportPreview }> {
+    await this.#limit(ctx, 'preview');
     return { data: await this.imports.preview(ctx, body) };
   }
 
@@ -83,6 +106,7 @@ export class ImportsController {
     @Household() ctx: HouseholdContext,
     @Body(new ZodPipe(startImportSchema)) body: StartBody,
   ): Promise<{ data: ImportRun }> {
+    await this.#limit(ctx, 'start');
     return { data: await this.imports.start(ctx, body) };
   }
 
@@ -95,6 +119,7 @@ export class ImportsController {
     @Param('batchId', UuidPipe) batchId: string,
     @Body(new ZodPipe(importRowsSchema)) body: RowsBody,
   ): Promise<{ data: ImportRowsResult }> {
+    await this.#limit(ctx, 'rows');
     return { data: await this.imports.addRows(ctx, batchId, body) };
   }
 

@@ -163,7 +163,7 @@ export class ActivityController {
     @Household() ctx: HouseholdContext,
     @Body(new ZodPipe(historyIntegrityReportSchema)) body: HistoryIntegrityReport,
   ): Promise<void> {
-    const limited = this.limiter.consume(
+    const limited = await this.limiter.consume(
       `history-report:${ctx.householdId}:${ctx.memberId}`,
       REPORT_LIMIT.limit,
       REPORT_LIMIT.windowMs,

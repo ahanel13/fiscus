@@ -25,6 +25,7 @@
     "@nestjs/platform-fastify": "catalog:",
     "drizzle-orm": "catalog:",
     "fastify": "catalog:",
+    "ioredis": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
     "uuid": "catalog:",
@@ -37,6 +38,7 @@
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
     "pg": "catalog:",
+    "testcontainers": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
     "vitest": "catalog:"
