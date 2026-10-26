@@ -78,9 +78,23 @@ jobs:
           echo "first:  $first"
           echo "second: $second"
           if [ "$first" != "$second" ]; then
-            echo "::error::fiscus-$APP built differently twice. See docs/security/verify-releases.md for finding the difference."
+            echo "::error::fiscus-$APP built differently twice. The image-diff artifact has both builds and where they differ."
+            scripts/compare-images.sh "$RUNNER_TEMP/first.tar" "$RUNNER_TEMP/second.tar" > "$RUNNER_TEMP/compare.txt" || true
+            head -c 20000 "$RUNNER_TEMP/compare.txt"
             exit 1
           fi
+
+      # What a mismatch needs to be found: it happens rarely, and a rerun would build it away (#390).
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: image-diff-${{ matrix.app }}
+          path: |
+            ${{ runner.temp }}/first.tar
+            ${{ runner.temp }}/second.tar
+            ${{ runner.temp }}/compare.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
   e2e:
     name: End-to-end (compose + Playwright)
