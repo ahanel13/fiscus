@@ -83,8 +83,11 @@ describe('PlaidKeysCard', () => {
 
     const secret = within(dialog).getByLabelText(/Secret/);
     expect(secret.getAttribute('type')).toBe('password');
-    await user.type(within(dialog).getByLabelText(/Client ID/), ' household-client-7731 ');
-    await user.type(secret, 'their-secret');
+    // Pasted, not typed: typing a key at a time into these fields outran CI's 5s timeout.
+    await user.click(within(dialog).getByLabelText(/Client ID/));
+    await user.paste(' household-client-7731 ');
+    await user.click(secret);
+    await user.paste('their-secret');
     await user.click(within(dialog).getByRole('button', { name: 'Save keys' }));
 
     expect(requests).toEqual([
@@ -114,8 +117,10 @@ describe('PlaidKeysCard', () => {
     show();
     await user.click(await screen.findByRole('button', { name: 'Add your keys' }));
     const dialog = screen.getByRole('dialog');
-    await user.type(within(dialog).getByLabelText(/Client ID/), 'nope');
-    await user.type(within(dialog).getByLabelText(/Secret/), 'nope');
+    await user.click(within(dialog).getByLabelText(/Client ID/));
+    await user.paste('nope');
+    await user.click(within(dialog).getByLabelText(/Secret/));
+    await user.paste('nope');
     await user.click(within(dialog).getByRole('button', { name: 'Save keys' }));
     expect(
       (await within(dialog).findByText(/Plaid didn’t accept these keys/)).textContent,
