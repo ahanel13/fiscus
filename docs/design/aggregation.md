@@ -442,6 +442,13 @@ server, including a failure whose message names an account and its balance.
   the last connection on it has been ended at Plaid (`/item/remove` needs those keys).
 - **Removing.** `DELETE` is 409 `keys_in_use` while live connections (or ones still being ended)
   use the active set; otherwise the set is revoked and shredded (`household.plaid_keys_removed`).
+- **The screen.** Household settings → Connections has a "Your own Plaid keys" card, for owners
+  only (`apps/web/src/components/PlaidKeysCard.tsx`). It shows the client id's last 4, the
+  environment and when they were added, and lists the banks not on them yet, each with who
+  connected it. Adding or replacing keys opens a form whose secret field is a password field.
+  Before saving, it lists the banks that will stay on the keys they were connected with (D15). The
+  form forgets the secret once saved. When the admin has turned household keys off, the card says
+  so and offers only removing them.
 - **Using them.** New connections use the household's active set, else the server's; each
   records its `credential_set_id` for good (an Item can't move between Plaid accounts). Turning
   `plaid.allowHouseholdKeys` off later blocks only new keys: connections keep working.

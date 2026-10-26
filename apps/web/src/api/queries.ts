@@ -9,6 +9,7 @@ import type {
   CategoryGroup,
   Connection,
   ConnectionSetup,
+  HouseholdPlaidKeys,
   Household,
   HouseholdMember,
   ImportBatch,
@@ -120,6 +121,14 @@ export const connectionsQuery = (id: string) =>
       )
         ? 5_000
         : 60_000,
+  });
+
+/** The household's own Plaid keys, as far as they're shown, for its owners (#83, HH-08). */
+export const plaidKeysQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'plaid-credentials'],
+    queryFn: async () =>
+      (await api<Data<HouseholdPlaidKeys>>('GET', `${hh(id)}/plaid-credentials`)).data,
   });
 
 /** A connection being set up: what the bank offers, again, after a reload (#79, D4). */
