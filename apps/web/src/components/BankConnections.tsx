@@ -234,7 +234,8 @@ function ConnectionLine({
       ) : (
         <Landmark aria-hidden className="size-5 shrink-0 text-muted" />
       )}
-      <div className="min-w-0 flex-1 text-sm">
+      {/* At least 14rem wide: on a phone the buttons wrap below instead of squeezing it. */}
+      <div className="min-w-0 flex-[1_1_14rem] text-sm">
         <p className="font-medium">
           {bank}
           <span className="font-normal text-muted">
