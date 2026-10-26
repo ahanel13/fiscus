@@ -252,9 +252,13 @@ const importRoute = createRoute({
 const reviewRoute = createRoute({
   getParentRoute: () => householdRoute,
   path: '/review',
-  // `?view=transfers` opens on the transfer check (from the import's last step).
+  // `?view=transfers` opens on the transfer check (from the import's last step);
+  // `?view=duplicates` on possible duplicates from a bank (#80).
   validateSearch: (s: Record<string, unknown>) => ({
-    view: s.view === 'transfers' ? ('transfers' as const) : undefined,
+    view:
+      s.view === 'transfers' || s.view === 'duplicates'
+        ? (s.view as 'transfers' | 'duplicates')
+        : undefined,
   }),
   component: ReviewPage,
 });

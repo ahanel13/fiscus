@@ -31,6 +31,7 @@ import {
 import { type SuggestedRule } from '../lib/rules.js';
 import { typing } from '../lib/shortcuts.js';
 import { categoryIndex } from '../lib/transactions.js';
+import { PossibleDuplicatesList } from './possible-duplicates.js';
 import { RuleSuggestion } from './rules.js';
 import { TransferReviewList } from './transfer-review.js';
 import {
@@ -61,8 +62,12 @@ export function ReviewPage() {
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const counts = useQuery(reviewCountQuery(householdId)).data;
-  const { view: startOn } = useSearch({ strict: false }) as { view?: 'transfers' };
-  const [view, setView] = useState<'transactions' | 'transfers'>(startOn ?? 'transactions');
+  const { view: startOn } = useSearch({ strict: false }) as {
+    view?: 'transfers' | 'duplicates';
+  };
+  const [view, setView] = useState<'transactions' | 'transfers' | 'duplicates'>(
+    startOn ?? 'transactions',
+  );
   const invalidate = useInvalidateLedger(householdId);
   const query = useInfiniteQuery(
     transactionsQuery(householdId, { lens: 'all', review: 'needs_review', order: 'oldest' }),
@@ -205,6 +210,11 @@ export function ReviewPage() {
         Nothing needs review. New transactions from imports land here, so you can check their
         category before they count.
       </p>
+      {counts?.duplicates ? (
+        <Button variant="secondary" onPress={() => setView('duplicates')}>
+          Check {counts.duplicates} possible {counts.duplicates === 1 ? 'duplicate' : 'duplicates'}
+        </Button>
+      ) : null}
       {counts?.transfers ? (
         <Button variant="secondary" onPress={() => setView('transfers')}>
           Check {counts.transfers} {counts.transfers === 1 ? 'transfer' : 'transfers'}
@@ -382,12 +392,24 @@ export function ReviewPage() {
               options={[
                 { value: 'transactions', label: `Transactions (${counts?.transactions ?? 0})` },
                 { value: 'transfers', label: `Transfers (${counts?.transfers ?? 0})` },
+                // Only with a bank connected, in practice: shown while there's one to decide.
+                ...(counts?.duplicates || view === 'duplicates'
+                  ? [
+                      {
+                        value: 'duplicates' as const,
+                        label: `Possible duplicates (${counts?.duplicates ?? 0})`,
+                      },
+                    ]
+                  : []),
               ]}
               value={view}
               onChange={setView}
             />
             {view === 'transfers' ? (
               <TransferReviewList householdId={householdId} members={members} groups={groups} />
+            ) : null}
+            {view === 'duplicates' ? (
+              <PossibleDuplicatesList householdId={householdId} groups={groups} />
             ) : null}
             {view === 'transactions' && items.length ? (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
