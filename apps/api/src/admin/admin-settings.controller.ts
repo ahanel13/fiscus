@@ -47,17 +47,19 @@ export class AdminSettingsController {
 
   /**
    * Server → Bank connections (walkthrough §8): how this server reaches banks, as settings and
-   * (with #78) counts, never content (D16). Only what exists today: Plaid's keys arrive with #82.
+   * counts, never content (D16).
    */
   @Get('bank-connections')
-  async bankConnections(): Promise<{ data: BankConnectionsOverview }> {
+  async bankConnections(@Auth() auth: AuthContext): Promise<{ data: BankConnectionsOverview }> {
     const settings = await this.settings.all();
+    const stats = await this.settings.bankStats(auth.user.id);
     const plaid = this.config.plaid;
     return {
       data: bankConnectionsOverviewSchema.parse({
         plaid: { configured: !!plaid, environment: plaid?.env ?? null },
         simplefin: { enabled: settings['simplefin.enabled'] },
         settings,
+        stats,
       }),
     };
   }

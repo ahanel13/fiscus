@@ -65,9 +65,41 @@ export function instanceSettingsFrom(stored: ReadonlyMap<string, unknown>): Inst
 export const plaidEnvironmentSchema = z.enum(['sandbox', 'production']);
 export type PlaidEnvironment = z.infer<typeof plaidEnvironmentSchema>;
 
+const countSchema = z.number().int().nonnegative();
+const usageSchema = z.strictObject({ households: countSchema, connections: countSchema });
+
+/**
+ * Connections across the instance, from fiscus_admin_bank_stats() (migration 0051): numbers only,
+ * none of them naming a household, institution or account. Disconnected connections aren't
+ * counted. The scheduler syncs each connection on its own timetable, so its results are the last
+ * 24 hours rather than a run.
+ */
+export const bankConnectionStatsSchema = z.strictObject({
+  /** Plaid connections on the server's keys, and the households that have them. */
+  plaidInstanceKeys: usageSchema,
+  /** Plaid connections on a household's own keys (#83). */
+  plaidHouseholdKeys: usageSchema,
+  simplefin: usageSchema,
+  byStatus: z.strictObject({
+    setup: countSchema,
+    ok: countSchema,
+    login_required: countSchema,
+    error: countSchema,
+  }),
+  last24h: z.strictObject({
+    /** Connections that synced in the last 24 hours. */
+    synced: countSchema,
+    /** Connections whose latest sync failed. */
+    failing: countSchema,
+    /** The most recent sync of any connection; null when none has synced. */
+    lastSyncedAt: z.iso.datetime({ offset: true }).nullable(),
+  }),
+});
+export type BankConnectionStats = z.infer<typeof bankConnectionStatsSchema>;
+
 /**
  * Server → Bank connections: how this server connects to banks. Counts only, never content (D16):
- * no balances, account names, transactions, or household names. Connection counts come with #78.
+ * no balances, account names, transactions, or household names.
  */
 export const bankConnectionsOverviewSchema = z.strictObject({
   plaid: z.strictObject({
@@ -78,5 +110,6 @@ export const bankConnectionsOverviewSchema = z.strictObject({
   }),
   simplefin: z.strictObject({ enabled: z.boolean() }),
   settings: instanceSettingsSchema,
+  stats: bankConnectionStatsSchema,
 });
 export type BankConnectionsOverview = z.infer<typeof bankConnectionsOverviewSchema>;

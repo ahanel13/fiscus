@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
+  BankConnectionStats,
   BankConnectionsOverview,
   InstanceSettings,
   UpdateInstanceSettings,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { bankConnectionsQuery } from '../api/queries.js';
 import { ReauthCancelled, useRecentAuth } from '../components/RecentAuth.js';
 import {
   Alert,
   Badge,
+  type BadgeTone,
   Card,
   LoadingRegion,
   Select,
@@ -20,12 +22,86 @@ import {
   Switch,
   toast,
 } from '../components/ui.js';
+import { relativeTime } from '../lib/relative-time.js';
 
 type Data<T> = { data: T };
 
 /** The intervals offered; any whole number of hours from 1 to 24 is allowed. */
 const INTERVALS = [1, 2, 3, 4, 6, 8, 12, 24];
 const hours = (n: number) => (n === 1 ? 'Every hour' : `Every ${n} hours`);
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** "3 connections in 2 households", or "None" (D16: numbers, never names). */
+export function usage({ households, connections }: BankConnectionStats['simplefin']) {
+  if (connections === 0) return 'None';
+  return `${plural(connections, 'connection', 'connections')} in ${plural(households, 'household', 'households')}`;
+}
+
+/** Connections by status, the ones needing attention first; statuses with none are left out. */
+const STATUSES: { key: keyof BankConnectionStats['byStatus']; label: string; tone: BadgeTone }[] = [
+  { key: 'error', label: 'Failing', tone: 'danger' },
+  { key: 'login_required', label: 'Need sign-in', tone: 'warning' },
+  { key: 'setup', label: 'Being set up', tone: 'neutral' },
+  { key: 'ok', label: 'Working', tone: 'positive' },
+];
+
+function Stat({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex flex-wrap justify-between gap-x-4">
+      <dt>{label}</dt>
+      <dd className="font-medium text-fg">{value}</dd>
+    </div>
+  );
+}
+
+/** Connections across the server, and how syncing has gone over the last day. */
+export function ConnectionCounts({
+  stats,
+  now: fixedNow,
+}: {
+  stats: BankConnectionStats;
+  now?: number;
+}) {
+  // The page's clock, so "5 minutes ago" stays true while it's open; tests pass their own.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (fixedNow !== undefined) return;
+    const timer = setInterval(() => setClock(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [fixedNow]);
+  const now = fixedNow ?? clock;
+  const shown = STATUSES.filter((s) => stats.byStatus[s.key] > 0);
+  const { synced, failing, lastSyncedAt } = stats.last24h;
+  return (
+    <Card>
+      <h3 className="mb-2 font-semibold">Connections</h3>
+      {shown.length === 0 ? (
+        <p className="text-sm text-muted">No household has connected a bank yet.</p>
+      ) : (
+        <div className="space-y-3 text-sm text-muted">
+          <ul className="flex flex-wrap gap-2" aria-label="Connections by status">
+            {shown.map((s) => (
+              <li key={s.key}>
+                <Badge tone={s.tone}>
+                  {s.label}: {stats.byStatus[s.key]}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+          <dl className="space-y-1">
+            <Stat label="Synced in the last 24 hours" value={synced} />
+            <Stat label="Latest sync failed" value={failing} />
+            <Stat
+              label="Most recent sync"
+              value={lastSyncedAt ? relativeTime(lastSyncedAt, now) : 'None yet'}
+            />
+          </dl>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function ProviderCard({
   title,
@@ -67,8 +143,7 @@ export function PlaidStatus({ plaid }: { plaid: BankConnectionsOverview['plaid']
 
 /**
  * Server → Bank connections (walkthrough §8, #400): how this server connects to banks. Counts,
- * never content (D16); connection counts come with bank sync itself (#78). Changing a setting
- * takes effect at once, and needs a recent sign-in.
+ * never content (D16). Changing a setting takes effect at once, and needs a recent sign-in.
  */
 export function BankConnectionsSection() {
   const queryClient = useQueryClient();
@@ -140,6 +215,10 @@ export function BankConnectionsSection() {
                 ? ' Production: households connect their real banks.'
                 : ''}
             </p>
+            <dl className="space-y-1">
+              <Stat label="On the server’s keys" value={usage(data.stats.plaidInstanceKeys)} />
+              <Stat label="On households’ own keys" value={usage(data.stats.plaidHouseholdKeys)} />
+            </dl>
             <Switch
               isSelected={shown('plaid.allowHouseholdKeys') ?? false}
               onChange={(v) => set({ 'plaid.allowHouseholdKeys': v })}
@@ -158,6 +237,9 @@ export function BankConnectionsSection() {
             status={data.simplefin.enabled ? <Badge tone="positive">On</Badge> : <Badge>Off</Badge>}
           >
             <p>Nothing to configure: each household brings its own SimpleFIN Bridge token.</p>
+            <dl>
+              <Stat label="In use" value={usage(data.stats.simplefin)} />
+            </dl>
             <Switch
               isSelected={shown('simplefin.enabled') ?? false}
               onChange={(v) => set({ 'simplefin.enabled': v })}
@@ -165,6 +247,7 @@ export function BankConnectionsSection() {
               Households may connect banks through SimpleFIN
             </Switch>
           </ProviderCard>
+          <ConnectionCounts stats={data.stats} />
           <Card>
             <h3 className="mb-2 font-semibold">Schedule</h3>
             <Select
