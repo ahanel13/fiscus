@@ -24,9 +24,11 @@ COPY --from=prune /repo/out/json/ .
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
 COPY --from=prune /repo/out/full/ .
 RUN pnpm turbo run build --filter=@fiscus/api
-# pnpm's install metadata records when it ran (prunedAt); the app doesn't need it, and the image
-# must build identically twice (ADR 0014).
-RUN pnpm deploy --filter=@fiscus/api --prod --legacy /out && rm /out/node_modules/.modules.yaml
+# The image must build identically twice (ADR 0014). pnpm's install metadata records when it ran
+# (prunedAt), and the app doesn't need it. Files are copied, not hardlinked from the store: which
+# identical files end up sharing a link varies from one build to the next, and a layer records it.
+RUN pnpm deploy --filter=@fiscus/api --prod --legacy --config.package-import-method=copy /out \
+  && rm /out/node_modules/.modules.yaml
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production
