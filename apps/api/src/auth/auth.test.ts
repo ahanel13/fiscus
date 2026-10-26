@@ -42,8 +42,11 @@ describe('authentication', () => {
     await tdb?.stop();
   });
 
-  beforeEach(() => {
-    for (const a of [app, openApp]) a.get(RateLimiter).reset('login:ip:127.0.0.1');
+  beforeEach(async () => {
+    for (const a of [app, openApp]) {
+      await a.get(RateLimiter).reset('login:ip:127.0.0.1');
+      await a.get(RateLimiter).reset('signup:ip:127.0.0.1');
+    }
   });
 
   describe('first-run setup', () => {

@@ -47,6 +47,7 @@ catalog:
   fastify: 5.12.5
   globals: 17.12.0
   happy-dom: 20.14.5
+  ioredis: 6.0.0
   lucide-react: 1.48.0
   pg: 8.23.0
   prettier: 3.9.9

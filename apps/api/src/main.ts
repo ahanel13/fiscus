@@ -35,6 +35,7 @@ const config: AppConfig = {
   publicUrl: env.PUBLIC_URL,
   signupMode: env.SIGNUP_MODE,
   cookieSecure: env.COOKIE_SECURE,
+  valkeyUrl: env.VALKEY_URL,
   plaid,
   simplefin: instanceSimpleFinConfig(env),
 };

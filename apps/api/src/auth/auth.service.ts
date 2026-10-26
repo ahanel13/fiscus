@@ -14,6 +14,8 @@ import { randomToken, sha256 } from './tokens.js';
 
 const LOGIN_LIMIT_PER_ACCOUNT = { limit: 10, windowMs: 15 * 60_000 };
 const LOGIN_LIMIT_PER_IP = { limit: 30, windowMs: 15 * 60_000 };
+/** Open signup (ADR 0005): a few accounts an hour from one address. */
+const SIGNUP_LIMIT_PER_IP = { limit: 10, windowMs: 60 * 60_000 };
 const RESET_TOKEN_TTL_MS = 24 * 60 * 60_000;
 
 const invalidCredentials = () =>
@@ -37,11 +39,14 @@ export class AuthService {
     private readonly audit: AuditService,
   ) {}
 
-  async signup(input: {
-    email: string;
-    password: string;
-    displayName: string;
-  }): Promise<CurrentUser> {
+  async signup(
+    input: {
+      email: string;
+      password: string;
+      displayName: string;
+    },
+    ip: string | null,
+  ): Promise<CurrentUser> {
     if (this.config.signupMode === 'closed') {
       throw new Problem(403, 'signup_closed', 'New accounts are disabled on this instance');
     }
@@ -53,6 +58,7 @@ export class AuthService {
         'Ask a household owner for an invite link.',
       );
     }
+    await this.#limit(`signup:ip:${ip ?? 'unknown'}`, SIGNUP_LIMIT_PER_IP);
     const passwordHash = await hashPassword(input.password);
     const [user] = await this.db.db
       .insert(users)
@@ -75,8 +81,8 @@ export class AuthService {
    * response and similar timing, and both count against the rate limits.
    */
   async login(email: string, password: string, meta: ClientMeta): Promise<CurrentUser> {
-    this.#limit(`login:account:${email}`, LOGIN_LIMIT_PER_ACCOUNT);
-    this.#limit(`login:ip:${meta.ip ?? 'unknown'}`, LOGIN_LIMIT_PER_IP);
+    await this.#limit(`login:account:${email}`, LOGIN_LIMIT_PER_ACCOUNT);
+    await this.#limit(`login:ip:${meta.ip ?? 'unknown'}`, LOGIN_LIMIT_PER_IP);
 
     const [user] = await this.db.db.select().from(users).where(eq(users.email, email)).limit(1);
     const ok = await verifyPassword(user?.passwordHash ?? (await dummyPasswordHash()), password);
@@ -94,7 +100,7 @@ export class AuthService {
     }
     if (user.disabledAt) throw new Problem(403, 'account_disabled', 'This account is disabled');
 
-    this.limiter.reset(`login:account:${email}`);
+    await this.limiter.reset(`login:account:${email}`);
     if (needsRehash(user.passwordHash)) {
       await this.db.db
         .update(users)
@@ -113,7 +119,7 @@ export class AuthService {
   }
 
   async reauthenticate(userId: string, sessionId: string, password: string, ip: string | null) {
-    this.#limit(`reauth:${userId}`, LOGIN_LIMIT_PER_ACCOUNT);
+    await this.#limit(`reauth:${userId}`, LOGIN_LIMIT_PER_ACCOUNT);
     const [user] = await this.db.db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user?.passwordHash || !(await verifyPassword(user.passwordHash, password))) {
       throw new Problem(401, 'invalid_credentials', 'Password is incorrect');
@@ -187,8 +193,8 @@ export class AuthService {
     });
   }
 
-  #limit(key: string, { limit, windowMs }: { limit: number; windowMs: number }): void {
-    const result = this.limiter.consume(key, limit, windowMs);
+  async #limit(key: string, { limit, windowMs }: { limit: number; windowMs: number }) {
+    const result = await this.limiter.consume(key, limit, windowMs);
     if (!result.allowed) throw problems.rateLimited(result.retryAfterSeconds);
   }
 }

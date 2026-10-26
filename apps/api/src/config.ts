@@ -12,6 +12,8 @@ export interface AppConfig {
   publicUrl: string;
   signupMode: SignupMode;
   cookieSecure: boolean;
+  /** Where rate limits are counted across replicas (#377). Unset: in this process's memory. */
+  valkeyUrl?: string | undefined;
   /**
    * The server's own Plaid keys (#82), or undefined when Plaid isn't configured. Resolve a
    * connection's keys with `resolvePlaidCredentials`, never from here directly.

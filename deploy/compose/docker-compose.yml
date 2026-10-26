@@ -115,6 +115,8 @@ services:
       PUBLIC_URL: ${FISCUS_PUBLIC_URL:-http://localhost:8080}
       SIGNUP_MODE: ${FISCUS_SIGNUP_MODE:-invite_only}
       COOKIE_SECURE: ${FISCUS_COOKIE_SECURE:-true}
+      # Rate limits are counted here, so they hold across api replicas and restarts (#377).
+      VALKEY_URL: redis://valkey:6379
       # The api is only reachable through the web container's proxy, so its X-Forwarded-For is trusted.
       TRUST_PROXY: 'true'
     depends_on: &after-migrate

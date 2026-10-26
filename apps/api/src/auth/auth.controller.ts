@@ -85,7 +85,7 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<SignedIn> {
-    return this.signIns.signIn(await this.auth.signup(body), req, reply);
+    return this.signIns.signIn(await this.auth.signup(body, req.ip), req, reply);
   }
 
   /** A server invite's details, before creating the account (ADM-08). */

@@ -223,11 +223,18 @@ web client, and the AI tools.
 
 ## 10. Rate limits
 
-- A token bucket in Redis, keyed per member (session or PAT), plus per IP for auth endpoints.
-- Defaults (admin-configurable): 600 requests/min per member, 10 login attempts/min per IP +
-  per account, and AI endpoints limited separately by token budget (ADR 0009).
-- Headers on every response: `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`.
-  `429` responses add `Retry-After`.
+- Fixed windows counted in Valkey (`VALKEY_URL`), so a limit holds across api replicas and
+  restarts. Without it, or while it can't be reached, each api process counts its own.
+- Limited today:
+  - Login: 10 failures per account and 30 per IP per 15 minutes. Re-entering a password: 10
+    per account.
+  - Open signup: 10 accounts per IP an hour.
+  - Imports, per member an hour: 120 previews, 60 imports and 2,000 parts of rows.
+  - A device's history reports: 5 per member an hour.
+- `429 rate_limited` responses carry `Retry-After`.
+- Planned: a general limit per member (session or PAT) with `RateLimit-Limit`,
+  `RateLimit-Remaining` and `RateLimit-Reset` on every response, and AI endpoints limited by
+  token budget (ADR 0009).
 
 ## 11. Versioning and deprecation
 

@@ -40,6 +40,16 @@ export default defineEnv('api', {
     'Trust X-Forwarded-For from a reverse proxy, for client IPs in rate limits and audit logs. ' +
       'Enable only when the api is reachable solely through that proxy.',
   ),
+  VALKEY_URL: {
+    schema: z
+      .url({ protocol: /^rediss?$/, error: 'must be a redis:// or rediss:// URL' })
+      .optional(),
+    description:
+      'Valkey (or Redis) URL, where rate limits are counted so they hold across api replicas and ' +
+      'restarts. Unset: each api process counts its own.',
+    example: 'redis://localhost:6379',
+    secret: true,
+  },
   // The server's own Plaid keys (ADR 0008, #82): all three or none, checked at startup.
   ...plaidEnvVars,
   // Where SimpleFIN setup tokens may point (#91, threat model T28).
