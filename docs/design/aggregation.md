@@ -181,7 +181,9 @@ secret, and `release()` for the next update. It checks:
 
 The fake passes it in both modes, as the reference. The Plaid adapter (#82) passes it against
 the fake Plaid server, with every error kind, Plaid's foreign amounts and accounts' `closed` left
-out (Plaid reports neither). The SimpleFIN adapter (#91) passes it against the fake Bridge, with
+out (Plaid reports neither). A nightly job also runs the adapter against Plaid's real sandbox
+(`plaid-sandbox.test.ts`, #79): connecting, syncing to the end, a login break, and removal. It
+needs sandbox keys in the repository's secrets, and passes with a notice without them. The SimpleFIN adapter (#91) passes it against the fake Bridge, with
 the kinds the Bridge can report (`login_required`, `consent_expired`, `rate_limited`,
 `transient`), and merchant names, foreign amounts, accounts' official names, last 4 and `closed`,
 and credit limits left out (`unsupportedBalanceFields`).

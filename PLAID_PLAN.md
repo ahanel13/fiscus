@@ -53,6 +53,7 @@ recurring_transactions; no redirect URIs; no webhooks; Link customization `defau
 | Register the redirect URI, for an instance served over HTTPS | OAuth on mobile browsers that block pop-ups needs it. It must be HTTPS (http://localhost only in sandbox). Desktop OAuth works without one, through Link's pop-up (OAUTH-001, CONV-004) | Dashboard → API → Allowed redirect URIs (https://dashboard.plaid.com); set `PLAID_REDIRECT_URI` to the same value, `https://<host>/connect/plaid/oauth` | needs_human (the user's instance: once it has HTTPS; other instances: optional) |
 | A public HTTPS webhook receiver | Plaid's update webhooks need one; a LAN-only instance can't have it, so Fiscus polls (see Decisions) (WEBHOOK-001, WEBHOOK-005) | the instance's reverse proxy, then `PLAID_WEBHOOK_URL` (#84) | needs_human (optional; #84) |
 | Put sandbox keys in the env file | The api and worker read `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` (GUIDE-021, TASK-010) | `plaid keys write --env sandbox --gitignore`, or copy from https://dashboard.plaid.com/developers/keys | needs_human |
+| Sandbox keys as repository secrets | The nightly real-sandbox job (`.github/workflows/plaid-sandbox.yml`, #79) runs only with them, and passes with a notice without them. Sandbox keys only, never production (GUIDE-001) | GitHub → the repository's Settings → Secrets and variables → Actions: `PLAID_SANDBOX_CLIENT_ID`, `PLAID_SANDBOX_SECRET`, from https://dashboard.plaid.com/developers/keys | needs_human |
 | Fidelity, once investments are read | Not immediate after production approval (INV-014) | Dashboard → OAuth institutions (https://dashboard.plaid.com) | not_applicable (investments not read yet) |
 
 ## Implementation checklist
@@ -137,6 +138,10 @@ Webhooks (#84, #85), only for instances Plaid can reach:
   plain HTTP), 008 and 015 (no real sandbox run yet: sandbox keys aren't in the env file, so no
   user_good or second persona), 009 (needs_human and cannot_verify tasks remain). The sync
   adapter (#419), sign in again (#425) and polling's acceptance closed round 0's 012 and 014.
+- Round 2 (2026-10-26, the real-sandbox job, #79): FAIL, on the same four. Passed 001–005,
+  010–014; 006 not applicable. Failed: 007 (no redirect URI: plain HTTP), 008 and 015 (the job
+  that makes, syncs, breaks and removes Items for two personas is built, but hasn't run: no
+  sandbox keys in the repository's secrets yet), 009 (needs_human and cannot_verify tasks remain).
 
 ## Maintenance
 
@@ -155,6 +160,22 @@ to the code as it was verified — later changes invalidate it.
 3. In Link, pick First Platypus Bank and sign in as `user_good` / `pass_good`.
 4. Choose what each account becomes, then confirm. Within a minute the accounts show their
    balances and transactions.
+
+### The real-sandbox job
+
+`apps/api/src/connections/plaid-sandbox.test.ts` runs nightly, by hand (Actions → Plaid sandbox →
+Run workflow), and on pushes to main. Without Link (SANDBOX-003), it:
+
+- Creates the link token Fiscus asks for.
+- Makes an Item at First Platypus Bank for `user_good` (with liabilities) and for
+  `user_transactions_dynamic` (SANDBOX-009), exchanges it, and lists its accounts.
+- Syncs to the end, with a capped growing wait until the history is in.
+- Reads liabilities, then forces a login break (SANDBOX-004) and expects `login_required`.
+- Removes the Item, and checks that it's gone.
+
+Locally: export `PLAID_SANDBOX_CLIENT_ID` and `PLAID_SANDBOX_SECRET` (sandbox keys), then run
+`pnpm --filter @fiscus/api exec vitest run src/connections/plaid-sandbox.test.ts`. Without them,
+it's skipped.
 
 ### Sign in again
 

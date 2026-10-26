@@ -126,6 +126,12 @@ export type TransactionsSyncResponse = z.infer<typeof transactionsSyncResponseSc
 
 export const emptyResponseSchema = z.object({ ...requestId });
 
+/** Sandbox only: an Item made without Link, for the real-sandbox job (#79). */
+export const sandboxPublicTokenCreateResponseSchema = z.object({
+  ...requestId,
+  public_token: z.string(),
+});
+
 // Every liabilities field may be null at some bank (LIAB-002): each is read on its own.
 const apr = z.object({
   apr_percentage: nullishNumber,
