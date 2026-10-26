@@ -27,6 +27,7 @@ import { api, type ApiError } from '../api/client.js';
 import {
   accountsQuery,
   connectionSetupQuery,
+  connectionsQuery,
   householdQuery,
   membersQuery,
   plaidAvailabilityQuery,
@@ -170,12 +171,23 @@ function ViewerNotice({ household }: { household: Household }) {
 
 /**
  * `/h/:id/connect/plaid`: what connecting means, then Plaid Link. With `?connection=`, Link's
- * update mode, for its owner to sign in again (the button that leads here is #81's).
+ * update mode, for its owner to sign in again (the button that leads here is #81's). With
+ * `?replaces=`, a new connection to the same bank with the household's keys, which takes over that
+ * one's accounts (#83, D15).
  */
 export function ConnectPlaidPage() {
   const { householdId } = useParams({ strict: false }) as { householdId: string };
-  const { connection } = useSearch({ strict: false }) as { connection?: string };
-  return <ConnectFlow householdId={householdId} connection={connection} />;
+  const { connection, replaces } = useSearch({ strict: false }) as {
+    connection?: string;
+    replaces?: string;
+  };
+  return (
+    <ConnectFlow
+      householdId={householdId}
+      connection={connection}
+      replaces={connection ? undefined : replaces}
+    />
+  );
 }
 
 /**
@@ -208,6 +220,7 @@ export function PlaidOAuthReturnPage() {
     <ConnectFlow
       householdId={state.householdId}
       connection={state.connection}
+      replaces={state.replaces}
       resume={{ linkToken: state.linkToken, receivedRedirectUri: window.location.href }}
     />
   );
@@ -224,13 +237,21 @@ interface Duplicate {
 function ConnectFlow({
   householdId,
   connection,
+  replaces,
   resume,
 }: {
   householdId: string;
   connection?: string | undefined;
+  replaces?: string | undefined;
   resume?: { linkToken: string; receivedRedirectUri: string };
 }) {
   const household = useSuspenseQuery(householdQuery(householdId)).data;
+  // The bank being moved, for its name.
+  const moving = useQuery({
+    ...connectionsQuery(householdId),
+    enabled: !!replaces && !resume,
+    select: (all) => all.find((c) => c.id === replaces),
+  }).data;
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const viewer = household.you.role === 'viewer';
@@ -271,7 +292,12 @@ function ConnectFlow({
     try {
       const setup = (
         await api<Data<ConnectionSetup>>('POST', `${base(householdId)}/plaid/exchange`, {
-          body: { publicToken, link: linkMetadata(metadata), ...(duplicateOk && { duplicateOk }) },
+          body: {
+            publicToken,
+            link: linkMetadata(metadata),
+            ...(duplicateOk && { duplicateOk }),
+            ...(replaces && { replaces }),
+          },
         })
       ).data;
       queryClient.setQueryData(
@@ -384,7 +410,12 @@ function ConnectFlow({
     setError(null);
     setPhase('open');
     // A bank's own sign-in page (OAuth) may send this tab away: its return picks Link up again.
-    saveOAuthState({ linkToken, householdId, ...(connection && { connection }) });
+    saveOAuthState({
+      linkToken,
+      householdId,
+      ...(connection && { connection }),
+      ...(replaces && { replaces }),
+    });
     link.open();
   };
 
@@ -440,6 +471,12 @@ function ConnectFlow({
         <Heading sub="Plaid opens next. Sign in to your bank there, not here; Fiscus never sees your bank password.">
           Sign in to your bank again
         </Heading>
+      ) : replaces ? (
+        <Heading
+          sub={`Plaid opens next, with the Plaid keys this household connects banks with now. Sign in to ${moving?.institutionName ?? 'the same bank'} there; Fiscus never sees your bank password.`}
+        >
+          Move {moving?.institutionName ?? 'a bank'} to new keys
+        </Heading>
       ) : (
         <Heading sub="Plaid opens next and connects it instantly. You sign in to your bank there, not here; Fiscus never sees your bank password.">
           Add a bank account
@@ -453,7 +490,18 @@ function ConnectFlow({
             : 'This household’s own Plaid keys can’t be read. A household owner can enter them again in Household settings → Connections.'}
         </Alert>
       ) : null}
-      {!connection ? (
+      {replaces ? (
+        <dl className="space-y-4 rounded-lg bg-surface-2 p-4 text-sm">
+          <Point icon={ShieldCheck} title="What stays">
+            Its accounts and their history. Next you link each of the bank’s accounts to the one it
+            syncs into now, and what the bank sends again is matched to what’s here.
+          </Point>
+          <Point icon={UsersRound} title="What changes">
+            Once you’ve chosen, the old connection ends and Fiscus removes it at Plaid. Until then
+            it keeps syncing, so stopping part way changes nothing.
+          </Point>
+        </dl>
+      ) : !connection ? (
         <dl className="space-y-4 rounded-lg bg-surface-2 p-4 text-sm">
           <Point icon={ShieldCheck} title="What Fiscus gets">
             Read-only access to the accounts you choose: balances, transactions, and card and loan
@@ -472,7 +520,9 @@ function ConnectFlow({
       ) : null}
       {availability.data?.available ? (
         <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          Through this server’s Plaid account.
+          {availability.data.keys === 'household'
+            ? 'Through this household’s own Plaid account.'
+            : 'Through this server’s Plaid account.'}
           {availability.data.env === 'sandbox' ? (
             <Badge tone="warning">Sandbox: Plaid’s test banks only</Badge>
           ) : null}
@@ -727,9 +777,15 @@ function ChooseAccounts({
   return (
     <ConnectLayout household={household} wide>
       <Steps current={1} />
-      <Heading sub="Link an account to one you already have here to keep its history. New ones start with the last 90 days. Nothing syncs until you choose.">
-        {setup.institutionName ? `${bank}: choose what to track` : 'Choose what to track'}
-      </Heading>
+      {setup.replacesConnectionId ? (
+        <Heading sub="Link each account to the one it syncs into now, so its history stays. Once you confirm, the old connection ends: any of its accounts you don’t link here stop syncing, and keep their history.">
+          {`${bank}: move to new keys`}
+        </Heading>
+      ) : (
+        <Heading sub="Link an account to one you already have here to keep its history. New ones start with the last 90 days. Nothing syncs until you choose.">
+          {setup.institutionName ? `${bank}: choose what to track` : 'Choose what to track'}
+        </Heading>
+      )}
       {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
       <ul
         aria-label="Accounts at the bank"
@@ -778,8 +834,9 @@ function ChooseAccounts({
           leaveTo(back, { title: `${bank} wasn’t connected.`, tone: 'info' });
         }}
       >
-        Fiscus lets go of its access to {bank}, and nothing is tracked. You can connect it again any
-        time.
+        {setup.replacesConnectionId
+          ? `Fiscus lets go of this new access to ${bank}. The old connection keeps syncing as before.`
+          : `Fiscus lets go of its access to ${bank}, and nothing is tracked. You can connect it again any time.`}
       </ConfirmDialog>
     </ConnectLayout>
   );
@@ -998,9 +1055,15 @@ function Connected({
   return (
     <ConnectLayout household={household}>
       <Steps current={2} />
-      <Heading sub="The first sync is running. Recent transactions arrive in a minute or so; older history keeps arriving for a few minutes, and is added as it comes. Nothing waits on it.">
-        {bank} is connected
-      </Heading>
+      {setup.replacesConnectionId ? (
+        <Heading sub="It uses the new keys now, and the old connection has ended. The first sync is running: what the bank sends again is matched to what’s here, and anything unsure waits in Review.">
+          {bank} moved to new keys
+        </Heading>
+      ) : (
+        <Heading sub="The first sync is running. Recent transactions arrive in a minute or so; older history keeps arriving for a few minutes, and is added as it comes. Nothing waits on it.">
+          {bank} is connected
+        </Heading>
+      )}
       <ul
         aria-label="Tracked accounts"
         className="divide-y divide-border rounded-xl border border-border bg-surface text-sm"

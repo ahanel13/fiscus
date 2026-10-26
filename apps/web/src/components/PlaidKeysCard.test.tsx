@@ -40,6 +40,10 @@ beforeEach(() => {
       return new Response(JSON.stringify({ data: { csrfToken: 't' } }));
     }
     const method = init.method ?? 'GET';
+    // The household, for who's looking: m2, who connected the bank below and not Chase.
+    if (path.endsWith(`/households/${HH}`)) {
+      return new Response(JSON.stringify({ data: { you: { memberId: 'm2', role: 'owner' } } }));
+    }
     if (method !== 'GET') {
       requests.push({ method, body: init.body ? JSON.parse(String(init.body)) : undefined });
       if (refuse) {
@@ -79,8 +83,11 @@ describe('PlaidKeysCard', () => {
 
     const secret = within(dialog).getByLabelText(/Secret/);
     expect(secret.getAttribute('type')).toBe('password');
-    await user.type(within(dialog).getByLabelText(/Client ID/), ' household-client-7731 ');
-    await user.type(secret, 'their-secret');
+    // Pasted, not typed: typing a key at a time into these fields outran CI's 5s timeout.
+    await user.click(within(dialog).getByLabelText(/Client ID/));
+    await user.paste(' household-client-7731 ');
+    await user.click(secret);
+    await user.paste('their-secret');
     await user.click(within(dialog).getByRole('button', { name: 'Save keys' }));
 
     expect(requests).toEqual([
@@ -110,8 +117,10 @@ describe('PlaidKeysCard', () => {
     show();
     await user.click(await screen.findByRole('button', { name: 'Add your keys' }));
     const dialog = screen.getByRole('dialog');
-    await user.type(within(dialog).getByLabelText(/Client ID/), 'nope');
-    await user.type(within(dialog).getByLabelText(/Secret/), 'nope');
+    await user.click(within(dialog).getByLabelText(/Client ID/));
+    await user.paste('nope');
+    await user.click(within(dialog).getByLabelText(/Secret/));
+    await user.paste('nope');
     await user.click(within(dialog).getByRole('button', { name: 'Save keys' }));
     expect(
       (await within(dialog).findByText(/Plaid didn’t accept these keys/)).textContent,
@@ -131,6 +140,25 @@ describe('PlaidKeysCard', () => {
     );
     expect(requests).toEqual([{ method: 'DELETE', body: undefined }]);
     expect(await screen.findByRole('button', { name: 'Add your keys' })).toBeTruthy();
+  });
+
+  it('offers to move the banks you connected, and only those, to your keys', async () => {
+    const user = userEvent.setup();
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    const ally: HouseholdPlaidKeys['connections'][number] = {
+      ...chase,
+      id: '00000000-0000-7000-8000-000000000002',
+      institutionName: 'Ally',
+      owner: { memberId: 'm2', name: 'Alex' },
+      keys: 'previous',
+    };
+    state = { ...state, keys: SAVED, connections: [chase, ally] };
+    show();
+    const list = await screen.findByRole('list', { name: 'Banks not on your keys' });
+    await user.click(await within(list).findByRole('button', { name: 'Move Ally to your keys' }));
+    expect(within(list).queryByRole('button', { name: 'Move Chase to your keys' })).toBeNull();
+    expect(assign).toHaveBeenCalledWith(`/h/${HH}/connect/plaid?replaces=${ally.id}`);
   });
 
   it('says when the admin has turned household keys off, and offers only removing', async () => {

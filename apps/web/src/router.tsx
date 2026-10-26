@@ -183,9 +183,11 @@ const householdRoute = createRoute({
 const connectPlaidRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/h/$householdId/connect/plaid',
-  // `?connection=`: Link's update mode, for its owner to sign in again (#81).
+  // `?connection=`: Link's update mode, for its owner to sign in again (#81). `?replaces=`: a
+  // connection moved to the household's keys by connecting the bank again (#83).
   validateSearch: (s: Record<string, unknown>) => ({
     connection: typeof s.connection === 'string' ? s.connection : undefined,
+    replaces: typeof s.replaces === 'string' ? s.replaces : undefined,
   }),
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(householdQuery(params.householdId)),

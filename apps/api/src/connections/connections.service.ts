@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { accounts, connections, type Executor, householdMembers, institutions } from '@fiscus/db';
+import {
+  accounts,
+  activePlaidKeySet,
+  connections,
+  type Executor,
+  householdMembers,
+  institutions,
+} from '@fiscus/db';
+import type { HouseholdActivity } from '@fiscus/ledger';
 import {
   type Connection,
   type ConnectionProvider,
@@ -9,9 +17,10 @@ import {
   REPORTS_HISTORY,
   type RefreshTooSoon,
 } from '@fiscus/shared';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { Problem, problems } from '../common/problem.js';
+import { APP_CONFIG, type AppConfig } from '../config.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
 
@@ -42,7 +51,10 @@ function refreshAvailableAt(
 
 @Injectable()
 export class ConnectionsService {
-  constructor(private readonly scope: HouseholdScope) {}
+  constructor(
+    private readonly scope: HouseholdScope,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+  ) {}
 
   /** The connections behind accounts you can see, and your own; not disconnected ones. */
   list(ctx: HouseholdContext): Promise<Connection[]> {
@@ -60,6 +72,7 @@ export class ConnectionsService {
           firstFailedAt: connections.firstFailedAt,
           refreshRequestedAt: connections.refreshRequestedAt,
           historicalComplete: connections.historicalComplete,
+          credentialSetId: connections.credentialSetId,
         })
         .from(connections)
         .leftJoin(institutions, eq(institutions.id, connections.institutionId))
@@ -81,6 +94,9 @@ export class ConnectionsService {
             )
             .orderBy(asc(accounts.sortOrder), asc(accounts.id))
         : [];
+      // The keys new banks are connected with: the household's own, else the server's (#83).
+      const active = await activePlaidKeySet(tx, ctx.householdId);
+      const newKeys = active ? active.id : this.config.plaid ? null : undefined;
       const now = Date.now();
       return rows.map((r): Connection => {
         const provider = r.provider as ConnectionProvider;
@@ -102,6 +118,11 @@ export class ConnectionsService {
           refreshAvailableAt: refreshAvailableAt(provider, r.refreshRequestedAt, now),
           importingHistory:
             REPORTS_HISTORY[provider] && status !== 'setup' && !r.historicalComplete,
+          onOldKeys:
+            provider === 'plaid' &&
+            status !== 'setup' &&
+            newKeys !== undefined &&
+            r.credentialSetId !== newKeys,
         };
       });
     });
@@ -248,30 +269,43 @@ export class ConnectionsService {
         );
       }
       if (c.status === 'disconnected') return;
-      // A definer function (migration 0037): it lets go of accounts the caller may not own.
-      const { rows } = await tx.execute<{ accounts: string[] }>(
-        sql`SELECT fiscus_disconnect_connection(${id}) AS accounts`,
-      );
-      const released = rows[0]?.accounts ?? [];
-      // One event per account, so each is seen by exactly those who see that account.
-      for (const accountId of released) {
-        await activity.record({
-          action: 'connection.disconnected',
-          targetType: 'connection',
-          targetId: id,
-          accountId,
-          metadata: { provider: c.provider },
-        });
-      }
-      if (released.length === 0) {
-        await activity.record({
-          action: 'connection.disconnected',
-          targetType: 'connection',
-          targetId: id,
-          metadata: { provider: c.provider },
-          visibleToHousehold: false,
-        });
-      }
+      await disconnectWithin(tx, activity, id, c.provider);
+    });
+  }
+}
+
+/**
+ * Ends a connection inside the caller's transaction: it stops syncing, its accounts let go of it,
+ * and the worker ends it at the provider (disconnect_requested). The caller has checked it may.
+ */
+export async function disconnectWithin(
+  tx: Executor,
+  activity: HouseholdActivity,
+  id: string,
+  provider: string,
+): Promise<void> {
+  // A definer function (migration 0037): it lets go of accounts the caller may not own.
+  const { rows } = await tx.execute<{ accounts: string[] }>(
+    sql`SELECT fiscus_disconnect_connection(${id}) AS accounts`,
+  );
+  const released = rows[0]?.accounts ?? [];
+  // One event per account, so each is seen by exactly those who see that account.
+  for (const accountId of released) {
+    await activity.record({
+      action: 'connection.disconnected',
+      targetType: 'connection',
+      targetId: id,
+      accountId,
+      metadata: { provider },
+    });
+  }
+  if (released.length === 0) {
+    await activity.record({
+      action: 'connection.disconnected',
+      targetType: 'connection',
+      targetId: id,
+      metadata: { provider },
+      visibleToHousehold: false,
     });
   }
 }

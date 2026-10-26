@@ -40,7 +40,7 @@ import {
   type plaidExchangeSchema,
 } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, max, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, max, ne, or, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { AccountsService } from '../accounts/accounts.service.js';
@@ -66,6 +66,7 @@ import {
   plaidMask,
   plaidProblem,
 } from './plaid.js';
+import { disconnectWithin } from './connections.service.js';
 import { fromSimpleFin, simpleFinProblem } from './simplefin.js';
 
 type ConfirmInput = z.infer<typeof confirmConnectionSchema>;
@@ -114,6 +115,14 @@ const signInAtTheBridge = () =>
     'fix_at_the_bridge',
     'SimpleFIN connections are fixed at the SimpleFIN Bridge',
     'Sign in to the bank again at the Bridge, or replace its token.',
+  );
+
+const differentBank = () =>
+  new Problem(
+    422,
+    'different_bank',
+    'That’s a different bank',
+    'To move a bank to new keys, sign in to the same bank it’s connected to now.',
   );
 
 const notInSetup = () =>
@@ -234,15 +243,20 @@ export class ConnectService {
     return this.scope.run(ctx, async (tx) => ({
       connectionId: id,
       institutionName: 'SimpleFIN Bridge',
-      accounts: await this.#offer(tx, ctx, offered),
+      accounts: await this.#offer(tx, ctx, offered, null),
+      replacesConnectionId: null,
     }));
   }
 
   /** Whether the household can connect a bank through Plaid now, and in which environment. */
   async availability(ctx: HouseholdContext): Promise<PlaidAvailability> {
-    const { result } = await this.#householdCredentials(ctx);
+    const { result, credentialSetId } = await this.#householdCredentials(ctx);
     return result.available
-      ? { available: true, env: result.credentials.env }
+      ? {
+          available: true,
+          env: result.credentials.env,
+          keys: credentialSetId === null ? 'server' : 'household',
+        }
       : { available: false, reason: result.reason };
   }
 
@@ -286,13 +300,24 @@ export class ConnectService {
 
   /**
    * Exchanges Link's public token once, and records the connection in `setup` with the caller as
-   * its owner. Returns the accounts the bank offers, each with a suggested choice.
+   * its owner. Returns the accounts the bank offers, each with a suggested choice. With `replaces`,
+   * it moves one of the caller's connections to the keys new banks use now (#83, D15): the same
+   * bank, whose accounts it's suggested to take over.
    */
   async exchange(ctx: HouseholdContext, input: ExchangeInput): Promise<ConnectionSetup> {
     const keys = await this.#householdCredentials(ctx);
     const { client, credentials } = plaidClientFor(keys.result);
-    // Before the exchange, which is when Plaid starts billing for the Item (ITEM-011).
-    if (input.link && !input.duplicateOk) await this.#refuseDuplicate(ctx, input.link);
+    const replaced = input.replaces
+      ? await this.#replaceable(ctx, input.replaces, keys.credentialSetId)
+      : null;
+    // Before the exchange, which is when Plaid starts billing for the Item (ITEM-011). A move is
+    // meant to reach the same accounts again, at the same bank.
+    if (replaced) {
+      const said = input.link?.institutionId;
+      if (said && replaced.institution && said !== replaced.institution) throw differentBank();
+    } else if (input.link && !input.duplicateOk) {
+      await this.#refuseDuplicate(ctx, input.link);
+    }
     const { access_token: secret, item_id: itemId } = await client
       .itemPublicTokenExchange(input.publicToken)
       .catch(plaidProblem);
@@ -313,6 +338,10 @@ export class ConnectService {
       // Nothing is stored yet, so the Item would be orphaned (and billed): end it at Plaid.
       await removeQuietly(client, secret);
       plaidProblem(err);
+    }
+    if (replaced?.institution && institution?.id !== replaced.institution) {
+      await removeQuietly(client, secret);
+      throw differentBank();
     }
 
     const id = uuidv7();
@@ -347,6 +376,7 @@ export class ConnectService {
           ...credentialStamp(credentials),
           status: 'setup',
           nextSyncAt: null,
+          replacesConnectionId: replaced?.id ?? null,
         });
         await saveConnectionSecret(tx, this.crypto, ctx.householdId, id, secret);
         // Only its owner sees it until they confirm (D4): "connection added" is recorded then.
@@ -358,13 +388,15 @@ export class ConnectService {
             provider: 'plaid',
             ...(input.link && { linkSessionId: input.link.sessionId }),
             ...(input.link?.institutionId && { institutionId: input.link.institutionId }),
+            ...(replaced && { replaces: replaced.id }),
           },
           visibleToHousehold: false,
         });
         return {
           connectionId: id,
           institutionName: institution?.name ?? null,
-          accounts: await this.#offer(tx, ctx, offered),
+          accounts: await this.#offer(tx, ctx, offered, replaced?.id ?? null),
+          replacesConnectionId: replaced?.id ?? null,
         };
       });
     } catch (err) {
@@ -397,6 +429,56 @@ export class ConnectService {
         visibleToHousehold: false,
       });
     });
+  }
+
+  /**
+   * The connection a new one moves to the keys new banks use now (#83, D15): the caller's own,
+   * through Plaid, set up and not ended, and made with other keys. Its bank's Plaid id, if known.
+   */
+  async #replaceable(
+    ctx: HouseholdContext,
+    id: string,
+    newKeys: string | null,
+  ): Promise<{ id: string; institution: string | null }> {
+    const c = await this.scope.run(ctx, async (tx) => {
+      const [row] = await tx
+        .select({
+          ownerMemberId: connections.ownerMemberId,
+          provider: connections.provider,
+          status: connections.status,
+          credentialSetId: connections.credentialSetId,
+          institution: institutions.providerInstitutionId,
+        })
+        .from(connections)
+        .leftJoin(institutions, eq(institutions.id, connections.institutionId))
+        .where(and(eq(connections.id, id), eq(connections.householdId, ctx.householdId)));
+      return row;
+    });
+    if (!c) throw problems.notFound();
+    if (c.ownerMemberId !== ctx.memberId) {
+      throw problems.forbidden('Only the person who connected it can move it.');
+    }
+    if (c.provider !== 'plaid') {
+      throw new Problem(422, 'not_plaid', 'Only a bank connected through Plaid uses Plaid keys');
+    }
+    if (c.status === 'setup' || c.status === 'disconnected') {
+      throw new Problem(
+        409,
+        c.status === 'setup' ? 'connection_in_setup' : 'connection_disconnected',
+        c.status === 'setup'
+          ? 'Choose this connection’s accounts first'
+          : 'This connection is disconnected',
+      );
+    }
+    if (c.credentialSetId === newKeys) {
+      throw new Problem(
+        409,
+        'same_keys',
+        'This bank already uses the keys new banks connect with',
+        'There’s nothing to move.',
+      );
+    }
+    return { id, institution: c.institution };
   }
 
   /**
@@ -479,17 +561,28 @@ export class ConnectService {
   async setup(ctx: HouseholdContext, connectionId: string): Promise<ConnectionSetup> {
     const own = await this.#ownConnection(ctx, connectionId, { setup: true });
     const offered = await this.#offered(own);
-    return this.scope.run(ctx, async (tx) => ({
-      connectionId,
-      institutionName: own.institutionName,
-      accounts: await this.#offer(tx, ctx, offered),
-    }));
+    return this.scope.run(ctx, async (tx) => {
+      const [c] = await tx
+        .select({ replaces: connections.replacesConnectionId })
+        .from(connections)
+        .where(eq(connections.id, connectionId));
+      const replaces = c?.replaces ?? null;
+      return {
+        connectionId,
+        institutionName: own.institutionName,
+        accounts: await this.#offer(tx, ctx, offered, replaces),
+        replacesConnectionId: replaces,
+      };
+    });
   }
 
   /**
    * Confirms what each offered account becomes (D4, D5): linked to one of the caller's accounts,
    * a new account with its owners and visibility, or not tracked. Only the connection's owner,
    * only while it's in `setup`. Then it's `ok` and due now, so the worker syncs it right away.
+   *
+   * A connection that moves another to new keys (#83) may link that one's accounts, and ends it
+   * once they're its own: the worker then ends the old Item at Plaid, with its old keys.
    */
   async confirm(
     ctx: HouseholdContext,
@@ -501,11 +594,21 @@ export class ConnectService {
 
     return this.scope.run(ctx, async (tx, activity) => {
       const [c] = await tx
-        .select({ status: connections.status })
+        .select({ status: connections.status, replaces: connections.replacesConnectionId })
         .from(connections)
         .where(eq(connections.id, connectionId))
         .for('update');
       if (c?.status !== 'setup') throw notInSetup();
+      // Locked before its accounts, as its sync locks it first: a sync running now writes nothing
+      // once it's ended. One disconnected since has let go of its accounts already.
+      const [old] = c.replaces
+        ? await tx
+            .select({ status: connections.status })
+            .from(connections)
+            .where(eq(connections.id, c.replaces))
+            .for('update')
+        : [];
+      const replacing = old && old.status !== 'disconnected' ? c.replaces : null;
 
       const choices = new Map(input.accounts.map((a) => [a.providerAccountId, a]));
       const offeredIds = new Set(offered.map((a) => a.providerAccountId));
@@ -589,7 +692,7 @@ export class ConnectService {
           }
           const row = linkRows.find((r) => r.id === choice.accountId);
           if (!row) throw new Problem(422, 'invalid_account', 'That account doesn’t exist');
-          if (row.connectionId !== null) {
+          if (row.connectionId !== null && row.connectionId !== replacing) {
             throw new Problem(
               409,
               'account_already_connected',
@@ -624,6 +727,7 @@ export class ConnectService {
               updatedAt: new Date(),
             })
             .where(eq(accounts.id, row.id));
+          await releaseEarlier(tx, row.id, syncFrom);
         } else {
           accountId = await this.accountsService.createWithin(tx, activity, ctx, {
             name: choice.name ?? bank.name,
@@ -658,15 +762,25 @@ export class ConnectService {
           linked: choice.choice === 'link',
           syncFrom,
         });
+        const moved =
+          choice.choice === 'link' &&
+          replacing !== null &&
+          linkRows.find((r) => r.id === accountId)?.connectionId === replacing;
         // One event per account, seen by exactly those who see it. No names or numbers.
         await activity.record({
           action: 'connection.added',
           targetType: 'connection',
           targetId: connectionId,
           accountId,
-          metadata: { provider: own.provider, linked: choice.choice === 'link' },
+          metadata: {
+            provider: own.provider,
+            linked: choice.choice === 'link',
+            ...(moved && { moved: true }),
+          },
         });
       }
+      // Its accounts are this one's now; any left go on without a connection, as on disconnect.
+      if (replacing) await disconnectWithin(tx, activity, replacing, 'plaid');
 
       // Due now: the runner (#81) claims it on its next pass, and the first sync starts.
       await tx
@@ -791,6 +905,7 @@ export class ConnectService {
     tx: Executor,
     ctx: HouseholdContext,
     offered: BankAccount[],
+    replaces: string | null,
   ): Promise<OfferedAccount[]> {
     const [hh] = await tx
       .select({ financeStyle: households.financeStyle, baseCurrency: households.baseCurrency })
@@ -799,7 +914,7 @@ export class ConnectService {
     const levels = await accessLevels(tx);
     const ownedIds = [...levels].filter(([, level]) => level === 'owner').map(([id]) => id);
     // Only the caller's accounts (nobody connects into someone else's), and only ones no other
-    // connection syncs.
+    // connection syncs, but the one this moves to new keys (#83).
     const candidates = ownedIds.length
       ? await tx
           .select({
@@ -811,7 +926,14 @@ export class ConnectService {
             closedAt: accounts.closedAt,
           })
           .from(accounts)
-          .where(and(inArray(accounts.id, ownedIds), isNull(accounts.connectionId)))
+          .where(
+            and(
+              inArray(accounts.id, ownedIds),
+              replaces
+                ? or(isNull(accounts.connectionId), eq(accounts.connectionId, replaces))
+                : isNull(accounts.connectionId),
+            ),
+          )
       : [];
     const closed = new Set(candidates.filter((c) => c.closedAt).map((c) => c.id));
     const matches = matchAccounts(
@@ -851,4 +973,49 @@ export class ConnectService {
 /** Ends an Item at Plaid, ignoring failure: for an exchange whose connection wasn't stored. */
 async function removeQuietly(client: PlaidClient, secret: string): Promise<void> {
   await client.itemRemove(secret).catch(() => undefined);
+}
+
+/**
+ * A linked account's bank transactions from an earlier connection, from where the new one's sync
+ * starts (D5, D6): the new connection sends them again, under ids of its own. Posted ones let go
+ * of the earlier ids, so they're matched as already here (D7) instead of added twice. Pending ones
+ * are dropped, as removed by the bank: it sends them again, and a pending one never matches.
+ */
+async function releaseEarlier(tx: Executor, accountId: string, syncFrom: string): Promise<void> {
+  const earlier = and(
+    eq(transactions.accountId, accountId),
+    eq(transactions.source, 'provider'),
+    isNotNull(transactions.providerTransactionId),
+    isNull(transactions.deletedAt),
+    isNull(transactions.parentId),
+    sql`coalesce(${transactions.postedDate}, ${transactions.authorizedDate}) >= ${syncFrom}`,
+  );
+  await tx
+    .update(transactions)
+    .set({
+      providerTransactionId: null,
+      providerPendingId: null,
+      version: sql`${transactions.version} + 1`,
+    })
+    .where(and(earlier, eq(transactions.pending, false)));
+  const at = new Date();
+  const dropped = await tx
+    .update(transactions)
+    .set({ deletedAt: at, providerRemovedAt: at, version: sql`${transactions.version} + 1` })
+    .where(and(earlier, eq(transactions.pending, true)))
+    .returning({ id: transactions.id });
+  if (dropped.length) {
+    await tx
+      .update(transactions)
+      .set({ deletedAt: at, version: sql`${transactions.version} + 1` })
+      .where(
+        and(
+          inArray(
+            transactions.parentId,
+            dropped.map((d) => d.id),
+          ),
+          isNull(transactions.deletedAt),
+        ),
+      );
+  }
 }

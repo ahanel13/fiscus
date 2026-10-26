@@ -597,6 +597,47 @@ describe('sync (#80)', { timeout: 60_000 }, () => {
     ).toEqual([2]);
   });
 
+  it('matches what an earlier connection to the account brought in, once it let go of its ids (#83)', async () => {
+    const b = await bank({ syncFrom: '2026-10-01' });
+    // A bank's transactions from the connection this one replaced: linking released their ids.
+    const earlier = async (amountMinor: number, date: string) =>
+      (
+        await sql<{ id: string }>(
+          `INSERT INTO transactions (id, household_id, account_id, amount_minor, currency, posted_date,
+             authorized_date, original_description, display_name, source)
+           VALUES (uuidv7(), $1, $2, $3, 'USD', $4, $4, 'HARBOR CAFE', 'Harbor Cafe', 'provider')
+           RETURNING id`,
+          [b.householdId, b.checking, amountMinor, date],
+        )
+      )[0]!.id;
+    const cafe = await earlier(-2_500, '2026-10-03');
+    await earlier(-6_100, '2026-10-05');
+
+    await run(
+      fake([
+        [
+          {
+            added: [
+              txn('cafe-again', RIVERA.checking, -2_500, '2026-10-03'),
+              txn('market-again', RIVERA.checking, -6_100, '2026-10-06'),
+            ],
+          },
+        ],
+      ]),
+    );
+
+    const rows = await byProviderId(b.householdId);
+    expect([...rows.keys()]).toEqual(['cafe-again']);
+    expect(rows.get('cafe-again')).toMatchObject({ id: cafe, source: 'provider' });
+    expect(
+      await sql(
+        `SELECT provider_transaction_id AS id, cardinality(candidate_ids) AS candidates
+         FROM sync_holds WHERE account_id = $1`,
+        [b.checking],
+      ),
+    ).toEqual([{ id: 'market-again', candidates: 1 }]);
+  });
+
   it('keeps a held transaction as the bank last said it, and drops it when the bank does', async () => {
     const b = await bank();
     const imported = async (amountMinor: number, date: string) =>

@@ -3,7 +3,7 @@ import { type Executor, syncHolds, transactions } from '@fiscus/db';
 import type { ProviderTransaction, SyncPage } from '@fiscus/domain';
 import type { HouseholdActivity } from '@fiscus/ledger';
 import { addDays } from '@fiscus/shared';
-import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { type Namer, providerColumns, rowKey } from './fields.js';
 import type { SyncTarget } from './ingest.js';
 import { type Arrival, reportedDate } from './match.js';
@@ -39,10 +39,9 @@ export async function holdsByKey(tx: Executor, keys: string[]): Promise<Map<stri
 
 /**
  * Holds the arrivals that look like a transaction already in their account: the same amount and
- * currency within HOLD_WINDOW_DAYS, in one that isn't the provider's (no provider id; not deleted,
- * not a split part). Exact one-to-one matches were attached before this (matchExisting), so what's
- * left is another day, or more than one like it. Pending arrivals are never held: the bank
- * replaces them. Returns the arrivals to insert, and how many were held.
+ * currency within HOLD_WINDOW_DAYS, in one with no provider id (not deleted, not a split part).
+ * Exact one-to-one matches were attached before this (matchExisting), so what's left is another
+ * day, or more than one like it. Pending arrivals are never held: the bank replaces them. Returns the arrivals to insert, and how many were held.
  */
 export async function holdPossibleDuplicates(
   tx: Executor,
@@ -71,7 +70,6 @@ export async function holdPossibleDuplicates(
         sql`${reported} BETWEEN ${addDays(dates[0]!, -HOLD_WINDOW_DAYS)}::date
             AND ${addDays(dates.at(-1)!, HOLD_WINDOW_DAYS)}::date`,
         isNull(transactions.providerTransactionId),
-        ne(transactions.source, 'provider'),
         isNull(transactions.deletedAt),
         isNull(transactions.parentId),
       ),

@@ -177,6 +177,12 @@ to the code as it was verified — later changes invalidate it.
   registers it (the user's own instance will, once it has HTTPS).
 - Investments consented now, not read: confirmed by the user on 2026-10-22.
 - No Plaid SDK on the server; react-plaid-link on the web (WEB-020).
+- Moving a bank to a household's own keys (#83, D15): an Item can't change Plaid accounts, so it's a
+  new Item through the usual link token and exchange, with `replaces` on the exchange naming the old
+  connection (the connect page's `?replaces=`). The same bank is checked before the exchange
+  (ITEM-011, nothing billed when it isn't), and the old Item gets `/item/remove` with its own keys
+  only once the new one's accounts are confirmed (ITEM-005), which also settles a bank that cut the
+  older Item off when the new one connected (ITEM-012).
 
 ## Open questions
 

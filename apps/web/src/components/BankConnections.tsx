@@ -164,6 +164,10 @@ function ConnectionLine({
 
   const signIn = () =>
     leaveTo(`/h/${householdId}/connect/plaid?connection=${encodeURIComponent(c.id)}`);
+  // Connected again with the keys new banks use, keeping its accounts (#83, D15).
+  const move = () =>
+    leaveTo(`/h/${householdId}/connect/plaid?replaces=${encodeURIComponent(c.id)}`);
+  const movable = manage && c.onOldKeys && c.status !== 'setup';
 
   const broken = c.status === 'login_required' || c.status === 'error';
   // Due now, or within the minute: the worker picks it up on its next pass.
@@ -214,6 +218,15 @@ function ConnectionLine({
       </p>
     ) : null;
 
+  const oldKeys = movable ? (
+    <p className="text-xs text-muted">
+      On Plaid keys this household doesn’t connect new banks with.{' '}
+      {yours
+        ? 'Moving it signs in to the bank again; its accounts and their history stay.'
+        : `${c.owner.name} can move it to the new ones.`}
+    </p>
+  ) : null;
+
   const trouble = connectionTrouble(c);
   const linked = manage ? (
     <p className="text-xs text-muted">
@@ -254,6 +267,7 @@ function ConnectionLine({
           {status}
         </p>
         {importing}
+        {oldKeys}
         {stale}
       </div>
       {yours ? (
@@ -270,6 +284,11 @@ function ConnectionLine({
           {c.status === 'login_required' && c.provider === 'plaid' ? (
             <Button size="sm" onPress={signIn}>
               Sign in again
+            </Button>
+          ) : null}
+          {movable ? (
+            <Button size="sm" variant="secondary" onPress={move}>
+              Move to new keys
             </Button>
           ) : null}
           {(c.status === 'error' && c.notWorking) || manage ? (

@@ -25,6 +25,8 @@ export interface PlaidOAuthState {
   householdId: string;
   /** Update mode: the connection being signed in to again. */
   connection?: string;
+  /** The connection this one moves to new keys (#83). */
+  replaces?: string;
   savedAt: number;
 }
 
@@ -51,7 +53,8 @@ export function readOAuthState(now = Date.now()): PlaidOAuthState | null {
       typeof s.householdId !== 'string' ||
       typeof s.savedAt !== 'number' ||
       now - s.savedAt > MAX_AGE_MS ||
-      (s.connection !== undefined && typeof s.connection !== 'string')
+      (s.connection !== undefined && typeof s.connection !== 'string') ||
+      (s.replaces !== undefined && typeof s.replaces !== 'string')
     ) {
       clearOAuthState();
       return null;
