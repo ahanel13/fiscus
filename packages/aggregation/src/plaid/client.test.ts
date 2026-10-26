@@ -322,5 +322,22 @@ describe('PlaidClient (#82)', () => {
       expect(urls).toEqual(['https://production.plaid.com/transactions/refresh']);
       expect(plaid.requests).toEqual([]);
     });
+
+    it('makes sandbox Items only in sandbox, refusing before any request elsewhere', async () => {
+      const urls: string[] = [];
+      const production = new PlaidClient({
+        clientId: 'c',
+        secret: 's',
+        env: 'production',
+        fetch: recording(urls),
+      });
+      await expect(
+        production.sandboxPublicTokenCreate('ins_109508', ['transactions']),
+      ).rejects.toMatchObject({ providerCode: 'SANDBOX_ONLY' });
+      await expect(production.sandboxItemResetLogin('t')).rejects.toMatchObject({
+        providerCode: 'SANDBOX_ONLY',
+      });
+      expect(urls).toEqual([]);
+    });
   });
 });

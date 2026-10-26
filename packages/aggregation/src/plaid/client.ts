@@ -15,6 +15,7 @@ import {
   linkTokenCreateResponseSchema,
   plaidErrorSchema,
   publicTokenExchangeResponseSchema,
+  sandboxPublicTokenCreateResponseSchema,
   transactionsSyncResponseSchema,
   webhookVerificationKeyGetResponseSchema,
 } from './schemas.js';
@@ -166,6 +167,36 @@ export class PlaidClient {
       { key_id: keyId },
       webhookVerificationKeyGetResponseSchema,
     );
+  }
+
+  /**
+   * Sandbox only, for the real-sandbox job (#79): an Item at a test bank without Link, and a
+   * forced login break. Refused before any request outside sandbox.
+   */
+  async sandboxPublicTokenCreate(
+    institutionId: string,
+    products: string[],
+    options: { override_username?: string; override_password?: string } = {},
+  ) {
+    this.#sandboxOnly();
+    return this.#post(
+      '/sandbox/public_token/create',
+      { institution_id: institutionId, initial_products: products, options },
+      sandboxPublicTokenCreateResponseSchema,
+    );
+  }
+
+  async sandboxItemResetLogin(accessToken: string) {
+    this.#sandboxOnly();
+    return this.#post(
+      '/sandbox/item/reset_login',
+      { access_token: accessToken },
+      emptyResponseSchema,
+    );
+  }
+
+  #sandboxOnly(): void {
+    if (this.env !== 'sandbox') throw plaidTransportError('SANDBOX_ONLY');
   }
 
   async #post<S extends z.ZodType>(path: string, body: object, schema: S): Promise<z.infer<S>> {

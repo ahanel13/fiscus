@@ -1,0 +1,63 @@
+name: Plaid sandbox
+
+# Fiscus against Plaid's real sandbox (#79): apps/api/src/connections/plaid-sandbox.test.ts.
+# Needs the repository secrets PLAID_SANDBOX_CLIENT_ID and PLAID_SANDBOX_SECRET (sandbox keys
+# only); without them the job says so and passes. Never on pull requests, whose code could read
+# the secrets.
+on:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: plaid-sandbox
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  sandbox:
+    name: Real Plaid sandbox
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAID_SANDBOX_CLIENT_ID: ${{ secrets.PLAID_SANDBOX_CLIENT_ID }}
+      PLAID_SANDBOX_SECRET: ${{ secrets.PLAID_SANDBOX_SECRET }}
+    steps:
+      - name: Sandbox keys
+        id: keys
+        run: |
+          if [ -n "$PLAID_SANDBOX_CLIENT_ID" ] && [ -n "$PLAID_SANDBOX_SECRET" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipped: set PLAID_SANDBOX_CLIENT_ID and PLAID_SANDBOX_SECRET in the repository's secrets to run against Plaid's sandbox."
+          fi
+
+      # Actions are pinned to commit SHAs; Dependabot (#13) keeps them current.
+      - if: steps.keys.outputs.present == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - if: steps.keys.outputs.present == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - if: steps.keys.outputs.present == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - if: steps.keys.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - if: steps.keys.outputs.present == 'true'
+        run: pnpm turbo run build --filter=@fiscus/api^...
+
+      - if: steps.keys.outputs.present == 'true'
+        working-directory: apps/api
+        run: pnpm exec vitest run src/connections/plaid-sandbox.test.ts
