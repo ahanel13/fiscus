@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
-import { addMonths, monthProgress } from './budget.js';
+import { addMonths, fiscalYearOf, monthProgress } from './budget.js';
 
 describe('budget months', () => {
   it('steps across years', () => {
@@ -14,5 +14,13 @@ describe('budget months', () => {
     expect(monthProgress('2026-10', today)).toBeCloseTo(26 / 31);
     expect(monthProgress('2026-09', today)).toBeNull();
     expect(monthProgress('2026-02', new Date(2026, 1, 28))).toBe(1);
+  });
+});
+
+describe('fiscal years', () => {
+  it('names a fiscal year by the calendar year it starts in', () => {
+    expect(fiscalYearOf('2026-10', 1)).toBe(2026);
+    expect(fiscalYearOf('2026-03', 7)).toBe(2025);
+    expect(fiscalYearOf('2026-07', 7)).toBe(2026);
   });
 });

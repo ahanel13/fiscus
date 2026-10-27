@@ -3,6 +3,7 @@ import {
   type BudgetCategoryHistory,
   type BudgetMonth,
   type BudgetSummary,
+  type BudgetYear,
   type CategoryGroup,
   type CategoryLimitRow,
   type CategoryLimitsMonth,
@@ -11,12 +12,13 @@ import {
   type Household,
   type Transaction,
   formatMoney,
+  minorUnitExponent,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
 import { ChevronLeft, ChevronRight, PiggyBank } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
   budgetMonthQuery,
@@ -79,7 +81,12 @@ export function monthProgress(month: string, today = new Date()): number | null 
 
 export function BudgetPage() {
   const { householdId } = useParams({ strict: false }) as { householdId: string };
-  const search = useSearch({ strict: false }) as { month?: string; scope?: string };
+  const search = useSearch({ strict: false }) as {
+    month?: string;
+    scope?: string;
+    view?: string;
+    year?: string;
+  };
   const household = useSuspenseQuery(householdQuery(householdId)).data;
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const list = useQuery(budgetsQuery(householdId));
@@ -123,7 +130,13 @@ export function BudgetPage() {
         action={budgets.length > 1 ? <ScopeSwitch budgets={budgets} chosen={chosen!} /> : null}
       />
       <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 md:px-8">
-        {chosen ? (
+        {chosen && search.view === 'year' ? (
+          <YearView
+            household={household}
+            budget={chosen}
+            year={Number(search.year) || fiscalYearOf(month, household.fiscalYearStartMonth)}
+          />
+        ) : chosen ? (
           <MonthView household={household} budget={chosen} month={month} />
         ) : (
           <SetUp household={household} memberCount={members.length} />
@@ -384,8 +397,9 @@ function MonthView({
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <MonthStepper month={shown} startsMonth={budget.startsMonth} />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge>{STRATEGY_NAMES[strategy as 'category' | 'flex'] ?? 'Category limits'}</Badge>
+          <ViewLink view="year">Annual view</ViewLink>
           {data.data?.canEdit ? (
             <Button variant="ghost" size="sm" onPress={() => setSwitching(true)}>
               Change how you budget
@@ -1507,5 +1521,253 @@ function StrategyDialog({
         </DialogActions>
       </div>
     </Dialog>
+  );
+}
+
+// ── The year at a glance (§6, #106) ──────────────────────────────────────────────────────────
+
+/** The fiscal year a month falls in, named by the calendar year it starts in. */
+export function fiscalYearOf(month: string, startMonth: number): number {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  return m >= startMonth ? y : y - 1;
+}
+
+/** Switches between the month and the year, keeping the rest of the page's place. */
+function ViewLink({
+  view,
+  year,
+  children,
+}: {
+  view: 'month' | 'year';
+  year?: number;
+  children: React.ReactNode;
+}) {
+  const navigate = useNavigate();
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onPress={() =>
+        void navigate({
+          to: '.',
+          search: (prev: Record<string, unknown>) => {
+            const { view: _view, year: _year, ...rest } = prev;
+            return view === 'year'
+              ? { ...rest, view: 'year', ...(year ? { year: String(year) } : {}) }
+              : rest;
+          },
+          replace: true,
+        })
+      }
+    >
+      {children}
+    </Button>
+  );
+}
+
+function YearView({
+  household,
+  budget,
+  year,
+}: {
+  household: Household;
+  budget: BudgetSummary;
+  year: number;
+}) {
+  const navigate = useNavigate();
+  const groups = useQuery(categoriesQuery(household.id)).data ?? [];
+  const data = useQuery({
+    queryKey: ['households', household.id, 'budgets', budget.id, 'year', year],
+    queryFn: async () =>
+      (
+        await api<{ data: BudgetYear }>(
+          'GET',
+          `${base(household.id)}/budgets/${budget.id}/years/${year}`,
+        )
+      ).data,
+  });
+  const go = (y: number) =>
+    void navigate({
+      to: '.',
+      search: (prev: Record<string, unknown>) => ({ ...prev, view: 'year', year: String(y) }),
+      replace: true,
+    });
+  const current = thisMonth();
+  const currency = household.baseCurrency;
+  const short = (m: string) =>
+    new Date(`${m}-01T00:00:00Z`).toLocaleDateString(undefined, {
+      month: 'short',
+      timeZone: 'UTC',
+    });
+  const exponent = minorUnitExponent(currency);
+  const wholeFormat = new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  });
+  const whole = (minor: number) => wholeFormat.format(Math.round(minor / 10 ** exponent));
+  const y = data.data;
+  const order = groups.flatMap((g) => g.categories.map((c) => c.id));
+  const rows = y
+    ? [...y.rows].sort((a, b) => order.indexOf(a.categoryId) - order.indexOf(b.categoryId))
+    : [];
+  // On a narrow screen the table scrolls: open it at this month, not at the year's first.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = scroller.current;
+    const cell = box?.querySelector<HTMLElement>('[data-current]');
+    if (box && cell && box.scrollWidth > box.clientWidth) {
+      box.scrollLeft = Math.max(0, cell.offsetLeft - box.clientWidth / 2);
+    }
+  }, [y]);
+  const yearLabel =
+    household.fiscalYearStartMonth === 1 ? String(year) : `${year}–${String(year + 1).slice(2)}`;
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1" role="group" aria-label="Year">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Previous year"
+            onPress={() => go(year - 1)}
+          >
+            <ChevronLeft aria-hidden className="size-4" />
+          </Button>
+          <span className="min-w-20 text-center text-sm font-medium" aria-live="polite">
+            {yearLabel}
+          </span>
+          <Button variant="ghost" size="icon" aria-label="Next year" onPress={() => go(year + 1)}>
+            <ChevronRight aria-hidden className="size-4" />
+          </Button>
+        </div>
+        <ViewLink view="month">Month view</ViewLink>
+      </div>
+      <p className="text-sm text-muted">
+        Spent each month, to the dollar. Months ahead show what’s budgeted. Red is over that month’s
+        limit.
+      </p>
+      {data.isPending ? (
+        <Skeleton className="h-64" />
+      ) : data.isError || !y ? (
+        <Alert>Couldn’t load {yearLabel}. Try again in a moment.</Alert>
+      ) : rows.length === 0 ? (
+        <EmptyState icon={PiggyBank} title={`Nothing in ${yearLabel}`}>
+          <p>No spending or limits in this budget’s categories that year.</p>
+        </EmptyState>
+      ) : (
+        <div ref={scroller} className="overflow-x-auto rounded-xl border border-border bg-surface">
+          <table className="w-full min-w-[56rem] text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs text-muted">
+                <th
+                  scope="col"
+                  className="sticky left-0 bg-surface px-3 py-2 text-left font-medium"
+                >
+                  Category
+                </th>
+                {y.months.map((m) => (
+                  <th
+                    key={m}
+                    scope="col"
+                    data-current={m === current ? '' : undefined}
+                    className={clsx('px-2 py-2 text-right font-medium', m === current && 'text-fg')}
+                  >
+                    {short(m)}
+                  </th>
+                ))}
+                <th scope="col" className="px-3 py-2 text-right font-medium">
+                  Spent
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">
+                  Budgeted
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rows.map((r) => (
+                <tr key={r.categoryId}>
+                  <th
+                    scope="row"
+                    className="sticky left-0 max-w-44 truncate bg-surface px-3 py-2 text-left font-normal"
+                  >
+                    {categoryName(groups, r.categoryId)}
+                  </th>
+                  {r.months.map((cell, i) => {
+                    const m = y.months[i]!;
+                    const ahead = m > current;
+                    const over =
+                      cell.budgetedMinor !== null && cell.spentMinor > cell.budgetedMinor;
+                    return (
+                      <td
+                        key={m}
+                        className={clsx(
+                          'px-2 py-2 text-right tabular-nums',
+                          ahead ? 'text-muted' : over && 'text-danger',
+                        )}
+                      >
+                        {ahead
+                          ? cell.budgetedMinor !== null
+                            ? whole(cell.budgetedMinor)
+                            : '—'
+                          : cell.spentMinor
+                            ? whole(cell.spentMinor)
+                            : '—'}
+                        {!ahead && over ? <span className="sr-only"> (over)</span> : null}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2 text-right font-medium tabular-nums">
+                    {whole(r.spentMinor)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-muted tabular-nums">
+                    {r.budgetedMinor ? whole(r.budgetedMinor) : '—'}
+                  </td>
+                </tr>
+              ))}
+              {y.flexible.some((f) => f !== null) ? (
+                <tr>
+                  <th
+                    scope="row"
+                    className="sticky left-0 bg-surface px-3 py-2 text-left font-normal"
+                  >
+                    Flexible spending
+                  </th>
+                  {y.flexible.map((f, i) => (
+                    <td key={y.months[i]} className="px-2 py-2 text-right text-muted tabular-nums">
+                      {f === null ? '' : whole(f)}
+                    </td>
+                  ))}
+                  <td />
+                  <td className="px-3 py-2 text-right text-muted tabular-nums">
+                    {whole(y.flexible.reduce<number>((s, f) => s + (f ?? 0), 0))}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-border font-semibold">
+                <th scope="row" className="sticky left-0 bg-surface px-3 py-2 text-left">
+                  Total spent
+                </th>
+                {y.spentMinor.map((v, i) => (
+                  <td key={y.months[i]} className="px-2 py-2 text-right tabular-nums">
+                    {y.months[i]! > current ? '' : v ? whole(v) : '—'}
+                  </td>
+                ))}
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {whole(y.spentMinor.reduce((s, v) => s + v, 0))}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      <p className="text-xs text-muted">
+        Years follow the household’s fiscal year, set in Household settings.
+      </p>
+    </>
   );
 }

@@ -148,3 +148,24 @@ export interface BudgetCategoryHistory {
   /** Over the full months shown that had spending; null without any. */
   averageSpentMinor: number | null;
 }
+
+/** One category in a budget year (#106): each month's spending and, once budgeted, its limit. */
+export interface BudgetYearRow {
+  categoryId: string;
+  /** In month order; `budgetedMinor` is null before the budget, or where flex has no limit. */
+  months: { spentMinor: number; budgetedMinor: number | null }[];
+  spentMinor: number;
+  budgetedMinor: number;
+}
+
+/** A budget's year (walkthrough §6), from the household's fiscal year start. */
+export interface BudgetYear {
+  year: number;
+  /** The twelve months, `YYYY-MM`. */
+  months: string[];
+  rows: BudgetYearRow[];
+  /** Flex's flexible number in each month it ran, else null. */
+  flexible: (number | null)[];
+  /** Everything spent in each month. */
+  spentMinor: number[];
+}

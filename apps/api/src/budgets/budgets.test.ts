@@ -261,6 +261,31 @@ describe('budgets: category limits', () => {
     expect(g.status).toBe(200);
   });
 
+  it('gives a year: spending every month, limits as each month’s strategy reads them (#106)', async () => {
+    const thisYear = Number(month(0).slice(0, 4));
+    const r = await A.get(url(`/budgets/${budgetId}/years/${thisYear}`));
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const y = r.body.data;
+    expect(y.months).toHaveLength(12);
+    expect(y.months[0]).toBe(`${thisYear}-01`);
+    const groceries = y.rows.find(
+      (row: { categoryId: string }) => row.categoryId === cat.Groceries,
+    );
+    const i = (m: string) => y.months.indexOf(m);
+    // Before the budget: spending only. This month: its limit under category limits. Next month,
+    // under flex (switched above), groceries has no limit of its own.
+    if (i(month(-1)) >= 0) {
+      expect(groceries.months[i(month(-1))]).toEqual({ spentMinor: 65000, budgetedMinor: null });
+    }
+    expect(groceries.months[i(month(0))]).toEqual({ spentMinor: 40000, budgetedMinor: 65000 });
+    if (i(month(1)) >= 0) {
+      expect(groceries.months[i(month(1))].budgetedMinor).toBeNull();
+      expect(y.flexible[i(month(1))]).toBe(85000);
+    }
+    expect(y.flexible[i(month(0))]).toBeNull();
+    expect(y.spentMinor[i(month(0))]).toBe(65999);
+  });
+
   it('has nothing before its first month, or for a month that isn’t one', async () => {
     const before = await A.get(url(`/budgets/${budgetId}/months/${month(-1)}`));
     expect([before.status, before.body.code]).toEqual([404, 'before_budget']);

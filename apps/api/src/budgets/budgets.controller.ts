@@ -6,6 +6,7 @@ import {
   budgetScopeSchema,
   type BudgetSuggestion,
   type BudgetSummary,
+  type BudgetYear,
   createBudgetSchema,
   setBudgetAmountSchema,
   setBudgetCategorySchema,
@@ -105,6 +106,16 @@ export class BudgetsController {
     @Body(new ZodPipe(setBudgetCategorySchema)) body: z.infer<typeof setBudgetCategorySchema>,
   ): Promise<void> {
     await this.budgets.setCategory(ctx, budgetId, categoryId, body);
+  }
+
+  /** A budget's year from the fiscal year start (#106). */
+  @Get(':budgetId/years/:year')
+  async year(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('year', new ZodPipe(z.coerce.number().int().min(2000).max(2100))) year: number,
+  ): Promise<{ data: BudgetYear }> {
+    return { data: await this.budgets.year(ctx, budgetId, year) };
   }
 
   /** What switching would show in its first month (#104). */
