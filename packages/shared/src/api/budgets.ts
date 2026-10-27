@@ -83,3 +83,11 @@ export interface BudgetMonth {
   canEdit: boolean;
   view: CategoryLimitsMonth;
 }
+
+/** A category's last months in a budget (§4): its limit (null before the budget) and spending. */
+export interface BudgetCategoryHistory {
+  categoryId: string;
+  months: { month: string; budgetedMinor: number | null; spentMinor: number }[];
+  /** Over the full months shown that had spending; null without any. */
+  averageSpentMinor: number | null;
+}

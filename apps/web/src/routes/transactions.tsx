@@ -100,6 +100,7 @@ import { andList, likelyOtherSide, lookAlikes } from '../lib/transfers.js';
 import { applyDensity, type Density, storedDensity } from '../lib/density.js';
 import { SMALL, useMediaQuery, WIDE } from '../lib/media.js';
 import { useRange } from '../lib/use-range.js';
+import { CountsIn } from './budget.js';
 
 type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
@@ -509,7 +510,11 @@ export function TransactionsPage() {
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
-  const search = useSearch({ strict: false }) as { lens?: string; review?: string };
+  const search = useSearch({ strict: false }) as {
+    lens?: string;
+    review?: string;
+    category?: string;
+  };
   const showLens = lensVisible(household, members.length);
   const lens = showLens ? parseLens(search.lens) : 'all';
   const invalidate = useInvalidateLedger(householdId);
@@ -524,19 +529,26 @@ export function TransactionsPage() {
   const [account, setAccount] = useState<string>(ALL);
   // ?review=needs_review opens the list on what needs review.
   const [review, setReview] = useState(search.review === 'needs_review');
+  // ?category=<id> opens the list on one category (a budget category's "Open in Transactions").
+  const [category, setCategory] = useState<string | null>(search.category ?? null);
   const filters: TransactionFilters = {
     lens,
     range: rangeParams(range.selection).toString(),
     ...(q ? { q } : {}),
     ...(account !== ALL ? { accounts: [account] } : {}),
     ...(review ? { review: 'needs_review' as const } : {}),
+    ...(category ? { categories: [category] } : {}),
   };
   const activeFilters =
-    Number(range.selection.range !== 'all_time') + Number(account !== ALL) + Number(review);
+    Number(range.selection.range !== 'all_time') +
+    Number(account !== ALL) +
+    Number(review) +
+    Number(category !== null);
   const clearFilters = () => {
     range.setRange('all_time');
     setAccount(ALL);
     setReview(false);
+    setCategory(null);
   };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // A phone shows checkboxes only after "Select" (bulk edits are rarer than a glance).
@@ -754,6 +766,15 @@ export function TransactionsPage() {
                   ) : null}
                   {review ? (
                     <FilterChip label="Needs review" onRemove={() => setReview(false)} />
+                  ) : null}
+                  {category ? (
+                    <FilterChip
+                      label={
+                        groups.flatMap((g) => g.categories).find((c) => c.id === category)?.name ??
+                        'Category'
+                      }
+                      onRemove={() => setCategory(null)}
+                    />
                   ) : null}
                 </div>
               ) : null}
@@ -1345,6 +1366,8 @@ export function TransactionDetails({
           ) : null}
         </section>
       ) : null}
+
+      <CountsIn householdId={householdId} t={t} />
 
       <Notes householdId={householdId} t={t} />
 
