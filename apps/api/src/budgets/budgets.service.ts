@@ -13,6 +13,7 @@ import {
 } from '@fiscus/db';
 import {
   addMonths,
+  amountsFor,
   type BudgetCategory,
   type BudgetStrategyKind,
   categoryLimits,
@@ -24,6 +25,7 @@ import {
 } from '@fiscus/domain';
 import { householdRanges, transactionDate } from '@fiscus/ledger';
 import type {
+  BudgetCategoryHistory,
   BudgetMonth,
   BudgetScope,
   BudgetSuggestion,
@@ -237,6 +239,45 @@ export class BudgetsService {
         { month, categoryId },
         { before: before?.amountMinor ?? null, after: amountMinor },
       );
+    });
+  }
+
+  /**
+   * A category's last `count` months up to `to` (§4): its limit in each month the budget covers,
+   * and what was spent in each, before the budget started too.
+   */
+  async history(
+    ctx: HouseholdContext,
+    budgetId: string,
+    categoryId: string,
+    to: string,
+    count = 6,
+  ): Promise<BudgetCategoryHistory> {
+    return this.scope.run(ctx, async (tx) => {
+      const row = await findBudget(tx, budgetId);
+      if (!(await spendingCategories(tx)).has(categoryId)) throw problems.notFound();
+      const scope: BudgetScope = row.memberId ? 'mine' : 'household';
+      const months = Array.from({ length: count }, (_, i) => addMonths(to, i - count + 1));
+      const ledger = await this.#activity(tx, ctx, scope, months[0]!, to);
+      const definition = await loadDefinition(tx, row);
+      const startsMonth = monthOfDate(row.startsMonth);
+      const out = months.map((month) => ({
+        month,
+        budgetedMinor:
+          month < startsMonth
+            ? null
+            : (amountsFor(month, definition.amounts).get(categoryId) ?? null),
+        spentMinor: ledger.get(month)?.spentMinor.get(categoryId) ?? 0,
+      }));
+      // The average of the full months shown with any spending (as setup's suggestion counts).
+      const full = out.filter((m) => m.month < to && m.spentMinor !== 0);
+      return {
+        categoryId,
+        months: out,
+        averageSpentMinor: full.length
+          ? Math.round(full.reduce((s, m) => s + m.spentMinor, 0) / full.length)
+          : null,
+      };
     });
   }
 

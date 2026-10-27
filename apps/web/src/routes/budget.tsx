@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
+  BudgetCategoryHistory,
   BudgetMonth,
   BudgetSummary,
   CategoryGroup,
   CategoryLimitRow,
   Household,
+  Transaction,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
@@ -364,6 +366,7 @@ function MonthView({
   const [editing, setEditing] = useState<{ categoryId: string; row?: CategoryLimitRow } | null>(
     null,
   );
+  const [open, setOpen] = useState<{ categoryId: string; row?: CategoryLimitRow } | null>(null);
 
   return (
     <>
@@ -385,9 +388,28 @@ function MonthView({
           data={data.data}
           groups={groups}
           householdId={household.id}
+          onOpen={setOpen}
           onEdit={data.data.canEdit ? setEditing : undefined}
         />
       )}
+      {open && data.data ? (
+        <CategoryDrawer
+          householdId={household.id}
+          month={data.data}
+          categoryId={open.categoryId}
+          row={open.row}
+          name={categoryName(groups, open.categoryId)}
+          onEdit={
+            data.data.canEdit
+              ? () => {
+                  setEditing(open);
+                  setOpen(null);
+                }
+              : undefined
+          }
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
       {editing && data.data ? (
         <LimitDialog
           householdId={household.id}
@@ -409,11 +431,13 @@ function MonthBody({
   data,
   groups,
   householdId,
+  onOpen,
   onEdit,
 }: {
   data: BudgetMonth;
   groups: CategoryGroup[];
   householdId: string;
+  onOpen: (e: { categoryId: string; row?: CategoryLimitRow }) => void;
   onEdit: ((e: { categoryId: string; row?: CategoryLimitRow }) => void) | undefined;
 }) {
   const { view, currency, month } = data;
@@ -480,7 +504,7 @@ function MonthBody({
                           row={r}
                           currency={currency}
                           progress={progress}
-                          onEdit={onEdit ? () => onEdit({ categoryId: c.id, row: r }) : undefined}
+                          onOpen={() => onOpen({ categoryId: c.id, row: r })}
                         />
                       </li>
                     );
@@ -561,13 +585,13 @@ function LimitRow({
   row,
   currency,
   progress,
-  onEdit,
+  onOpen,
 }: {
   name: string;
   row: CategoryLimitRow;
   currency: string;
   progress: number | null;
-  onEdit: (() => void) | undefined;
+  onOpen: () => void;
 }) {
   const available = row.budgetedMinor + row.rolledInMinor;
   const used = available > 0 ? Math.min(1, row.spentMinor / available) : row.spentMinor > 0 ? 1 : 0;
@@ -626,17 +650,15 @@ function LimitRow({
       </span>
     </div>
   );
-  return onEdit ? (
+  return (
     <button
       type="button"
-      onClick={onEdit}
+      onClick={onOpen}
       className="block w-full hover:bg-surface-2"
-      aria-label={`Change ${name}’s limit`}
+      aria-label={`${name}: its transactions and history`}
     >
       {body}
     </button>
-  ) : (
-    body
   );
 }
 
@@ -708,5 +730,286 @@ function LimitDialog({
         </DialogActions>
       </div>
     </Dialog>
+  );
+}
+
+// ── A category up close (§4) ─────────────────────────────────────────────────────────────────
+
+/** The transactions behind a category's figure this month, and its last six months. */
+function CategoryDrawer({
+  householdId,
+  month,
+  categoryId,
+  row,
+  name,
+  onEdit,
+  onClose,
+}: {
+  householdId: string;
+  month: BudgetMonth;
+  categoryId: string;
+  row: CategoryLimitRow | undefined;
+  name: string;
+  onEdit: (() => void) | undefined;
+  onClose: () => void;
+}) {
+  const scope = month.budget.scope;
+  const history = useQuery({
+    queryKey: [
+      'households',
+      householdId,
+      'budgets',
+      month.budget.id,
+      'history',
+      categoryId,
+      month.month,
+    ],
+    queryFn: async () =>
+      (
+        await api<{ data: BudgetCategoryHistory }>(
+          'GET',
+          `${base(householdId)}/budgets/${month.budget.id}/categories/${categoryId}/history?to=${month.month}`,
+        )
+      ).data,
+  });
+  const from = `${month.month}-01`;
+  const lastDay = new Date(Date.parse(`${addMonths(month.month, 1)}-01T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const txns = useQuery({
+    queryKey: ['households', householdId, 'transactions', 'budget', scope, categoryId, month.month],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        lens: scope === 'mine' ? 'me' : 'shared',
+        categories: categoryId,
+        from,
+        to: lastDay,
+        includeExcluded: 'false',
+        limit: '100',
+      });
+      return (
+        await api<{ data: Transaction[] }>('GET', `${base(householdId)}/transactions?${params}`)
+      ).data.filter((t) => !t.hasSplits);
+    },
+  });
+  const { currency } = month;
+  const months = history.data?.months ?? [];
+  const peak = Math.max(1, ...months.map((m) => Math.max(m.spentMinor, m.budgetedMinor ?? 0)));
+
+  return (
+    <Dialog title={name} variant="drawer" isOpen onOpenChange={(open) => (open ? null : onClose())}>
+      <div className="space-y-5">
+        <p className="text-sm text-muted">{monthName(month.month)}</p>
+        {row ? (
+          <div className="grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-border bg-border">
+            <Stat label="Budgeted" note={row.rolledInMinor ? 'with last month’s' : undefined}>
+              <Amount
+                minor={row.budgetedMinor + row.rolledInMinor}
+                currency={currency}
+                kind="balance"
+              />
+            </Stat>
+            <Stat label="Spent">
+              <Amount minor={row.spentMinor} currency={currency} kind="balance" />
+            </Stat>
+            <Stat
+              label={row.leftMinor < 0 ? 'Over' : 'Left'}
+              noteTone={row.leftMinor < 0 ? 'danger' : undefined}
+            >
+              <Amount minor={Math.abs(row.leftMinor)} currency={currency} kind="balance" />
+            </Stat>
+          </div>
+        ) : (
+          <p className="text-sm">No limit set for {name} this month.</p>
+        )}
+        {onEdit ? (
+          <Button variant="secondary" onPress={onEdit}>
+            {row ? 'Change limit or rollover' : 'Set a limit'}
+          </Button>
+        ) : null}
+
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">Last 6 months</h3>
+          {history.isPending ? (
+            <Skeleton className="h-24" />
+          ) : (
+            <>
+              <div
+                className="grid h-24 grid-cols-6 items-end gap-2"
+                role="img"
+                aria-label={months
+                  .map((m) => `${monthName(m.month)}: spent ${(m.spentMinor / 100).toFixed(2)}`)
+                  .join('; ')}
+              >
+                {months.map((m) => (
+                  <div key={m.month} className="flex h-full items-end justify-center gap-0.5">
+                    {m.budgetedMinor !== null ? (
+                      <span
+                        className="w-2.5 rounded-t bg-border"
+                        style={{ height: `${(m.budgetedMinor / peak) * 100}%` }}
+                      />
+                    ) : null}
+                    <span
+                      className={clsx(
+                        'w-2.5 rounded-t',
+                        m.budgetedMinor !== null && m.spentMinor > m.budgetedMinor
+                          ? 'bg-danger'
+                          : 'bg-accent',
+                      )}
+                      style={{ height: `${(m.spentMinor / peak) * 100}%` }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-6 gap-2 text-center text-xs text-muted">
+                {months.map((m) => (
+                  <span key={m.month}>
+                    {new Date(`${m.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
+                      month: 'short',
+                      timeZone: 'UTC',
+                    })}
+                  </span>
+                ))}
+              </div>
+              {history.data?.averageSpentMinor != null ? (
+                <p className="text-xs text-muted">
+                  Average spent:{' '}
+                  <Amount
+                    minor={history.data.averageSpentMinor}
+                    currency={currency}
+                    kind="balance"
+                  />{' '}
+                  a month
+                </p>
+              ) : null}
+            </>
+          )}
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">
+            This month
+            {txns.data
+              ? ` · ${txns.data.length} ${txns.data.length === 1 ? 'transaction' : 'transactions'}`
+              : ''}
+          </h3>
+          {txns.isPending ? (
+            <Skeleton className="h-32" />
+          ) : txns.data?.length ? (
+            <ul className="divide-y divide-border rounded-xl border border-border">
+              {txns.data.map((t) => (
+                <li key={t.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <span className="w-14 shrink-0 text-xs text-muted">
+                    {new Date(`${t.date}T00:00:00Z`).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      timeZone: 'UTC',
+                    })}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{t.displayName}</span>
+                  <Amount minor={t.amountMinor} currency={t.currency} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted">Nothing yet.</p>
+          )}
+          <p className="text-xs text-muted">
+            {scope === 'mine'
+              ? 'Counted here because they’re for you alone.'
+              : 'Counted here because they’re for more than one of you.'}{' '}
+            <Link
+              to={`/h/${householdId}/transactions`}
+              search={{
+                category: categoryId,
+                range: 'custom',
+                from,
+                to: lastDay,
+              }}
+              className="text-accent-text underline"
+            >
+              Open in Transactions
+            </Link>
+          </p>
+        </section>
+      </div>
+    </Dialog>
+  );
+}
+
+// ── "Counts in", on a transaction (D22) ──────────────────────────────────────────────────────
+
+/**
+ * Which budget, and which of its categories, a transaction counts in, and why: its attribution
+ * decides (D1), so the drawer says it plainly rather than leave it invisible.
+ */
+export function CountsIn({ householdId, t }: { householdId: string; t: Transaction }) {
+  const household = useQuery(householdQuery(householdId)).data;
+  const budgets = useQuery(budgetsQuery(householdId)).data ?? [];
+  const groups = useQuery(categoriesQuery(householdId)).data ?? [];
+  const ids = t.attribution.map((a) => a.memberId);
+  const me = household?.you.memberId;
+  const scope = ids.length >= 2 ? 'household' : ids[0] === me ? 'mine' : null;
+  const budget = budgets.find((b) => b.scope === scope);
+  const month = t.date.slice(0, 7);
+  const kind = groups.find((g) => g.categories.some((c) => c.id === t.categoryId))?.kind;
+  const counted =
+    !!budget && !t.hasSplits && !t.excluded && kind !== 'transfer' && month >= budget.startsMonth;
+  const view = useQuery({
+    ...budgetMonthQuery(householdId, budget?.id ?? '', month),
+    enabled: counted && kind !== 'income',
+  });
+  if (!budget || t.hasSplits || kind === 'transfer') return null;
+
+  const label = budgets.length > 1 ? (budget.scope === 'mine' ? 'Mine' : 'Ours') : 'Your budget';
+  const name = t.categoryId ? categoryName(groups, t.categoryId) : 'Uncategorized';
+  const why =
+    budgets.length > 1
+      ? budget.scope === 'mine'
+        ? 'It’s for you alone, so it counts in your own budget, wherever it was paid from.'
+        : 'It’s for more than one of you, so it counts in the shared budget, not your own.'
+      : null;
+  const row = view.data?.view.rows.find((r) => r.categoryId === t.categoryId);
+  return (
+    <section className="space-y-1 rounded-xl border border-border p-3">
+      <h3 className="text-xs text-muted">Counts in</h3>
+      {t.excluded ? (
+        <p className="text-sm">Nowhere: it’s excluded from budgets and reports.</p>
+      ) : month < budget.startsMonth ? (
+        <p className="text-sm">
+          Nothing yet: the budget starts in {monthName(budget.startsMonth)}.
+        </p>
+      ) : kind === 'income' ? (
+        <p className="text-sm">
+          <span className="font-medium">{label}</span> · money in for {monthName(month)}
+        </p>
+      ) : (
+        <p className="text-sm">
+          <span className="font-medium">{label}</span> · {name}
+          {row && view.data ? (
+            <>
+              {' · '}
+              <Amount minor={row.spentMinor} currency={view.data.currency} kind="balance" /> of{' '}
+              <Amount
+                minor={row.budgetedMinor + row.rolledInMinor}
+                currency={view.data.currency}
+                kind="balance"
+              />{' '}
+              in {monthName(month)}
+            </>
+          ) : view.data ? (
+            ' · no limit set'
+          ) : null}
+        </p>
+      )}
+      {why ? <p className="text-xs text-muted">{why}</p> : null}
+      <Link
+        to={`/h/${householdId}/budget`}
+        search={{ month, scope: budget.scope }}
+        className="text-xs text-accent-text underline"
+      >
+        See the budget
+      </Link>
+    </section>
   );
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  type BudgetCategoryHistory,
   type BudgetMonth,
   budgetMonthSchema,
   budgetScopeSchema,
@@ -80,6 +81,16 @@ export class BudgetsController {
     @Body(new ZodPipe(setBudgetAmountSchema)) body: z.infer<typeof setBudgetAmountSchema>,
   ): Promise<void> {
     await this.budgets.setAmount(ctx, budgetId, month, categoryId, body.amountMinor);
+  }
+
+  @Get(':budgetId/categories/:categoryId/history')
+  async history(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('categoryId', UuidPipe) categoryId: string,
+    @Query(new ZodPipe(z.object({ to: budgetMonthSchema }))) q: { to: string },
+  ): Promise<{ data: BudgetCategoryHistory }> {
+    return { data: await this.budgets.history(ctx, budgetId, categoryId, q.to) };
   }
 
   @Put(':budgetId/categories/:categoryId')

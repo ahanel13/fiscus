@@ -172,6 +172,27 @@ describe('budgets: category limits', () => {
     });
   });
 
+  it('gives a category’s last six months: its limit once the budget began, and spending throughout', async () => {
+    const r = await A.get(
+      url(`/budgets/${budgetId}/categories/${cat.Groceries}/history?to=${month(0)}`),
+    );
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.data.months).toEqual([
+      { month: month(-5), budgetedMinor: null, spentMinor: 0 },
+      { month: month(-4), budgetedMinor: null, spentMinor: 0 },
+      { month: month(-3), budgetedMinor: null, spentMinor: 60000 },
+      { month: month(-2), budgetedMinor: null, spentMinor: 70000 },
+      { month: month(-1), budgetedMinor: null, spentMinor: 65000 },
+      { month: month(0), budgetedMinor: 65000, spentMinor: 40000 },
+    ]);
+    // This month isn't over, so it isn't in the average.
+    expect(r.body.data.averageSpentMinor).toBe(65000);
+    const income = await A.get(
+      url(`/budgets/${budgetId}/categories/${cat.Paychecks}/history?to=${month(0)}`),
+    );
+    expect(income.status).toBe(404);
+  });
+
   it('has nothing before its first month, or for a month that isn’t one', async () => {
     const before = await A.get(url(`/budgets/${budgetId}/months/${month(-1)}`));
     expect([before.status, before.body.code]).toEqual([404, 'before_budget']);
