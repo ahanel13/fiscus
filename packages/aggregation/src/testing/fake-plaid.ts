@@ -21,6 +21,10 @@ import type { ScriptedPage } from './fake-provider.js';
 // out) from a scenario in Fiscus's terms, the Riveras' Harbor Credit Union by default. It checks
 // the keys and tokens on every request, as Plaid does, and can be told to fail.
 
+/** A 1×1 PNG, as Plaid sends a bank's logo: base64 (#423). */
+export const FAKE_LOGO_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
 export interface FakePlaidOptions {
   clientId?: string;
   secret?: string;
@@ -303,8 +307,8 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
                   institution_id: institutionId,
                   name: 'Harbor Credit Union',
                   url: 'https://harbor-cu.example',
-                  logo: null,
-                  primary_color: '#1f4e79',
+                  logo: FAKE_LOGO_PNG,
+                  primary_color: '#1F4E79',
                   country_codes: ['US'],
                   products: ['transactions', 'liabilities'],
                   oauth: false,

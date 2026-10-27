@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   hasLiabilityAccounts,
   plaidCurrency,
+  MAX_LOGO_BYTES,
   plaidCurrentBalance,
+  plaidInstitution,
   plaidLiabilities,
   plaidMinor,
   plaidProviderBalance,
@@ -205,5 +207,36 @@ describe('liabilities', () => {
     expect(hasLiabilityAccounts([account('depository'), account('investment')])).toBe(false);
     expect(hasLiabilityAccounts([account('depository'), account('credit')])).toBe(true);
     expect(hasLiabilityAccounts([account('loan')])).toBe(true);
+  });
+});
+
+describe('plaidInstitution', () => {
+  // The first bytes of a PNG, then anything: enough for the signature check.
+  const png = (size: number) => {
+    const bytes = Buffer.alloc(size);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+    return bytes.toString('base64');
+  };
+  const bank = { institution_id: 'ins_1', name: 'Harbor Credit Union', url: null };
+
+  it('keeps a bank’s logo as PNG bytes, and its color as #rrggbb (GUIDE-017, #423)', () => {
+    const out = plaidInstitution({ ...bank, logo: png(200), primary_color: '#1F4E79' });
+    expect(out.providerInstitutionId).toBe('ins_1');
+    expect(out.logoPng?.length).toBe(200);
+    expect(out.color).toBe('#1f4e79');
+    expect(out.url).toBeUndefined();
+  });
+
+  it('drops a logo that isn’t a PNG, or is too big, and a color that isn’t one', () => {
+    const notPng = Buffer.from('<svg onload="alert(1)"/>').toString('base64');
+    expect(plaidInstitution({ ...bank, logo: notPng, primary_color: 'red' })).toEqual({
+      providerInstitutionId: 'ins_1',
+      name: 'Harbor Credit Union',
+    });
+    expect(plaidInstitution({ ...bank, logo: png(MAX_LOGO_BYTES + 1) }).logoPng).toBeUndefined();
+    expect(plaidInstitution({ ...bank, logo: png(MAX_LOGO_BYTES) }).logoPng?.length).toBe(
+      MAX_LOGO_BYTES,
+    );
+    expect(plaidInstitution({ ...bank, primary_color: '#12345' }).color).toBeUndefined();
   });
 });

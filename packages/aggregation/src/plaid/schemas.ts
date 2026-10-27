@@ -111,6 +111,8 @@ export const institutionsGetByIdResponseSchema = z.object({
   }),
 });
 
+export type InstitutionsGetByIdResponse = z.infer<typeof institutionsGetByIdResponseSchema>;
+
 export const transactionsSyncResponseSchema = z.object({
   ...requestId,
   added: z.array(plaidTransactionSchema),

@@ -173,12 +173,18 @@ export interface AggregationProvider {
   liabilities?(secret: ProviderSecret): Promise<ProviderLiability[]>;
   /** Ends the connection at the provider (Plaid's `/item/remove`, D14). */
   remove(secret: ProviderSecret): Promise<void>;
+  /** A bank's name, logo and color, for providers that have them (#423); needs no connection. */
+  institution?(providerInstitutionId: string): Promise<ProviderInstitution>;
 }
 
 export interface ProviderInstitution {
   providerInstitutionId?: string;
   name: string;
   url?: string;
+  /** The bank's logo, a PNG, when the provider has one (#423). */
+  logoPng?: Uint8Array;
+  /** The bank's color, `#RRGGBB`, when the provider has one. */
+  color?: string;
 }
 
 /** What connecting a bank produces, for the connections table and the choose-accounts step. */

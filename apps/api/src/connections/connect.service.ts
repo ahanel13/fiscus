@@ -7,10 +7,12 @@ import {
   type PlaidAccount,
   type PlaidClient,
   type PlaidCredentialsResult,
+  plaidInstitution,
   resolvePlaidCredentials,
   SimpleFinClient,
   simpleFinItemId,
 } from '@fiscus/aggregation';
+import type { ProviderInstitution } from '@fiscus/domain';
 import { FieldCrypto } from '@fiscus/crypto';
 import {
   accounts,
@@ -323,7 +325,7 @@ export class ConnectService {
       .catch(plaidProblem);
 
     let offered: BankAccount[];
-    let institution: { id: string; name: string; url: string | null } | null = null;
+    let institution: ProviderInstitution | null = null;
     try {
       const got = await client.accountsGet(secret);
       offered = got.accounts.map(fromPlaid);
@@ -332,14 +334,14 @@ export class ConnectService {
           got.item.institution_id,
           LINK_COUNTRY_CODES,
         );
-        institution = { id: i.institution_id, name: i.name, url: i.url ?? null };
+        institution = plaidInstitution(i);
       }
     } catch (err) {
       // Nothing is stored yet, so the Item would be orphaned (and billed): end it at Plaid.
       await removeQuietly(client, secret);
       plaidProblem(err);
     }
-    if (replaced?.institution && institution?.id !== replaced.institution) {
+    if (replaced?.institution && institution?.providerInstitutionId !== replaced.institution) {
       await removeQuietly(client, secret);
       throw differentBank();
     }
@@ -349,17 +351,24 @@ export class ConnectService {
       return await this.scope.run(ctx, async (tx, activity) => {
         let institutionId: string | null = null;
         if (institution) {
+          // The bank as Plaid shows it now, with its logo and color (GUIDE-017, #423).
+          const display = {
+            name: institution.name,
+            url: institution.url ?? null,
+            logoPng: institution.logoPng ? Buffer.from(institution.logoPng) : null,
+            color: institution.color ?? null,
+            displayCheckedAt: new Date(),
+          };
           const [row] = await tx
             .insert(institutions)
             .values({
               provider: 'plaid',
-              providerInstitutionId: institution.id,
-              name: institution.name,
-              url: institution.url,
+              providerInstitutionId: institution.providerInstitutionId!,
+              ...display,
             })
             .onConflictDoUpdate({
               target: [institutions.provider, institutions.providerInstitutionId],
-              set: { name: institution.name, url: institution.url, updatedAt: new Date() },
+              set: { ...display, updatedAt: new Date() },
             })
             .returning({ id: institutions.id });
           institutionId = row!.id;

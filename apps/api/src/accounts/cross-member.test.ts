@@ -456,6 +456,7 @@ describe('cross-member visibility (generated)', () => {
               'failingSince',
               'id',
               'importingHistory',
+              'institution',
               'institutionName',
               'lastSyncedAt',
               'nextSyncAt',

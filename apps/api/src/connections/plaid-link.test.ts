@@ -222,7 +222,17 @@ describe('connecting a bank through Plaid Link (#79)', () => {
       provider: 'plaid',
       provider_institution_id: plaid.institutionId,
       name: 'Harbor Credit Union',
+      color: '#1f4e79',
     });
+    expect(institution.display_checked_at).toBeInstanceOf(Date);
+    // Its logo, served from Fiscus's own origin, never the provider's (#423).
+    const logo = await A.request('GET', `/api/v1/institutions/${row.institution_id}/logo`);
+    expect(logo.status).toBe(200);
+    expect(logo.headers['content-type']).toBe('image/png');
+    expect(logo.raw.rawPayload.subarray(0, 4).toString('latin1')).toBe('\x89PNG');
+    expect(
+      (await A.request('GET', `/api/v1/institutions/${crypto.randomUUID()}/logo`)).status,
+    ).toBe(404);
     const secrets = (
       await db.query('SELECT secret_enc FROM connection_secrets WHERE connection_id = $1', [connA])
     ).rows;
@@ -405,6 +415,13 @@ describe('connecting a bank through Plaid Link (#79)', () => {
     expect(owners).toEqual([{ member_id: member.A }]);
     // The closed account stays as it was.
     expect((await A.get(url(`/accounts/${mine.old}`))).body.data.closedAt).not.toBeNull();
+    // A linked account says which bank it syncs from, with its logo and color (#423).
+    expect((await A.get(url(`/accounts/${mine.everyday}`))).body.data.institution).toEqual({
+      id: expect.any(String),
+      name: 'Harbor Credit Union',
+      color: '#1f4e79',
+      hasLogo: true,
+    });
 
     const row = await connectionRow(connA);
     expect(row.status).toBe('ok');
