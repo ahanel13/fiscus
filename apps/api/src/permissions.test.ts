@@ -63,6 +63,18 @@ const txn = async (c: TestClient, accountId: string, amountMinor = -1500) =>
       displayName: 'Item',
     })
   ).body.data.id as string;
+/** This month, `YYYY-MM`, in the fixture household's time zone (UTC). */
+const thisMonth = () => new Date().toISOString().slice(0, 7);
+/** The household's budget, started by A the first time it's needed. */
+let budgetId = '';
+const householdBudget = async () => {
+  if (!budgetId) {
+    const r = await f.A.post(url('/budgets'), { scope: 'household', amounts: [] });
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    budgetId = r.body.data.id;
+  }
+  return budgetId;
+};
 const account = async (c: TestClient, visibility = 'full') =>
   (await c.post(url('/accounts'), { name: 'Extra', type: 'depository', visibility })).body.data
     .id as string;
@@ -840,6 +852,50 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'CAT-04/MEM': async () =>
     refused(await f.B.delete(url(`/categories/${f.uncategorized}`)), 409, 'system_category'),
   'CAT-04/VIEW': async () => refused(await f.V.delete(url(`/categories/${f.uncategorized}`))),
+
+  // ── 4.8 Budgets ──
+  'BUD-01/OWN': async () => {
+    const id = await householdBudget();
+    const list = (await f.A.get(url('/budgets'))).body.data as { id: string; scope: string }[];
+    expect(list.find((b) => b.id === id)?.scope).toBe('household');
+  },
+  'BUD-01/MEM': async () =>
+    ok(await f.B.get(url(`/budgets/${await householdBudget()}/months/${thisMonth()}`))),
+  'BUD-01/VIEW': async () =>
+    ok(await f.V.get(url(`/budgets/${await householdBudget()}/months/${thisMonth()}`))),
+  'BUD-03/OWN': async () =>
+    ok(
+      await f.A.request(
+        'PUT',
+        url(`/budgets/${await householdBudget()}/months/${thisMonth()}/amounts/${f.uncategorized}`),
+        { amountMinor: 1000 },
+      ),
+    ),
+  'BUD-03/MEM': async () =>
+    ok(
+      await f.B.request(
+        'PUT',
+        url(`/budgets/${await householdBudget()}/categories/${f.uncategorized}`),
+        { rollover: true },
+      ),
+    ),
+  'BUD-03/VIEW': async () =>
+    refused(
+      await f.V.request(
+        'PUT',
+        url(`/budgets/${await householdBudget()}/months/${thisMonth()}/amounts/${f.uncategorized}`),
+        { amountMinor: 1 },
+      ),
+    ),
+  'BUD-04/OWN': async () => {
+    const r = await f.A.post(url('/budgets'), { scope: 'mine', amounts: [] });
+    ok(r);
+    // Only its member sees it (BUD-02): to anyone else it doesn't exist.
+    refused(await f.B.get(url(`/budgets/${r.body.data.id}/months/${thisMonth()}`)), 404);
+  },
+  'BUD-04/MEM': async () => ok(await f.B.post(url('/budgets'), { scope: 'mine', amounts: [] })),
+  'BUD-04/VIEW': async () =>
+    refused(await f.V.post(url('/budgets'), { scope: 'mine', amounts: [] })),
 
   // ── 4.9 Shared costs ──
   'SHR-01/OWN': async () => ok(await f.A.get(url('/split-rules'))),

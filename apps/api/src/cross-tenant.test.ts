@@ -16,7 +16,12 @@ const SECRET_ACCOUNT = 'Bob savings (secret)';
 const SECRET_TAG = 'Bob tag (secret)';
 const SECRET_INSTITUTION = 'Bob bank (secret)';
 /** Path parameters that aren't ids: the same value in every household. */
-const FIXED: Record<string, string> = { date: '2026-01-01', kind: 'shared', key: 'range:reports' };
+const FIXED: Record<string, string> = {
+  date: '2026-01-01',
+  kind: 'shared',
+  key: 'range:reports',
+  month: new Date().toISOString().slice(0, 7),
+};
 
 describe('cross-tenant isolation (generated from routes)', () => {
   let tdb: TestDatabase;
@@ -121,9 +126,11 @@ describe('cross-tenant isolation (generated from routes)', () => {
           effectiveFrom: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10),
         })
       ).body.data;
+      const budget = (await c.post(`${base}/budgets`, { amounts: [] })).body.data;
       return {
         ruleId: rule.id,
         splitRuleId: splitRule.id,
+        budgetId: budget.id,
         transactionId: txn.id,
         categoryId: custom.id,
         groupId: groups[0].id,
