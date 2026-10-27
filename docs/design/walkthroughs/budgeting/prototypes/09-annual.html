@@ -1,0 +1,174 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Budget: annual view · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="on">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row">
+            <h1>Budget</h1>
+            <span class="seg"><span class="on">Ours</span><span class="">Mine</span></span
+            ><span class="badge">Category limits</span>
+          </div>
+          <div class="row">
+            <span class="stepper">‹ <b>2026</b> ›</span
+            ><span class="btn secondary">Month view</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="small muted">
+            Spent per month, rounded to the dollar. November and December show what’s budgeted.
+            <span class="neg">Red</span> is over that month’s budget.
+          </div>
+          <div class="list" style="overflow: hidden">
+            <table class="tbl annual">
+              <tr>
+                <th>Category</th>
+                <th class="amount">Jan</th>
+                <th class="amount">Feb</th>
+                <th class="amount">Mar</th>
+                <th class="amount">Apr</th>
+                <th class="amount">May</th>
+                <th class="amount">Jun</th>
+                <th class="amount">Jul</th>
+                <th class="amount">Aug</th>
+                <th class="amount">Sep</th>
+                <th class="amount">Oct</th>
+                <th class="amount muted">Nov</th>
+                <th class="amount muted">Dec</th>
+                <th class="amount">2026 so far</th>
+                <th class="amount">Budget for 2026</th>
+              </tr>
+              <tr>
+                <td>Rent or mortgage</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount">2,150</td>
+                <td class="amount muted">2,150</td>
+                <td class="amount muted">2,150</td>
+                <td class="amount"><b>21,500</b></td>
+                <td class="amount muted">25,800</td>
+              </tr>
+              <tr>
+                <td>Utilities</td>
+                <td class="amount neg">221</td>
+                <td class="amount neg">240</td>
+                <td class="amount neg">199</td>
+                <td class="amount">172</td>
+                <td class="amount">150</td>
+                <td class="amount">162</td>
+                <td class="amount">157</td>
+                <td class="amount">177</td>
+                <td class="amount">180</td>
+                <td class="amount">164</td>
+                <td class="amount muted">180</td>
+                <td class="amount muted">180</td>
+                <td class="amount"><b>1,823</b></td>
+                <td class="amount muted">2,160</td>
+              </tr>
+              <tr>
+                <td>Groceries</td>
+                <td class="amount">688</td>
+                <td class="amount">640</td>
+                <td class="amount neg">703</td>
+                <td class="amount">655</td>
+                <td class="amount">655</td>
+                <td class="amount neg">731</td>
+                <td class="amount neg">730</td>
+                <td class="amount">613</td>
+                <td class="amount">615</td>
+                <td class="amount">612</td>
+                <td class="amount muted">700</td>
+                <td class="amount muted">700</td>
+                <td class="amount"><b>6,643</b></td>
+                <td class="amount muted">8,400</td>
+              </tr>
+              <tr>
+                <td>Restaurants</td>
+                <td class="amount">180</td>
+                <td class="amount">223</td>
+                <td class="amount neg">260</td>
+                <td class="amount">244</td>
+                <td class="amount neg">301</td>
+                <td class="amount">190</td>
+                <td class="amount">211</td>
+                <td class="amount">242</td>
+                <td class="amount neg">262</td>
+                <td class="amount neg">291</td>
+                <td class="amount muted">250</td>
+                <td class="amount muted">250</td>
+                <td class="amount"><b>2,404</b></td>
+                <td class="amount muted">3,000</td>
+              </tr>
+              <tr>
+                <td>Gas</td>
+                <td class="amount">130</td>
+                <td class="amount">118</td>
+                <td class="amount">141</td>
+                <td class="amount">152</td>
+                <td class="amount neg">162</td>
+                <td class="amount neg">171</td>
+                <td class="amount">141</td>
+                <td class="amount">136</td>
+                <td class="amount">151</td>
+                <td class="amount">118</td>
+                <td class="amount muted">160</td>
+                <td class="amount muted">160</td>
+                <td class="amount"><b>1,420</b></td>
+                <td class="amount muted">1,920</td>
+              </tr>
+              <tr>
+                <td>Pets</td>
+                <td class="amount">72</td>
+                <td class="amount">65</td>
+                <td class="amount neg">210</td>
+                <td class="amount">80</td>
+                <td class="amount">89</td>
+                <td class="amount neg">91</td>
+                <td class="amount neg">90</td>
+                <td class="amount neg">103</td>
+                <td class="amount">72</td>
+                <td class="amount neg">132</td>
+                <td class="amount muted">90</td>
+                <td class="amount muted">90</td>
+                <td class="amount"><b>1,004</b></td>
+                <td class="amount muted">1,080</td>
+              </tr>
+            </table>
+          </div>
+          <div class="small muted">Years follow the household’s fiscal year (January).</div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>

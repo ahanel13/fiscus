@@ -1,0 +1,164 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Budget: 50/30/20 · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="on">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row">
+            <h1>Budget</h1>
+            <span class="seg"><span class="">Ours</span><span class="on">Mine</span></span
+            ><span class="badge">50/30/20</span>
+          </div>
+          <div class="row">
+            <span class="stepper">‹ <b>October 2026</b> ›</span
+            ><span class="btn secondary">Annual view</span><span class="btn secondary">⋯</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="alert info small">
+            Only you see your own budget. Sam sees the household budget, and none of this.
+          </div>
+          <div class="summary">
+            <div>
+              <div class="muted small">Your income</div>
+              <div class="big">$5,700.00</div>
+              <div class="small muted">2 paychecks</div>
+            </div>
+            <div>
+              <div class="muted small">To Ours</div>
+              <div class="big">−$2,600.00</div>
+              <div class="small muted">your contribution this month</div>
+            </div>
+            <div>
+              <div class="muted small">Split by 50/30/20</div>
+              <div class="big">$3,100.00</div>
+              <div class="small muted">income after contributions</div>
+            </div>
+            <div>
+              <div class="muted small">Not spent yet</div>
+              <div class="big">$576.05</div>
+            </div>
+          </div>
+          <div class="grid3">
+            <div class="card">
+              <div class="row spread">
+                <h2 style="margin: 0">
+                  Needs <span class="muted" style="font-weight: 400">· 50%</span>
+                </h2>
+                <span class="badge ok">26% so far</span>
+              </div>
+              <div class="small muted" style="margin: 2px 0 10px">
+                Fixed groups: Home, Financial, plus Medical and Pharmacy
+              </div>
+              <div class="row spread">
+                <span class="big">$802.40</span><span class="muted">of $1,550.00</span>
+              </div>
+              <div class="bar">
+                <b style="width: 51.8%"></b><i class="pace" style="left: 84%"></i>
+              </div>
+              <div class="small" style="margin-top: 10px">
+                <div class="row spread">
+                  <span class="muted">Internet and phone</span><span class="amount">$65.00</span>
+                </div>
+                <div class="row spread">
+                  <span class="muted">Loan payments</span><span class="amount">$310.00</span>
+                </div>
+                <div class="row spread">
+                  <span class="muted">Car maintenance</span><span class="amount">$287.40</span>
+                </div>
+                <div class="row spread">
+                  <span class="muted">Medical</span><span class="amount">$40.00</span>
+                </div>
+                <div class="row spread">
+                  <span class="muted">Pharmacy</span><span class="amount">$100.00</span>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="row spread">
+                <h2 style="margin: 0">
+                  Wants <span class="muted" style="font-weight: 400">· 30%</span>
+                </h2>
+                <span class="badge bad">33% so far</span>
+              </div>
+              <div class="small muted" style="margin: 2px 0 10px">
+                Flexible and non-monthly groups
+              </div>
+              <div class="row spread">
+                <span class="big">$1,021.55</span><span class="muted">of $930.00</span>
+              </div>
+              <div class="bar over">
+                <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+              </div>
+              <div class="small" style="margin-top: 10px">
+                <div class="row spread">
+                  <span class="muted">Restaurants</span><span class="amount">$214.30</span>
+                </div>
+                <div class="row spread">
+                  <span class="muted">Clothing</span><span class="amount">$168.25</span>
+                </div>
+                <div class="row spread">
+                  <span class="muted">Hobbies</span><span class="amount">$289.00</span>
+                </div>
+                <div class="row spread">
+                  <span class="muted">Flights</span><span class="amount">$350.00</span>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="row spread">
+                <h2 style="margin: 0">
+                  Savings <span class="muted" style="font-weight: 400">· 20%</span>
+                </h2>
+                <span class="badge ok">23% so far</span>
+              </div>
+              <div class="small muted" style="margin: 2px 0 10px">
+                Savings group, and transfers to savings and investment accounts
+              </div>
+              <div class="row spread">
+                <span class="big">$700.00</span><span class="muted">of $620.00</span>
+              </div>
+              <div class="bar"><b style="width: 100%"></b></div>
+              <div class="small" style="margin-top: 10px">
+                <div class="row spread">
+                  <span class="muted">Investments</span><span class="amount">$500.00</span>
+                </div>
+                <div class="row spread">
+                  <span class="muted">Savings transfers</span><span class="amount">$200.00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="small muted">
+            Buckets follow each category group’s kind. Move a category between buckets from its
+            menu. <a class="link">Change the split</a>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>

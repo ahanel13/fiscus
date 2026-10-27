@@ -1,0 +1,170 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Budget: flex · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="on">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row">
+            <h1>Budget</h1>
+            <span class="seg"><span class="on">Ours</span><span class="">Mine</span></span
+            ><span class="badge">Flex</span>
+          </div>
+          <div class="row">
+            <span class="stepper">‹ <b>October 2026</b> ›</span
+            ><span class="btn secondary">Annual view</span><span class="btn secondary">⋯</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="summary">
+            <div>
+              <div class="muted small">Money in</div>
+              <div class="big">$4,600.00</div>
+            </div>
+            <div>
+              <div class="muted small">Fixed</div>
+              <div class="big">$2,551.22</div>
+              <div class="small muted">of $2,567.00</div>
+            </div>
+            <div>
+              <div class="muted small">Set aside</div>
+              <div class="big">$400.00</div>
+              <div class="small muted">for non-monthly costs</div>
+            </div>
+            <div>
+              <div class="muted small">Flexible left</div>
+              <div class="big">$96.39</div>
+              <div class="small muted">5 days to go</div>
+            </div>
+          </div>
+          <div class="card flexcard">
+            <div class="row spread">
+              <div>
+                <h2 style="margin: 0">Flexible spending</h2>
+                <div class="small muted">
+                  One number for everything that isn’t fixed or non-monthly
+                </div>
+              </div>
+              <div style="text-align: right">
+                <div class="big">
+                  $1,408.61
+                  <span class="muted" style="font-size: 15px; font-weight: 400">of $1,505.00</span>
+                </div>
+                <div class="small muted">On pace: 84% of the month, 94% of the budget</div>
+              </div>
+            </div>
+            <div class="bar">
+              <b style="width: 93.6%"></b><i class="pace" style="left: 84%"></i>
+            </div>
+            <div class="cols small">
+              <div class="row spread">
+                <span class="muted">Groceries</span><span class="amount">$612.48</span>
+              </div>
+              <div class="row spread">
+                <span class="muted">Restaurants</span><span class="amount">$291.30</span>
+              </div>
+              <div class="row spread">
+                <span class="muted">Pets</span><span class="amount">$131.62</span>
+              </div>
+              <div class="row spread">
+                <span class="muted">Gas</span><span class="amount">$118.40</span>
+              </div>
+              <div class="row spread">
+                <span class="muted">Household supplies</span><span class="amount">$86.10</span>
+              </div>
+              <div class="row spread">
+                <span class="muted">Electronics</span><span class="amount">$59.99</span>
+              </div>
+              <div class="row spread">
+                <span class="muted">Subscriptions</span><span class="amount">$45.97</span>
+              </div>
+              <div class="row spread">
+                <span class="muted">Entertainment</span><span class="amount">$40.00</span>
+              </div>
+              <div class="row spread">
+                <span class="muted">Coffee</span><span class="amount">$22.75</span>
+              </div>
+            </div>
+          </div>
+          <div class="grid2">
+            <div class="list budget">
+              <div class="item head">
+                <div class="grow"><b>Fixed</b></div>
+                <div class="col small muted">Budgeted</div>
+                <div class="col small muted">Spent</div>
+              </div>
+              <div class="item">
+                <div class="grow">Rent or mortgage <span class="badge ok">Paid</span></div>
+                <div class="amount col">$2,150.00</div>
+                <div class="amount col">$2,150.00</div>
+              </div>
+              <div class="item">
+                <div class="grow">Utilities</div>
+                <div class="amount col">$180.00</div>
+                <div class="amount col">$164.22</div>
+              </div>
+              <div class="item">
+                <div class="grow">Internet and phone <span class="badge ok">Paid</span></div>
+                <div class="amount col">$95.00</div>
+                <div class="amount col">$95.00</div>
+              </div>
+              <div class="item">
+                <div class="grow">Car insurance <span class="badge ok">Paid</span></div>
+                <div class="amount col">$142.00</div>
+                <div class="amount col">$142.00</div>
+              </div>
+            </div>
+            <div class="list budget">
+              <div class="item head">
+                <div class="grow"><b>Non-monthly</b></div>
+                <div class="col small muted">This month</div>
+                <div class="col small muted">Saved</div>
+              </div>
+              <div class="item">
+                <div class="grow">
+                  Travel
+                  <div class="small muted">$3,600.00 a year · $300.00 a month</div>
+                  <div class="bar"><b style="width: 40.3%"></b></div>
+                </div>
+                <div class="amount col">$300.00</div>
+                <div class="amount col">$1,450.00</div>
+              </div>
+              <div class="item">
+                <div class="grow">
+                  Gifts
+                  <div class="small muted">$1,200.00 a year · $100.00 a month</div>
+                  <div class="bar"><b style="width: 31.7%"></b></div>
+                </div>
+                <div class="amount col">$100.00</div>
+                <div class="amount col">$380.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>
