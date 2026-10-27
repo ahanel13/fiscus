@@ -54,7 +54,28 @@ export interface BudgetSuggestion {
 export const setBudgetAmountSchema = z.object({
   amountMinor: z.number().int().min(0).max(1_000_000_000_00),
 });
-export const setBudgetCategorySchema = z.object({ rollover: z.boolean() });
+/** How the budget treats a category in every month: rollover (§3.1), a yearly figure (D12). */
+export const setBudgetCategorySchema = z
+  .object({
+    rollover: z.boolean(),
+    yearlyMinor: z.number().int().min(0).max(1_000_000_000_00).nullable(),
+  })
+  .partial()
+  .refine((v) => v.rollover !== undefined || v.yearlyMinor !== undefined, 'Nothing to change');
+
+/** The flexible number from a month on (flex, §3.4). */
+export const setFlexibleSchema = z.object({
+  amountMinor: z.number().int().min(0).max(1_000_000_000_00),
+});
+
+/**
+ * Switches strategy from a month on (#104, D14): this month or a later one. Earlier months keep
+ * the strategy they had, and every amount is kept.
+ */
+export const switchStrategySchema = z.object({
+  strategy: z.enum(['category', 'flex']),
+  fromMonth: budgetMonthSchema,
+});
 
 export interface CategoryLimitRow {
   categoryId: string;
@@ -75,13 +96,49 @@ export interface CategoryLimitsMonth {
   totals: { budgetedMinor: number; spentMinor: number; leftMinor: number; overCount: number };
 }
 
+/** A month of a budget running flex (walkthrough §3.4). */
+export interface FlexMonth {
+  strategy: 'flex';
+  fixed: { categoryId: string; budgetedMinor: number; spentMinor: number; leftMinor: number }[];
+  nonMonthly: {
+    categoryId: string;
+    yearlyMinor: number | null;
+    setAsideMinor: number;
+    spentMinor: number;
+    savedMinor: number;
+  }[];
+  flexible: {
+    budgetedMinor: number;
+    spentMinor: number;
+    leftMinor: number;
+    categories: { categoryId: string; spentMinor: number }[];
+  };
+  incomeMinor: number;
+  contributionsMinor: number;
+  totals: {
+    fixedBudgetedMinor: number;
+    fixedSpentMinor: number;
+    setAsideMinor: number;
+    spentMinor: number;
+  };
+}
+
 export interface BudgetMonth {
   budget: BudgetSummary;
   month: string;
   currency: string;
   /** Whether you can change it: owners and members for the household's, you for your own. */
   canEdit: boolean;
-  view: CategoryLimitsMonth;
+  view: CategoryLimitsMonth | FlexMonth;
+}
+
+/** What a switch would show in its first month (#104): now, and under the new strategy. */
+export interface StrategyPreview {
+  fromMonth: string;
+  before: CategoryLimitsMonth | FlexMonth;
+  after: CategoryLimitsMonth | FlexMonth;
+  /** Flex's starting number: the flexible categories' limits added up, so nothing is lost. */
+  flexibleMinor: number | null;
 }
 
 /** A category's last months in a budget (§4): its limit (null before the budget) and spending. */

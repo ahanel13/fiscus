@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type {
-  BudgetCategoryHistory,
-  BudgetMonth,
-  BudgetSummary,
-  CategoryGroup,
-  CategoryLimitRow,
-  Household,
-  Transaction,
+import {
+  type BudgetCategoryHistory,
+  type BudgetMonth,
+  type BudgetSummary,
+  type CategoryGroup,
+  type CategoryLimitRow,
+  type CategoryLimitsMonth,
+  type FlexMonth,
+  type StrategyPreview,
+  type Household,
+  type Transaction,
+  formatMoney,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
@@ -34,6 +38,8 @@ import {
   Dialog,
   DialogActions,
   LoadingRegion,
+  RadioCard,
+  RadioGroup,
   SegmentedControl,
   Skeleton,
   Switch,
@@ -367,12 +373,25 @@ function MonthView({
     null,
   );
   const [open, setOpen] = useState<{ categoryId: string; row?: CategoryLimitRow } | null>(null);
+  const [yearly, setYearly] = useState<{ categoryId: string; yearlyMinor: number | null } | null>(
+    null,
+  );
+  const [flexible, setFlexible] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const strategy = data.data?.view.strategy ?? budget.strategy;
 
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <MonthStepper month={shown} startsMonth={budget.startsMonth} />
-        <Badge>Category limits</Badge>
+        <div className="flex items-center gap-2">
+          <Badge>{STRATEGY_NAMES[strategy as 'category' | 'flex'] ?? 'Category limits'}</Badge>
+          {data.data?.canEdit ? (
+            <Button variant="ghost" size="sm" onPress={() => setSwitching(true)}>
+              Change how you budget
+            </Button>
+          ) : null}
+        </div>
       </div>
       {data.isPending ? (
         <LoadingRegion label="Loading the month">
@@ -383,15 +402,48 @@ function MonthView({
         </LoadingRegion>
       ) : data.isError ? (
         <Alert>Couldn’t load {monthName(shown)}. Try again in a moment.</Alert>
+      ) : data.data.view.strategy === 'flex' ? (
+        <FlexBody
+          data={data.data as BudgetMonth & { view: FlexMonth }}
+          groups={groups}
+          onOpen={setOpen}
+          onYearly={data.data.canEdit ? setYearly : undefined}
+          onFlexible={data.data.canEdit ? () => setFlexible(true) : undefined}
+        />
       ) : (
         <MonthBody
-          data={data.data}
+          data={data.data as BudgetMonth & { view: CategoryLimitsMonth }}
           groups={groups}
           householdId={household.id}
           onOpen={setOpen}
           onEdit={data.data.canEdit ? setEditing : undefined}
         />
       )}
+      {yearly && data.data ? (
+        <YearlyDialog
+          householdId={household.id}
+          month={data.data}
+          categoryId={yearly.categoryId}
+          yearlyMinor={yearly.yearlyMinor}
+          name={categoryName(groups, yearly.categoryId)}
+          onClose={() => setYearly(null)}
+        />
+      ) : null}
+      {flexible && data.data?.view.strategy === 'flex' ? (
+        <FlexibleDialog
+          householdId={household.id}
+          month={data.data}
+          amountMinor={data.data.view.flexible.budgetedMinor}
+          onClose={() => setFlexible(false)}
+        />
+      ) : null}
+      {switching && data.data ? (
+        <StrategyDialog
+          householdId={household.id}
+          month={data.data}
+          onClose={() => setSwitching(false)}
+        />
+      ) : null}
       {open && data.data ? (
         <CategoryDrawer
           householdId={household.id}
@@ -417,6 +469,7 @@ function MonthView({
           categoryId={editing.categoryId}
           row={editing.row}
           name={categoryName(groups, editing.categoryId)}
+          showRollover={strategy === 'category'}
           onClose={() => setEditing(null)}
         />
       ) : null}
@@ -434,7 +487,7 @@ function MonthBody({
   onOpen,
   onEdit,
 }: {
-  data: BudgetMonth;
+  data: BudgetMonth & { view: CategoryLimitsMonth };
   groups: CategoryGroup[];
   householdId: string;
   onOpen: (e: { categoryId: string; row?: CategoryLimitRow }) => void;
@@ -669,6 +722,7 @@ function LimitDialog({
   categoryId,
   row,
   name,
+  showRollover = true,
   onClose,
 }: {
   householdId: string;
@@ -676,6 +730,7 @@ function LimitDialog({
   categoryId: string;
   row: CategoryLimitRow | undefined;
   name: string;
+  showRollover?: boolean;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -713,13 +768,17 @@ function LimitDialog({
           onChange={setAmount}
           description="Later months keep it until you change it."
         />
-        <Switch isSelected={rollover} onChange={setRollover}>
-          Roll over what’s left
-        </Switch>
-        <p className="text-xs text-muted">
-          What’s left at the end of each month, or what’s overspent, moves to the next month’s{' '}
-          {name}.
-        </p>
+        {showRollover ? (
+          <>
+            <Switch isSelected={rollover} onChange={setRollover}>
+              Roll over what’s left
+            </Switch>
+            <p className="text-xs text-muted">
+              What’s left at the end of each month, or what’s overspent, moves to the next month’s{' '}
+              {name}.
+            </p>
+          </>
+        ) : null}
         <DialogActions>
           <Button variant="secondary" onPress={onClose}>
             Cancel
@@ -969,7 +1028,24 @@ export function CountsIn({ householdId, t }: { householdId: string; t: Transacti
         ? 'It’s for you alone, so it counts in your own budget, wherever it was paid from.'
         : 'It’s for more than one of you, so it counts in the shared budget, not your own.'
       : null;
-  const row = view.data?.view.rows.find((r) => r.categoryId === t.categoryId);
+  const v = view.data?.view;
+  const row =
+    v?.strategy === 'category'
+      ? v.rows.find((r) => r.categoryId === t.categoryId)
+      : v?.strategy === 'flex'
+        ? (() => {
+            const fixed = v.fixed.find((r) => r.categoryId === t.categoryId);
+            if (fixed) return { ...fixed, rolledInMinor: 0 };
+            if (v.flexible.categories.some((c) => c.categoryId === t.categoryId)) {
+              return {
+                budgetedMinor: v.flexible.budgetedMinor,
+                spentMinor: v.flexible.spentMinor,
+                rolledInMinor: 0,
+              };
+            }
+            return undefined;
+          })()
+        : undefined;
   return (
     <section className="space-y-1 rounded-xl border border-border p-3">
       <h3 className="text-xs text-muted">Counts in</h3>
@@ -986,6 +1062,10 @@ export function CountsIn({ householdId, t }: { householdId: string; t: Transacti
       ) : (
         <p className="text-sm">
           <span className="font-medium">{label}</span> · {name}
+          {v?.strategy === 'flex' &&
+          v.flexible.categories.some((c) => c.categoryId === t.categoryId)
+            ? ' (flexible spending)'
+            : ''}
           {row && view.data ? (
             <>
               {' · '}
@@ -1011,5 +1091,421 @@ export function CountsIn({ householdId, t }: { householdId: string; t: Transacti
         See the budget
       </Link>
     </section>
+  );
+}
+
+// ── Flex (§3.4) ──────────────────────────────────────────────────────────────────────────────
+
+const STRATEGY_NAMES = { category: 'Category limits', flex: 'Flex' } as const;
+
+function FlexBody({
+  data,
+  groups,
+  onOpen,
+  onYearly,
+  onFlexible,
+}: {
+  data: BudgetMonth & { view: FlexMonth };
+  groups: CategoryGroup[];
+  onOpen: (e: { categoryId: string; row?: CategoryLimitRow }) => void;
+  onYearly: ((e: { categoryId: string; yearlyMinor: number | null }) => void) | undefined;
+  onFlexible: (() => void) | undefined;
+}) {
+  const { view, currency, month } = data;
+  const progress = monthProgress(month);
+  const money = (minor: number, className?: string) => (
+    <Amount minor={minor} currency={currency} kind="balance" className={className} />
+  );
+  const f = view.flexible;
+  const used =
+    f.budgetedMinor > 0 ? Math.min(1, f.spentMinor / f.budgetedMinor) : f.spentMinor > 0 ? 1 : 0;
+  const asRow = (r: FlexMonth['fixed'][number]): CategoryLimitRow => ({
+    ...r,
+    rolledInMinor: 0,
+    rollover: false,
+  });
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4">
+        <Stat label="Money in">{money(view.incomeMinor)}</Stat>
+        <Stat label="Fixed" note={`of ${formatMinor(view.totals.fixedBudgetedMinor, currency)}`}>
+          {money(view.totals.fixedSpentMinor)}
+        </Stat>
+        <Stat label="Set aside" note="for non-monthly costs">
+          {money(view.totals.setAsideMinor)}
+        </Stat>
+        <Stat
+          label="Flexible left"
+          noteTone={f.leftMinor < 0 ? 'danger' : undefined}
+          note={f.leftMinor < 0 ? 'over' : undefined}
+        >
+          {money(Math.abs(f.leftMinor))}
+        </Stat>
+      </div>
+
+      <Card className="space-y-3">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="mr-auto">
+            <h2 className="font-semibold">Flexible spending</h2>
+            <p className="text-sm text-muted">
+              One number for everything that isn’t fixed or non-monthly.
+            </p>
+          </div>
+          <p className="text-right">
+            <span className="text-lg font-semibold">{money(f.spentMinor)}</span>{' '}
+            <span className="text-sm text-muted">of {formatMinor(f.budgetedMinor, currency)}</span>
+          </p>
+          {onFlexible ? (
+            <Button variant="secondary" size="sm" onPress={onFlexible}>
+              Change
+            </Button>
+          ) : null}
+        </div>
+        <div
+          className="relative h-2 rounded-full bg-surface-2"
+          role="meter"
+          aria-label={`Flexible spending: ${Math.round(used * 100)}% used`}
+          aria-valuenow={Math.round(used * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className={clsx('h-full rounded-full', f.leftMinor < 0 ? 'bg-danger' : 'bg-accent')}
+            style={{ width: `${used * 100}%` }}
+          />
+          {progress !== null ? (
+            <span
+              aria-hidden
+              className="absolute -top-1 -bottom-1 w-0.5 bg-fg/40"
+              style={{ left: `${progress * 100}%` }}
+            />
+          ) : null}
+        </div>
+        {f.categories.length ? (
+          <ul className="grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2 md:grid-cols-3">
+            {f.categories.map((c) => (
+              <li key={c.categoryId}>
+                <button
+                  type="button"
+                  className="flex w-full justify-between gap-2 rounded px-1 hover:bg-surface-2"
+                  onClick={() => onOpen({ categoryId: c.categoryId })}
+                >
+                  <span className="truncate text-muted">{categoryName(groups, c.categoryId)}</span>
+                  {money(c.spentMinor)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="overflow-hidden rounded-xl border border-border bg-surface">
+          <h3 className="border-b border-border px-4 py-2 font-semibold">Fixed</h3>
+          {view.fixed.length ? (
+            <ul className="divide-y divide-border">
+              {view.fixed.map((r) => (
+                <li key={r.categoryId}>
+                  <button
+                    type="button"
+                    onClick={() => onOpen({ categoryId: r.categoryId, row: asRow(r) })}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-surface-2"
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {categoryName(groups, r.categoryId)}
+                      {r.budgetedMinor > 0 && r.spentMinor >= r.budgetedMinor ? (
+                        <Badge tone="positive" className="ml-2">
+                          Paid
+                        </Badge>
+                      ) : null}
+                    </span>
+                    <span className="text-muted">{money(r.budgetedMinor)}</span>
+                    <span className={clsx('w-24 text-right', r.leftMinor < 0 && 'text-danger')}>
+                      {money(r.spentMinor)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 py-3 text-sm text-muted">No fixed costs this month.</p>
+          )}
+        </section>
+        <section className="overflow-hidden rounded-xl border border-border bg-surface">
+          <h3 className="border-b border-border px-4 py-2 font-semibold">Non-monthly</h3>
+          {view.nonMonthly.length ? (
+            <ul className="divide-y divide-border">
+              {view.nonMonthly.map((r) => (
+                <li key={r.categoryId}>
+                  <button
+                    type="button"
+                    disabled={!onYearly}
+                    onClick={() =>
+                      onYearly?.({ categoryId: r.categoryId, yearlyMinor: r.yearlyMinor })
+                    }
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm enabled:hover:bg-surface-2"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{categoryName(groups, r.categoryId)}</span>
+                      <span className="text-xs text-muted">
+                        {r.yearlyMinor === null
+                          ? 'No yearly amount set'
+                          : `${formatMinor(r.yearlyMinor, currency)} a year · ${formatMinor(r.setAsideMinor, currency)} a month`}
+                      </span>
+                    </span>
+                    <span className="text-right">
+                      <span className="block text-xs text-muted">Saved</span>
+                      {money(r.savedMinor)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 py-3 text-sm text-muted">
+              Travel, gifts and other costs that come once or twice a year show here.
+            </p>
+          )}
+        </section>
+      </div>
+    </>
+  );
+}
+
+function formatMinor(minor: number, currency: string) {
+  return formatMoney(minor, currency);
+}
+
+/** The flexible number from this month on (§3.4). */
+function FlexibleDialog({
+  householdId,
+  month,
+  amountMinor,
+  onClose,
+}: {
+  householdId: string;
+  month: BudgetMonth;
+  amountMinor: number;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [amount, setAmount] = useState<number | null>(amountMinor);
+  const save = useMutation({
+    mutationFn: () =>
+      api('PUT', `${base(householdId)}/budgets/${month.budget.id}/months/${month.month}/flexible`, {
+        body: { amountMinor: amount ?? 0 },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', month.budget.id],
+      });
+      toast('Flexible spending saved.');
+      onClose();
+    },
+  });
+  const err = save.error as ApiError | null;
+  return (
+    <Dialog title="Flexible spending" isOpen onOpenChange={(open) => (open ? null : onClose())}>
+      <div className="space-y-4">
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <AmountInput
+          label={`From ${monthName(month.month)}`}
+          currency={month.currency}
+          value={amount}
+          onChange={setAmount}
+          description="Later months keep it until you change it. Earlier months keep theirs."
+        />
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button isPending={save.isPending} onPress={() => save.mutate()}>
+            Save
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
+  );
+}
+
+/** A non-monthly category's yearly figure, a twelfth of it set aside each month (D12). */
+function YearlyDialog({
+  householdId,
+  month,
+  categoryId,
+  yearlyMinor,
+  name,
+  onClose,
+}: {
+  householdId: string;
+  month: BudgetMonth;
+  categoryId: string;
+  yearlyMinor: number | null;
+  name: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [amount, setAmount] = useState<number | null>(yearlyMinor);
+  const save = useMutation({
+    mutationFn: () =>
+      api('PUT', `${base(householdId)}/budgets/${month.budget.id}/categories/${categoryId}`, {
+        body: { yearlyMinor: amount },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', month.budget.id],
+      });
+      toast(`${name} saved.`);
+      onClose();
+    },
+  });
+  const err = save.error as ApiError | null;
+  return (
+    <Dialog title={name} isOpen onOpenChange={(open) => (open ? null : onClose())}>
+      <div className="space-y-4">
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <AmountInput
+          label="A year"
+          currency={month.currency}
+          value={amount}
+          onChange={setAmount}
+          description={
+            amount
+              ? `${formatMinor(Math.round(amount / 12), month.currency)} set aside each month, and spent from when it comes.`
+              : 'A twelfth of it is set aside each month, and spent from when it comes.'
+          }
+        />
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button isPending={save.isPending} onPress={() => save.mutate()}>
+            Save
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
+  );
+}
+
+// ── Change how you budget (§5, #104) ─────────────────────────────────────────────────────────
+
+/** Switches strategy from this month or next, with a preview of the first month (D14). */
+function StrategyDialog({
+  householdId,
+  month,
+  onClose,
+}: {
+  householdId: string;
+  month: BudgetMonth;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const current = month.view.strategy;
+  const target = current === 'flex' ? 'category' : 'flex';
+  const now = thisMonth();
+  const next = addMonths(now, 1);
+  const [from, setFrom] = useState(next);
+  const preview = useQuery({
+    queryKey: ['households', householdId, 'budgets', month.budget.id, 'preview', target, from],
+    queryFn: async () =>
+      (
+        await api<{ data: StrategyPreview }>(
+          'GET',
+          `${base(householdId)}/budgets/${month.budget.id}/strategy-preview?strategy=${target}&fromMonth=${from}`,
+        )
+      ).data,
+  });
+  const save = useMutation({
+    mutationFn: () =>
+      api('PUT', `${base(householdId)}/budgets/${month.budget.id}/strategy`, {
+        body: { strategy: target, fromMonth: from },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['households', householdId, 'budgets'] });
+      toast(`Your budget uses ${STRATEGY_NAMES[target].toLowerCase()} from ${monthName(from)}.`);
+      onClose();
+    },
+  });
+  const err = save.error as ApiError | null;
+  const p = preview.data;
+  return (
+    <Dialog
+      title={`Switch to ${STRATEGY_NAMES[target].toLowerCase()}`}
+      size="lg"
+      isOpen
+      onOpenChange={(open) => (open ? null : onClose())}
+    >
+      <div className="space-y-4">
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <p className="text-sm text-muted">
+          Nothing is deleted. Every amount you’ve set is kept, and switching back brings it all
+          back.
+        </p>
+        <p className="text-sm">
+          {target === 'flex'
+            ? 'Flex budgets fixed costs one by one, saves up for non-monthly ones, and gives everything else one number.'
+            : 'Category limits give each category a limit of its own.'}
+        </p>
+        <RadioGroup label="Starting" value={from} onChange={setFrom}>
+          <RadioCard
+            value={next}
+            title={monthName(next)}
+            description={`${monthName(now)} stays as it is.`}
+          />
+          <RadioCard value={now} title={monthName(now)} description="This month, as it stands." />
+        </RadioGroup>
+        {preview.isPending ? (
+          <Skeleton className="h-24" />
+        ) : p ? (
+          <div className="space-y-1 rounded-xl border border-border p-3 text-sm">
+            <p className="font-medium">In {monthName(p.fromMonth)}</p>
+            {p.after.strategy === 'flex' ? (
+              <>
+                <p>
+                  Flexible spending:{' '}
+                  <Amount
+                    minor={p.after.flexible.budgetedMinor}
+                    currency={month.currency}
+                    kind="balance"
+                  />
+                  , your flexible categories’ limits added up.
+                </p>
+                <p>
+                  Fixed costs:{' '}
+                  <Amount
+                    minor={p.after.totals.fixedBudgetedMinor}
+                    currency={month.currency}
+                    kind="balance"
+                  />
+                  , their limits as they are.
+                </p>
+                <p className="text-muted">
+                  Non-monthly categories save up once you give them a yearly amount.
+                </p>
+              </>
+            ) : (
+              <p>
+                Each category’s limit as you last set it:{' '}
+                <Amount
+                  minor={p.after.totals.budgetedMinor}
+                  currency={month.currency}
+                  kind="balance"
+                />{' '}
+                in all. The flexible number stays saved, for switching back.
+              </p>
+            )}
+          </div>
+        ) : null}
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button isPending={save.isPending} onPress={() => save.mutate()}>
+            Switch from {monthName(from)}
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
   );
 }

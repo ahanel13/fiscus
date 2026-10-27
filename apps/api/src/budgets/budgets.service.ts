@@ -20,6 +20,9 @@ import {
   type CategoryLimitsView,
   computeBudgetMonth,
   firstDayOf,
+  flex,
+  flexibleFor,
+  type FlexView,
   type MonthActivity,
   suggestAmounts,
 } from '@fiscus/domain';
@@ -31,6 +34,7 @@ import type {
   BudgetSuggestion,
   BudgetSummary,
   createBudgetSchema,
+  StrategyPreview,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import { and, asc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
@@ -44,7 +48,7 @@ import { spendingLensFilter } from '../visibility/visibility-scope.js';
 type CreateInput = z.infer<typeof createBudgetSchema>;
 type BudgetRow = typeof budgets.$inferSelect;
 
-const STRATEGIES = { category: categoryLimits };
+const STRATEGIES = { category: categoryLimits, flex };
 const monthOfDate = (d: string) => d.slice(0, 7);
 
 /**
@@ -170,14 +174,138 @@ export class BudgetsService {
         .select({ currency: households.baseCurrency })
         .from(households)
         .where(eq(households.id, ctx.householdId));
-      const view = out.view as CategoryLimitsView;
       return {
         budget: summaryOf(row, out.kind),
         month,
         currency: h!.currency,
         canEdit: canEdit(ctx, scope),
-        view: { strategy: 'category', ...view },
+        view: viewOf(out.kind, out.view),
       };
+    });
+  }
+
+  /**
+   * What switching to `strategy` from `fromMonth` would show in that month (#104): the month as
+   * it is, and as it would be. Flex starts from the flexible categories' limits added up.
+   */
+  async preview(
+    ctx: HouseholdContext,
+    budgetId: string,
+    strategy: 'category' | 'flex',
+    fromMonth: string,
+  ): Promise<StrategyPreview> {
+    return this.scope.run(ctx, async (tx) => {
+      const row = await findBudget(tx, budgetId);
+      await checkSwitchMonth(tx, ctx, row, fromMonth);
+      const scope: BudgetScope = row.memberId ? 'mine' : 'household';
+      const definition = await loadDefinition(tx, row);
+      const ledger = await this.#activity(tx, ctx, scope, monthOfDate(row.startsMonth), fromMonth);
+      const before = computeBudgetMonth(definition, fromMonth, ledger, STRATEGIES);
+      const flexibleMinor = strategy === 'flex' ? flexibleStart(definition, fromMonth) : null;
+      const switched = withPeriod(definition, fromMonth, strategy, flexibleMinor);
+      const after = computeBudgetMonth(switched, fromMonth, ledger, STRATEGIES);
+      return {
+        fromMonth,
+        before: viewOf(before.kind, before.view),
+        after: viewOf(after.kind, after.view),
+        flexibleMinor,
+      };
+    });
+  }
+
+  /** Switches strategy from a month on (D14): every amount is kept, earlier months unchanged. */
+  async switchStrategy(
+    ctx: HouseholdContext,
+    budgetId: string,
+    strategy: 'category' | 'flex',
+    fromMonth: string,
+  ): Promise<BudgetSummary> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      await checkSwitchMonth(tx, ctx, row, fromMonth);
+      const definition = await loadDefinition(tx, row);
+      const current = definition.periods
+        .filter((p) => p.fromMonth <= fromMonth)
+        .sort((a, b) => (a.fromMonth < b.fromMonth ? 1 : -1))[0];
+      if (current?.kind === strategy) {
+        throw new Problem(409, 'same_strategy', 'The budget already runs this way then');
+      }
+      const settings =
+        strategy === 'flex'
+          ? { flexibleMinor: { [fromMonth]: flexibleStart(definition, fromMonth) } }
+          : {};
+      await tx
+        .insert(budgetStrategies)
+        .values({
+          householdId: ctx.householdId,
+          budgetId,
+          fromMonth: firstDayOf(fromMonth),
+          strategy,
+          settings,
+        })
+        .onConflictDoUpdate({
+          target: [budgetStrategies.budgetId, budgetStrategies.fromMonth],
+          set: { strategy, settings },
+        });
+      // A later switch already scheduled would hide this one: it goes.
+      await tx
+        .delete(budgetStrategies)
+        .where(
+          and(
+            eq(budgetStrategies.budgetId, budgetId),
+            sql`${budgetStrategies.fromMonth} > ${firstDayOf(fromMonth)}::date`,
+          ),
+        );
+      await record(activity, row, 'budget.strategy_switched', {
+        strategy,
+        fromMonth,
+        from: current?.kind ?? null,
+      });
+      const { today } = await householdRanges(tx, ctx.householdId);
+      return this.#summary(tx, ctx, row, monthOfDate(today));
+    });
+  }
+
+  /** The flexible number from a month on (flex, §3.4). */
+  async setFlexible(
+    ctx: HouseholdContext,
+    budgetId: string,
+    month: string,
+    amountMinor: number,
+  ): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      const periods = await tx
+        .select()
+        .from(budgetStrategies)
+        .where(eq(budgetStrategies.budgetId, budgetId));
+      const period = periods
+        .filter((p) => monthOfDate(p.fromMonth) <= month)
+        .sort((a, b) => (a.fromMonth < b.fromMonth ? 1 : -1))[0];
+      if (!period || period.strategy !== 'flex') {
+        throw new Problem(409, 'not_flex', 'The budget doesn’t use flex in that month');
+      }
+      const given = (period.settings.flexibleMinor ?? {}) as Record<string, number>;
+      await tx
+        .update(budgetStrategies)
+        .set({
+          settings: { ...period.settings, flexibleMinor: { ...given, [month]: amountMinor } },
+        })
+        .where(
+          and(
+            eq(budgetStrategies.budgetId, budgetId),
+            eq(budgetStrategies.fromMonth, period.fromMonth),
+          ),
+        );
+      await record(
+        activity,
+        row,
+        'budget.flexible_changed',
+        { month },
+        { before: flexibleFor(month, new Map(Object.entries(given))), after: amountMinor },
+      );
     });
   }
 
@@ -286,7 +414,7 @@ export class BudgetsService {
     ctx: HouseholdContext,
     budgetId: string,
     categoryId: string,
-    rollover: boolean,
+    change: { rollover?: boolean | undefined; yearlyMinor?: number | null | undefined },
   ): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
       const row = await findBudget(tx, budgetId);
@@ -294,12 +422,21 @@ export class BudgetsService {
       if (!(await spendingCategories(tx)).has(categoryId)) throw problems.notFound();
       await tx
         .insert(budgetCategories)
-        .values({ householdId: ctx.householdId, budgetId, categoryId, rollover })
+        .values({
+          householdId: ctx.householdId,
+          budgetId,
+          categoryId,
+          rollover: change.rollover ?? false,
+          yearlyMinor: change.yearlyMinor ?? null,
+        })
         .onConflictDoUpdate({
           target: [budgetCategories.budgetId, budgetCategories.categoryId],
-          set: { rollover },
+          set: {
+            ...(change.rollover !== undefined ? { rollover: change.rollover } : {}),
+            ...(change.yearlyMinor !== undefined ? { yearlyMinor: change.yearlyMinor } : {}),
+          },
         });
-      await record(activity, row, 'budget.rollover_changed', { categoryId, rollover });
+      await record(activity, row, 'budget.category_changed', { categoryId, ...change });
     });
   }
 
@@ -511,4 +648,57 @@ async function record(
         }
       : {}),
   });
+}
+
+/** The api's shape of a strategy's month. */
+function viewOf(kind: BudgetStrategyKind, view: unknown): BudgetMonth['view'] {
+  if (kind === 'flex') return { strategy: 'flex', ...(view as FlexView) };
+  return { strategy: 'category', ...(view as CategoryLimitsView) };
+}
+
+/** A switch starts this month or later (D14): months that have started keep their strategy. */
+async function checkSwitchMonth(
+  tx: Executor,
+  ctx: HouseholdContext,
+  row: BudgetRow,
+  fromMonth: string,
+): Promise<void> {
+  const { today } = await householdRanges(tx, ctx.householdId);
+  const thisMonth = monthOfDate(today);
+  if (fromMonth < thisMonth || fromMonth < monthOfDate(row.startsMonth)) {
+    throw new Problem(
+      422,
+      'switch_month_started',
+      'A budget changes strategy from this month or a later one',
+      'Earlier months keep the strategy they had.',
+    );
+  }
+}
+
+/** Flex's first flexible number: the flexible categories' amounts in that month, added up. */
+function flexibleStart(definition: Awaited<ReturnType<typeof loadDefinition>>, month: string) {
+  const amounts = amountsFor(month, definition.amounts);
+  return definition.categories
+    .filter((c) => c.kind === 'flexible')
+    .reduce((sum, c) => sum + (amounts.get(c.id) ?? 0), 0);
+}
+
+/** The definition as it would be with a switch from `fromMonth`, later switches dropped. */
+function withPeriod(
+  definition: Awaited<ReturnType<typeof loadDefinition>>,
+  fromMonth: string,
+  strategy: BudgetStrategyKind,
+  flexibleMinor: number | null,
+) {
+  return {
+    ...definition,
+    periods: [
+      ...definition.periods.filter((p) => p.fromMonth < fromMonth),
+      {
+        fromMonth,
+        kind: strategy,
+        settings: flexibleMinor === null ? {} : { flexibleMinor: { [fromMonth]: flexibleMinor } },
+      },
+    ],
+  };
 }

@@ -9,6 +9,9 @@ import {
   createBudgetSchema,
   setBudgetAmountSchema,
   setBudgetCategorySchema,
+  setFlexibleSchema,
+  type StrategyPreview,
+  switchStrategySchema,
 } from '@fiscus/shared';
 import {
   Body,
@@ -101,6 +104,38 @@ export class BudgetsController {
     @Param('categoryId', UuidPipe) categoryId: string,
     @Body(new ZodPipe(setBudgetCategorySchema)) body: z.infer<typeof setBudgetCategorySchema>,
   ): Promise<void> {
-    await this.budgets.setCategory(ctx, budgetId, categoryId, body.rollover);
+    await this.budgets.setCategory(ctx, budgetId, categoryId, body);
+  }
+
+  /** What switching would show in its first month (#104). */
+  @Get(':budgetId/strategy-preview')
+  async preview(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Query(new ZodPipe(switchStrategySchema)) q: z.infer<typeof switchStrategySchema>,
+  ): Promise<{ data: StrategyPreview }> {
+    return { data: await this.budgets.preview(ctx, budgetId, q.strategy, q.fromMonth) };
+  }
+
+  @Put(':budgetId/strategy')
+  async switchStrategy(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Body(new ZodPipe(switchStrategySchema)) body: z.infer<typeof switchStrategySchema>,
+  ): Promise<{ data: BudgetSummary }> {
+    return {
+      data: await this.budgets.switchStrategy(ctx, budgetId, body.strategy, body.fromMonth),
+    };
+  }
+
+  @Put(':budgetId/months/:month/flexible')
+  @HttpCode(204)
+  async setFlexible(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
+    @Body(new ZodPipe(setFlexibleSchema)) body: z.infer<typeof setFlexibleSchema>,
+  ): Promise<void> {
+    await this.budgets.setFlexible(ctx, budgetId, month, body.amountMinor);
   }
 }

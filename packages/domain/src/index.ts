@@ -30,6 +30,14 @@ export {
   type CategoryLimitsSettings,
   type CategoryLimitsView,
 } from './category-limits.js';
+export {
+  flex,
+  flexibleFor,
+  type FlexFixedRow,
+  type FlexNonMonthlyRow,
+  type FlexSettings,
+  type FlexView,
+} from './flex.js';
 export { splitRuleFor, splitShares, type SplitPolicyRow, type SplitRuleInput } from './split.js';
 export {
   addMonths,
