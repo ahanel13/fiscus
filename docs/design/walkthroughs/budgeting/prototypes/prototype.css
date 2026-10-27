@@ -672,3 +672,9 @@ p {
 .grid2 .col {
   width: 100px;
 }
+.setup {
+  padding: 24px 28px;
+}
+.setup p {
+  max-width: 640px;
+}

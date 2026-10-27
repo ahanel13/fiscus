@@ -1,7 +1,8 @@
 # Walkthrough: budgets and shared costs (design, M3)
 
 This designs budgeting and shared costs before they're built (#339). It covers:
-- setting up a first budget;
+- which budgets a household gets, from how it handles money;
+- setting up a first budget, in one step;
 - a month in each of the four strategies;
 - switching strategies;
 - shared and personal budgets in one household;
@@ -26,6 +27,11 @@ images after editing a prototype, see
 
 Decisions are numbered (**D1**, **D2**, …) and collected [at the end](#decisions), with the
 issues they shape.
+
+**Simple by default.** Fiscus can do a lot here: four strategies, shared and personal budgets,
+allowances, split rules. Very little of it is asked up front. A person on their own, or a couple
+budgeting together, gets one budget in one click, as a list of categories with limits. The rest
+is there when someone goes looking for it (D21–D24).
 
 ---
 
@@ -71,38 +77,52 @@ it. The one exception is an allowance (§7): the household budget shows how much
 
 ### Which budgets a household gets
 
-The finance style sets the default (information architecture §5):
+**D21. The finance style decides, so setup asks nothing about whose budget it is.** Creating a
+household already asks whether it's just you, and if not, how you handle money together (ADR
+0006 §8). Budgets follow the answer:
 
-| | Single member | Combined | Hybrid | Separate | Roommates |
-|---|---|---|---|---|---|
-| Budgets offered | Mine | Ours only | Ours and Mine | Mine first, Ours on request | Mine; shared bills live in Shared costs |
-| **Ours · Mine** switch | Hidden | Hidden | Shown | Shown | Shown once Ours exists |
+| Household | Budgets | What you see |
+|---|---|---|
+| **Just me** | One, yours | **Budget**. No Ours · Mine, no Shared costs |
+| **Combined** ("it's all ours") | One shared budget | **Budget**, covering everything. No switch, no settle-up |
+| **Hybrid** (yours / mine / ours) | The shared one first; each person can add their own | Ours · Mine, once someone adds their own |
+| **Separate** | Each person's own | Your budget, and Shared costs for what you split |
+| **Roommates** | Each person's own | Your budget, with shared bills in Shared costs |
+
+- **On your own, your budget is a personal one** (`member_id` set), even though it's the only one.
+  Ours counts what's attributed to two or more people, which is nothing in a household of one.
+  When someone joins, your budget stays yours and stays private, and a shared one can be added
+  for what you share (§7a).
+- **One budget shows no scope at all.** The page is just **Budget**: no switch, no "Ours" or
+  "Mine" label. The words appear only when there are two budgets to tell apart.
+- The style is shown on setup in one line, with **Change**, so a couple who set up as Hybrid
+  aren't surprised by a shared budget.
 
 ---
 
 ## 2. Setting up a budget
 
-| Whose, and how | Starting amounts |
+| One step | Then check the amounts |
 |---|---|
-| ![Set up a budget](budgeting/01-set-up.png) | ![Starting amounts](budgeting/02-starting-amounts.png) |
+| ![Start a budget](budgeting/01-set-up.png) | ![Starting amounts](budgeting/02-starting-amounts.png) |
 
-With no budget yet, the Budget page explains itself in a sentence and offers **Set up a
-budget** (the information architecture's empty state). Setting up is two steps:
-1. **Whose and how.** Ours or Mine, each with what it counts and who sees it, then the
-   strategy. Each strategy says in a line who it suits, and that you can switch later.
-2. **Starting amounts.** One amount per category, prefilled.
+With no budget yet, the Budget page offers to start one in a single step:
+- **Start from the last 3 months**, the main button, or **Start from zero**.
+- One line says whose budget this is, from the finance style (D21), with **Change**.
+- **Start from the last 3 months** opens the amounts to check before anything is saved.
 
-**D5. Start from your history.** Most people arrive with months of imported or synced history, so
-the first budget shouldn't start at zero.
-- Amounts are prefilled from the scope's **3-month average**: the last three full months, skipping
-  empty ones as Fiscus's averages do, rounded to the nearest $5.
-- Or from **last month**, or **start from zero**.
+**D5. Start from your history, as category limits, with no questions.**
+- Most people arrive with months of imported or synced history, so the first budget shouldn't
+  start at zero. Amounts are prefilled from the budget's **3-month average**: the last three full
+  months, skipping empty ones as Fiscus's averages do, rounded to the nearest $5. Last month's
+  figures, or zero, are a click away.
 - Categories with no spending in those months are left out, and can be added any time.
-- Nothing is saved until **Start budgeting**.
-- Without enough history, the step starts from zero and says why.
-
-The 50/30/20 strategy has its own second step: the split, and the income it's a share of (§3.3).
-It has no per-category amounts.
+- Nothing is saved until **Start budgeting**. Without enough history, setup starts from zero and
+  says why.
+- **The strategy isn't asked.** Every budget starts as **category limits**, the model most
+  budgeting apps use and most people expect. The others are under **Change how you budget**
+  once there's a budget, with the preview that shows what changes (§5). Asking someone to choose
+  between four strategies before they've seen one is the fastest way to lose them.
 
 ---
 
@@ -228,6 +248,18 @@ Selecting a row opens a drawer, as transactions do. It shows:
   rollovers after them follow.
 - Ours edits to past months go into the household's activity like any other.
 
+![A transaction says which budget it counts in](budgeting/15-counts-in.png)
+
+**D22. Every transaction says which budget it counts in.** Attribution decides where spending
+counts (D1), which is right but invisible. So the transaction's drawer says it plainly:
+- **Counts in:** the budget and category, with how that category stands this month.
+- **Why:** "It's for both of you, so it counts in your shared budget, not your own, wherever it
+  was paid from." And what it does in Shared costs, when it does something there.
+- **One click to change it:** "Make it yours alone" sets the attribution, which moves it.
+
+With only one budget there's nothing to choose between, and the line just names the category's
+budget.
+
 ---
 
 ## 5. Switching strategies
@@ -287,13 +319,29 @@ Alex sees Ours and Alex's own Mine. Sam sees Ours and Sam's own Mine. Neither se
   allowance into your own account, which can be a funding target (#113), and spend it from
   there.
 
-**D16. One budget page, two scopes.**
-- Budget has the **Ours · Mine** switch rather than following the global lens: a budget is
-  either scope, never "all".
+**D16. One budget page, two scopes, and the switch only when there are two.**
+- With two budgets, Budget has the **Ours · Mine** switch rather than following the global lens:
+  a budget is either scope, never "all".
 - The lens still applies elsewhere, and choosing **Ours** or **Mine** in the lens opens the
   matching budget.
-- Combined households have only Ours, single-member households only Mine, and neither shows
-  the switch.
+- With one budget, whichever it is, there's no switch and no scope label (D21).
+
+---
+
+## 7a. When the household changes
+
+**D23. Budgets adjust when the household does, and nothing is deleted.**
+- **Someone joins a household of one.** Households of one skip the "how do you handle money
+  together?" question, so it's asked when the first person joins: of the owner, when they
+  invite, and confirmed by both once they're in. Your budget stays yours and private. If the
+  answer is Combined or Hybrid, Budget offers to start a shared one for what you'll share,
+  from zero, since there's no shared history yet.
+- **The style changes later**, in Household settings. Budgets the new style doesn't use are
+  hidden, not deleted: moving from Hybrid to Combined hides the personal budgets, and moving
+  back brings them back as they were. A member's own budget is only ever deleted when they
+  leave (BUD-05).
+- **A second budget is added.** The **Ours · Mine** switch appears, and each budget's
+  transactions say which one they count in (D22).
 
 ---
 
@@ -401,7 +449,7 @@ As everywhere, the other side shows as the **person**, never their account (ADR 
 
 | Where | State | What it says or does |
 |---|---|---|
-| Budget | No budget yet | "A budget is a plan for what you spend. Set one up from your last 3 months." **Set up a budget** |
+| Budget | No budget yet | The one-step start (§2): **Start from the last 3 months**, or **Start from zero** |
 | Budget | No history to start from | Setup starts from zero: "There's no spending in this budget's scope yet to start from" |
 | Budget | A month before the budget started | "This budget starts in August 2026." Spending is still shown, with no amounts |
 | Zero-based | Nothing has come in yet | "$0.00 ready to assign. Money that comes in this month appears here." Last month's leftovers are still there to assign |
@@ -416,6 +464,23 @@ As everywhere, the other side shows as the **person**, never their account (ADR 
 
 ---
 
+## 12a. What ships first
+
+**D24. M3 ships in two parts: the simple path first, then the rest.** The model and engine take
+everything in this walkthrough from the start (#98), so nothing is rebuilt later. What waits is
+the screens.
+
+| | First | Later |
+|---|---|---|
+| Budgets | Category limits (#99), the month view (#103), annual view (#106), budgets by finance style (#107), **Change how you budget** with the preview (#104), flex (#102) | Zero-based (#100), 50/30/20 (#101), templates (#105), budget month start day (#71) |
+| Shared costs | Who owes whom (#111), settling up (#112), equal and fixed splits with rules per category (#109), the Shared costs page (#115), flagged changes (#60) | Split by income and its consent (#110, #265), allowances (#114), funding targets (#113), reminders (#116) |
+
+Flex comes first among the other strategies because it's Monarch's, and the one people switching
+from Monarch will look for. Zero-based and 50/30/20 follow once the first two have been used for
+real.
+
+---
+
 ## 13. Compared with Monarch
 
 **Keep:**
@@ -424,7 +489,10 @@ As everywhere, the other side shows as the **person**, never their account (ADR 
 - Monthly and annual views.
 
 **Do better:**
-- **Four strategies, chosen per budget**, instead of two. Switching keeps everything (D14).
+- **Simpler to start:** one click from your history, and the household's own answer about how it
+  handles money, instead of a setup form (D5, D21).
+- **Four strategies, chosen per budget**, instead of two, for those who look. Switching keeps
+  everything (D14).
 - **Shared and personal budgets side by side**, each with its own strategy, kept private where
   they should be (D1–D3).
 - **Starting from history**, not zero (D5).
@@ -443,7 +511,7 @@ As everywhere, the other side shows as the **person**, never their account (ADR 
 | D2 | Contributions are Ours' money in and Mine's money out, never income or spending | #98, #107, #113 |
 | D3 | A Mine budget is visible only to its member | #107 |
 | D4 | Ours is changed by owners and members, with each change in the activity; Mine only by you | #98, #103 |
-| D5 | Setup prefills amounts from the 3-month average | #103, #105 |
+| D5 | Setup is one step: category limits, prefilled from the 3-month average; the strategy isn't asked | #103, #105 |
 | D6 | Unbudgeted and uncategorized spending always shows | #103 |
 | D7 | Card spending counts when it happens; card payments are transfers | #98 |
 | D8 | Zero-based assigns only money that has arrived | #100 |
@@ -454,11 +522,15 @@ As everywhere, the other side shows as the **person**, never their account (ADR 
 | D13 | Budgets are computed when read; past months can change | #98 |
 | D14 | Switching keeps every amount and applies from a start month | #104 |
 | D15 | Allowances are an Ours line funding a Mine, with F5's notice | #114 |
-| D16 | Budget has an Ours · Mine switch; the lens opens the matching one | #103, #107 |
+| D16 | With two budgets, an Ours · Mine switch; with one, no scope shown | #103, #107 |
 | D17 | Shared expenses: owed by split rule and attribution, paid by ownership | #111 |
 | D18 | Flagged changes wait outside the balance; closed statements take adjustments | #60, #111 |
 | D19 | A split by income waits for everyone's agreement, and shows only the ratio | #109, #110, #265 |
 | D20 | Settle-ups are matched transfers, payments made elsewhere, or adjustments | #112 |
+| D21 | The finance style decides which budgets a household gets; one person's budget is a personal one | #107 |
+| D22 | Every transaction says which budget it counts in, and why | #103 |
+| D23 | Budgets adjust when the household changes; budgets a style doesn't use are hidden, not deleted | #107, #234 |
+| D24 | M3 ships the simple path first: category limits, flex, and shared costs with equal and fixed splits | #97, #108 |
 
 ## Open questions
 
