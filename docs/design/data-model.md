@@ -251,6 +251,8 @@ Children of `accounts` (`account_owners`, `balance_snapshots`) use **composite f
 `(household_id, account_id)`, and owners reference `(household_id, member_id)`, so no row can
 point across households.
 
+**`account_owner_periods`** (#447, migrations `0055`, `0056`): who owned an account before its current owners. `(account_id, valid_until, member_id)` PK, `household_id`, `share_bps`, `valid_from` date null (null: from the account's beginning), `valid_until` date (the first day the next owners count from). A transaction with no attribution of its own is for whoever owned its account on its effective date: `fiscus_owners_on(account, date)` returns the period covering the date, else today's `account_owners`. Changing owners "from today" (the default except in Combined households) closes the current owners into a period ending today; "including its history" deletes the account's periods. Visible with the account, written by whoever may change its owners, like `account_owners`. Who can **see** an account still follows today's owners alone; only spending views (attribution, "Paid by", "Transfer to") read the history.
+
 **`balance_snapshots`**: `(account_id, as_of)` PK, `household_id`, `balance_minor`, `available_minor` null, `credit_limit_minor` null, `source` enum `provider`/`computed`/`manual`. One row per account per day (end of day). Net-worth history and range charts read only this table (ADR 0011).
 
 Which source a day has (#86, `@fiscus/ledger`):

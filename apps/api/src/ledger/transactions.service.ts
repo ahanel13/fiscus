@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { FieldCrypto } from '@fiscus/crypto';
 import {
-  accountOwners,
   accounts,
   categories,
   type Executor,
@@ -23,6 +22,7 @@ import {
   householdRanges,
   linkable,
   linkTransfers,
+  ownersOnDates,
   recomputeBalances,
   SUGGEST_WINDOW_DAYS,
   TRANSFER_WINDOW_BUSINESS_DAYS,
@@ -1743,16 +1743,8 @@ export class TransactionsService {
           .where(inArray(accounts.id, accountIds))
       ).map((a) => [a.id, a]),
     );
-    const owners = new Map<string, { memberId: string; shareBps: number }[]>();
-    for (const o of await tx
-      .select()
-      .from(accountOwners)
-      .where(inArray(accountOwners.accountId, accountIds))) {
-      owners.set(o.accountId, [
-        ...(owners.get(o.accountId) ?? []),
-        { memberId: o.memberId, shareBps: o.shareBps },
-      ]);
-    }
+    // Whoever owned each account on the transaction's date (#447).
+    const ownersOn = await ownersOnDates(tx, accountIds);
     const attributions = new Map<string, { memberId: string; shareBps: number }[]>();
     for (const a of await tx
       .select()
@@ -1786,7 +1778,7 @@ export class TransactionsService {
       // F1: the account is shown only at view-only and above, never through attribution alone.
       const showAccount = level === 'owner' || level === 'full' || level === 'view_only';
       const account = showAccount ? visibleAccounts.get(r.accountId) : undefined;
-      const accountOwners = showAccount ? (owners.get(r.accountId) ?? []) : [];
+      const owners = showAccount ? ownersOn(r.accountId, r.effectiveDate) : [];
       const explicit = attributions.get(r.id);
       const can =
         showAccount || access.attributedPayers.has(r.id)
@@ -1809,9 +1801,9 @@ export class TransactionsService {
         isBusiness: r.isBusiness,
         account: account ? { id: account.id, name: account.name, mask: account.mask } : null,
         paidBy: showAccount
-          ? accountOwners.map((o) => o.memberId)
+          ? owners.map((o) => o.memberId)
           : (access.attributedPayers.get(r.id) ?? []),
-        attribution: explicit ?? accountOwners,
+        attribution: explicit ?? owners,
         attributionInherited: !explicit,
         tagIds: tagIds.get(r.id) ?? [],
         sharedNote: notes.get(r.id)?.shared ?? null,

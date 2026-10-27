@@ -386,6 +386,20 @@
       "when": 1793072580778,
       "tag": "0054_budgets_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793115845302,
+      "tag": "0055_account_owner_periods",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793115846792,
+      "tag": "0056_account_owner_periods_rls",
+      "breakpoints": true
     }
   ]
 }

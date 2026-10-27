@@ -37,7 +37,10 @@ The same account reads "Mine" to its owner and "Alex's" to a partner.
 ### 3. Attribution (transactions)
 - **Who pays** (the account) and **who it's for** (attribution) are separate concepts.
 - `transaction_attributions(transaction_id, member_id, share_bps)`. If absent, attribution
-  inherits from the account's owners. Split children can carry their own attribution.
+  inherits from the account's owners **on the transaction's date** (#447): changing an account's
+  owners counts from the day it's made unless the change includes its history, so a past
+  purchase never moves between budgets on its own. Split children can carry their own
+  attribution.
 - Example: groceries bought on a personal card, attributed "ours". This drives settle-up (§7)
   and makes the purchase appear in shared spending.
 - **Attributing a transaction to another member shares that transaction with them**, even if

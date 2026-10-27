@@ -214,7 +214,8 @@ accounts' transactions into one), so a transaction can be moved to another accou
 drawer, or many from the list.
 
 - Needs ownership of both accounts; same currency only. A split moves with all its parts.
-- Explicit attribution stays; inherited attribution follows the new account's owners.
+- Explicit attribution stays; inherited attribution follows the new account's owners on the
+  transaction's date (#447).
 - Both accounts' computed balances are rebuilt (§2). Entered balances, including ones imported
   from Monarch, don't change: they were the bank's figure.
 - An imported transaction remembers the account it was imported into (`import_account_id`), so

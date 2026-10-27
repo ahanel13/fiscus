@@ -21,6 +21,7 @@ describe('row-level security', () => {
   const COVERED_ELSEWHERE = [
     'account_groups',
     'account_liabilities',
+    'account_owner_periods',
     'activity_transactions',
     'aggregation_credentials',
     'account_placements',
