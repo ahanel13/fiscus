@@ -174,7 +174,13 @@ caller can't see ("Transfer to Anthony").
 | BUD-04 | Set up or change your own budget | own | own | ❌ | Viewers own no accounts, so have no budget of their own |
 | BUD-05 | A member's own budget when they leave | — | — | — | Deleted, with everything under it, as their rules are (RULE-07). Moving out with their history (ADR 0012, #253) takes it with them first |
 
-### 4.9 Tokens and sessions
+### 4.9 Shared costs (ADR 0006 §7)
+| ID | Action | OWN | MEM | VIEW | Notes |
+|---|---|---|---|---|---|
+| SHR-01 | Read the household's split rules | ✅ | ✅ | ✅ | |
+| SHR-02 | Change the default split or a category's rule, or cancel one not yet started | ✅ | ✅ | ❌ | From this month on, never earlier: a month that has started keeps its rule. Each change is in the household's activity. Split by income needs every affected member's consent (#110) |
+
+### 4.10 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
 | TOK-01 | Create / list / revoke own PATs | ✅ | ✅ | ✅ (read scope only) | The token value is shown once |
@@ -182,7 +188,7 @@ caller can't see ("Transfer to Anthony").
 | TOK-03 | Use a PAT for admin endpoints | ❌ | ❌ | ❌ | |
 | TOK-04 | List / revoke own sessions | ✅ | ✅ | ✅ | |
 
-### 4.10 Matrix by actor type (non-role actors)
+### 4.11 Matrix by actor type (non-role actors)
 | ID | Rule | Test focus |
 |---|---|---|
 | PAT-01 | PAT-R can call every read endpoint its member can, and no write endpoint (403 `token_scope`) | All write routes × PAT-R |

@@ -40,6 +40,7 @@ import { SectionPage } from './routes/section.js';
 import { ImportPage } from './routes/import.js';
 import { ReviewPage } from './routes/review.js';
 import { RulesSettings } from './routes/rules.js';
+import { SharedCostsSettings } from './routes/shared-costs-settings.js';
 import { ServerPage } from './routes/server.js';
 import {
   CategoriesSettingsPage,
@@ -284,6 +285,7 @@ const settingsRoutes = [
   settingsSection('/members', MembersSettings),
   settingsSection('/categories', CategoriesSettingsPage),
   settingsSection('/rules', RulesSettings),
+  settingsSection('/shared-costs', SharedCostsSettings),
   settingsSection('/connections', ConnectionsSettings),
 ];
 

@@ -23,6 +23,7 @@ export {
   type SyncRequest,
   type SyncWindow,
 } from './aggregation.js';
+export { splitRuleFor, splitShares, type SplitPolicyRow, type SplitRuleInput } from './split.js';
 export {
   addMonths,
   amountsFor,

@@ -381,6 +381,10 @@ Budgets (#98, migrations `0053`, `0054`; [budgeting walkthrough](walkthroughs/bu
 
 All three tables under `budgets` have composite FKs to it and to `categories`, cascading, and are visible exactly when their budget is.
 
+### 3.7 Shared costs
+
+**`split_policies`** (#109, migrations `0058`, `0059`; ADR 0006 §7, [budgeting walkthrough](walkthroughs/budgeting.md) §9): how a shared expense is split. `household_id`, `category_id` null (null: the household's default), `effective_from` (the first of a month, which a check enforces), `method` enum `equal`/`income_proportional`/`fixed_percent`/`fixed_amount` (null only for a category going back to the default), `params jsonb` (the method's own: `shares` or `amounts`, schemas in `@fiscus/shared`), `created_by_member_id`, `created_at`. UNIQUE NULLS NOT DISTINCT `(household_id, category_id, effective_from)`. What applies in a month is the category's latest row starting on or before it, else the default's, else an equal split (`splitRuleFor` in `@fiscus/domain`). A change starts from this month or later and never reaches back; one in the same month replaces it. Split by income isn't accepted until members can consent (#110). Readable by everyone in the household; owners and members change it (SHR-01/02).
+
 ## 4. Row-level security
 
 ### 4.1 Database roles
@@ -531,7 +535,7 @@ they arrive in M9/M10.
 search, if wanted, decrypts within an already-filtered result set.
 
 ## 9. Forward references (not designed here)
-- **M3:** `split_policies`, `settlement_entries`, `funding_targets`. They reference `household_members`, `categories`, `transactions` (`is_settlement`). Budgets are in §3.6.
+- **M3:** `settlement_entries`, `funding_targets`. They reference `household_members`, `categories`, `transactions` (`is_settlement`). Budgets are in §3.6, split rules in §3.7.
 - **M4:** `recurring_series`, `notification_channels`, `notification_rules`. They reference `merchants`, `accounts`, members.
 - **M6:** `securities`, `holdings`, `lots`, `investment_transactions`, `prices`. They reference `accounts` and use `numeric(28,10)`.
 - **M10:** `change_sets` will reference `audit_events`, and undo replays the inverse operations.

@@ -8,6 +8,7 @@ export * from './api/connections.js';
 export * from './api/households.js';
 export * from './api/ledger.js';
 export * from './api/rules.js';
+export * from './api/shared-costs.js';
 export { MEMBER_COLORS } from './design.js';
 export * from './ranges.js';
 export * from './api/imports.js';

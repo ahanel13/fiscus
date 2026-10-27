@@ -112,8 +112,18 @@ describe('cross-tenant isolation (generated from routes)', () => {
           actions: { markReviewed: true },
         })
       ).body.data;
+      // A split rule not yet started, so cancelling it would work if anything leaked (#109).
+      const { earliestMonth } = (await c.get(`${base}/split-rules`)).body.data;
+      const [year, month] = (earliestMonth as string).split('-').map(Number) as [number, number];
+      const splitRule = (
+        await c.request('PUT', `${base}/split-rules/categories/${custom.id}`, {
+          rule: { method: 'equal' },
+          effectiveFrom: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10),
+        })
+      ).body.data;
       return {
         ruleId: rule.id,
+        splitRuleId: splitRule.id,
         transactionId: txn.id,
         categoryId: custom.id,
         groupId: groups[0].id,
