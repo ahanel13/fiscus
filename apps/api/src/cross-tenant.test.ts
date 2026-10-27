@@ -21,6 +21,7 @@ const FIXED: Record<string, string> = {
   kind: 'shared',
   key: 'range:reports',
   month: new Date().toISOString().slice(0, 7),
+  year: new Date().toISOString().slice(0, 4),
 };
 
 describe('cross-tenant isolation (generated from routes)', () => {

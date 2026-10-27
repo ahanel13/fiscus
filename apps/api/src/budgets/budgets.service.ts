@@ -23,6 +23,7 @@ import {
   flex,
   flexibleFor,
   type FlexView,
+  periodFor,
   type MonthActivity,
   suggestAmounts,
 } from '@fiscus/domain';
@@ -33,6 +34,8 @@ import type {
   BudgetScope,
   BudgetSuggestion,
   BudgetSummary,
+  BudgetYear,
+  BudgetYearRow,
   createBudgetSchema,
   StrategyPreview,
 } from '@fiscus/shared';
@@ -405,6 +408,66 @@ export class BudgetsService {
         averageSpentMinor: full.length
           ? Math.round(full.reduce((s, m) => s + m.spentMinor, 0) / full.length)
           : null,
+      };
+    });
+  }
+
+  /**
+   * A budget's year (§6, #106): twelve months from the household's fiscal year start, each
+   * category's spending in every one, and its limit in each the budget covered, as that month's
+   * strategy reads it: flex has no limit for flexible categories, and sets a twelfth of a
+   * non-monthly one's yearly figure aside.
+   */
+  async year(ctx: HouseholdContext, budgetId: string, year: number): Promise<BudgetYear> {
+    return this.scope.run(ctx, async (tx) => {
+      const row = await findBudget(tx, budgetId);
+      const scope: BudgetScope = row.memberId ? 'mine' : 'household';
+      const ranges = await householdRanges(tx, ctx.householdId);
+      const first = `${year}-${String(ranges.settings.fiscalYearStartMonth).padStart(2, '0')}`;
+      const months = Array.from({ length: 12 }, (_, i) => addMonths(first, i));
+      const ledger = await this.#activity(tx, ctx, scope, months[0]!, months[11]!);
+      const definition = await loadDefinition(tx, row);
+      const startsMonth = monthOfDate(row.startsMonth);
+      const kinds = new Map(definition.categories.map((c) => [c.id, c]));
+      const budgetedIn = (month: string, categoryId: string): number | null => {
+        if (month < startsMonth) return null;
+        const c = kinds.get(categoryId);
+        if (!c) return null;
+        if (periodFor(month, definition.periods).kind === 'flex') {
+          if (c.kind === 'flexible') return null;
+          if (c.kind === 'non_monthly')
+            return c.yearlyMinor === null ? null : Math.round(c.yearlyMinor / 12);
+        }
+        return amountsFor(month, definition.amounts).get(categoryId) ?? null;
+      };
+      const spending = await spendingCategories(tx);
+      const rows: BudgetYearRow[] = definition.categories
+        .filter((c) => spending.has(c.id))
+        .map((c) => {
+          const cells = months.map((m) => ({
+            spentMinor: ledger.get(m)?.spentMinor.get(c.id) ?? 0,
+            budgetedMinor: budgetedIn(m, c.id),
+          }));
+          return {
+            categoryId: c.id,
+            months: cells,
+            spentMinor: cells.reduce((sum, x) => sum + x.spentMinor, 0),
+            budgetedMinor: cells.reduce((sum, x) => sum + (x.budgetedMinor ?? 0), 0),
+          };
+        })
+        .filter((r) => r.spentMinor !== 0 || r.months.some((m) => m.budgetedMinor !== null));
+      const flexible = months.map((m) => {
+        if (m < startsMonth) return null;
+        const p = periodFor(m, definition.periods);
+        if (p.kind !== 'flex') return null;
+        return flexibleFor(m, flex.settings(p.settings).flexibleMinor);
+      });
+      return {
+        year,
+        months,
+        rows,
+        flexible,
+        spentMinor: months.map((_, i) => rows.reduce((sum, r) => sum + r.months[i]!.spentMinor, 0)),
       };
     });
   }
