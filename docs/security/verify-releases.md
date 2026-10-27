@@ -117,6 +117,11 @@ still differs, compare your archive with the published image using
 which files differ, and please [open an issue](https://github.com/ahanel13/fiscus/issues): an
 image that doesn't reproduce is a bug.
 
+Two of your own archives can be compared with `scripts/compare-images.sh first.tar second.tar`:
+it names each layer that differs and the files whose listing or contents changed. When CI's
+two builds differ, it runs this and keeps both archives and its output as the run's `image-diff`
+artifact for a week.
+
 ## 4. The SBOM
 
 Each release attaches an SPDX SBOM per image and platform
