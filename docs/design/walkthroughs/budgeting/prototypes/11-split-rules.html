@@ -1,0 +1,116 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Split rules · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header"><h1>Household settings · Shared costs</h1></div>
+        <div class="content">
+          <div class="card">
+            <h2>Household default</h2>
+            <div class="row" style="gap: 24px">
+              <div><span class="radio on"></span><b>Equal</b></div>
+              <div><span class="radio"></span>By income</div>
+              <div><span class="radio"></span>Fixed percentages</div>
+              <div><span class="radio"></span>Fixed amounts</div>
+            </div>
+            <div class="small muted" style="margin-top: 6px">
+              Applies to every shared expense without a rule of its own.
+            </div>
+          </div>
+          <div class="list">
+            <div class="item head">
+              <div class="grow"><b>Rules for categories</b></div>
+              <span class="btn secondary sm">+ Add a rule</span>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Rent or mortgage</div>
+                <div class="small muted">By income · from Nov 1, 2026</div>
+              </div>
+              <span class="badge warn">Waiting for Sam</span>
+              <div class="small muted" style="width: 170px; text-align: right">
+                Equal until Sam agrees
+              </div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Pets</div>
+                <div class="small muted">Fixed percentages · since Jun 1, 2026</div>
+              </div>
+              <div class="small" style="width: 170px; text-align: right">Sam 70% · you 30%</div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Childcare</div>
+                <div class="small muted">Fixed amounts · since Sep 1, 2026</div>
+              </div>
+              <div class="small" style="width: 170px; text-align: right">
+                You $400 · Sam the rest
+              </div>
+            </div>
+          </div>
+          <div class="small muted">
+            A rule never changes a month that’s been settled. Changing one starts from a date you
+            choose.
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="overlay">
+      <div class="dialog" style="max-width: 560px">
+        <div class="small muted">What Sam sees</div>
+        <h2>Alex suggests splitting Rent by income</h2>
+        <div>
+          From November, each of you would pay rent in proportion to your income. To work out the
+          split, Fiscus needs your income.
+        </div>
+        <div class="card" style="margin-top: 12px; padding: 12px 14px">
+          <div>
+            <span class="radio on"></span><b>Use what comes in</b>
+            <span class="small muted">· your paychecks over the last 3 months</span>
+          </div>
+          <div style="margin-top: 8px">
+            <span class="radio"></span><b>Enter a figure</b>
+            <span class="small muted">· a monthly amount you choose</span>
+          </div>
+        </div>
+        <div class="alert info small" style="margin-top: 12px">
+          <b>Alex will see the split, not your income.</b> But a split like 57% / 43% says roughly
+          how your incomes compare. Alex has agreed to the same.
+        </div>
+        <div class="small muted" style="margin-top: 10px">
+          Until you agree, rent stays split equally. You can stop sharing your income any time; the
+          split then goes back to equal.
+        </div>
+        <div class="actions">
+          <span class="btn secondary">Not now</span><span class="btn secondary">Decline</span
+          ><span class="btn">Agree</span>
+        </div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>

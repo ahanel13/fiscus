@@ -1,0 +1,114 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Transaction: counts in · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="on">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Transactions</h1>
+          <div class="row"><span class="btn secondary">October 2026 ▾</span></div>
+        </div>
+        <div class="content">
+          <div class="list">
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 24</div>
+              <div class="grow">
+                <div>Harbor Market</div>
+                <div class="small muted">Groceries · Joint card</div>
+              </div>
+              <div class="amount">−$84.12</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 22</div>
+              <div class="grow">
+                <div>Lantern Thai</div>
+                <div class="small muted">Restaurants · Sam’s card</div>
+              </div>
+              <div class="amount">−$88.50</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 20</div>
+              <div class="grow">
+                <div>Movie night</div>
+                <div class="small muted">Entertainment · Your card</div>
+              </div>
+              <div class="amount">−$40.00</div>
+            </div>
+            <div class="item sel">
+              <div class="muted small" style="width: 50px">Oct 19</div>
+              <div class="grow">
+                <div>Costco</div>
+                <div class="small muted">Groceries · Your card</div>
+              </div>
+              <div class="amount">−$186.40</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 18</div>
+              <div class="grow">
+                <div>Riverside Vet</div>
+                <div class="small muted">Pets · Sam’s card</div>
+              </div>
+              <div class="amount">−$131.62</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 17</div>
+              <div class="grow">
+                <div>Trailhead Outfitters</div>
+                <div class="small muted">Hobbies · Your card</div>
+              </div>
+              <div class="amount">−$64.99</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <aside class="drawer">
+      <div class="row spread">
+        <h2 style="font-size: 18px; margin: 0">Costco</h2>
+        <span class="muted">✕</span>
+      </div>
+      <div class="small muted">Oct 19, 2026 · Your card</div>
+      <div class="big" style="margin: 12px 0">−$186.40</div>
+      <label class="field"
+        ><span>Category</span>
+        <div class="input select">Groceries</div></label
+      >
+      <label class="field" style="margin-top: 12px"
+        ><span>Who it’s for</span>
+        <div class="input select">You and Sam, equally</div></label
+      >
+      <div class="card counts" style="margin-top: 14px; padding: 12px 14px">
+        <div class="small muted">Counts in</div>
+        <div><b>Ours</b> · Groceries · $612.48 of $735.20 this month</div>
+        <div class="small muted" style="margin-top: 4px">
+          It’s for both of you, so it counts in your shared budget, not your own, wherever it was
+          paid from. In Shared costs, Sam owes you half: $93.20.
+        </div>
+        <div style="margin-top: 8px"><span class="link small">Make it yours alone</span></div>
+      </div>
+    </aside>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>
