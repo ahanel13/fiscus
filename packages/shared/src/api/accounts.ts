@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
 import { optionalRangeFields, type RangeMeta } from '../ranges.js';
-import { currencyCodeSchema } from './households.js';
+import { currencyCodeSchema, type FinanceStyle } from './households.js';
 
 // Accounts, ownership, visibility, balances, and net worth
 // (docs/design/accounts-and-visibility.md, ADR 0006, permissions §3 and §4.2).
@@ -108,7 +108,23 @@ export const updateAccountSchema = z
   .partial()
   .strict();
 
-export const setOwnersSchema = z.object({ owners: ownersSchema });
+/**
+ * From when a change of owners counts (#447): `today` keeps earlier transactions with whoever
+ * owned the account then; `always` makes the new owners count for its whole history.
+ */
+export const ownersFromSchema = z.enum(['today', 'always']);
+export type OwnersFrom = z.infer<typeof ownersFromSchema>;
+
+/** Combined households ("it's all ours") share the past too; the others keep it where it was. */
+export const ownersFromDefault = (style: FinanceStyle): OwnersFrom =>
+  style === 'combined' ? 'always' : 'today';
+
+/** Omit `from` for the household's default (`ownersFromDefault`). */
+export const setOwnersSchema = z.object({
+  owners: ownersSchema,
+  from: ownersFromSchema.optional(),
+});
+export const makeJointSchema = z.object({ from: ownersFromSchema.optional() });
 
 export const setBalanceSchema = z.object({
   amountMinor: minorUnitsSchema,

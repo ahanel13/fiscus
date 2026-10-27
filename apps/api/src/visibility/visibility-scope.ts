@@ -82,8 +82,9 @@ export async function moneyScope(
 
 /**
  * Spending views (transactions, cash flow, budgets) follow attribution (ADR 0006 §5): explicit
- * attribution, else the paying account's owners. `me` / `member:<id>` = attributed to that member
- * alone; `shared` = attributed to two or more; `all` = everything visible.
+ * attribution, else whoever owned the paying account on the transaction's date (#447). `me` /
+ * `member:<id>` = attributed to that member alone; `shared` = attributed to two or more; `all` =
+ * everything visible.
  */
 export async function spendingLensFilter(
   tx: Executor,
@@ -93,7 +94,8 @@ export async function spendingLensFilter(
   if (lens === 'all') return undefined;
   const members = sql`coalesce(
     (SELECT array_agg(ta.member_id) FROM transaction_attributions ta WHERE ta.transaction_id = ${transactions.id}),
-    (SELECT array_agg(o.member_id) FROM account_owners o WHERE o.account_id = ${transactions.accountId}))`;
+    (SELECT array_agg(o.member_id)
+     FROM fiscus_owners_on(${transactions.accountId}, ${transactions.effectiveDate}) o))`;
   if (lens === 'shared') return sql`coalesce(array_length(${members}, 1), 0) >= 2`;
   const member = lens === 'me' ? ctx.memberId : lens.slice('member:'.length);
   if (lens !== 'me') {

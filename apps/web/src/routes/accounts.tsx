@@ -7,7 +7,9 @@ import type {
   AccountVisibility,
   Household,
   HouseholdMember,
+  OwnersFrom,
 } from '@fiscus/shared';
+import { ownersFromDefault } from '@fiscus/shared';
 import {
   keepPreviousData,
   useMutation,
@@ -1418,11 +1420,17 @@ function AccountSettings({
   const err = save.error as ApiError | null;
 
   const [owners, setOwners] = useState(account.owners.map((o) => o.memberId));
+  const [ownersFrom, setOwnersFrom] = useState<OwnersFrom>(
+    ownersFromDefault(household.financeStyle),
+  );
   const othersBefore = account.owners.map((o) => o.memberId).filter((id) => id !== me);
+  const ownersChanged =
+    owners.length !== account.owners.length ||
+    !owners.every((id) => account.owners.some((o) => o.memberId === id));
   const setOwnersMutation = useMutation({
     mutationFn: () =>
       api('PUT', `${base(householdId)}/accounts/${account.id}/owners`, {
-        body: { owners: owners.map((memberId) => ({ memberId })) },
+        body: { owners: owners.map((memberId) => ({ memberId })), from: ownersFrom },
       }),
     onSuccess: async () => {
       await invalidate();
@@ -1515,15 +1523,29 @@ function AccountSettings({
           <p className="text-xs text-muted">
             You can add owners, or remove yourself. Other owners remove themselves.
           </p>
+          {ownersChanged ? (
+            <RadioGroup
+              label="Its past transactions"
+              value={ownersFrom}
+              onChange={(v) => setOwnersFrom(v as OwnersFrom)}
+            >
+              <RadioCard
+                value="today"
+                title="Stay with whoever owned it"
+                description="The change counts from today. Earlier spending stays in the same budgets and shared costs."
+              />
+              <RadioCard
+                value="always"
+                title="Move to the new owners too"
+                description="As if they’d always owned it: its whole history counts for them, in budgets and shared costs."
+              />
+            </RadioGroup>
+          ) : null}
           <div className="flex justify-end">
             <Button
               variant="secondary"
               isPending={setOwnersMutation.isPending}
-              isDisabled={
-                owners.length === 0 ||
-                (owners.length === account.owners.length &&
-                  owners.every((id) => account.owners.some((o) => o.memberId === id)))
-              }
+              isDisabled={owners.length === 0 || !ownersChanged}
               onPress={() => setOwnersMutation.mutate()}
             >
               Update owners

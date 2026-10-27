@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Users } from 'lucide-react';
 import { api, type ApiError } from '../api/client.js';
 import { accountsQuery, householdQuery, membersQuery } from '../api/queries.js';
-import { Button, ConfirmDialog, DialogTrigger, toast } from '../components/ui.js';
+import { Button, Checkbox, ConfirmDialog, DialogTrigger, toast } from '../components/ui.js';
 
 /**
  * In a Combined household ("it's all ours", ADR 0006 §8): your accounts that aren't yet owned by
@@ -15,11 +16,14 @@ export function MakeJointOffer({ householdId }: { householdId: string }) {
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
   const queryClient = useQueryClient();
+  // "It's all ours" usually includes the past (#447); keeping it yours is a click away.
+  const [keepPast, setKeepPast] = useState(false);
   const make = useMutation({
     mutationFn: () =>
       api<{ data: { changed: number } }>(
         'POST',
         `/api/v1/households/${householdId}/accounts/make-joint`,
+        { body: { from: keepPast ? 'today' : 'always' } },
       ),
     onSuccess: async (r) => {
       await queryClient.invalidateQueries({ queryKey: ['households', householdId] });
@@ -70,8 +74,12 @@ export function MakeJointOffer({ householdId }: { householdId: string }) {
           onConfirm={() => make.mutateAsync()}
         >
           {notJoint.map((a) => a.name).join(', ')} will be owned by everyone in equal shares, and
-          everyone can see and categorize {n === 1 ? 'its' : 'their'} transactions. You can change
-          an account’s owners later in its settings, though you can only remove yourself.
+          everyone can see and categorize {n === 1 ? 'its' : 'their'} transactions. Past spending
+          counts as shared too, in budgets and shared costs. You can change an account’s owners
+          later in its settings, though you can only remove yourself.
+          <Checkbox className="mt-3" isSelected={keepPast} onChange={setKeepPast}>
+            Keep spending from before today as mine
+          </Checkbox>
         </ConfirmDialog>
       </DialogTrigger>
     </section>
