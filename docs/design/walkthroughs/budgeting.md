@@ -330,18 +330,57 @@ Alex sees Ours and Alex's own Mine. Sam sees Ours and Sam's own Mine. Neither se
 
 ## 7a. When the household changes
 
+Most households don't start in their final shape. Someone budgets on their own for a while, then
+a partner joins; a couple who kept money separate starts sharing it; someone moves out. Budgets
+follow, and nothing is ever deleted along the way.
+
 **D23. Budgets adjust when the household does, and nothing is deleted.**
-- **Someone joins a household of one.** Households of one skip the "how do you handle money
-  together?" question, so it's asked when the first person joins: of the owner, when they
-  invite, and confirmed by both once they're in. Your budget stays yours and private. If the
-  answer is Combined or Hybrid, Budget offers to start a shared one for what you'll share,
-  from zero, since there's no shared history yet.
-- **The style changes later**, in Household settings. Budgets the new style doesn't use are
-  hidden, not deleted: moving from Hybrid to Combined hides the personal budgets, and moving
-  back brings them back as they were. A member's own budget is only ever deleted when they
-  leave (BUD-05).
-- **A second budget is added.** The **Ours · Mine** switch appears, and each budget's
-  transactions say which one they count in (D22).
+- Households of one skip the "how do you handle money together?" question, so it's asked when
+  the first person joins: of the owner when they invite, and confirmed by both once they're in.
+- Budgets a style doesn't use are **hidden, not deleted**, and come back as they were if the
+  style changes back.
+- A member's own budget is deleted only when they leave without their data (BUD-05). Moving out
+  with their history (ADR 0012, #253) takes it with them.
+
+**From just me:**
+
+| Becoming | Your budget | The shared one |
+|---|---|---|
+| **Combined** | **Share my budget** turns it into the household's, with its strategy, amounts and history, once your accounts are joint | It's yours, shared |
+| **Hybrid** | Stays yours, and private | Starts from the month you start sharing, usually when a joint account appears. From zero, or with your categories as suggestions, never with your history |
+| **Separate**, **Roommates** | Stays yours | None unless asked for. Shared costs appears for what you mark as shared |
+
+The new person is offered their own budget in Hybrid, Separate and Roommates households.
+
+**Between styles later:**
+
+| From → to | What happens |
+|---|---|
+| Hybrid → Combined | **Combine budgets**: the shared one becomes the only one. A preview shows each personal budget's amounts added in, by category, from next month. Personal budgets are hidden |
+| Combined → Hybrid | Nothing moves. Each person can add their own, and accounts stay joint until someone changes them |
+| Either → Separate | A shared budget with amounts stays, but no longer first. Shared costs comes forward |
+| Back to one person | The one remaining is offered **Make it mine**: a shared budget turns into their own, since "shared" counts nothing in a household of one |
+
+**D25. A budget can change scope, keeping its history.** **Share my budget** (yours → the
+household's) and **Make it mine** (the household's → yours) change the scope of the same budget:
+its strategy, amounts and past months stay. Both open the preview from §5 first.
+- Only your own budget can be shared, and only by you: its amounts become visible to everyone.
+- **Make it mine** is offered only once the household has a single member.
+- **Combine budgets** is the one that merges several into one, from a month you choose, and
+  leaves the earlier months as they were.
+
+**D26. Ownership changes count from the day they're made, unless you say otherwise (#447).** A
+transaction with no attribution of its own counts for whoever owned its account **on its date**.
+Without that, making your checking account joint would move every transaction it ever had from
+your budget into the shared one. So making an account joint, or changing its owners, asks:
+- **From today:** your history stays yours. The default in Hybrid, Separate and Roommates
+  households.
+- **Including its history:** right when "it's all ours" includes the past. The default in
+  Combined households.
+
+Who can **see** the account still follows its current owners, as now: a new co-owner sees the
+whole account. What changes is only which budget, and which side of Shared costs, its past
+spending counts on.
 
 ---
 
@@ -531,6 +570,8 @@ real.
 | D22 | Every transaction says which budget it counts in, and why | #103 |
 | D23 | Budgets adjust when the household changes; budgets a style doesn't use are hidden, not deleted | #107, #234 |
 | D24 | M3 ships the simple path first: category limits, flex, and shared costs with equal and fixed splits | #97, #108 |
+| D25 | Share my budget, Make it mine and Combine budgets change scope and keep history | #107 |
+| D26 | Ownership changes count from the day they're made, unless you include the history | #447 |
 
 ## Open questions
 
