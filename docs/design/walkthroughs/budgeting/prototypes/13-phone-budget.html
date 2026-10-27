@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Budget (phone) · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="phone">
+      <div class="topbar"><span>Budget</span><span class="muted">Category limits</span></div>
+      <div class="content">
+        <div class="row spread">
+          <span class="stepper">‹ <b>Oct 2026</b> ›</span
+          ><span class="seg"><span class="on">Ours</span><span class="">Mine</span></span>
+        </div>
+        <div class="card" style="margin-top: 12px">
+          <div class="row spread">
+            <div>
+              <div class="muted small">Left in your budgets</div>
+              <div class="big">$207.36</div>
+            </div>
+            <div class="small muted" style="text-align: right">
+              $4,043.93 spent<br />5 days to go
+            </div>
+          </div>
+        </div>
+        <div class="list" style="margin-top: 12px">
+          <div class="item" style="display: block">
+            <div class="row spread">
+              <span>Groceries</span><span class="amount"><b>$122.72 left</b></span>
+            </div>
+            <div class="bar">
+              <b style="width: 83.3%"></b><i class="pace" style="left: 84%"></i>
+            </div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread">
+              <span>Restaurants</span><span class="amount neg"><b>$41.30 over</b></span>
+            </div>
+            <div class="bar over">
+              <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+            </div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread">
+              <span>Gas</span><span class="amount"><b>$41.60 left</b></span>
+            </div>
+            <div class="bar"><b style="width: 74%"></b><i class="pace" style="left: 84%"></i></div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread">
+              <span>Household supplies</span><span class="amount"><b>$33.90 left</b></span>
+            </div>
+            <div class="bar">
+              <b style="width: 71.7%"></b><i class="pace" style="left: 84%"></i>
+            </div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread">
+              <span>Pets</span><span class="amount neg"><b>$41.62 over</b></span>
+            </div>
+            <div class="bar over">
+              <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+            </div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread">
+              <span>Entertainment</span><span class="amount"><b>$60.00 left</b></span>
+            </div>
+            <div class="bar"><b style="width: 40%"></b><i class="pace" style="left: 84%"></i></div>
+          </div>
+        </div>
+        <div class="small muted" style="margin-top: 8px">Tap a category for its transactions.</div>
+        <div style="height: 70px"></div>
+      </div>
+      <div class="tabs">
+        <div class="">Dashboard</div>
+        <div class="">Transactions</div>
+        <div class="on">Budget</div>
+        <div class="">Accounts</div>
+        <div class="">More</div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>

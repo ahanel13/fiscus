@@ -1,0 +1,146 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Set up a budget: amounts · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="on">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header"><h1>Set up a budget</h1></div>
+        <div class="content">
+          <div class="steps">
+            <span>1. Whose and how</span><span>›</span><span class="on">2. Starting amounts</span>
+          </div>
+          <div class="card row" style="gap: 28px">
+            <div>
+              <span class="radio on"></span><b>3-month average</b>
+              <span class="muted small">· Jul–Sep, rounded</span>
+            </div>
+            <div><span class="radio"></span>Last month</div>
+            <div><span class="radio"></span>Start from zero</div>
+            <div class="grow"></div>
+            <div class="small muted">Your shared spending averaged $3,923.14 a month</div>
+          </div>
+          <div class="list budget">
+            <div class="item head">
+              <div class="grow small muted">Category</div>
+              <div class="col small muted">3-mo average</div>
+              <div class="col small muted">Last month</div>
+              <div class="col small muted">Budget</div>
+            </div>
+            <div class="grp">Home</div>
+            <div class="item">
+              <div class="grow">Rent or mortgage</div>
+              <div class="amount col muted">$2,150.00</div>
+              <div class="amount col muted">$2,150.00</div>
+              <div class="col"><div class="input amount sm">$2,150.00</div></div>
+            </div>
+            <div class="item">
+              <div class="grow">Utilities</div>
+              <div class="amount col muted">$171.40</div>
+              <div class="amount col muted">$180.00</div>
+              <div class="col"><div class="input amount sm">$180.00</div></div>
+            </div>
+            <div class="item">
+              <div class="grow">Internet and phone</div>
+              <div class="amount col muted">$95.00</div>
+              <div class="amount col muted">$95.00</div>
+              <div class="col"><div class="input amount sm">$95.00</div></div>
+            </div>
+            <div class="grp">Food</div>
+            <div class="item">
+              <div class="grow">Groceries</div>
+              <div class="amount col muted">$652.49</div>
+              <div class="amount col muted">$614.80</div>
+              <div class="col"><div class="input amount sm">$655.00</div></div>
+            </div>
+            <div class="item">
+              <div class="grow">Restaurants</div>
+              <div class="amount col muted">$238.15</div>
+              <div class="amount col muted">$262.10</div>
+              <div class="col"><div class="input amount sm">$240.00</div></div>
+            </div>
+            <div class="item">
+              <div class="grow">Coffee</div>
+              <div class="amount col muted">$31.20</div>
+              <div class="amount col muted">$28.40</div>
+              <div class="col"><div class="input amount sm">$30.00</div></div>
+            </div>
+            <div class="grp">Transportation</div>
+            <div class="item">
+              <div class="grow">Gas</div>
+              <div class="amount col muted">$142.70</div>
+              <div class="amount col muted">$151.30</div>
+              <div class="col"><div class="input amount sm">$145.00</div></div>
+            </div>
+            <div class="item">
+              <div class="grow">Car insurance</div>
+              <div class="amount col muted">$142.00</div>
+              <div class="amount col muted">$142.00</div>
+              <div class="col"><div class="input amount sm">$142.00</div></div>
+            </div>
+            <div class="grp">Shopping</div>
+            <div class="item">
+              <div class="grow">Household supplies</div>
+              <div class="amount col muted">$104.33</div>
+              <div class="amount col muted">$88.20</div>
+              <div class="col"><div class="input amount sm">$105.00</div></div>
+            </div>
+            <div class="grp">Fun</div>
+            <div class="item">
+              <div class="grow">Subscriptions</div>
+              <div class="amount col muted">$45.97</div>
+              <div class="amount col muted">$45.97</div>
+              <div class="col"><div class="input amount sm">$46.00</div></div>
+            </div>
+            <div class="item">
+              <div class="grow">Entertainment</div>
+              <div class="amount col muted">$61.50</div>
+              <div class="amount col muted">$40.00</div>
+              <div class="col"><div class="input amount sm">$60.00</div></div>
+            </div>
+            <div class="grp">Family and pets</div>
+            <div class="item">
+              <div class="grow">Pets</div>
+              <div class="amount col muted">$88.40</div>
+              <div class="amount col muted">$72.10</div>
+              <div class="col"><div class="input amount sm">$90.00</div></div>
+            </div>
+            <div class="item">
+              <div class="grow small muted">
+                Categories with no shared spending in 3 months are left out. Add them any time.
+              </div>
+            </div>
+          </div>
+          <div class="row spread">
+            <div><b>$3,938.00</b> <span class="muted">a month · 12 categories</span></div>
+            <div class="row">
+              <span class="btn secondary">Back</span><span class="btn">Start budgeting</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>
