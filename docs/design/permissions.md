@@ -172,7 +172,7 @@ caller can't see ("Transfer to Anthony").
 | BUD-02 | Read a member's own budget (Mine) | own | own | own | Only their member, and system context. Nobody else sees it, or that it exists (D3) |
 | BUD-03 | Set up or change the household's budget: strategy, amounts, category settings | ✅ | ✅ | ❌ | Each change goes into the household's activity (D4) |
 | BUD-04 | Set up or change your own budget | own | own | ❌ | Viewers own no accounts, so have no budget of their own |
-| BUD-05 | A member's own budget when they leave | — | — | — | Deleted, with everything under it, as their rules are (RULE-07) |
+| BUD-05 | A member's own budget when they leave | — | — | — | Deleted, with everything under it, as their rules are (RULE-07). Moving out with their history (ADR 0012, #253) takes it with them first |
 
 ### 4.9 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |

@@ -68,7 +68,8 @@ CREATE TRIGGER budget_categories_mark_write AFTER INSERT OR UPDATE OR DELETE ON 
 
 -- A member's own budget goes when they leave or are removed, as their rules do (RULE-07).
 -- Members leave by left_at, so the foreign key's cascade never fires for them, and whoever removes
--- them can't see their budget. The tables under it go by their foreign keys' cascade.
+-- them can't see their budget. The tables under it go by their foreign keys' cascade. Moving out
+-- with their history (ADR 0012, #253) copies it to their new household before they leave.
 GRANT SELECT, DELETE ON budgets TO fiscus_steward;
 --> statement-breakpoint
 CREATE FUNCTION fiscus_delete_member_budget() RETURNS trigger
