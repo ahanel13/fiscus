@@ -110,6 +110,10 @@ Each release lists:
 - whether rollback needs a restore;
 - the minimum version you can upgrade from directly.
 
+A final release's notes (`scripts/release-notes.sh`) compare with the previous final release, so
+they cover what its pre-releases added too; a pre-release's compare with the latest release of
+either kind.
+
 ## 8. CI checks
 | Check | Status |
 |---|---|

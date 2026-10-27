@@ -10,7 +10,13 @@ tag="$1"
 owner="$2"
 digests="$3"
 version="${tag#v}"
-previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${tag}^" 2>/dev/null || true)
+# A final release compares with the previous final one, so its notes cover its pre-releases too; a
+# pre-release compares with the latest release of either kind (#391).
+case "$version" in
+  *-*) finals_only=() ;;
+  *) finals_only=(--exclude 'v*-*') ;;
+esac
+previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${finals_only[@]}" "${tag}^" 2>/dev/null || true)
 
 if [ -n "$previous" ]; then
   range="$previous..$tag"
