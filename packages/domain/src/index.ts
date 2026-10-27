@@ -23,6 +23,13 @@ export {
   type SyncRequest,
   type SyncWindow,
 } from './aggregation.js';
+export {
+  categoryLimits,
+  suggestAmounts,
+  type CategoryLimitRow,
+  type CategoryLimitsSettings,
+  type CategoryLimitsView,
+} from './category-limits.js';
 export { splitRuleFor, splitShares, type SplitPolicyRow, type SplitRuleInput } from './split.js';
 export {
   addMonths,
