@@ -403,16 +403,16 @@ describe('reading OFX and QFX files', () => {
 });
 
 describe('pathological OFX', () => {
-  // Each must finish in well under a second; the bound leaves room for a slow CI machine.
-  // Linear time, not fast time: a quadratic parser would take hours on 20 MB, so a generous bound
-  // still catches one, without failing on a busy CI runner or laptop.
+  // Each finishes in a second or two on a laptop. Linear time, not fast time: a quadratic parser
+  // would take hours on 20 MB, so a bound of a minute still catches one, and a busy CI runner
+  // (16 s for the noise file on #449) doesn't fail it.
   const quick = <T>(fn: () => T): T => {
     const start = performance.now();
     const out = fn();
-    expect(performance.now() - start).toBeLessThan(15_000);
+    expect(performance.now() - start).toBeLessThan(60_000);
     return out;
   };
-  const SLOW = 30_000;
+  const SLOW = 120_000;
   const near20MB = OFX_LIMITS.bytes - 1024;
 
   it(

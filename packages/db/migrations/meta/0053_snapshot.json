@@ -1,5 +1,5 @@
 {
-  "id": "9770e688-4266-46a7-ae4e-b8c45af7d5fd",
+  "id": "a9dcc492-33f2-4cdf-b651-d901ad3f53de",
   "prevId": "6b72732e-55cd-4486-9d69-5fa41f4f54cf",
   "version": "7",
   "dialect": "postgresql",
@@ -323,120 +323,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.account_owner_periods": {
-      "name": "account_owner_periods",
-      "schema": "",
-      "columns": {
-        "account_id": {
-          "name": "account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "household_id": {
-          "name": "household_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "share_bps": {
-          "name": "share_bps",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "valid_from": {
-          "name": "valid_from",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "valid_until": {
-          "name": "valid_until",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "account_owner_periods_member_id_index": {
-          "name": "account_owner_periods_member_id_index",
-          "columns": [
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "account_owner_periods_household_id_account_id_accounts_household_id_id_fk": {
-          "name": "account_owner_periods_household_id_account_id_accounts_household_id_id_fk",
-          "tableFrom": "account_owner_periods",
-          "tableTo": "accounts",
-          "columnsFrom": [
-            "household_id",
-            "account_id"
-          ],
-          "columnsTo": [
-            "household_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "account_owner_periods_household_id_member_id_household_members_household_id_id_fk": {
-          "name": "account_owner_periods_household_id_member_id_household_members_household_id_id_fk",
-          "tableFrom": "account_owner_periods",
-          "tableTo": "household_members",
-          "columnsFrom": [
-            "household_id",
-            "member_id"
-          ],
-          "columnsTo": [
-            "household_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "account_owner_periods_account_id_valid_until_member_id_pk": {
-          "name": "account_owner_periods_account_id_valid_until_member_id_pk",
-          "columns": [
-            "account_id",
-            "valid_until",
-            "member_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "account_owner_periods_share": {
-          "name": "account_owner_periods_share",
-          "value": "\"account_owner_periods\".\"share_bps\" BETWEEN 1 AND 10000"
-        },
-        "account_owner_periods_dates": {
-          "name": "account_owner_periods_dates",
-          "value": "\"account_owner_periods\".\"valid_from\" IS NULL OR \"account_owner_periods\".\"valid_from\" < \"account_owner_periods\".\"valid_until\""
-        }
-      },
       "isRLSEnabled": false
     },
     "public.account_owners": {
@@ -908,6 +794,469 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.budget_amounts": {
+      "name": "budget_amounts",
+      "schema": "",
+      "columns": {
+        "household_id": {
+          "name": "household_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "budget_id": {
+          "name": "budget_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "month": {
+          "name": "month",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "budget_amounts_category_id_index": {
+          "name": "budget_amounts_category_id_index",
+          "columns": [
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "budget_amounts_household_id_budget_id_budgets_household_id_id_fk": {
+          "name": "budget_amounts_household_id_budget_id_budgets_household_id_id_fk",
+          "tableFrom": "budget_amounts",
+          "tableTo": "budgets",
+          "columnsFrom": [
+            "household_id",
+            "budget_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "budget_amounts_household_id_category_id_categories_household_id_id_fk": {
+          "name": "budget_amounts_household_id_category_id_categories_household_id_id_fk",
+          "tableFrom": "budget_amounts",
+          "tableTo": "categories",
+          "columnsFrom": [
+            "household_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "budget_amounts_budget_id_month_category_id_pk": {
+          "name": "budget_amounts_budget_id_month_category_id_pk",
+          "columns": [
+            "budget_id",
+            "month",
+            "category_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "budget_amounts_month": {
+          "name": "budget_amounts_month",
+          "value": "extract(day from \"budget_amounts\".\"month\") = 1"
+        },
+        "budget_amounts_nonnegative": {
+          "name": "budget_amounts_nonnegative",
+          "value": "\"budget_amounts\".\"amount_minor\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budget_categories": {
+      "name": "budget_categories",
+      "schema": "",
+      "columns": {
+        "household_id": {
+          "name": "household_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "budget_id": {
+          "name": "budget_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rollover": {
+          "name": "rollover",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "bucket": {
+          "name": "bucket",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "yearly_minor": {
+          "name": "yearly_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "budget_categories_category_id_index": {
+          "name": "budget_categories_category_id_index",
+          "columns": [
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "budget_categories_household_id_budget_id_budgets_household_id_id_fk": {
+          "name": "budget_categories_household_id_budget_id_budgets_household_id_id_fk",
+          "tableFrom": "budget_categories",
+          "tableTo": "budgets",
+          "columnsFrom": [
+            "household_id",
+            "budget_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "budget_categories_household_id_category_id_categories_household_id_id_fk": {
+          "name": "budget_categories_household_id_category_id_categories_household_id_id_fk",
+          "tableFrom": "budget_categories",
+          "tableTo": "categories",
+          "columnsFrom": [
+            "household_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "budget_categories_budget_id_category_id_pk": {
+          "name": "budget_categories_budget_id_category_id_pk",
+          "columns": [
+            "budget_id",
+            "category_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "budget_categories_bucket": {
+          "name": "budget_categories_bucket",
+          "value": "\"budget_categories\".\"bucket\" IS NULL OR length(btrim(\"budget_categories\".\"bucket\")) BETWEEN 1 AND 40"
+        },
+        "budget_categories_yearly": {
+          "name": "budget_categories_yearly",
+          "value": "\"budget_categories\".\"yearly_minor\" IS NULL OR \"budget_categories\".\"yearly_minor\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budget_strategies": {
+      "name": "budget_strategies",
+      "schema": "",
+      "columns": {
+        "household_id": {
+          "name": "household_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "budget_id": {
+          "name": "budget_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_month": {
+          "name": "from_month",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "strategy": {
+          "name": "strategy",
+          "type": "budget_strategy",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "settings": {
+          "name": "settings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "budget_strategies_household_id_budget_id_budgets_household_id_id_fk": {
+          "name": "budget_strategies_household_id_budget_id_budgets_household_id_id_fk",
+          "tableFrom": "budget_strategies",
+          "tableTo": "budgets",
+          "columnsFrom": [
+            "household_id",
+            "budget_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "budget_strategies_budget_id_from_month_pk": {
+          "name": "budget_strategies_budget_id_from_month_pk",
+          "columns": [
+            "budget_id",
+            "from_month"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "budget_strategies_from_month": {
+          "name": "budget_strategies_from_month",
+          "value": "extract(day from \"budget_strategies\".\"from_month\") = 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budgets": {
+      "name": "budgets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "household_id": {
+          "name": "household_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "starts_month": {
+          "name": "starts_month",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "field_versions": {
+          "name": "field_versions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "budgets_member_id_index": {
+          "name": "budgets_member_id_index",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "budgets_household_id_households_id_fk": {
+          "name": "budgets_household_id_households_id_fk",
+          "tableFrom": "budgets",
+          "tableTo": "households",
+          "columnsFrom": [
+            "household_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "budgets_household_id_member_id_household_members_household_id_id_fk": {
+          "name": "budgets_household_id_member_id_household_members_household_id_id_fk",
+          "tableFrom": "budgets",
+          "tableTo": "household_members",
+          "columnsFrom": [
+            "household_id",
+            "member_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "budgets_household_id_id": {
+          "name": "budgets_household_id_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "household_id",
+            "id"
+          ]
+        },
+        "budgets_scope": {
+          "name": "budgets_scope",
+          "nullsNotDistinct": true,
+          "columns": [
+            "household_id",
+            "member_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "budgets_starts_month": {
+          "name": "budgets_starts_month",
+          "value": "extract(day from \"budgets\".\"starts_month\") = 1"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.aggregation_credentials": {
@@ -4920,6 +5269,16 @@
         "provider",
         "computed",
         "manual"
+      ]
+    },
+    "public.budget_strategy": {
+      "name": "budget_strategy",
+      "schema": "public",
+      "values": [
+        "category",
+        "zero_based",
+        "percentage",
+        "flex"
       ]
     },
     "public.date_basis": {

@@ -123,7 +123,7 @@ export const accountOwners = pgTable(
 
 /**
  * Who owned an account before its current owners (#447). A transaction with no attribution of its
- * own is for whoever owned its account on its date (`fiscus_owners_on()`, migration 0054): a
+ * own is for whoever owned its account on its date (`fiscus_owners_on()`, migration 0056): a
  * period here when one covers the date, else today's `account_owners`. Changing owners "from
  * today" closes the current owners into a period ending today; "including its history" clears
  * them, so the new owners count for every date. Who can see an account still follows today's

@@ -24,6 +24,9 @@ const NOT_BUILT: Record<string, string> = {
   'TXN-07': 'Assigning reviewers (#45)',
   'ATT-03': 'Flagging attribution changes (M3)',
   'ATT-04': 'Resolving flags (M3)',
+  'BUD-01': 'The budget api (#99, #103)',
+  'BUD-03': 'The budget api (#99, #103)',
+  'BUD-04': 'The budget api (#99, #103)',
   'TOK-01': 'Personal access tokens (M10)',
   'TOK-02': 'Personal access tokens (M10)',
   'TOK-03': 'Personal access tokens (M10)',
@@ -56,7 +59,7 @@ const NOT_BUILT: Record<string, string> = {
 };
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
-const ID = /(?:HH|ACC|TXN|ATT|NOTE|CAT|RULE|TOK|PAT|SYS|AI|ADM|EDGE)-\d+/;
+const ID = /(?:HH|ACC|TXN|ATT|NOTE|CAT|RULE|BUD|TOK|PAT|SYS|AI|ADM|EDGE)-\d+/;
 
 /** Rule ids from the matrix, and which actors each must be tested as. */
 function rules(): Map<string, string[]> {
