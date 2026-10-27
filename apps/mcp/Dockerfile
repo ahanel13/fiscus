@@ -27,8 +27,11 @@ RUN pnpm turbo run build --filter=@fiscus/mcp
 # The image must build identically twice (ADR 0014). pnpm's install metadata records when it ran
 # (prunedAt), and the app doesn't need it. Files are copied, not hardlinked from the store: which
 # identical files end up sharing a link varies from one build to the next, and a layer records it.
+# Modes are normalized too: pnpm left one package's folder rwxrwxrwx in one build and rwxr-xr-x
+# in the next (#390, found with scripts/compare-images.sh). `X` keeps executables executable.
 RUN pnpm deploy --filter=@fiscus/mcp --prod --legacy --config.package-import-method=copy /out \
-  && rm /out/node_modules/.modules.yaml
+  && rm /out/node_modules/.modules.yaml \
+  && chmod -R u=rwX,go=rX /out
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production
