@@ -9,6 +9,7 @@ import {
   createAccountSchema,
   balancesQuerySchema,
   isoDateSchema,
+  makeJointSchema,
   type NetWorth,
   netWorthQuerySchema,
   setBalanceSchema,
@@ -143,14 +144,18 @@ export class AccountsController {
     @Param('accountId', UuidPipe) accountId: string,
     @Body(new ZodPipe(setOwnersSchema)) body: z.infer<typeof setOwnersSchema>,
   ): Promise<void> {
-    await this.accounts.setOwners(ctx, accountId, body.owners);
+    await this.accounts.setOwners(ctx, accountId, body.owners, body.from);
   }
 
   /** ACC-08: every account you own becomes joint for all members, with full visibility. */
   @Post('accounts/make-joint')
   @HttpCode(200)
-  async makeJoint(@Household() ctx: HouseholdContext): Promise<{ data: { changed: number } }> {
-    return { data: await this.accounts.makeJoint(ctx) };
+  async makeJoint(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(makeJointSchema.optional()))
+    body: z.infer<typeof makeJointSchema> | undefined,
+  ): Promise<{ data: { changed: number } }> {
+    return { data: await this.accounts.makeJoint(ctx, body?.from) };
   }
 
   /** ACC-09: close or reopen (history is kept). */

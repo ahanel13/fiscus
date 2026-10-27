@@ -12,6 +12,7 @@ import {
 } from '@fiscus/db';
 import { guardActivity, type Actor } from '@fiscus/ledger';
 import { and, eq, isNotNull } from 'drizzle-orm';
+import { refreshInstitution } from '../sync/institution.js';
 import { readSyncState, syncConnection } from '../sync/sync.js';
 import { FAILURE, JobFailure, type JobContext, type JobHandler } from './jobs.js';
 
@@ -67,6 +68,7 @@ export const syncJob: JobHandler = {
       },
       state,
     );
+    await refreshInstitution(job, provider);
     return 'synced';
   },
 };

@@ -17,7 +17,7 @@ import { householdMembers, households } from './households.js';
 import { categories } from './ledger.js';
 
 // Shared costs (ADR 0006 §7, budgeting walkthrough §9, #109): how a shared expense is split
-// between the people it's for. Row-level security: migration 0054.
+// between the people it's for. Row-level security: migration 0059.
 
 export const splitMethod = pgEnum('split_method', [
   'equal',

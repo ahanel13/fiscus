@@ -3,12 +3,14 @@ import type {
   ProviderAccount,
   ProviderAccountType,
   ProviderBalance,
+  ProviderInstitution,
   ProviderLiability,
   ProviderRemovedTransaction,
   ProviderTransaction,
 } from '@fiscus/domain';
 import { minorUnitExponent } from '@fiscus/shared';
 import type {
+  InstitutionsGetByIdResponse,
   LiabilitiesGetResponse,
   PlaidAccount,
   PlaidTransaction,
@@ -281,3 +283,32 @@ export const hasLiabilityAccounts = (accounts: PlaidAccount[]): boolean =>
     const type = plaidAccountType(a.type);
     return type === 'credit' || type === 'loan';
   });
+
+/** The countries Fiscus asks Plaid about: Link's, and the institutions it shows. */
+export const PLAID_COUNTRY_CODES = ['US', 'CA'];
+
+/** Larger than any bank logo Plaid sends (they're small PNGs); anything bigger isn't kept. */
+export const MAX_LOGO_BYTES = 64 * 1024;
+const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/**
+ * A bank's display data from `/institutions/get_by_id` with optional metadata (GUIDE-017, #423).
+ * The logo is kept only if it's a PNG within `MAX_LOGO_BYTES`, and the color only as `#RRGGBB`:
+ * what Fiscus serves back to browsers is never anything else.
+ */
+export function plaidInstitution(
+  i: InstitutionsGetByIdResponse['institution'],
+): ProviderInstitution {
+  const out: ProviderInstitution = { providerInstitutionId: i.institution_id, name: i.name };
+  if (i.url) out.url = i.url;
+  if (i.logo) {
+    const bytes = Buffer.from(i.logo, 'base64');
+    if (bytes.length <= MAX_LOGO_BYTES && PNG.every((b, n) => bytes[n] === b)) {
+      out.logoPng = new Uint8Array(bytes);
+    }
+  }
+  if (i.primary_color && /^#[0-9a-f]{6}$/i.test(i.primary_color)) {
+    out.color = i.primary_color.toLowerCase();
+  }
+  return out;
+}

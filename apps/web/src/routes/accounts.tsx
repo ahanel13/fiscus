@@ -7,7 +7,9 @@ import type {
   AccountVisibility,
   Household,
   HouseholdMember,
+  OwnersFrom,
 } from '@fiscus/shared';
+import { ownersFromDefault } from '@fiscus/shared';
 import {
   keepPreviousData,
   useMutation,
@@ -118,6 +120,7 @@ import { useRange } from '../lib/use-range.js';
 import { RangeChips } from '../components/RangeControls.js';
 import { AddTransactionDialog, TransactionDrawer, TransactionList } from './transactions.js';
 import { MakeJointOffer } from './make-joint.js';
+import { BankLogo } from '../components/BankLogo.js';
 
 type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
@@ -617,6 +620,7 @@ function AccountGroup({
                     className="flex items-center gap-3 hover:bg-surface-2"
                     style={{ minHeight: 'var(--row-h)', paddingInline: 'var(--cell-px)' }}
                   >
+                    <BankLogo institution={a.institution} name={a.name} />
                     <span className="min-w-0 flex-1 py-2">
                       {/* Long bank names wrap to a second line on a phone rather than cutting off. */}
                       <span className="line-clamp-2 text-sm font-medium break-words sm:line-clamp-1">
@@ -1005,6 +1009,9 @@ export function AccountDetailPage() {
           <ChevronLeft aria-hidden className="size-4" /> Accounts
         </Link>
         <div className="mt-2 flex items-start gap-2">
+          <div className="mt-1">
+            <BankLogo institution={a.institution} name={a.name} />
+          </div>
           <div className="mr-auto min-w-0">
             <h1 className="truncate text-2xl font-semibold">{a.name}</h1>
             {/* One line on a phone: the account type gives way. */}
@@ -1418,11 +1425,17 @@ function AccountSettings({
   const err = save.error as ApiError | null;
 
   const [owners, setOwners] = useState(account.owners.map((o) => o.memberId));
+  const [ownersFrom, setOwnersFrom] = useState<OwnersFrom>(
+    ownersFromDefault(household.financeStyle),
+  );
   const othersBefore = account.owners.map((o) => o.memberId).filter((id) => id !== me);
+  const ownersChanged =
+    owners.length !== account.owners.length ||
+    !owners.every((id) => account.owners.some((o) => o.memberId === id));
   const setOwnersMutation = useMutation({
     mutationFn: () =>
       api('PUT', `${base(householdId)}/accounts/${account.id}/owners`, {
-        body: { owners: owners.map((memberId) => ({ memberId })) },
+        body: { owners: owners.map((memberId) => ({ memberId })), from: ownersFrom },
       }),
     onSuccess: async () => {
       await invalidate();
@@ -1515,15 +1528,29 @@ function AccountSettings({
           <p className="text-xs text-muted">
             You can add owners, or remove yourself. Other owners remove themselves.
           </p>
+          {ownersChanged ? (
+            <RadioGroup
+              label="Its past transactions"
+              value={ownersFrom}
+              onChange={(v) => setOwnersFrom(v as OwnersFrom)}
+            >
+              <RadioCard
+                value="today"
+                title="Stay with whoever owned it"
+                description="The change counts from today. Earlier spending stays in the same budgets and shared costs."
+              />
+              <RadioCard
+                value="always"
+                title="Move to the new owners too"
+                description="As if they’d always owned it: its whole history counts for them, in budgets and shared costs."
+              />
+            </RadioGroup>
+          ) : null}
           <div className="flex justify-end">
             <Button
               variant="secondary"
               isPending={setOwnersMutation.isPending}
-              isDisabled={
-                owners.length === 0 ||
-                (owners.length === account.owners.length &&
-                  owners.every((id) => account.owners.some((o) => o.memberId === id)))
-              }
+              isDisabled={owners.length === 0 || !ownersChanged}
               onPress={() => setOwnersMutation.mutate()}
             >
               Update owners

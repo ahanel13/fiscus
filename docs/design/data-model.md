@@ -168,7 +168,7 @@ Each household's events also carry `seq` and `entry_hash` (a SHA-256 chain), plu
 
 The provider interface these tables serve, and the conformance suite every adapter passes, are in [aggregation](aggregation.md). Built in #78 (migrations `0036`, `0037`).
 
-**`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id` (UNIQUE with `provider`), `name`, `url`. No logo: showing one would need the provider's image host in the Content-Security-Policy.
+**`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id` (UNIQUE with `provider`), `name`, `url`, `logo_png` bytea null (a PNG of at most 64 KB, checked by its signature), `color` null (`#rrggbb`), `display_checked_at` (#423). Name, logo and color come from Plaid's `/institutions/get_by_id` with optional metadata when a bank is connected, and the worker asks again at most monthly after a sync, so banks connected earlier get theirs and rebrands show. The logo is served from Fiscus's own origin (`GET /api/v1/institutions/:id/logo`), so the Content-Security-Policy stays `img-src 'self'` and the provider never sees who looks. SimpleFIN has none.
 
 **`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008, #83): `household_id`, `provider` (`plaid` only), `client_id`, `secret_enc` (encrypted with the household key, bound to the row; emptied once no connection needs it), `env`, `created_by_member_id`, `revoked_at`. At most one active set (`revoked_at` null) per household, kept by the api under an advisory lock: replacing keys revokes the old set, which still serves the connections made with it. Rows stay for the connections that name them. Readable in the household (members connecting a bank use the household's keys; the api never returns the secret, HH-08), changed by household owners or the worker. See [aggregation](aggregation.md) §6a.
 
@@ -250,6 +250,8 @@ doesn't own are absent.
 Children of `accounts` (`account_owners`, `balance_snapshots`) use **composite foreign keys**
 `(household_id, account_id)`, and owners reference `(household_id, member_id)`, so no row can
 point across households.
+
+**`account_owner_periods`** (#447, migrations `0055`, `0056`): who owned an account before its current owners. `(account_id, valid_until, member_id)` PK, `household_id`, `share_bps`, `valid_from` date null (null: from the account's beginning), `valid_until` date (the first day the next owners count from). A transaction with no attribution of its own is for whoever owned its account on its effective date: `fiscus_owners_on(account, date)` returns the period covering the date, else today's `account_owners`. Changing owners "from today" (the default except in Combined households) closes the current owners into a period ending today; "including its history" deletes the account's periods. Visible with the account, written by whoever may change its owners, like `account_owners`. Who can **see** an account still follows today's owners alone; only spending views (attribution, "Paid by", "Transfer to") read the history.
 
 **`balance_snapshots`**: `(account_id, as_of)` PK, `household_id`, `balance_minor`, `available_minor` null, `credit_limit_minor` null, `source` enum `provider`/`computed`/`manual`. One row per account per day (end of day). Net-worth history and range charts read only this table (ADR 0011).
 
@@ -365,9 +367,23 @@ The effective date for ranges, budgets, and reports is `date_override` if set, e
 
 **`import_profiles`** (`household_id`, `name`, `format`, `mapping jsonb`) and **`import_batches`** (`household_id`, `account_id`, `member_id`, `format` enum `csv`/`ofx`/`qfx`/`monarch`, `filename`, `row_count`, `profile_id`, `reverted_at`). Reverting a batch soft-deletes its transactions.
 
-### 3.6 Shared costs
+### 3.6 Budgets
 
-**`split_policies`** (#109, migrations `0053`, `0054`; ADR 0006 §7, [budgeting walkthrough](walkthroughs/budgeting.md) §9): how a shared expense is split. `household_id`, `category_id` null (null: the household's default), `effective_from` (the first of a month, which a check enforces), `method` enum `equal`/`income_proportional`/`fixed_percent`/`fixed_amount` (null only for a category going back to the default), `params jsonb` (the method's own: `shares` or `amounts`, schemas in `@fiscus/shared`), `created_by_member_id`, `created_at`. UNIQUE NULLS NOT DISTINCT `(household_id, category_id, effective_from)`. What applies in a month is the category's latest row starting on or before it, else the default's, else an equal split (`splitRuleFor` in `@fiscus/domain`). A change starts from this month or later and never reaches back; one in the same month replaces it. Split by income isn't accepted until members can consent (#110). Readable by everyone in the household; owners and members change it (SHR-01/02).
+Budgets (#98, migrations `0053`, `0054`; [budgeting walkthrough](walkthroughs/budgeting.md) §1). Months are stored as `date`s on the first of the month, which a check enforces. What a month shows (spent, left, rollover, ready to assign) is computed from these tables and the transactions when it's read, never stored (walkthrough D13). The engine and the strategy interface are in `@fiscus/domain` (`budget.ts`).
+
+**`budgets`**: `household_id`, `member_id` null (null for the household's budget, Ours; otherwise the member whose own it is, Mine), `starts_month`, plus `version`/`field_versions`. UNIQUE NULLS NOT DISTINCT `(household_id, member_id)`: one Ours per household, one Mine per member. A member's own is visible only to them and the worker (BUD-02), and is deleted when they leave (BUD-05, a trigger, since leaving sets `left_at`).
+
+**`budget_strategies`**: `(budget_id, from_month)` PK, `household_id`, `strategy` enum `category`/`zero_based`/`percentage`/`flex`, `settings jsonb` (the strategy's own, read by its `settings()`). A month runs under the last row starting on or before it, so switching adds a row and earlier months keep their strategy (D14).
+
+**`budget_amounts`**: `(budget_id, month, category_id)` PK, `household_id`, `amount_minor` (≥ 0, household currency), `version`, `updated_at`. One amount per category per month, whatever the strategy: a limit, an assignment, a fixed cost. A month with no rows repeats the last month that has some (`amountsFor`); changing an amount in such a month copies that month's amounts first.
+
+**`budget_categories`**: `(budget_id, category_id)` PK, `household_id`, `rollover` bool, `bucket` text null (50/30/20, D10), `yearly_minor` null (non-monthly, D12). How the budget treats a category in every month.
+
+All three tables under `budgets` have composite FKs to it and to `categories`, cascading, and are visible exactly when their budget is.
+
+### 3.7 Shared costs
+
+**`split_policies`** (#109, migrations `0058`, `0059`; ADR 0006 §7, [budgeting walkthrough](walkthroughs/budgeting.md) §9): how a shared expense is split. `household_id`, `category_id` null (null: the household's default), `effective_from` (the first of a month, which a check enforces), `method` enum `equal`/`income_proportional`/`fixed_percent`/`fixed_amount` (null only for a category going back to the default), `params jsonb` (the method's own: `shares` or `amounts`, schemas in `@fiscus/shared`), `created_by_member_id`, `created_at`. UNIQUE NULLS NOT DISTINCT `(household_id, category_id, effective_from)`. What applies in a month is the category's latest row starting on or before it, else the default's, else an equal split (`splitRuleFor` in `@fiscus/domain`). A change starts from this month or later and never reaches back; one in the same month replaces it. Split by income isn't accepted until members can consent (#110). Readable by everyone in the household; owners and members change it (SHR-01/02).
 
 ## 4. Row-level security
 
@@ -519,7 +535,7 @@ they arrive in M9/M10.
 search, if wanted, decrypts within an already-filtered result set.
 
 ## 9. Forward references (not designed here)
-- **M3:** `budgets`, `budget_allocations`, `settlement_entries`, `funding_targets`. They reference `household_members`, `categories`, `transactions` (`is_settlement`). Split rules are in §3.6.
+- **M3:** `settlement_entries`, `funding_targets`. They reference `household_members`, `categories`, `transactions` (`is_settlement`). Budgets are in §3.6, split rules in §3.7.
 - **M4:** `recurring_series`, `notification_channels`, `notification_rules`. They reference `merchants`, `accounts`, members.
 - **M6:** `securities`, `holdings`, `lots`, `investment_transactions`, `prices`. They reference `accounts` and use `numeric(28,10)`.
 - **M10:** `change_sets` will reference `audit_events`, and undo replays the inverse operations.

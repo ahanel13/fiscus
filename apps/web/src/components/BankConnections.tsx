@@ -19,6 +19,7 @@ import {
   DateText,
   toast,
 } from './ui.js';
+import { BankLogo } from './BankLogo.js';
 
 // A household's bank connections (the bank connections walkthrough §5–§7, D10–D14): at the top of
 // Accounts, each with how fresh it is, "Refresh now" for its owner, and what's wrong when
@@ -244,6 +245,8 @@ function ConnectionLine({
     >
       {broken ? (
         <TriangleAlert aria-hidden className="size-5 shrink-0 text-warning" />
+      ) : c.institution ? (
+        <BankLogo institution={c.institution} name={bank} />
       ) : (
         <Landmark aria-hidden className="size-5 shrink-0 text-muted" />
       )}

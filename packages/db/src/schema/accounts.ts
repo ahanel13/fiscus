@@ -121,6 +121,45 @@ export const accountOwners = pgTable(
   ],
 );
 
+/**
+ * Who owned an account before its current owners (#447). A transaction with no attribution of its
+ * own is for whoever owned its account on its date (`fiscus_owners_on()`, migration 0056): a
+ * period here when one covers the date, else today's `account_owners`. Changing owners "from
+ * today" closes the current owners into a period ending today; "including its history" clears
+ * them, so the new owners count for every date. Who can see an account still follows today's
+ * owners alone.
+ */
+export const accountOwnerPeriods = pgTable(
+  'account_owner_periods',
+  {
+    accountId: uuid().notNull(),
+    memberId: uuid().notNull(),
+    householdId: uuid().notNull(),
+    shareBps: integer().notNull(),
+    /** Null: from the account's beginning. */
+    validFrom: date({ mode: 'string' }),
+    /** The first day the next owners count from. Today's owners count from the latest one. */
+    validUntil: date({ mode: 'string' }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.validUntil, t.memberId] }),
+    foreignKey({
+      columns: [t.householdId, t.accountId],
+      foreignColumns: [accounts.householdId, accounts.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.memberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    index().on(t.memberId),
+    check('account_owner_periods_share', sql`${t.shareBps} BETWEEN 1 AND 10000`),
+    check(
+      'account_owner_periods_dates',
+      sql`${t.validFrom} IS NULL OR ${t.validFrom} < ${t.validUntil}`,
+    ),
+  ],
+);
+
 /** One balance per account per day (end of day, household time zone; ADR 0011). */
 export const balanceSnapshots = pgTable(
   'balance_snapshots',

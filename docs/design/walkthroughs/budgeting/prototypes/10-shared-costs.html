@@ -1,0 +1,139 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shared costs · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="on">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Shared costs</h1>
+          <div class="row">
+            <span class="stepper">‹ <b>October 2026</b> ›</span
+            ><span class="btn secondary">History</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="grid2 top">
+            <div class="card owed">
+              <div class="muted">Your balance with Sam</div>
+              <div style="font-size: 30px; font-weight: 650">Sam owes you $142.10</div>
+              <div class="small muted">$138.96 from September, $3.14 from October</div>
+              <div class="row" style="margin-top: 12px">
+                <span class="btn">Settle up</span
+                ><span class="btn secondary">Add an adjustment</span>
+              </div>
+            </div>
+            <div class="card">
+              <h2>October so far</h2>
+              <div class="row spread small">
+                <span class="muted">Shared spending</span><span class="amount">$4,043.93</span>
+              </div>
+              <div class="row spread small">
+                <span class="muted">From joint accounts · evens out</span
+                ><span class="amount">$3,597.41</span>
+              </div>
+              <div class="row spread small">
+                <span class="muted">You paid</span><span class="amount">$226.40</span>
+              </div>
+              <div class="row spread small">
+                <span class="muted">Sam paid</span><span class="amount">$220.12</span>
+              </div>
+              <div class="row spread small">
+                <span class="muted">Each of your shares</span><span class="amount">$223.26</span>
+              </div>
+              <div class="small muted" style="margin-top: 8px">
+                Split rules: equal, except Rent by income from November.
+                <span class="link">Split rules</span>
+              </div>
+            </div>
+          </div>
+          <div class="alert warn small row spread">
+            <div>
+              <b>Sam flagged a change.</b> You changed “Ace Hardware, $62.30” from yours to shared
+              on Oct 9. It’s left out of the balance until you sort it out.
+            </div>
+            <span class="btn secondary sm">See the change</span>
+          </div>
+          <div class="list budget">
+            <div class="item head">
+              <div class="grow small muted">What changed the balance in October</div>
+              <div class="col small muted">Amount</div>
+              <div class="col small muted">Effect</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 18</div>
+              <div class="grow">
+                <div>Riverside Vet</div>
+                <div class="small muted">Paid by Sam · Equal</div>
+              </div>
+              <div class="amount col">−$131.62</div>
+              <div class="amount col small">you owe $65.81</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 19</div>
+              <div class="grow">
+                <div>Costco</div>
+                <div class="small muted">Paid by you · Equal</div>
+              </div>
+              <div class="amount col">−$186.40</div>
+              <div class="amount col small">Sam owes $93.20</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 20</div>
+              <div class="grow">
+                <div>Movie night</div>
+                <div class="small muted">Paid by you · Equal</div>
+              </div>
+              <div class="amount col">−$40.00</div>
+              <div class="amount col small">Sam owes $20.00</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px">Oct 22</div>
+              <div class="grow">
+                <div>Lantern Thai</div>
+                <div class="small muted">Paid by Sam · Equal</div>
+              </div>
+              <div class="amount col">−$88.50</div>
+              <div class="amount col small">you owe $44.25</div>
+            </div>
+            <div class="item">
+              <div class="muted small" style="width: 50px"></div>
+              <div class="grow">
+                <div>Everything else</div>
+                <div class="small muted">Paid from your joint accounts, which you own equally</div>
+              </div>
+              <div class="amount col">−$3,597.41</div>
+              <div class="amount col small muted">evens out</div>
+            </div>
+          </div>
+          <div class="small muted">
+            Shared expenses are the ones attributed to both of you. Spending from a joint account
+            evens out when your split matches how you own it.
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>

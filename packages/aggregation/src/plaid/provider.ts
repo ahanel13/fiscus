@@ -4,6 +4,7 @@ import {
   type AggregationProvider,
   type ProviderAccount,
   type ProviderCapabilities,
+  type ProviderInstitution,
   type ProviderLiability,
   type ProviderSecret,
   type ProviderTransaction,
@@ -16,6 +17,8 @@ import type { PlaidInstanceConfig } from './config.js';
 import { credentialsChanged, resolvePlaidCredentials } from './credentials.js';
 import {
   hasLiabilityAccounts,
+  PLAID_COUNTRY_CODES,
+  plaidInstitution,
   plaidLiabilities,
   plaidProviderAccount,
   plaidProviderBalance,
@@ -126,6 +129,14 @@ export class PlaidProvider implements AggregationProvider {
       if (isProviderError(error) && NO_LIABILITIES.has(error.providerCode)) return [];
       throw error;
     }
+  }
+
+  async institution(providerInstitutionId: string): Promise<ProviderInstitution> {
+    const { institution } = await this.#client.institutionsGetById(
+      providerInstitutionId,
+      PLAID_COUNTRY_CODES,
+    );
+    return plaidInstitution(institution);
   }
 
   async remove(secret: ProviderSecret): Promise<void> {

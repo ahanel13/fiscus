@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
 import { optionalRangeFields, type RangeMeta } from '../ranges.js';
-import { currencyCodeSchema } from './households.js';
+import { currencyCodeSchema, type FinanceStyle } from './households.js';
 
 // Accounts, ownership, visibility, balances, and net worth
 // (docs/design/accounts-and-visibility.md, ADR 0006, permissions §3 and §4.2).
@@ -108,7 +108,23 @@ export const updateAccountSchema = z
   .partial()
   .strict();
 
-export const setOwnersSchema = z.object({ owners: ownersSchema });
+/**
+ * From when a change of owners counts (#447): `today` keeps earlier transactions with whoever
+ * owned the account then; `always` makes the new owners count for its whole history.
+ */
+export const ownersFromSchema = z.enum(['today', 'always']);
+export type OwnersFrom = z.infer<typeof ownersFromSchema>;
+
+/** Combined households ("it's all ours") share the past too; the others keep it where it was. */
+export const ownersFromDefault = (style: FinanceStyle): OwnersFrom =>
+  style === 'combined' ? 'always' : 'today';
+
+/** Omit `from` for the household's default (`ownersFromDefault`). */
+export const setOwnersSchema = z.object({
+  owners: ownersSchema,
+  from: ownersFromSchema.optional(),
+});
+export const makeJointSchema = z.object({ from: ownersFromSchema.optional() });
 
 export const setBalanceSchema = z.object({
   amountMinor: minorUnitsSchema,
@@ -181,6 +197,15 @@ export interface AccountOwner {
   shareBps: number;
 }
 
+/** A bank, as its provider shows it (#423). Its logo is at `/api/v1/institutions/:id/logo`. */
+export interface InstitutionSummary {
+  id: string;
+  name: string;
+  /** `#rrggbb`, or null when the provider has none. */
+  color: string | null;
+  hasLogo: boolean;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -209,6 +234,8 @@ export interface Account {
   change?: { amountMinor: number; from: string; to: string } | null;
   /** Shared account notes: present at `view_only` and above. */
   notes?: string | null;
+  /** The bank it syncs from: present at `view_only` and above, null when it isn't connected. */
+  institution?: InstitutionSummary | null;
   /**
    * A card's or loan's statement details from its bank (#86), on the account itself only (not in
    * lists): present at `full` and `owner`, null when the bank reports none (SimpleFIN never does).

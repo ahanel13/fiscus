@@ -41,11 +41,22 @@ export const institutions = pgTable(
     providerInstitutionId: text().notNull(),
     name: text().notNull(),
     url: text(),
+    /** The bank's logo, a PNG of at most 64 KB, served from Fiscus's own origin (#423). */
+    logoPng: bytea('logo_png'),
+    /** The bank's color, `#rrggbb`. */
+    color: text(),
+    /** When the name, logo and color were last asked of the provider; refreshed monthly. */
+    displayCheckedAt: timestamp({ withTimezone: true }),
     ...timestamps(),
   },
   (t) => [
     unique('institutions_provider_institution').on(t.provider, t.providerInstitutionId),
     check('institutions_provider', sql`${t.provider} IN (${inList(CONNECTION_PROVIDERS)})`),
+    check('institutions_color', sql`${t.color} IS NULL OR ${t.color} ~ '^#[0-9a-f]{6}$'`),
+    check(
+      'institutions_logo_size',
+      sql`${t.logoPng} IS NULL OR octet_length(${t.logoPng}) <= 65536`,
+    ),
   ],
 );
 

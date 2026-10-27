@@ -1,0 +1,292 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Switch budget strategy · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="on">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row">
+            <h1>Budget</h1>
+            <span class="seg"><span class="on">Ours</span><span class="">Mine</span></span
+            ><span class="badge">Category limits</span>
+          </div>
+          <div class="row">
+            <span class="stepper">‹ <b>October 2026</b> ›</span
+            ><span class="btn secondary">Annual view</span><span class="btn secondary">⋯</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="summary">
+            <div>
+              <div class="muted small">Money in</div>
+              <div class="big">$4,600.00</div>
+              <div class="small muted">contributions from Alex and Sam</div>
+            </div>
+            <div>
+              <div class="muted small">Budgeted</div>
+              <div class="big">$4,072.00</div>
+            </div>
+            <div>
+              <div class="muted small">Spent</div>
+              <div class="big">$4,043.93</div>
+              <div class="small muted">26 of 31 days</div>
+            </div>
+            <div>
+              <div class="muted small">Left in your budgets</div>
+              <div class="big">$207.36</div>
+              <div class="small neg">3 categories over</div>
+            </div>
+          </div>
+          <div class="list budget">
+            <div class="item head">
+              <div class="grow small muted">Category</div>
+              <div class="col small muted">Budgeted</div>
+              <div class="col small muted">Spent</div>
+              <div class="col small muted">Left</div>
+            </div>
+            <div class="grp">Home</div>
+            <div class="item">
+              <div class="grow">
+                <div>Rent or mortgage</div>
+                <div class="bar">
+                  <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$2,150.00</div>
+              <div class="amount col">$2,150.00</div>
+              <div class="amount col"><b>$0.00</b></div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Utilities</div>
+                <div class="bar">
+                  <b style="width: 91.2%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$180.00</div>
+              <div class="amount col">$164.22</div>
+              <div class="amount col"><b>$15.78</b></div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Internet and phone</div>
+                <div class="bar">
+                  <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$95.00</div>
+              <div class="amount col">$95.00</div>
+              <div class="amount col"><b>$0.00</b></div>
+            </div>
+            <div class="grp">Food</div>
+            <div class="item sel">
+              <div class="grow">
+                <div>Groceries <span class="badge">Rollover</span></div>
+                <div class="small muted">+$35.20 rolled over from Sep</div>
+                <div class="bar">
+                  <b style="width: 83.3%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$700.00</div>
+              <div class="amount col">$612.48</div>
+              <div class="amount col"><b>$122.72</b></div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Restaurants</div>
+                <div class="bar over">
+                  <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$250.00</div>
+              <div class="amount col">$291.30</div>
+              <div class="amount col neg"><b>$41.30 over</b></div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Coffee</div>
+                <div class="bar">
+                  <b style="width: 56.9%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$40.00</div>
+              <div class="amount col">$22.75</div>
+              <div class="amount col"><b>$17.25</b></div>
+            </div>
+            <div class="grp">Transportation</div>
+            <div class="item">
+              <div class="grow">
+                <div>Gas</div>
+                <div class="bar">
+                  <b style="width: 74%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$160.00</div>
+              <div class="amount col">$118.40</div>
+              <div class="amount col"><b>$41.60</b></div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Car insurance</div>
+                <div class="bar">
+                  <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$142.00</div>
+              <div class="amount col">$142.00</div>
+              <div class="amount col"><b>$0.00</b></div>
+            </div>
+            <div class="grp">Shopping</div>
+            <div class="item">
+              <div class="grow">
+                <div>Household supplies</div>
+                <div class="bar">
+                  <b style="width: 71.7%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$120.00</div>
+              <div class="amount col">$86.10</div>
+              <div class="amount col"><b>$33.90</b></div>
+            </div>
+            <div class="grp">Fun</div>
+            <div class="item">
+              <div class="grow">
+                <div>Subscriptions</div>
+                <div class="bar over">
+                  <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$45.00</div>
+              <div class="amount col">$45.97</div>
+              <div class="amount col neg"><b>$0.97 over</b></div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                <div>Entertainment</div>
+                <div class="bar">
+                  <b style="width: 40%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$100.00</div>
+              <div class="amount col">$40.00</div>
+              <div class="amount col"><b>$60.00</b></div>
+            </div>
+            <div class="grp">Family and pets</div>
+            <div class="item">
+              <div class="grow">
+                <div>Pets</div>
+                <div class="bar over">
+                  <b style="width: 100%"></b><i class="pace" style="left: 84%"></i>
+                </div>
+              </div>
+              <div class="amount col">$90.00</div>
+              <div class="amount col">$131.62</div>
+              <div class="amount col neg"><b>$41.62 over</b></div>
+            </div>
+            <div class="grp">Not budgeted</div>
+            <div class="item">
+              <div class="grow">Electronics <span class="small muted">· no budget set</span></div>
+              <div class="amount col muted">—</div>
+              <div class="amount col">$59.99</div>
+              <div class="col"><span class="btn ghost sm">Set budget</span></div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                Uncategorized <span class="small muted">· 3 transactions</span>
+              </div>
+              <div class="amount col muted">—</div>
+              <div class="amount col">$84.10</div>
+              <div class="col"><span class="btn ghost sm">Review</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="overlay">
+      <div class="dialog" style="max-width: 720px">
+        <h2>Switch Ours to zero-based</h2>
+        <div class="muted">
+          Nothing is deleted. Every amount you’ve set is kept, and switching back brings it all
+          back.
+        </div>
+        <div class="row" style="gap: 24px; margin: 14px 0 4px">
+          <div>
+            <span class="radio on"></span><b>From November</b>
+            <span class="small muted">· October stays as it is</span>
+          </div>
+          <div>
+            <span class="radio"></span>From October <span class="small muted">· this month</span>
+          </div>
+        </div>
+        <table class="tbl">
+          <tr>
+            <th></th>
+            <th>Category limits (now)</th>
+            <th>Zero-based (from November)</th>
+          </tr>
+          <tr>
+            <td>Your 12 category amounts</td>
+            <td>Limits</td>
+            <td>What you assign each month, starting from the same amounts</td>
+          </tr>
+          <tr>
+            <td>What’s left at month end</td>
+            <td>Rolls over in Groceries only</td>
+            <td>Every category keeps what’s left</td>
+          </tr>
+          <tr>
+            <td>Overspending</td>
+            <td>Shown as over</td>
+            <td>Cover it from another category, or it comes out of next month</td>
+          </tr>
+          <tr>
+            <td>Money not budgeted</td>
+            <td>Not tracked</td>
+            <td>
+              <b>Ready to assign</b>: what comes in, less what you assign. With this month’s
+              contributions ($4,600.00) and today’s amounts ($4,072.00), <b>$528.00</b>
+            </td>
+          </tr>
+          <tr>
+            <td>Electronics, Uncategorized</td>
+            <td>Not budgeted</td>
+            <td>Show with $0 assigned, so their spending is overspending</td>
+          </tr>
+        </table>
+        <div class="alert warn small" style="margin-top: 12px">
+          Groceries’ rollover (now $122.72) becomes November’s starting balance. The other
+          categories start November at $0, since their limits didn’t roll over.
+        </div>
+        <div class="small muted" style="margin-top: 10px">
+          Sam will see the switch in the household’s activity.
+        </div>
+        <div class="actions">
+          <span class="btn secondary">Cancel</span><span class="btn">Switch from November</span>
+        </div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>

@@ -1,0 +1,200 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Budget: zero-based · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="on">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row">
+            <h1>Budget</h1>
+            <span class="seg"><span class="on">Ours</span><span class="">Mine</span></span
+            ><span class="badge">Zero-based</span>
+          </div>
+          <div class="row">
+            <span class="stepper">‹ <b>October 2026</b> ›</span
+            ><span class="btn secondary">Annual view</span><span class="btn secondary">⋯</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="alert info row spread">
+            <div>
+              <div style="font-size: 22px; font-weight: 650">$128.00 ready to assign</div>
+              <div class="small">
+                $4,600.00 came in this month (contributions from Alex and Sam) · $4,472.00 assigned
+              </div>
+            </div>
+            <span class="btn">Assign $128.00</span>
+          </div>
+          <div class="alert bad small">
+            <b>2 categories are overspent by $82.92.</b> Cover them by moving money from another
+            category. Left uncovered, it comes out of November’s ready to assign.
+          </div>
+          <div class="list budget">
+            <div class="item head">
+              <div class="grow small muted">Category</div>
+              <div class="col small muted">Assigned</div>
+              <div class="col small muted">Spent</div>
+              <div class="col small muted">Available</div>
+              <div class="cover"></div>
+            </div>
+            <div class="grp">Home</div>
+            <div class="item">
+              <div class="grow">Rent or mortgage</div>
+              <div class="amount col">$2,150.00</div>
+              <div class="amount col">$2,150.00</div>
+              <div class="amount col"><span class="pill">$0.00</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="item">
+              <div class="grow">Utilities</div>
+              <div class="amount col">$180.00</div>
+              <div class="amount col">$164.22</div>
+              <div class="amount col"><span class="pill ok">$15.78</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="item">
+              <div class="grow">Internet and phone</div>
+              <div class="amount col">$95.00</div>
+              <div class="amount col">$95.00</div>
+              <div class="amount col"><span class="pill">$0.00</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="grp">Food</div>
+            <div class="item">
+              <div class="grow">Groceries</div>
+              <div class="amount col">$700.00</div>
+              <div class="amount col">$612.48</div>
+              <div class="amount col"><span class="pill ok">$122.72</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="item sel">
+              <div class="grow">Restaurants</div>
+              <div class="amount col">$250.00</div>
+              <div class="amount col">$291.30</div>
+              <div class="amount col"><span class="pill bad">−$41.30</span></div>
+              <div class="cover"><span class="btn sm danger">Cover</span></div>
+            </div>
+            <div class="item">
+              <div class="grow">Coffee</div>
+              <div class="amount col">$40.00</div>
+              <div class="amount col">$22.75</div>
+              <div class="amount col"><span class="pill ok">$17.25</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="grp">Transportation</div>
+            <div class="item">
+              <div class="grow">Gas</div>
+              <div class="amount col">$160.00</div>
+              <div class="amount col">$118.40</div>
+              <div class="amount col"><span class="pill ok">$41.60</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="item">
+              <div class="grow">Car insurance</div>
+              <div class="amount col">$142.00</div>
+              <div class="amount col">$142.00</div>
+              <div class="amount col"><span class="pill">$0.00</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="grp">Shopping</div>
+            <div class="item">
+              <div class="grow">Household supplies</div>
+              <div class="amount col">$120.00</div>
+              <div class="amount col">$86.10</div>
+              <div class="amount col"><span class="pill ok">$33.90</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="grp">Fun</div>
+            <div class="item">
+              <div class="grow">Subscriptions</div>
+              <div class="amount col">$45.00</div>
+              <div class="amount col">$45.97</div>
+              <div class="amount col"><span class="pill bad">−$0.97</span></div>
+              <div class="cover"><span class="btn sm danger">Cover</span></div>
+            </div>
+            <div class="item">
+              <div class="grow">Entertainment</div>
+              <div class="amount col">$100.00</div>
+              <div class="amount col">$40.00</div>
+              <div class="amount col"><span class="pill ok">$60.00</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="grp">Family and pets</div>
+            <div class="item">
+              <div class="grow">Pets</div>
+              <div class="amount col">$90.00</div>
+              <div class="amount col">$131.62</div>
+              <div class="amount col"><span class="pill bad">−$41.62</span></div>
+              <div class="cover"><span class="btn sm danger">Cover</span></div>
+            </div>
+            <div class="grp">Savings</div>
+            <div class="item">
+              <div class="grow">Holiday fund</div>
+              <div class="amount col">$100.00</div>
+              <div class="amount col">$100.00</div>
+              <div class="amount col"><span class="pill">$0.00</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="grp">Allowances</div>
+            <div class="item">
+              <div class="grow">
+                Fun money · Alex <span class="small muted">· to their own budget</span>
+              </div>
+              <div class="amount col">$150.00</div>
+              <div class="amount col"><span class="muted">—</span></div>
+              <div class="amount col"><span class="pill">$0.00</span></div>
+              <div class="cover"></div>
+            </div>
+            <div class="item">
+              <div class="grow">
+                Fun money · Sam <span class="small muted">· to their own budget</span>
+              </div>
+              <div class="amount col">$150.00</div>
+              <div class="amount col"><span class="muted">—</span></div>
+              <div class="amount col"><span class="pill">$0.00</span></div>
+              <div class="cover"></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="popover" style="top: 318px; left: 892px">
+      <b>Cover Restaurants</b>
+      <div class="small muted" style="margin: 2px 0 10px">Overspent by $41.30</div>
+      <label class="field"
+        ><span>Move</span>
+        <div class="input">$41.30</div></label
+      >
+      <label class="field" style="margin-top: 8px"
+        ><span>From</span>
+        <div class="input select">Groceries · $122.72 available</div></label
+      >
+      <div class="row" style="margin-top: 12px; justify-content: flex-end">
+        <span class="btn secondary sm">Cancel</span><span class="btn sm">Move $41.30</span>
+      </div>
+    </div>
+    <div class="proto">Prototype (#339), not the built app</div>
+  </body>
+</html>

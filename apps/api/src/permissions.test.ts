@@ -841,7 +841,7 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     refused(await f.B.delete(url(`/categories/${f.uncategorized}`)), 409, 'system_category'),
   'CAT-04/VIEW': async () => refused(await f.V.delete(url(`/categories/${f.uncategorized}`))),
 
-  // ── 4.8 Shared costs ──
+  // ── 4.9 Shared costs ──
   'SHR-01/OWN': async () => ok(await f.A.get(url('/split-rules'))),
   'SHR-01/MEM': async () => ok(await f.B.get(url('/split-rules'))),
   'SHR-01/VIEW': async () => ok(await f.V.get(url('/split-rules'))),
@@ -873,7 +873,7 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     );
   },
 
-  // ── 4.9 Sessions ──
+  // ── 4.10 Sessions ──
   'TOK-04/OWN': async () => ok(await f.A.get('/api/v1/me/sessions')),
   'TOK-04/MEM': async () => ok(await f.B.get('/api/v1/me/sessions')),
   'TOK-04/VIEW': async () => ok(await f.V.get('/api/v1/me/sessions')),

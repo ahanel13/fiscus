@@ -7,13 +7,15 @@ import {
   accountOwners,
   accounts,
   balanceSnapshots,
+  connections,
   type Executor,
   householdMembers,
   households,
+  institutions,
 } from '@fiscus/db';
-import { accessLevels, householdRanges, recomputeBalances } from '@fiscus/ledger';
+import { accessLevels, householdRanges, recomputeBalances, replaceOwners } from '@fiscus/ledger';
 import { planVersionedPatch } from '@fiscus/domain';
-import { buckets } from '@fiscus/shared';
+import { buckets, ownersFromDefault } from '@fiscus/shared';
 import type {
   AccessLevel,
   Account,
@@ -22,8 +24,11 @@ import type {
   BalanceMode,
   BalancePoint,
   createAccountSchema,
+  FinanceStyle,
+  InstitutionSummary,
   Lens,
   NetWorth,
+  OwnersFrom,
   OwnersInput,
   setBalanceSchema,
   updateAccountSchema,
@@ -109,7 +114,7 @@ const futureDate = () => new Problem(422, 'future_date', 'Balances can’t be se
 interface HouseholdInfo {
   baseCurrency: string;
   timezone: string;
-  financeStyle: string;
+  financeStyle: FinanceStyle;
   /** Active members who may own accounts (not viewers). */
   owners: Set<string>;
   activeMembers: number;
@@ -403,7 +408,12 @@ export class AccountsService {
    * ACC-08: owners change who owns an account and in what shares. You can remove yourself, never
    * another co-owner (ADR 0012), and at least one owner remains.
    */
-  async setOwners(ctx: HouseholdContext, accountId: string, input: OwnersInput): Promise<void> {
+  async setOwners(
+    ctx: HouseholdContext,
+    accountId: string,
+    input: OwnersInput,
+    from?: OwnersFrom,
+  ): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
       const level = (await accessLevels(tx)).get(accountId);
       if (level !== 'owner') throw notVisibleOrForbidden(level);
@@ -430,10 +440,15 @@ export class AccountsService {
         throw privateJointDisallowed();
       }
 
-      await tx.delete(accountOwners).where(eq(accountOwners.accountId, accountId));
-      await tx
-        .insert(accountOwners)
-        .values(after.map((o) => ({ accountId, householdId: ctx.householdId, ...o })));
+      const effective = from ?? ownersFromDefault(hh.financeStyle);
+      await replaceOwners(tx, {
+        householdId: ctx.householdId,
+        accountId,
+        before,
+        after,
+        from: effective,
+        today: todayIn(hh.timezone),
+      });
       await activity.record({
         action: 'account.owners_changed',
         targetType: 'account',
@@ -444,6 +459,7 @@ export class AccountsService {
             .filter((a) => !before.some((b) => b.memberId === a.memberId))
             .map((a) => a.memberId),
           removed: removed.map((o) => o.memberId),
+          from: effective,
         },
         changes: { before: { owners: before }, after: { owners: after } },
       });
@@ -455,7 +471,7 @@ export class AccountsService {
    * member who can own accounts, in equal shares, with full visibility. Only yours (ACC-08):
    * others make theirs joint themselves. Accounts already like that are left alone.
    */
-  async makeJoint(ctx: HouseholdContext): Promise<{ changed: number }> {
+  async makeJoint(ctx: HouseholdContext, from?: OwnersFrom): Promise<{ changed: number }> {
     return this.scope.run(ctx, async (tx, activity) => {
       if (ctx.role === 'viewer') throw problems.forbidden('Viewers don’t own accounts.');
       // First: a household you can't see is "not found", never "nothing to change".
@@ -482,12 +498,14 @@ export class AccountsService {
           everyone.every((e) => before.some((b) => b.memberId === e.memberId));
         if (joint && row.visibility === 'full') continue;
         if (!joint) {
-          await tx.delete(accountOwners).where(eq(accountOwners.accountId, row.id));
-          await tx
-            .insert(accountOwners)
-            .values(
-              everyone.map((o) => ({ accountId: row.id, householdId: ctx.householdId, ...o })),
-            );
+          await replaceOwners(tx, {
+            householdId: ctx.householdId,
+            accountId: row.id,
+            before,
+            after: everyone,
+            from: from ?? ownersFromDefault(hh.financeStyle),
+            today: todayIn(hh.timezone),
+          });
         }
         if (row.visibility !== 'full') {
           await tx
@@ -505,6 +523,7 @@ export class AccountsService {
               .filter((e) => !before.some((b) => b.memberId === e.memberId))
               .map((e) => e.memberId),
             visibility: row.visibility === 'full' ? null : 'full',
+            from: joint ? null : (from ?? ownersFromDefault(hh.financeStyle)),
           },
           changes: {
             before: { owners: before, visibility: row.visibility },
@@ -875,6 +894,25 @@ export class AccountsService {
         latest.set(b.account_id, { amountMinor: Number(b.balance_minor), asOf: b.as_of });
       }
     }
+    // The bank each connected account syncs from (#423).
+    const banks = new Map<string, InstitutionSummary>();
+    if (ids.length) {
+      for (const b of await tx
+        .select({
+          accountId: accounts.id,
+          id: institutions.id,
+          name: institutions.name,
+          color: institutions.color,
+          hasLogo: sql<boolean>`${institutions.logoPng} IS NOT NULL`,
+        })
+        .from(accounts)
+        .innerJoin(connections, eq(connections.id, accounts.connectionId))
+        .innerJoin(institutions, eq(institutions.id, connections.institutionId))
+        .where(inArray(accounts.id, ids))) {
+        const { accountId, ...bank } = b;
+        banks.set(accountId, bank);
+      }
+    }
     return Promise.all(
       rows.map(async (r): Promise<Account> => {
         const level = levels.get(r.id)!;
@@ -896,7 +934,10 @@ export class AccountsService {
           balance: latest.get(r.id) ?? null,
           // Account notes need view_only or above (permissions §3).
           ...(level !== 'balance_only'
-            ? { notes: r.notesEnc ? await this.#decryptNotes(ctx, r.id, r.notesEnc) : null }
+            ? {
+                notes: r.notesEnc ? await this.#decryptNotes(ctx, r.id, r.notesEnc) : null,
+                institution: banks.get(r.id) ?? null,
+              }
             : {}),
           version: r.version,
         };

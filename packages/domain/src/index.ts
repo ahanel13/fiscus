@@ -25,6 +25,29 @@ export {
 } from './aggregation.js';
 export { splitRuleFor, splitShares, type SplitPolicyRow, type SplitRuleInput } from './split.js';
 export {
+  addMonths,
+  amountsFor,
+  BUDGET_STRATEGIES,
+  BudgetSettingsError,
+  computeBudgetMonth,
+  firstDayOf,
+  monthOf,
+  NO_ACTIVITY,
+  NOTHING_CARRIED,
+  periodFor,
+  type BudgetCategory,
+  type BudgetDefinition,
+  type BudgetPeriod,
+  type BudgetStrategy,
+  type BudgetStrategyKind,
+  type Carry,
+  type CategoryKind,
+  type Month,
+  type MonthActivity,
+  type StrategyMonth,
+  type StrategyRegistry,
+} from './budget.js';
+export {
   etagFor,
   parseIfMatch,
   planVersionedPatch,
