@@ -4,6 +4,7 @@ import {
   type AccountType,
   type AccountVisibility,
   accountVisibilitySchema,
+  type InstitutionSummary,
   setOwnersSchema,
 } from './accounts.js';
 
@@ -19,6 +20,8 @@ export interface Connection {
   provider: ConnectionProvider;
   status: ConnectionStatus;
   institutionName: string | null;
+  /** The bank, with its color and whether it has a logo (#423); null for SimpleFIN. */
+  institution: InstitutionSummary | null;
   /** Who linked it: the one who fixes or disconnects it (ACC-03, D11). */
   owner: { memberId: string; name: string };
   /** The accounts it syncs that you can see. */

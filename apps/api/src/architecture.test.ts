@@ -15,6 +15,7 @@ const DIRECT_DB_ALLOWED: Record<string, string> = {
   'database/database.module.ts': 'provides the handle',
   'crypto/crypto.module.ts': 'wires the key store; keys are household-checked by FieldCrypto',
   'health/health.controller.ts': 'readiness ping only',
+  'connections/institutions.controller.ts': 'banks’ logos: instance-level reference data (#423)',
   'households/household-scope.ts': 'the gate itself',
   'households/household-access.ts': 'user-level membership lookups across households',
   'households/invite-tokens.service.ts':

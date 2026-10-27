@@ -38,9 +38,12 @@ export {
 export { plaidErrorKind } from './plaid/errors.js';
 export {
   hasLiabilityAccounts,
+  MAX_LOGO_BYTES,
+  PLAID_COUNTRY_CODES,
   plaidAccountType,
   plaidCurrency,
   plaidCurrentBalance,
+  plaidInstitution,
   plaidLiabilities,
   plaidMask,
   plaidMinor,
@@ -60,6 +63,7 @@ export {
   type PlaidProviderSourceOptions,
 } from './plaid/provider.js';
 export type {
+  InstitutionsGetByIdResponse,
   LiabilitiesGetResponse,
   PlaidAccount,
   PlaidItem,

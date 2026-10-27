@@ -65,6 +65,9 @@ export class ConnectionsService {
           provider: connections.provider,
           status: connections.status,
           institutionName: institutions.name,
+          institutionId: institutions.id,
+          institutionColor: institutions.color,
+          institutionHasLogo: sql<boolean>`${institutions.logoPng} IS NOT NULL`,
           ownerMemberId: connections.ownerMemberId,
           ownerName: householdMembers.displayName,
           lastSyncedAt: connections.lastSyncedAt,
@@ -108,6 +111,15 @@ export class ConnectionsService {
           provider,
           status,
           institutionName: r.institutionName,
+          institution:
+            r.institutionId && r.institutionName
+              ? {
+                  id: r.institutionId,
+                  name: r.institutionName,
+                  color: r.institutionColor,
+                  hasLogo: r.institutionHasLogo,
+                }
+              : null,
           owner: { memberId: r.ownerMemberId, name: r.ownerName ?? '' },
           accountCount: accountIds.length,
           accountIds,

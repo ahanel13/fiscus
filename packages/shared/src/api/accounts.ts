@@ -197,6 +197,15 @@ export interface AccountOwner {
   shareBps: number;
 }
 
+/** A bank, as its provider shows it (#423). Its logo is at `/api/v1/institutions/:id/logo`. */
+export interface InstitutionSummary {
+  id: string;
+  name: string;
+  /** `#rrggbb`, or null when the provider has none. */
+  color: string | null;
+  hasLogo: boolean;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -225,6 +234,8 @@ export interface Account {
   change?: { amountMinor: number; from: string; to: string } | null;
   /** Shared account notes: present at `view_only` and above. */
   notes?: string | null;
+  /** The bank it syncs from: present at `view_only` and above, null when it isn't connected. */
+  institution?: InstitutionSummary | null;
   /**
    * A card's or loan's statement details from its bank (#86), on the account itself only (not in
    * lists): present at `full` and `owner`, null when the bank reports none (SimpleFIN never does).

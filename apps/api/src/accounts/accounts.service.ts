@@ -7,9 +7,11 @@ import {
   accountOwners,
   accounts,
   balanceSnapshots,
+  connections,
   type Executor,
   householdMembers,
   households,
+  institutions,
 } from '@fiscus/db';
 import { accessLevels, householdRanges, recomputeBalances, replaceOwners } from '@fiscus/ledger';
 import { planVersionedPatch } from '@fiscus/domain';
@@ -23,6 +25,7 @@ import type {
   BalancePoint,
   createAccountSchema,
   FinanceStyle,
+  InstitutionSummary,
   Lens,
   NetWorth,
   OwnersFrom,
@@ -891,6 +894,25 @@ export class AccountsService {
         latest.set(b.account_id, { amountMinor: Number(b.balance_minor), asOf: b.as_of });
       }
     }
+    // The bank each connected account syncs from (#423).
+    const banks = new Map<string, InstitutionSummary>();
+    if (ids.length) {
+      for (const b of await tx
+        .select({
+          accountId: accounts.id,
+          id: institutions.id,
+          name: institutions.name,
+          color: institutions.color,
+          hasLogo: sql<boolean>`${institutions.logoPng} IS NOT NULL`,
+        })
+        .from(accounts)
+        .innerJoin(connections, eq(connections.id, accounts.connectionId))
+        .innerJoin(institutions, eq(institutions.id, connections.institutionId))
+        .where(inArray(accounts.id, ids))) {
+        const { accountId, ...bank } = b;
+        banks.set(accountId, bank);
+      }
+    }
     return Promise.all(
       rows.map(async (r): Promise<Account> => {
         const level = levels.get(r.id)!;
@@ -912,7 +934,10 @@ export class AccountsService {
           balance: latest.get(r.id) ?? null,
           // Account notes need view_only or above (permissions §3).
           ...(level !== 'balance_only'
-            ? { notes: r.notesEnc ? await this.#decryptNotes(ctx, r.id, r.notesEnc) : null }
+            ? {
+                notes: r.notesEnc ? await this.#decryptNotes(ctx, r.id, r.notesEnc) : null,
+                institution: banks.get(r.id) ?? null,
+              }
             : {}),
           version: r.version,
         };

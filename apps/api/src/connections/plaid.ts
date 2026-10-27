@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import {
   type PlaidAccount,
+  PLAID_COUNTRY_CODES,
   PlaidClient,
   type PlaidCredentials,
   type PlaidCredentialsResult,
@@ -15,7 +16,7 @@ import { Problem } from '../common/problem.js';
 // holds only its kind and code, and Plaid's own message (untrusted text) is never passed on.
 
 /** What every link token asks for (the issue's Decisions; ADR 0008). */
-export const LINK_COUNTRY_CODES = ['US', 'CA'];
+export const LINK_COUNTRY_CODES = PLAID_COUNTRY_CODES;
 /** Always 730: it can't be raised once the Item exists. D6's 90 days is applied locally (#80). */
 export const LINK_DAYS_REQUESTED = 730;
 export const LINK_CLIENT_NAME = 'Fiscus';
