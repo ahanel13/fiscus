@@ -24,5 +24,8 @@ export default defineConfig({
     environment: 'happy-dom',
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['src/test-setup.ts'],
+    // A component test clicking through a dialog takes well under a second here, but can take
+    // over 5 on a busy CI runner (PlaidKeysCard on #449). Hangs still fail, just later.
+    testTimeout: 20_000,
   },
 });
