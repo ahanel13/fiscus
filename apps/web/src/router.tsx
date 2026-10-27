@@ -39,6 +39,7 @@ import {
 import { SectionPage } from './routes/section.js';
 import { ImportPage } from './routes/import.js';
 import { ReviewPage } from './routes/review.js';
+import { BudgetPage } from './routes/budget.js';
 import { RulesSettings } from './routes/rules.js';
 import { SharedCostsSettings } from './routes/shared-costs-settings.js';
 import { ServerPage } from './routes/server.js';
@@ -233,6 +234,7 @@ const SECTION_PAGES: Partial<Record<SectionId, () => React.JSX.Element>> = {
   dashboard: DashboardPage,
   accounts: AccountsPage,
   transactions: TransactionsPage,
+  budget: BudgetPage,
 };
 
 const sectionRoutes = SECTIONS.map((section) =>

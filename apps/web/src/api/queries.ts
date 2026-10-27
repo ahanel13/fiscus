@@ -5,13 +5,17 @@ import type {
   AuthStatus,
   BalancePoint,
   BankConnectionsOverview,
+  BudgetMonth,
+  BudgetScope,
+  BudgetSuggestion,
+  BudgetSummary,
   CashFlow,
   CategoryGroup,
   Connection,
   ConnectionSetup,
-  HouseholdPlaidKeys,
   Household,
   HouseholdMember,
+  HouseholdPlaidKeys,
   ImportBatch,
   ImportProfile,
   InvitePreview,
@@ -21,10 +25,10 @@ import type {
   PlaidAvailability,
   PossibleDuplicate,
   ReviewCount,
-  SimpleFinAvailability,
   ServerInvite,
   ServerInvitePreview,
   SessionSummary,
+  SimpleFinAvailability,
   SplitPolicies,
   Tag,
   Transaction,
@@ -210,6 +214,34 @@ export const categoriesQuery = (id: string) =>
     queryKey: ['households', id, 'categories'],
     queryFn: async () => (await api<Data<CategoryGroup[]>>('GET', `${hh(id)}/categories`)).data,
     staleTime: 60_000,
+  });
+
+/** The budgets you can see: the household's, and your own (#99). */
+export const budgetsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'budgets'],
+    queryFn: async () => (await api<Data<BudgetSummary[]>>('GET', `${hh(id)}/budgets`)).data,
+  });
+
+/** What to start a budget from (D5). */
+export const budgetSuggestionQuery = (id: string, scope?: BudgetScope) =>
+  queryOptions({
+    queryKey: ['households', id, 'budgets', 'suggestion', scope ?? 'default'],
+    queryFn: async () =>
+      (
+        await api<Data<BudgetSuggestion>>(
+          'GET',
+          `${hh(id)}/budgets/suggestion${scope ? `?scope=${scope}` : ''}`,
+        )
+      ).data,
+  });
+
+/** A month of a budget, computed when read (D13). */
+export const budgetMonthQuery = (id: string, budgetId: string, month: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'budgets', budgetId, month],
+    queryFn: async () =>
+      (await api<Data<BudgetMonth>>('GET', `${hh(id)}/budgets/${budgetId}/months/${month}`)).data,
   });
 
 /** The household's split rules for shared costs (#109). */

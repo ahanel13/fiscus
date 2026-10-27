@@ -1388,3 +1388,23 @@ test('your browser notices when the history was rewritten, even consistently (#2
   await expect(page.getByRole('heading', { level: 1, name: 'Accounts' })).toBeVisible();
   await expect(banner).toHaveCount(0);
 });
+
+test('starts a budget in one step, and steps through its months (#99, #103)', async ({ page }) => {
+  await signIn(page);
+  await page.goto(`${householdUrl}/budget`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Budget' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Start a budget' })).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+
+  await page.getByRole('button', { name: 'Start from zero' }).click();
+  const month = page.getByRole('group', { name: 'Month' });
+  await expect(month).toBeVisible();
+  await expect(page.getByText('Category limits')).toBeVisible();
+  // The budget starts this month, so there's no going back before it.
+  await expect(month.getByRole('button', { name: 'Previous month' })).toBeDisabled();
+  await month.getByRole('button', { name: 'Next month' }).click();
+  await expect(page).toHaveURL(/month=\d{4}-\d{2}/);
+  await month.getByRole('button', { name: 'This month' }).click();
+  await expect(month.getByRole('button', { name: 'This month' })).toHaveCount(0);
+  expect(await axeViolations(page)).toEqual([]);
+});
