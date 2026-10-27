@@ -193,6 +193,74 @@ describe('budgets: category limits', () => {
     expect(income.status).toBe(404);
   });
 
+  it('previews a switch to flex, starting from the flexible limits added up (#104)', async () => {
+    const r = await A.get(
+      url(`/budgets/${budgetId}/strategy-preview?strategy=flex&fromMonth=${month(1)}`),
+    );
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    // Next month's flexible limits: groceries 700 (changed above) and restaurants 150.
+    expect(r.body.data.flexibleMinor).toBe(85000);
+    expect(r.body.data.before.strategy).toBe('category');
+    expect(r.body.data.after).toMatchObject({
+      strategy: 'flex',
+      flexible: { budgetedMinor: 85000 },
+    });
+    const past = await A.get(
+      url(`/budgets/${budgetId}/strategy-preview?strategy=flex&fromMonth=${month(-1)}`),
+    );
+    expect([past.status, past.body.code]).toEqual([422, 'switch_month_started']);
+  });
+
+  it('switches to flex from next month, keeping this month as it was (D14)', async () => {
+    const r = await A.request('PUT', url(`/budgets/${budgetId}/strategy`), {
+      strategy: 'flex',
+      fromMonth: month(1),
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect((await view(month(0))).view.strategy).toBe('category');
+    const next = await view(month(1));
+    expect(next.budget.strategy).toBe('flex');
+    expect(next.view.flexible).toMatchObject({ budgetedMinor: 85000 });
+    const again = await A.request('PUT', url(`/budgets/${budgetId}/strategy`), {
+      strategy: 'flex',
+      fromMonth: month(1),
+    });
+    expect([again.status, again.body.code]).toEqual([409, 'same_strategy']);
+  });
+
+  it('changes the flexible number from a month, and a non-monthly yearly figure', async () => {
+    const flexR = await A.request('PUT', url(`/budgets/${budgetId}/months/${month(2)}/flexible`), {
+      amountMinor: 90000,
+    });
+    expect(flexR.status, JSON.stringify(flexR.body)).toBe(204);
+    expect((await view(month(1))).view.flexible.budgetedMinor).toBe(85000);
+    expect((await view(month(2))).view.flexible.budgetedMinor).toBe(90000);
+    // Not flex this month.
+    const notFlex = await A.request(
+      'PUT',
+      url(`/budgets/${budgetId}/months/${month(0)}/flexible`),
+      {
+        amountMinor: 1,
+      },
+    );
+    expect([notFlex.status, notFlex.body.code]).toEqual([409, 'not_flex']);
+
+    const yearly = await A.request('PUT', url(`/budgets/${budgetId}/categories/${cat.Flights}`), {
+      yearlyMinor: 240000,
+    });
+    expect(yearly.status, JSON.stringify(yearly.body)).toBe(204);
+    expect(
+      (await view(month(1))).view.nonMonthly.find(
+        (r: { categoryId: string }) => r.categoryId === cat.Flights,
+      ),
+    ).toMatchObject({ yearlyMinor: 240000, setAsideMinor: 20000, savedMinor: 20000 });
+    // Groceries kept its rollover through the change.
+    const g = await A.get(
+      url(`/budgets/${budgetId}/categories/${cat.Groceries}/history?to=${month(1)}`),
+    );
+    expect(g.status).toBe(200);
+  });
+
   it('has nothing before its first month, or for a month that isn’t one', async () => {
     const before = await A.get(url(`/budgets/${budgetId}/months/${month(-1)}`));
     expect([before.status, before.body.code]).toEqual([404, 'before_budget']);
