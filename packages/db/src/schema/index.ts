@@ -2,6 +2,7 @@
 // Tables are added here as features land (data model: docs/design/data-model.md).
 export * from './account-layout.js';
 export * from './accounts.js';
+export * from './budgets.js';
 export * from './connections.js';
 export * from './household-keys.js';
 export * from './households.js';
