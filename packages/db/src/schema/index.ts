@@ -11,4 +11,5 @@ export * from './instance-settings.js';
 export * from './ledger.js';
 export * from './preferences.js';
 export * from './rules.js';
+export * from './shared-costs.js';
 export * from './sync-holds.js';

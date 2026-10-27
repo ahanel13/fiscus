@@ -25,6 +25,7 @@ import type {
   ServerInvite,
   ServerInvitePreview,
   SessionSummary,
+  SplitPolicies,
   Tag,
   Transaction,
   TransactionHistoryEntry,
@@ -209,6 +210,13 @@ export const categoriesQuery = (id: string) =>
     queryKey: ['households', id, 'categories'],
     queryFn: async () => (await api<Data<CategoryGroup[]>>('GET', `${hh(id)}/categories`)).data,
     staleTime: 60_000,
+  });
+
+/** The household's split rules for shared costs (#109). */
+export const splitRulesQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'split-rules'],
+    queryFn: async () => (await api<Data<SplitPolicies>>('GET', `${hh(id)}/split-rules`)).data,
   });
 
 export const tagsQuery = (id: string) =>

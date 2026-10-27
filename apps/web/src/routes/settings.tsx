@@ -28,6 +28,7 @@ import {
 } from '../components/ui.js';
 import { BackHome } from './server.js';
 import { describeDevice } from '../lib/device.js';
+import { visibleSections } from '../lib/nav.js';
 import { applyTheme, storedTheme, type ThemePreference } from '../lib/theme.js';
 
 const ROLE_LABELS = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
@@ -131,6 +132,7 @@ const SETTINGS_SECTIONS = [
   { to: '/h/$householdId/settings/members', label: 'Members' },
   { to: '/h/$householdId/settings/categories', label: 'Categories' },
   { to: '/h/$householdId/settings/rules', label: 'Rules' },
+  { to: '/h/$householdId/settings/shared-costs', label: 'Shared costs' },
   { to: '/h/$householdId/settings/connections', label: 'Connections' },
 ] as const;
 
@@ -138,6 +140,12 @@ const SETTINGS_SECTIONS = [
 export function HouseholdSettingsLayout() {
   const { householdId } = useParams({ strict: false }) as { householdId: string };
   const members = useQuery(membersQuery(householdId)).data ?? [];
+  const household = useQuery(householdQuery(householdId)).data;
+  // Shared costs only where the household shows them (information architecture §5).
+  const shared =
+    household !== undefined &&
+    visibleSections(household, members.length).some((s) => s.id === 'shared');
+  const sections = SETTINGS_SECTIONS.filter((s) => shared || !s.to.endsWith('/shared-costs'));
   return (
     <>
       <PageHeader title="Household settings" showLens={false} members={members} />
@@ -147,7 +155,7 @@ export function HouseholdSettingsLayout() {
           aria-label="Settings sections"
           className="-mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-border px-4 md:mx-0 md:mb-0 md:flex-col md:self-start md:border-0 md:px-0"
         >
-          {SETTINGS_SECTIONS.map((s) => (
+          {sections.map((s) => (
             <Link
               key={s.to}
               to={s.to}

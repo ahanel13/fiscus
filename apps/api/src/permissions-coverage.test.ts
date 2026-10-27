@@ -56,7 +56,7 @@ const NOT_BUILT: Record<string, string> = {
 };
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
-const ID = /(?:HH|ACC|TXN|ATT|NOTE|CAT|RULE|TOK|PAT|SYS|AI|ADM|EDGE)-\d+/;
+const ID = /(?:HH|ACC|TXN|ATT|NOTE|CAT|RULE|SHR|TOK|PAT|SYS|AI|ADM|EDGE)-\d+/;
 
 /** Rule ids from the matrix, and which actors each must be tested as. */
 function rules(): Map<string, string[]> {
