@@ -16,17 +16,22 @@ describe('row-level security', () => {
   const A = { household: randomUUID(), user: randomUUID(), member: randomUUID() };
   const B = { household: randomUUID(), user: randomUUID(), member: randomUUID() };
   const TABLES = ['households', 'household_members', 'invites', 'household_keys', 'audit_events'];
-  // Household tables with their own visibility suites (accounts, ledger, connections tests;
-  // activity_transactions in the api's history tests).
+  // Household tables with their own visibility suites (accounts, ledger, connections, budgets
+  // tests; activity_transactions in the api's history tests).
   const COVERED_ELSEWHERE = [
     'account_groups',
     'account_liabilities',
+    'account_owner_periods',
     'activity_transactions',
     'aggregation_credentials',
     'account_placements',
     'accounts',
     'account_owners',
     'balance_snapshots',
+    'budget_amounts',
+    'budget_categories',
+    'budget_strategies',
+    'budgets',
     'categories',
     'connection_secrets',
     'connections',
