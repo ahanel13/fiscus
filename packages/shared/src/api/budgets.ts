@@ -141,6 +141,19 @@ export interface StrategyPreview {
   flexibleMinor: number | null;
 }
 
+/**
+ * Changing a budget's scope (D25): **Share my budget** (`household`, your own budget, two or more
+ * of you) or **Make it mine** (`mine`, the household's, once you're its only member).
+ */
+export const setBudgetScopeSchema = z.object({ scope: budgetScopeSchema });
+
+/** What a scope change would show this month: the month as it counts now, and as it would. */
+export interface ScopePreview {
+  month: string;
+  before: CategoryLimitsMonth | FlexMonth;
+  after: CategoryLimitsMonth | FlexMonth;
+}
+
 /** A category's last months in a budget (§4): its limit (null before the budget) and spending. */
 export interface BudgetCategoryHistory {
   categoryId: string;

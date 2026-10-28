@@ -8,6 +8,8 @@ import {
   type BudgetSummary,
   type BudgetYear,
   createBudgetSchema,
+  type ScopePreview,
+  setBudgetScopeSchema,
   setBudgetAmountSchema,
   setBudgetCategorySchema,
   setFlexibleSchema,
@@ -137,6 +139,26 @@ export class BudgetsController {
     return {
       data: await this.budgets.switchStrategy(ctx, budgetId, body.strategy, body.fromMonth),
     };
+  }
+
+  /** What Share my budget or Make it mine would show this month (D25). */
+  @Get(':budgetId/scope-preview')
+  async scopePreview(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Query(new ZodPipe(setBudgetScopeSchema)) q: z.infer<typeof setBudgetScopeSchema>,
+  ): Promise<{ data: ScopePreview }> {
+    return { data: await this.budgets.scopePreview(ctx, budgetId, q.scope) };
+  }
+
+  /** Share my budget, or Make it mine (D25): the same budget, its history kept. */
+  @Put(':budgetId/scope')
+  async setScope(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Body(new ZodPipe(setBudgetScopeSchema)) body: z.infer<typeof setBudgetScopeSchema>,
+  ): Promise<{ data: BudgetSummary }> {
+    return { data: await this.budgets.setScope(ctx, budgetId, body.scope) };
   }
 
   @Put(':budgetId/months/:month/flexible')

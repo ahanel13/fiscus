@@ -75,6 +75,12 @@ const householdBudget = async () => {
   }
   return budgetId;
 };
+/** `c`'s own budget, started if they haven't one. */
+const ownBudget = async (c: TestClient) => {
+  await c.post(url('/budgets'), { scope: 'mine', amounts: [] });
+  const list = (await c.get(url('/budgets'))).body.data as { id: string; scope: string }[];
+  return list.find((b) => b.scope === 'mine')!.id;
+};
 const account = async (c: TestClient, visibility = 'full') =>
   (await c.post(url('/accounts'), { name: 'Extra', type: 'depository', visibility })).body.data
     .id as string;
@@ -931,6 +937,30 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'BUD-04/MEM': async () => ok(await f.B.post(url('/budgets'), { scope: 'mine', amounts: [] })),
   'BUD-04/VIEW': async () =>
     refused(await f.V.post(url('/budgets'), { scope: 'mine', amounts: [] })),
+
+  // Share my budget / Make it mine (D25). A household of three already has a shared budget, and
+  // isn't one person: each is refused for that, past who may ask.
+  'BUD-06/OWN': async () => {
+    await householdBudget();
+    const id = await ownBudget(f.A);
+    refused(
+      await f.A.request('PUT', url(`/budgets/${id}/scope`), { scope: 'household' }),
+      409,
+      'budget_exists',
+    );
+    refused(await f.B.request('PUT', url(`/budgets/${id}/scope`), { scope: 'household' }), 404);
+  },
+  'BUD-06/MEM': async () => {
+    refused(
+      await f.B.request('PUT', url(`/budgets/${await householdBudget()}/scope`), { scope: 'mine' }),
+      409,
+      'not_alone',
+    );
+  },
+  'BUD-06/VIEW': async () =>
+    refused(
+      await f.V.request('PUT', url(`/budgets/${await householdBudget()}/scope`), { scope: 'mine' }),
+    ),
 
   // ── 4.9 Shared costs ──
   'SHR-01/OWN': async () => ok(await f.A.get(url('/split-rules'))),
