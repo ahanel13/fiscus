@@ -382,6 +382,10 @@ function SetUp({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const suggestion = useQuery(budgetSuggestionQuery(householdId, scope));
+  // A shared budget with nothing shared to start from: is it all on accounts that are yours alone?
+  const nothingShared =
+    suggestion.data?.scope === 'household' && suggestion.data.average.length === 0;
+  const yours = useQuery({ ...budgetSuggestionQuery(householdId, 'mine'), enabled: nothingShared });
   const [reviewing, setReviewing] = useState(false);
   const canEdit = household.you.role !== 'viewer';
   const start = useMutation({
@@ -474,6 +478,26 @@ function SetUp({
             About <Amount minor={total} currency={household.baseCurrency} kind="balance" /> a month
             across {s.average.length} {s.average.length === 1 ? 'category' : 'categories'}
           </p>
+        ) : nothingShared && yours.data && yours.data.average.length > 0 ? (
+          <div className="space-y-2 rounded-md border border-border p-3 text-sm">
+            <p>
+              None of your spending in the last 3 months is shared: it’s all on accounts that are
+              yours alone, so a shared budget has nothing to start from. A budget of your own starts
+              from what you spent, and a shared one can come later.
+            </p>
+            <Button
+              variant="secondary"
+              onPress={() =>
+                void navigate({
+                  to: '.',
+                  search: (prev: Record<string, unknown>) => ({ ...prev, add: 'mine' }),
+                  replace: true,
+                })
+              }
+            >
+              Start a budget of your own
+            </Button>
+          </div>
         ) : s ? (
           <p className="text-xs text-muted">
             There’s no spending in the last 3 months to start from yet: start from zero, and set
