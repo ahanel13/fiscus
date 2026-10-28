@@ -179,6 +179,7 @@ caller can't see ("Transfer to Anthony").
 |---|---|---|---|---|---|
 | SHR-01 | Read the household's split rules | ✅ | ✅ | ✅ | |
 | SHR-02 | Change the default split or a category's rule, or cancel one not yet started | ✅ | ✅ | ❌ | From this month on, never earlier: a month that has started keeps its rule. Each change is in the household's activity. Split by income needs every affected member's consent (#110) |
+| SHR-03 | Read your balance with each person, and the month's shared expenses | own | own | own | Only balances that involve you, from shared expenses you're for or paid. Someone else's payment shows as them, never their account (F1) |
 
 ### 4.10 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |

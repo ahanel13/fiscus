@@ -70,3 +70,34 @@ export interface SplitPolicies {
   /** Every rule, oldest first: what applies now, what applied before, and what's scheduled. */
   policies: SplitPolicy[];
 }
+
+/** One shared expense in a month's statement (walkthrough §8). */
+export interface SharedExpenseLine {
+  transactionId: string;
+  date: string;
+  displayName: string;
+  categoryId: string | null;
+  /** What it cost, positive (a refund is negative). */
+  costMinor: number;
+  /** Who paid: the account's owners on its date, as people (F1). */
+  paidBy: string[];
+  /** Who it's for. */
+  forMembers: string[];
+  /** Its effect from your side, per person: positive, they owe you; negative, you owe them. */
+  effect: { memberId: string; amountMinor: number }[];
+}
+
+/** Where you stand with each person you share costs with (#111, D17). */
+export interface SharedCosts {
+  month: string;
+  currency: string;
+  /** Your balance with each person at the end of `month`: positive, they owe you. */
+  balances: { memberId: string; amountMinor: number }[];
+  /** The same, carried in from the months before. */
+  carried: { memberId: string; amountMinor: number }[];
+  /** The month's shared expenses that you're part of, newest first. */
+  expenses: SharedExpenseLine[];
+  /** Shared spending you can see this month, and how much of it evens out. */
+  sharedSpendingMinor: number;
+  evensOutMinor: number;
+}

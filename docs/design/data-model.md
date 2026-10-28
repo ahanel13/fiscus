@@ -535,7 +535,7 @@ they arrive in M9/M10.
 search, if wanted, decrypts within an already-filtered result set.
 
 ## 9. Forward references (not designed here)
-- **M3:** `settlement_entries`, `funding_targets`. They reference `household_members`, `categories`, `transactions` (`is_settlement`). Budgets are in §3.6, split rules in §3.7.
+- **M3:** `funding_targets`. Who owes whom (#111) is computed when read from the transactions, their attribution, the owners on each date and `split_policies` (`expenseEffects`, `pairBalances` in `@fiscus/domain`), as budgets are, so there is no `settlement_entries` table. They reference `household_members`, `categories`, `transactions` (`is_settlement`). Budgets are in §3.6, split rules in §3.7.
 - **M4:** `recurring_series`, `notification_channels`, `notification_rules`. They reference `merchants`, `accounts`, members.
 - **M6:** `securities`, `holdings`, `lots`, `investment_transactions`, `prices`. They reference `accounts` and use `numeric(28,10)`.
 - **M10:** `change_sets` will reference `audit_events`, and undo replays the inverse operations.
