@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
   accounts,
+  attributionFlags,
   categories,
   categoryGroups,
   type Executor,
@@ -13,6 +14,7 @@ import {
 } from '@fiscus/db';
 import {
   addMonths,
+  type ExpenseEffect,
   expenseEffects,
   firstDayOf,
   pairBalances,
@@ -71,10 +73,18 @@ export class SharedCostsService {
       const expenses = await this.#expenses(tx, rows);
       const policies = await loadPolicies(tx);
       const me = ctx.memberId;
-      const mine = expenses.filter(
+      const involving = expenses.filter(
         (e) =>
           e.forMembers.some((f) => f.memberId === me) || e.paidBy.some((p) => p.memberId === me),
       );
+      // Flagged changes wait outside the balance until they're resolved (#60, D18).
+      const flags = new Map(
+        (await tx.select().from(attributionFlags).where(isNull(attributionFlags.resolvedAt))).map(
+          (f) => [f.transactionId, f],
+        ),
+      );
+      const mine = involving.filter((e) => !flags.has(e.id));
+      const flagged = involving.filter((e) => flags.has(e.id));
       const settled = await tx
         .select()
         .from(settlements)
@@ -95,23 +105,39 @@ export class SharedCostsService {
       const inMonth = mine.filter((e) => e.date >= firstDayOf(month));
       const effectOf = new Map(effects.map((e) => [e.expenseId, e]));
       const names = new Map(rows.map((r) => [r.id, r]));
-      const lines = inMonth
+      const line = (e: SharedExpense, eff: ExpenseEffect) => {
+        const single = pairBalances([eff]).withMember(me);
+        return {
+          transactionId: e.id,
+          date: e.date,
+          displayName: names.get(e.id)!.displayName,
+          categoryId: e.categoryId,
+          costMinor: e.costMinor,
+          paidBy: e.paidBy.map((p) => p.memberId),
+          forMembers: e.forMembers.map((f) => f.memberId),
+          effect: list(single),
+          evensOut: [...eff.net.values()].every((v) => v === 0),
+        };
+      };
+      const newest = (a: { date: string }, b: { date: string }) =>
+        a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+      const lines = inMonth.map((e) => line(e, effectOf.get(e.id)!)).sort(newest);
+      // Each disputed expense on its own: what it would do if it counted as it stands.
+      const disputed = flagged
         .map((e) => {
-          const eff = effectOf.get(e.id)!;
-          const single = pairBalances([eff]).withMember(me);
+          const f = flags.get(e.id)!;
+          const { evensOut: _e, ...l } = line(e, expenseEffects([e], policies)[0]!);
           return {
-            transactionId: e.id,
-            date: e.date,
-            displayName: names.get(e.id)!.displayName,
-            categoryId: e.categoryId,
-            costMinor: e.costMinor,
-            paidBy: e.paidBy.map((p) => p.memberId),
-            forMembers: e.forMembers.map((f) => f.memberId),
-            effect: list(single),
-            evensOut: [...eff.net.values()].every((v) => v === 0),
+            ...l,
+            flag: {
+              id: f.id,
+              flaggedByMemberId: f.flaggedByMemberId,
+              note: f.note,
+              createdAt: f.createdAt.toISOString(),
+            },
           };
         })
-        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+        .sort(newest);
       return {
         month,
         currency,
@@ -120,6 +146,7 @@ export class SharedCostsService {
           pairBalances(effects.filter((e) => beforeSet.has(e.expenseId))).withMember(me),
         ),
         expenses: lines.map(({ evensOut: _e, ...l }) => l),
+        disputed,
         settlements: settled
           .filter((x) => x.date >= firstDayOf(month))
           .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))

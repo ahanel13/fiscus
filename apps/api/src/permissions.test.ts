@@ -735,6 +735,41 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     expect(JSON.stringify(seen.body)).not.toContain(hidden);
   },
   'ATT-02/VIEW': async () => refused(await attribute(f.V, f.tA, [f.member.B])),
+  // Flagging a change to who it's for (#60): those it involves flag; the payer's owners resolve.
+  'ATT-03/OWN': async () => {
+    const id = await txn(f.B, f.accB);
+    ok(await attribute(f.B, id, [f.member.A, f.member.B]));
+    ok(await f.A.post(url(`/transactions/${id}/flag`), {}));
+  },
+  'ATT-03/MEM': async () => {
+    const id = await txn(f.A, f.accA);
+    ok(await attribute(f.A, id, [f.member.A, f.member.B]));
+    refused(await f.A.post(url(`/transactions/${id}/flag`), {}), 422, 'own_change');
+    ok(await f.B.post(url(`/transactions/${id}/flag`), {}));
+  },
+  'ATT-03/VIEW': async () => {
+    const id = await txn(f.A, f.accA);
+    ok(await attribute(f.A, id, [f.member.A, f.member.V]));
+    refused(await f.V.post(url(`/transactions/${id}/flag`), {}));
+  },
+  'ATT-04/OWN': async () => {
+    const id = await txn(f.A, f.accA);
+    ok(await attribute(f.A, id, [f.member.A, f.member.B]));
+    ok(await f.B.post(url(`/transactions/${id}/flag`), {}));
+    ok(await f.A.delete(url(`/transactions/${id}/flag`)));
+  },
+  'ATT-04/MEM': async () => {
+    const id = await txn(f.B, f.accB);
+    ok(await attribute(f.B, id, [f.member.A, f.member.B]));
+    ok(await f.A.post(url(`/transactions/${id}/flag`), {}));
+    ok(await f.B.delete(url(`/transactions/${id}/flag`)));
+  },
+  'ATT-04/VIEW': async () => {
+    const id = await txn(f.A, f.accA);
+    ok(await attribute(f.A, id, [f.member.A, f.member.B]));
+    ok(await f.B.post(url(`/transactions/${id}/flag`), {}));
+    refused(await f.V.delete(url(`/transactions/${id}/flag`)));
+  },
   // Nobody removes their own share of something they don't own: they flag it instead (M3).
   'ATT-05/OWN': async () => {
     const id = await txn(f.B, f.accB);

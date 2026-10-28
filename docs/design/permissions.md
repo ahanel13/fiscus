@@ -134,8 +134,8 @@ caller can't see ("Transfer to Anthony").
 |---|---|---|---|---|---|
 | ATT-01 | Set / change attribution | acct-own | acct-own | ❌ | Owners of the **paying** account only. `full` visibility is not enough |
 | ATT-02 | Attribute to a member who can't see the account | acct-own | acct-own | ❌ | Allowed. That member gains visibility of **this transaction only** (F1) |
-| ATT-03 | Flag an attribution change | involved | involved | ❌ | "Involved" = attributed before or after the change. The transaction is marked disputed in settle-up |
-| ATT-04 | Resolve a flag | acct-own | acct-own | ❌ | |
+| ATT-03 | Flag an attribution change | involved | involved | ❌ | "Involved" = attributed before or after the change, or an owner of the paying account; not whoever made it. The expense waits outside the balance until it's resolved (D18) |
+| ATT-04 | Resolve a flag | acct-own | acct-own | ❌ | Whoever flagged it may also withdraw it. A resolved flag stays on record |
 | ATT-05 | Remove *my own* attribution from a transaction I don't own | ❌ | ❌ | ❌ | Use a flag instead. This prevents silently dodging a shared cost |
 
 ### 4.5 Notes

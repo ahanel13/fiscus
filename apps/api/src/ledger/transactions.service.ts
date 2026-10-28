@@ -1284,7 +1284,12 @@ export class TransactionsService {
         targetId: id,
         accountId: row.accountId,
         transactionIds: [id],
-        metadata: { members: after.map((a) => a.memberId), inherited: after.length === 0 },
+        // Member ids before and after, in the clear: who a change involves, for flags (#60).
+        metadata: {
+          members: after.map((a) => a.memberId),
+          before: before.map((a) => a.memberId),
+          inherited: after.length === 0,
+        },
         changes: { before: { attribution: before }, after: { attribution: after } },
       });
     });
