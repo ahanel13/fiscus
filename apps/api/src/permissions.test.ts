@@ -933,6 +933,41 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'SHR-03/MEM': async () => ok(await f.B.get(url(`/shared-costs?month=${thisMonth()}`))),
   'SHR-03/VIEW': async () => ok(await f.V.get(url(`/shared-costs?month=${thisMonth()}`))),
 
+  'SHR-04/OWN': async () =>
+    ok(
+      await f.A.post(url('/shared-costs/settlements'), {
+        memberId: f.member.B,
+        direction: 'they_paid',
+        amountMinor: 500,
+        date: '2026-03-01',
+        kind: 'paid',
+      }),
+    ),
+  'SHR-04/MEM': async () => {
+    ok(
+      await f.B.post(url('/shared-costs/settlements'), {
+        memberId: f.member.A,
+        direction: 'you_paid',
+        amountMinor: 700,
+        date: '2026-03-01',
+        kind: 'paid',
+      }),
+    );
+    // A settle-up between two people is theirs: nobody else sees it.
+    const seen = (await f.V.get(url('/shared-costs?month=2026-03'))).body.data;
+    expect(seen.settlements).toEqual([]);
+  },
+  'SHR-04/VIEW': async () =>
+    refused(
+      await f.V.post(url('/shared-costs/settlements'), {
+        memberId: f.member.A,
+        direction: 'you_paid',
+        amountMinor: 100,
+        date: '2026-03-01',
+        kind: 'paid',
+      }),
+    ),
+
   // ── 4.10 Sessions ──
   'TOK-04/OWN': async () => ok(await f.A.get('/api/v1/me/sessions')),
   'TOK-04/MEM': async () => ok(await f.B.get('/api/v1/me/sessions')),

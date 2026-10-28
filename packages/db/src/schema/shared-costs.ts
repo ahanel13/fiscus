@@ -8,13 +8,14 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  text,
   timestamp,
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { id } from '../columns.js';
+import { id, money } from '../columns.js';
 import { householdMembers, households } from './households.js';
-import { categories } from './ledger.js';
+import { categories, transactions } from './ledger.js';
 
 // Shared costs (ADR 0006 §7, budgeting walkthrough §9, #109): how a shared expense is split
 // between the people it's for. Row-level security: migration 0059.
@@ -74,6 +75,58 @@ export const splitPolicies = pgTable(
     check(
       'split_policies_default_method',
       sql`${t.categoryId} IS NOT NULL OR ${t.method} IS NOT NULL`,
+    ),
+  ],
+);
+
+/**
+ * Settle-ups (#112, walkthrough §10, D20): money one member paid another to square up. Linked to
+ * the transfer that paid it when it's in Fiscus (which is then marked `is_settlement`), or not:
+ * cash, a payment app, an account Fiscus doesn't have, or an adjustment with a note. Each lowers
+ * what `from` owes `to`. Only the two of them see it. Row-level security: migration 0061.
+ */
+export const settlements = pgTable(
+  'settlements',
+  {
+    id: id(),
+    householdId: uuid()
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    fromMemberId: uuid().notNull(),
+    toMemberId: uuid().notNull(),
+    amountMinor: money('amount_minor').notNull(),
+    date: date({ mode: 'string' }).notNull(),
+    /** `transfer`: a transfer in Fiscus paid it; `paid`: paid another way; `adjustment`: anything else. */
+    kind: text().notNull(),
+    /** The transfer that paid it, when it's in Fiscus (the api checks it's this household's). */
+    transactionId: uuid().references(() => transactions.id, { onDelete: 'set null' }),
+    note: text(),
+    createdByMemberId: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('settlements_household_id_id').on(t.householdId, t.id),
+    unique('settlements_transaction').on(t.transactionId),
+    foreignKey({
+      columns: [t.householdId, t.fromMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    foreignKey({
+      columns: [t.householdId, t.toMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    foreignKey({
+      columns: [t.householdId, t.createdByMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    index().on(t.fromMemberId),
+    index().on(t.toMemberId),
+    check('settlements_amount', sql`${t.amountMinor} > 0`),
+    check('settlements_members', sql`${t.fromMemberId} <> ${t.toMemberId}`),
+    check('settlements_note', sql`${t.note} IS NULL OR length(${t.note}) <= 500`),
+    check(
+      'settlements_kind',
+      sql`(${t.kind} = 'transfer') = (${t.transactionId} IS NOT NULL) AND ${t.kind} IN ('transfer', 'paid', 'adjustment')`,
     ),
   ],
 );
