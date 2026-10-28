@@ -38,6 +38,14 @@ export {
   type FlexSettings,
   type FlexView,
 } from './flex.js';
+export {
+  allocate,
+  expenseEffects,
+  pairBalances,
+  PairBalances,
+  type ExpenseEffect,
+  type SharedExpense,
+} from './settle.js';
 export { splitRuleFor, splitShares, type SplitPolicyRow, type SplitRuleInput } from './split.js';
 export {
   addMonths,

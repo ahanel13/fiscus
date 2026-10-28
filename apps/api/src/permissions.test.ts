@@ -929,6 +929,10 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     );
   },
 
+  'SHR-03/OWN': async () => ok(await f.A.get(url(`/shared-costs?month=${thisMonth()}`))),
+  'SHR-03/MEM': async () => ok(await f.B.get(url(`/shared-costs?month=${thisMonth()}`))),
+  'SHR-03/VIEW': async () => ok(await f.V.get(url(`/shared-costs?month=${thisMonth()}`))),
+
   // ── 4.10 Sessions ──
   'TOK-04/OWN': async () => ok(await f.A.get('/api/v1/me/sessions')),
   'TOK-04/MEM': async () => ok(await f.B.get('/api/v1/me/sessions')),
