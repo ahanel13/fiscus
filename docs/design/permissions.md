@@ -173,6 +173,7 @@ caller can't see ("Transfer to Anthony").
 | BUD-03 | Set up or change the household's budget: strategy, amounts, category settings | ✅ | ✅ | ❌ | Each change goes into the household's activity (D4) |
 | BUD-04 | Set up or change your own budget | own | own | ❌ | Viewers own no accounts, so have no budget of their own |
 | BUD-05 | A member's own budget when they leave | — | — | — | Deleted, with everything under it, as their rules are (RULE-07). Moving out with their history (ADR 0012, #253) takes it with them first |
+| BUD-06 | Change a budget's scope: **Share my budget**, **Make it mine** | own | own | ❌ | Your own budget, shared by you once there are two or more of you; the household's becomes yours only when you're its one member. The same budget, its history kept (D25) |
 
 ### 4.9 Shared costs (ADR 0006 §7)
 | ID | Action | OWN | MEM | VIEW | Notes |

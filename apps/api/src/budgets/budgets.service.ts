@@ -27,7 +27,7 @@ import {
   type MonthActivity,
   suggestAmounts,
 } from '@fiscus/domain';
-import { householdRanges, transactionDate } from '@fiscus/ledger';
+import { householdRanges, ownersOnDates, transactionDate } from '@fiscus/ledger';
 import type {
   BudgetCategoryHistory,
   BudgetMonth,
@@ -37,10 +37,11 @@ import type {
   BudgetYear,
   BudgetYearRow,
   createBudgetSchema,
+  ScopePreview,
   StrategyPreview,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
@@ -267,6 +268,59 @@ export class BudgetsService {
       });
       const { today } = await householdRanges(tx, ctx.householdId);
       return this.#summary(tx, ctx, row, monthOfDate(today));
+    });
+  }
+
+  /** What changing scope would show this month (D25): as it counts now, and as it would. */
+  async scopePreview(
+    ctx: HouseholdContext,
+    budgetId: string,
+    scope: BudgetScope,
+  ): Promise<ScopePreview> {
+    return this.scope.run(ctx, async (tx) => {
+      const row = await findBudget(tx, budgetId);
+      await checkScopeChange(tx, ctx, row, scope);
+      const { today } = await householdRanges(tx, ctx.householdId);
+      const start = monthOfDate(row.startsMonth);
+      const month = monthOfDate(today) < start ? start : monthOfDate(today);
+      const definition = await loadDefinition(tx, row);
+      const as = async (s: BudgetScope) => {
+        const out = computeBudgetMonth(
+          definition,
+          month,
+          await this.#activity(tx, ctx, s, start, month),
+          STRATEGIES,
+        );
+        return viewOf(out.kind, out.view);
+      };
+      return {
+        month,
+        before: await as(row.memberId ? 'mine' : 'household'),
+        after: await as(scope),
+      };
+    });
+  }
+
+  /**
+   * Share my budget, or Make it mine (D25): the same budget changes scope, keeping its strategy,
+   * amounts and past months. What it counts follows the new scope (D1), for every month.
+   */
+  async setScope(
+    ctx: HouseholdContext,
+    budgetId: string,
+    scope: BudgetScope,
+  ): Promise<BudgetSummary> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      await checkScopeChange(tx, ctx, row, scope);
+      const [updated] = await tx
+        .update(budgets)
+        .set({ memberId: scope === 'mine' ? ctx.memberId : null })
+        .where(eq(budgets.id, budgetId))
+        .returning();
+      await record(activity, updated!, 'budget.scope_changed', { scope });
+      const { today } = await householdRanges(tx, ctx.householdId);
+      return this.#summary(tx, ctx, updated!, monthOfDate(today));
     });
   }
 
@@ -584,9 +638,92 @@ export class BudgetsService {
       }
       out.set(r.month, m);
     }
-    // Contributions (D2) come with budgets that follow the finance style (#107).
-    return new Map([...out].map(([k, v]) => [k, { ...v, contributionsMinor: 0 }]));
+    const contributed = await contributions(tx, ctx, scope, date, from, end, h!.currency);
+    const months = new Set([...out.keys(), ...contributed.keys()]);
+    return new Map(
+      [...months].map((k) => [
+        k,
+        {
+          spentMinor: out.get(k)?.spentMinor ?? new Map<string, number>(),
+          incomeMinor: out.get(k)?.incomeMinor ?? 0,
+          contributionsMinor: contributed.get(k) ?? 0,
+        },
+      ]),
+    );
   }
+}
+
+/**
+ * Contributions (D2), per month: money moved from a member's own account into a joint one (two
+ * or more owners on its date). For the household's budget, what arrived in joint accounts from
+ * accounts that aren't joint, including ones you can't see (someone else's own). For yours, what
+ * left accounts you own alone for a joint one. Settle-ups aren't contributions.
+ */
+async function contributions(
+  tx: Executor,
+  ctx: HouseholdContext,
+  scope: BudgetScope,
+  date: ReturnType<typeof transactionDate>,
+  from: string,
+  end: string,
+  currency: string,
+): Promise<Map<string, number>> {
+  const legs = await tx
+    .select({
+      id: transactions.id,
+      accountId: transactions.accountId,
+      amountMinor: transactions.amountMinor,
+      group: transactions.transferGroupId,
+      effectiveDate: transactions.effectiveDate,
+      month: sql<string>`to_char(${date}, 'YYYY-MM')`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        isNotNull(transactions.transferGroupId),
+        isNull(transactions.deletedAt),
+        eq(transactions.excluded, false),
+        eq(transactions.isSettlement, false),
+        eq(transactions.currency, currency),
+        gte(date, firstDayOf(from)),
+        sql`${date} < ${end}::date`,
+        scope === 'household'
+          ? sql`${transactions.amountMinor} > 0`
+          : sql`${transactions.amountMinor} < 0`,
+      ),
+    );
+  if (legs.length === 0) return new Map();
+  // The other side of each, if you can see it.
+  const others = await tx
+    .select({
+      id: transactions.id,
+      accountId: transactions.accountId,
+      group: transactions.transferGroupId,
+      effectiveDate: transactions.effectiveDate,
+    })
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.transferGroupId, [...new Set(legs.map((l) => l.group!))]),
+        isNull(transactions.deletedAt),
+      ),
+    );
+  const ownersOn = await ownersOnDates(tx, [
+    ...new Set([...legs, ...others].map((r) => r.accountId)),
+  ]);
+  const joint = (r: { accountId: string; effectiveDate: string }) =>
+    ownersOn(r.accountId, r.effectiveDate).length >= 2;
+  const out = new Map<string, number>();
+  for (const leg of legs) {
+    const other = others.find((o) => o.group === leg.group && o.id !== leg.id);
+    const owners = ownersOn(leg.accountId, leg.effectiveDate);
+    const counts =
+      scope === 'household'
+        ? joint(leg) && (!other || !joint(other))
+        : owners.length === 1 && owners[0]!.memberId === ctx.memberId && !!other && joint(other);
+    if (counts) out.set(leg.month, (out.get(leg.month) ?? 0) + Math.abs(leg.amountMinor));
+  }
+  return out;
 }
 
 const summaryOf = (row: BudgetRow, strategy: BudgetStrategyKind): BudgetSummary => ({
@@ -626,12 +763,68 @@ async function defaultScope(tx: Executor, ctx: HouseholdContext): Promise<Budget
     .select({ style: households.financeStyle })
     .from(households)
     .where(eq(households.id, ctx.householdId));
+  if ((await activeMembers(tx, ctx.householdId)) <= 1) return 'mine';
+  return h!.style === 'combined' || h!.style === 'hybrid' ? 'household' : 'mine';
+}
+
+/** The household's members now. Row-level security shows those of every household you're in. */
+async function activeMembers(tx: Executor, householdId: string): Promise<number> {
   const [{ n }] = (await tx
     .select({ n: sql<number>`count(*)::int` })
     .from(householdMembers)
-    .where(isNull(householdMembers.leftAt))) as [{ n: number }];
-  if (n <= 1) return 'mine';
-  return h!.style === 'combined' || h!.style === 'hybrid' ? 'household' : 'mine';
+    .where(
+      and(eq(householdMembers.householdId, householdId), isNull(householdMembers.leftAt)),
+    )) as [{ n: number }];
+  return n;
+}
+
+/**
+ * D25: only your own budget can be shared, by you, once there are two or more of you; the
+ * household's becomes yours only once you're its one member. Either way, not onto a budget that
+ * already exists in that scope.
+ */
+async function checkScopeChange(
+  tx: Executor,
+  ctx: HouseholdContext,
+  row: BudgetRow,
+  scope: BudgetScope,
+): Promise<void> {
+  if ((row.memberId ? 'mine' : 'household') === scope) {
+    throw new Problem(
+      409,
+      'same_scope',
+      scope === 'mine' ? 'It’s yours already' : 'It’s shared already',
+    );
+  }
+  if (ctx.role === 'viewer') throw problems.forbidden('Viewers can’t change the budget.');
+  const members = await activeMembers(tx, ctx.householdId);
+  if (scope === 'household' && members < 2) {
+    throw new Problem(
+      409,
+      'one_person',
+      'A shared budget needs two of you',
+      'Share it once someone joins: on your own, a shared budget counts nothing.',
+    );
+  }
+  if (scope === 'mine' && members > 1) {
+    throw new Problem(
+      409,
+      'not_alone',
+      'The shared budget is everyone’s',
+      'It can become yours once you’re the household’s only member.',
+    );
+  }
+  const [existing] = await tx
+    .select({ id: budgets.id })
+    .from(budgets)
+    .where(scope === 'mine' ? eq(budgets.memberId, ctx.memberId) : isNull(budgets.memberId));
+  if (existing) {
+    throw new Problem(
+      409,
+      'budget_exists',
+      scope === 'mine' ? 'You already have a budget' : 'The household already has a budget',
+    );
+  }
 }
 
 /** The categories a budget limits: everything but income and transfers. */

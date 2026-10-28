@@ -2,12 +2,15 @@
 import {
   type BudgetCategoryHistory,
   type BudgetMonth,
+  type BudgetScope,
   type BudgetSummary,
   type BudgetYear,
   type CategoryGroup,
   type CategoryLimitRow,
   type CategoryLimitsMonth,
   type FlexMonth,
+  type HouseholdMember,
+  type ScopePreview,
   type StrategyPreview,
   type Household,
   type Transaction,
@@ -86,6 +89,8 @@ export function BudgetPage() {
     scope?: string;
     view?: string;
     year?: string;
+    /** Starting the other budget: `mine` or `household` (D21, D23). */
+    add?: string;
   };
   const household = useSuspenseQuery(householdQuery(householdId)).data;
   const members = useQuery(membersQuery(householdId)).data ?? [];
@@ -116,6 +121,11 @@ export function BudgetPage() {
     );
   }
   const budgets = list.data;
+  const adding =
+    (search.add === 'mine' || search.add === 'household') &&
+    !budgets.some((b) => b.scope === search.add)
+      ? (search.add as BudgetScope)
+      : null;
   const chosen =
     budgets.find((b) => b.scope === search.scope) ??
     budgets.find((b) => b.scope === 'mine') ??
@@ -130,14 +140,24 @@ export function BudgetPage() {
         action={budgets.length > 1 ? <ScopeSwitch budgets={budgets} chosen={chosen!} /> : null}
       />
       <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 md:px-8">
-        {chosen && search.view === 'year' ? (
+        {adding ? (
+          <SetUp household={household} memberCount={members.length} scope={adding} />
+        ) : chosen && search.view === 'year' ? (
           <YearView
             household={household}
             budget={chosen}
             year={Number(search.year) || fiscalYearOf(month, household.fiscalYearStartMonth)}
           />
         ) : chosen ? (
-          <MonthView household={household} budget={chosen} month={month} />
+          <>
+            <MonthView household={household} budget={chosen} month={month} />
+            <ScopeActions
+              household={household}
+              budgets={budgets}
+              budget={chosen}
+              members={members}
+            />
+          </>
         ) : (
           <SetUp household={household} memberCount={members.length} />
         )}
@@ -168,20 +188,217 @@ function ScopeSwitch({ budgets, chosen }: { budgets: BudgetSummary[]; chosen: Bu
   );
 }
 
+// ── Whose budget (§7, §7a) ───────────────────────────────────────────────────────────────
+
+/**
+ * What the household's shape offers next (D21, D23, D25): sharing your budget or adding a shared
+ * one once there are two of you, adding your own beside a shared one in Hybrid, and making a
+ * shared budget yours once you're on your own.
+ */
+function ScopeActions({
+  household,
+  budgets,
+  budget,
+  members,
+}: {
+  household: Household;
+  budgets: BudgetSummary[];
+  budget: BudgetSummary;
+  members: HouseholdMember[];
+}) {
+  const navigate = useNavigate();
+  const [changing, setChanging] = useState<BudgetScope | null>(null);
+  if (household.you.role === 'viewer') return null;
+  const people = members.length;
+  const has = (scope: BudgetScope) => budgets.some((b) => b.scope === scope);
+  const add = (scope: BudgetScope) =>
+    void navigate({
+      to: '.',
+      search: (prev: Record<string, unknown>) => ({ ...prev, add: scope }),
+    });
+  let offer: { text: string; label: string; onPress: () => void } | null = null;
+  if (budget.scope === 'mine' && people > 1 && !has('household')) {
+    offer =
+      household.financeStyle === 'combined'
+        ? {
+            text: 'It’s all yours together now. Share this budget, and it becomes the household’s, with its amounts and history.',
+            label: 'Share my budget',
+            onPress: () => setChanging('household'),
+          }
+        : {
+            text: 'Plan what you share: a shared budget counts what’s for two or more of you. This one stays yours.',
+            label: 'Start a shared budget',
+            onPress: () => add('household'),
+          };
+  } else if (budget.scope === 'household' && people === 1 && !has('mine')) {
+    offer = {
+      text: 'You’re the only one here now, so a shared budget counts nothing. Make it yours, keeping its amounts and history.',
+      label: 'Make it mine',
+      onPress: () => setChanging('mine'),
+    };
+  } else if (
+    budget.scope === 'household' &&
+    people > 1 &&
+    household.financeStyle === 'hybrid' &&
+    !has('mine')
+  ) {
+    offer = {
+      text: 'Want a budget for what’s yours alone? Only you see it.',
+      label: 'Add a budget of your own',
+      onPress: () => add('mine'),
+    };
+  }
+  if (!offer) return null;
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+        <p className="max-w-2xl text-sm text-muted">{offer.text}</p>
+        <Button variant="secondary" size="sm" onPress={offer.onPress}>
+          {offer.label}
+        </Button>
+      </div>
+      {changing ? (
+        <ScopeDialog
+          householdId={household.id}
+          currency={household.baseCurrency}
+          budget={budget}
+          target={changing}
+          onClose={() => setChanging(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Share my budget, or Make it mine (D25), after a look at what it would count this month. */
+function ScopeDialog({
+  householdId,
+  currency,
+  budget,
+  target,
+  onClose,
+}: {
+  householdId: string;
+  currency: string;
+  budget: BudgetSummary;
+  target: BudgetScope;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const preview = useQuery({
+    queryKey: ['households', householdId, 'budgets', budget.id, 'scope-preview', target],
+    queryFn: async () =>
+      (
+        await api<{ data: ScopePreview }>(
+          'GET',
+          `${base(householdId)}/budgets/${budget.id}/scope-preview?scope=${target}`,
+        )
+      ).data,
+  });
+  const save = useMutation({
+    mutationFn: () =>
+      api('PUT', `${base(householdId)}/budgets/${budget.id}/scope`, { body: { scope: target } }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['households', householdId, 'budgets'] });
+      void navigate({
+        to: '.',
+        search: (prev: Record<string, unknown>) => ({ ...prev, scope: target }),
+        replace: true,
+      });
+      toast(
+        target === 'household' ? 'Your budget is the household’s now.' : 'The budget is yours now.',
+      );
+      onClose();
+    },
+  });
+  const err = (save.error ?? preview.error) as ApiError | null;
+  const p = preview.data;
+  const money = (minor: number) => <Amount minor={minor} currency={currency} kind="balance" />;
+  const moneyIn = (v: ScopePreview['before'], scope: BudgetScope) =>
+    v.incomeMinor + (scope === 'household' ? v.contributionsMinor : 0);
+  const from = budget.scope;
+  return (
+    <Dialog
+      title={target === 'household' ? 'Share my budget' : 'Make it mine'}
+      isOpen
+      onOpenChange={(open) => (open ? null : onClose())}
+    >
+      <div className="space-y-4">
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <p className="text-sm">
+          {target === 'household'
+            ? 'It becomes the household’s budget: everyone in the household sees it, and owners and members can change it. It counts what’s for two or more of you, in every month.'
+            : 'It becomes your own budget: only you see it. It counts what’s yours, in every month.'}
+        </p>
+        <p className="text-sm text-muted">
+          Its way of budgeting, its amounts and its past months stay as they are.
+        </p>
+        {preview.isPending ? (
+          <Skeleton className="h-20" />
+        ) : p ? (
+          <div className="space-y-1 rounded-xl border border-border p-3 text-sm">
+            <p className="font-medium">In {monthName(p.month)}</p>
+            <p className="flex justify-between gap-4">
+              <span className="text-muted">Spent</span>
+              <span>
+                {money(p.before.totals.spentMinor)} → {money(p.after.totals.spentMinor)}
+              </span>
+            </p>
+            <p className="flex justify-between gap-4">
+              <span className="text-muted">Money in</span>
+              <span>
+                {money(moneyIn(p.before, from))} → {money(moneyIn(p.after, target))}
+              </span>
+            </p>
+          </div>
+        ) : null}
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button isPending={save.isPending} isDisabled={!p} onPress={() => save.mutate()}>
+            {target === 'household' ? 'Share my budget' : 'Make it mine'}
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
+  );
+}
+
 // ── Setting up (§2, D5) ──────────────────────────────────────────────────────────────────────
 
-function SetUp({ household, memberCount }: { household: Household; memberCount: number }) {
+function SetUp({
+  household,
+  memberCount,
+  scope,
+}: {
+  household: Household;
+  memberCount: number;
+  /** The other budget, asked for (D23); otherwise the finance style decides (D21). */
+  scope?: BudgetScope;
+}) {
   const householdId = household.id;
   const queryClient = useQueryClient();
-  const suggestion = useQuery(budgetSuggestionQuery(householdId));
+  const navigate = useNavigate();
+  const suggestion = useQuery(budgetSuggestionQuery(householdId, scope));
   const [reviewing, setReviewing] = useState(false);
   const canEdit = household.you.role !== 'viewer';
   const start = useMutation({
     mutationFn: (amounts: { categoryId: string; amountMinor: number }[]) =>
-      api('POST', `${base(householdId)}/budgets`, { body: { amounts } }),
+      api('POST', `${base(householdId)}/budgets`, {
+        body: { amounts, ...(scope ? { scope } : {}) },
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['households', householdId, 'budgets'] });
-      toast('Your budget has started.');
+      if (scope) {
+        void navigate({
+          to: '.',
+          search: (prev: Record<string, unknown>) => ({ ...prev, add: undefined, scope }),
+          replace: true,
+        });
+      }
+      toast(scope === 'household' ? 'The shared budget has started.' : 'Your budget has started.');
     },
     onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
   });
@@ -215,7 +432,13 @@ function SetUp({ household, memberCount }: { household: Household; memberCount: 
   return (
     <div className="space-y-4">
       <Card className="space-y-3 p-6">
-        <h2 className="text-lg font-semibold">Start a budget</h2>
+        <h2 className="text-lg font-semibold">
+          {scope === 'household'
+            ? 'Start a shared budget'
+            : scope === 'mine'
+              ? 'Start a budget of your own'
+              : 'Start a budget'}
+        </h2>
         <p className="max-w-2xl text-sm text-muted">
           A budget is a plan for what you spend. Fiscus suggests a limit for each category from your
           last 3 months, and you can change every amount before you start, and any time after.
@@ -231,6 +454,20 @@ function SetUp({ household, memberCount }: { household: Household; memberCount: 
           <Button variant="secondary" isPending={start.isPending} onPress={() => start.mutate([])}>
             Start from zero
           </Button>
+          {scope ? (
+            <Button
+              variant="ghost"
+              onPress={() =>
+                void navigate({
+                  to: '.',
+                  search: (prev: Record<string, unknown>) => ({ ...prev, add: undefined }),
+                  replace: true,
+                })
+              }
+            >
+              Not now
+            </Button>
+          ) : null}
         </div>
         {s && s.average.length > 0 ? (
           <p className="text-xs text-muted">
@@ -520,7 +757,7 @@ function MonthBody({
   return (
     <>
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4">
-        <Stat label="Money in">{money(view.incomeMinor)}</Stat>
+        <MoneyIn data={data} />
         <Stat label="Budgeted">{money(view.totals.budgetedMinor)}</Stat>
         <Stat
           label="Spent"
@@ -1141,7 +1378,7 @@ function FlexBody({
   return (
     <>
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4">
-        <Stat label="Money in">{money(view.incomeMinor)}</Stat>
+        <MoneyIn data={data} />
         <Stat label="Fixed" note={`of ${formatMinor(view.totals.fixedBudgetedMinor, currency)}`}>
           {money(view.totals.fixedSpentMinor)}
         </Stat>
@@ -1283,6 +1520,33 @@ function FlexBody({
         </section>
       </div>
     </>
+  );
+}
+
+/**
+ * Money in (D2): for the shared budget, its income and what members moved into joint accounts;
+ * for yours, your income, with what you moved into joint accounts going to Ours.
+ */
+function MoneyIn({ data }: { data: BudgetMonth }) {
+  const { incomeMinor, contributionsMinor } = data.view;
+  const shared = data.budget.scope === 'household';
+  return (
+    <Stat
+      label="Money in"
+      note={
+        contributionsMinor === 0
+          ? undefined
+          : shared
+            ? `${formatMinor(contributionsMinor, data.currency)} of it contributions`
+            : `${formatMinor(contributionsMinor, data.currency)} went to Ours`
+      }
+    >
+      <Amount
+        minor={incomeMinor + (shared ? contributionsMinor : 0)}
+        currency={data.currency}
+        kind="balance"
+      />
+    </Stat>
   );
 }
 
