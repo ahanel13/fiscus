@@ -8,7 +8,7 @@ import type {
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { ChevronLeft, ChevronRight, Scale } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flag, Scale } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { categoriesQuery, householdQuery, membersQuery } from '../api/queries.js';
@@ -31,6 +31,7 @@ import {
   toast,
 } from '../components/ui.js';
 import { addMonths } from './budget.js';
+import { TransactionDrawer } from './transactions.js';
 
 // Shared costs (#115, budgeting walkthrough §8–§10): where you stand with each person, what
 // changed it this month, and settling up.
@@ -76,7 +77,9 @@ export function SharedCostsPage() {
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const month = /^\d{4}-\d{2}$/.test(search.month ?? '') ? search.month! : thisMonth();
   const data = useQuery(sharedCostsQuery(householdId, month));
+  const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const categoryName = useCategoryNames(householdId);
+  const [open, setOpen] = useState<string | null>(null);
   const [settling, setSettling] = useState<{ member: HouseholdMember; balance: number } | null>(
     null,
   );
@@ -153,9 +156,19 @@ export function SharedCostsPage() {
             name={name}
             groups={categoryName}
             onSettle={canEdit ? setSettling : undefined}
+            onOpen={setOpen}
           />
         )}
       </div>
+      {open ? (
+        <TransactionDrawer
+          householdId={householdId}
+          transactionId={open}
+          members={members}
+          groups={groups}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
       {settling && data.data ? (
         <SettleDialog
           householdId={householdId}
@@ -181,12 +194,15 @@ function Body({
   name,
   groups: categoryName,
   onSettle,
+  onOpen,
 }: {
   data: SharedCosts;
   others: HouseholdMember[];
   name: (id: string) => string;
   groups: (id: string | null) => string;
   onSettle: ((s: { member: HouseholdMember; balance: number }) => void) | undefined;
+  /** Opens a transaction, to see it or flag who it's for (#60). */
+  onOpen: (transactionId: string) => void;
 }) {
   const { currency, month } = data;
   const money = (minor: number) => (
@@ -198,8 +214,18 @@ function Body({
   const changed = data.expenses.filter((e) => e.effect.length > 0);
   const evens = data.expenses.filter((e) => e.effect.length === 0);
 
+  const flagged = data.disputed.length;
   return (
     <>
+      {flagged ? (
+        <Alert tone="warning">
+          {flagged === 1 ? 'A flagged change is' : `${flagged} flagged changes are`} left out of
+          your balance until {flagged === 1 ? 'it’s' : 'they’re'} sorted out.{' '}
+          <a href="#flagged" className="font-medium underline">
+            See {flagged === 1 ? 'it' : 'them'}
+          </a>
+        </Alert>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2">
         {others.map((m) => {
           const balance = balanceWith(m.id);
@@ -300,6 +326,7 @@ function Body({
                 category={categoryName}
                 money={money}
                 currency={currency}
+                onOpen={onOpen}
               />
             ))}
             {evens.length ? (
@@ -318,6 +345,35 @@ function Body({
           </ul>
         </section>
       )}
+      {flagged ? (
+        <section
+          id="flagged"
+          className="overflow-hidden rounded-xl border border-warning/40 bg-surface"
+        >
+          <h2 className="flex items-center gap-2 border-b border-border px-4 py-2 text-sm font-semibold">
+            <Flag aria-hidden className="size-4 text-warning" />
+            Flagged, and left out of the balance
+          </h2>
+          <ul className="divide-y divide-border">
+            {data.disputed.map((e) => (
+              <ExpenseRow
+                key={e.transactionId}
+                e={e}
+                name={name}
+                category={categoryName}
+                money={money}
+                currency={currency}
+                onOpen={onOpen}
+                flag={`Flagged by ${name(e.flag.flaggedByMemberId)}${e.flag.note ? `: “${e.flag.note}”` : ''}`}
+              />
+            ))}
+          </ul>
+          <p className="border-t border-border px-4 py-2 text-xs text-muted">
+            Whoever paid sorts it out: by changing who it’s for, or marking it as sorted. Until
+            then, settling up doesn’t include it.
+          </p>
+        </section>
+      ) : null}
       <p className="text-xs text-muted">
         Shared expenses are the ones for more than one of you. Spending from a joint account evens
         out when your split matches how you own it.
@@ -332,21 +388,33 @@ function ExpenseRow({
   category,
   money,
   currency,
+  onOpen,
+  flag,
 }: {
   e: SharedExpenseLine;
   name: (id: string) => string;
   category: (id: string | null) => string;
   money: (minor: number) => React.ReactNode;
   currency: string;
+  onOpen: (transactionId: string) => void;
+  /** Who flagged it, and why. */
+  flag?: string;
 }) {
   return (
     <li className="flex items-center gap-3 px-4 py-3 text-sm">
       <span className="w-14 shrink-0 text-xs text-muted">{shortDate(e.date)}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate">{e.displayName}</span>
-        <span className="text-xs text-muted">
+        <button
+          type="button"
+          className="block max-w-full truncate text-left hover:underline focus-visible:underline focus-visible:outline-none"
+          onClick={() => onOpen(e.transactionId)}
+        >
+          {e.displayName}
+        </button>
+        <span className="block text-xs text-muted">
           {category(e.categoryId)} · paid by {e.paidBy.map(name).join(' and ')}
         </span>
+        {flag ? <span className="block text-xs text-warning">{flag}</span> : null}
       </span>
       <span className="text-right">
         <span className="block">{money(e.costMinor)}</span>

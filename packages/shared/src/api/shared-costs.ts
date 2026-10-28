@@ -97,6 +97,11 @@ export interface SharedCosts {
   carried: { memberId: string; amountMinor: number }[];
   /** The month's shared expenses that you're part of, newest first. */
   expenses: SharedExpenseLine[];
+  /**
+   * Shared expenses whose attribution is flagged (#60, D18), from any month: left out of
+   * `balances` and `carried` until the paying account's owners resolve them. Newest first.
+   */
+  disputed: (SharedExpenseLine & { flag: AttributionFlag })[];
   /** Settle-ups between you and others this month, newest first (#112). */
   settlements: Settlement[];
   /** Shared spending you can see this month, and how much of it evens out. */
@@ -149,3 +154,26 @@ export interface SettlementCandidate {
   /** Positive: money in (they paid you); negative: money out (you paid them). */
   amountMinor: number;
 }
+
+/** An open flag on who a transaction is for (#60, ADR 0006 F6). */
+export interface AttributionFlag {
+  id: string;
+  flaggedByMemberId: string;
+  note: string | null;
+  createdAt: string;
+}
+
+/** A transaction's flag, and what you may do about it (ATT-03, ATT-04). */
+export interface AttributionFlagStatus {
+  flag: AttributionFlag | null;
+  /** You're involved (attributed before or after the last change) and it isn't flagged. */
+  canFlag: boolean;
+  /** You own the paying account, or raised the flag (to withdraw it). */
+  canResolve: boolean;
+  /** Who last changed who it's for, when you can see that change. */
+  changedByMemberId: string | null;
+}
+
+export const flagAttributionSchema = z.object({
+  note: z.string().trim().min(1).max(500).optional(),
+});

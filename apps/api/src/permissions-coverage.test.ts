@@ -22,8 +22,6 @@ const NOT_BUILT: Record<string, string> = {
   'HH-17': 'Ownership claims (#62)',
   'ACC-10': 'Full account numbers (M2)',
   'TXN-07': 'Assigning reviewers (#45)',
-  'ATT-03': 'Flagging attribution changes (M3)',
-  'ATT-04': 'Resolving flags (M3)',
   'TOK-01': 'Personal access tokens (M10)',
   'TOK-02': 'Personal access tokens (M10)',
   'TOK-03': 'Personal access tokens (M10)',

@@ -435,6 +435,20 @@
       "when": 1793164196724,
       "tag": "0061_settlements_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793165435189,
+      "tag": "0062_attribution_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793165436533,
+      "tag": "0063_attribution_flags_rls",
+      "breakpoints": true
     }
   ]
 }

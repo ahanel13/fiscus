@@ -27,6 +27,7 @@ describe('row-level security', () => {
     'account_placements',
     'accounts',
     'account_owners',
+    'attribution_flags',
     'balance_snapshots',
     'budget_amounts',
     'budget_categories',

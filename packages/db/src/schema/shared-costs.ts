@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { id, money } from '../columns.js';
@@ -127,6 +128,49 @@ export const settlements = pgTable(
     check(
       'settlements_kind',
       sql`(${t.kind} = 'transfer') = (${t.transactionId} IS NOT NULL) AND ${t.kind} IN ('transfer', 'paid', 'adjustment')`,
+    ),
+  ],
+);
+
+/**
+ * A flagged attribution change (ADR 0006 F6, #60, walkthrough D18): someone it involves contests
+ * who a transaction is for. While it's open, the expense waits outside the balance; the paying
+ * account's owners resolve it, or whoever flagged it withdraws. Kept once resolved, as a record.
+ */
+export const attributionFlags = pgTable(
+  'attribution_flags',
+  {
+    id: id(),
+    householdId: uuid()
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    transactionId: uuid()
+      .notNull()
+      .references(() => transactions.id, { onDelete: 'cascade' }),
+    flaggedByMemberId: uuid().notNull(),
+    note: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp({ withTimezone: true }),
+    resolvedByMemberId: uuid(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.householdId, t.flaggedByMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    foreignKey({
+      columns: [t.householdId, t.resolvedByMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    // One open flag per transaction.
+    uniqueIndex('attribution_flags_open')
+      .on(t.transactionId)
+      .where(sql`${t.resolvedAt} IS NULL`),
+    index().on(t.householdId, t.resolvedAt),
+    check('attribution_flags_note', sql`${t.note} IS NULL OR length(${t.note}) <= 500`),
+    check(
+      'attribution_flags_resolved',
+      sql`(${t.resolvedAt} IS NULL) = (${t.resolvedByMemberId} IS NULL)`,
     ),
   ],
 );

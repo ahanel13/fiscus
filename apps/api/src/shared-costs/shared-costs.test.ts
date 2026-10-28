@@ -275,6 +275,59 @@ describe('shared costs: who owes whom', () => {
     expect([self.status, self.body.code]).toEqual([422, 'settle_with_yourself']);
   });
 
+  it('leaves a flagged change out of the balance until it’s resolved (#60, D18)', async () => {
+    const before = (await statement(A)).balances;
+    expect(before).toEqual([{ memberId: member.B, amountMinor: 2500 }]);
+    const costco = (await statement(A)).expenses.find(
+      (e: { displayName: string }) => e.displayName === 'Costco',
+    ).transactionId as string;
+    const flagUrl = url(`/transactions/${costco}/flag`);
+    // Bea is who it's for now; Ada made the change, so she changes it back rather than flags it.
+    expect((await B.get(flagUrl)).body.data).toMatchObject({
+      flag: null,
+      canFlag: true,
+      canResolve: false,
+      // The change is on Ada's private card, so its activity is hers: Bea sees only who paid.
+      changedByMemberId: null,
+    });
+    expect((await A.get(flagUrl)).body.data.canFlag).toBe(false);
+    const flagged = await B.post(flagUrl, { note: 'We said Costco was yours this month' });
+    expect(flagged.status, JSON.stringify(flagged.body)).toBe(201);
+    expect((await B.post(flagUrl, {})).status).toBe(409);
+
+    // Costco (Bea owed 93.20) waits outside: the balance moves, and both see it listed.
+    const a = await statement(A);
+    expect(a.balances).toEqual([{ memberId: member.B, amountMinor: 2500 - 9320 }]);
+    expect(a.expenses.map((e: { displayName: string }) => e.displayName)).not.toContain('Costco');
+    expect(a.disputed).toEqual([
+      expect.objectContaining({
+        displayName: 'Costco',
+        effect: [{ memberId: member.B, amountMinor: 9320 }],
+        flag: expect.objectContaining({
+          flaggedByMemberId: member.B,
+          note: 'We said Costco was yours this month',
+        }),
+      }),
+    ]);
+    expect((await statement(B)).balances).toEqual([
+      { memberId: member.A, amountMinor: 9320 - 2500 },
+    ]);
+    // A later month still leaves it out, and still lists it.
+    expect((await statement(A, month(1))).disputed).toHaveLength(1);
+
+    // Ada owns the card it was paid from: she resolves it, and it counts again.
+    expect((await A.get(flagUrl)).body.data.canResolve).toBe(true);
+    expect((await A.delete(flagUrl)).status).toBe(204);
+    expect((await statement(A)).balances).toEqual(before);
+    expect((await statement(A)).disputed).toEqual([]);
+
+    // Whoever flagged it may withdraw it instead.
+    expect((await B.post(flagUrl, {})).status).toBe(201);
+    expect((await B.delete(flagUrl)).status).toBe(204);
+    expect((await B.delete(flagUrl)).status).toBe(404);
+    expect((await statement(B)).disputed).toEqual([]);
+  });
+
   it('refuses a month that isn’t one', async () => {
     expect((await A.get(url('/shared-costs?month=2026-13'))).status).toBe(422);
   });

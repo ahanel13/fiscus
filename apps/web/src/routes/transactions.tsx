@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
   Account,
+  AttributionFlagStatus,
   BulkUpdateResult,
   CategoryGroup,
   HouseholdMember,
@@ -1364,6 +1365,9 @@ export function TransactionDetails({
               isPending={attribution.isPending}
             />
           ) : null}
+          {t.attributionInherited ? null : (
+            <FlagChange householdId={householdId} t={t} members={members} />
+          )}
         </section>
       ) : null}
 
@@ -1435,6 +1439,110 @@ function ForPicker({
       </div>
       <p className="text-xs text-muted">
         Split equally. People you add see this purchase, but not the account it’s from.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Flagging a change to who it's for (#60, ADR 0006 F6): someone it involves flags it, and it
+ * waits outside Shared costs until the paying account's owners sort it out (D18).
+ */
+function FlagChange({
+  householdId,
+  t,
+  members,
+}: {
+  householdId: string;
+  t: Transaction;
+  members: HouseholdMember[];
+}) {
+  const queryClient = useQueryClient();
+  const url = `/api/v1/households/${householdId}/transactions/${t.id}/flag`;
+  const queryKey = ['households', householdId, 'transactions', t.id, 'flag', t.version];
+  const status = useQuery({
+    queryKey,
+    queryFn: async () => (await api<{ data: AttributionFlagStatus }>('GET', url)).data,
+  });
+  const [writing, setWriting] = useState(false);
+  const [note, setNote] = useState('');
+  const done = async (message: string) => {
+    setWriting(false);
+    setNote('');
+    await Promise.all(
+      [['transactions', t.id, 'flag'], ['shared-costs'], ['transactions', t.id, 'history']].map(
+        (k) => queryClient.invalidateQueries({ queryKey: ['households', householdId, ...k] }),
+      ),
+    );
+    toast(message);
+  };
+  const onError = (e: ApiError) => toast(e.detail ?? e.title, { tone: 'error' });
+  const flag = useMutation({
+    mutationFn: () => api('POST', url, { body: note.trim() ? { note: note.trim() } : {} }),
+    onSuccess: () => done('Flagged. It’s left out of Shared costs until it’s sorted.'),
+    onError,
+  });
+  const resolve = useMutation({
+    mutationFn: () => api('DELETE', url),
+    onSuccess: () => done('It counts in Shared costs again.'),
+    onError,
+  });
+  const s = status.data;
+  if (!s || (!s.flag && !s.canFlag)) return null;
+  const name = (id: string) => {
+    const m = members.find((x) => x.id === id);
+    return m?.isYou ? 'you' : (m?.displayName ?? 'someone');
+  };
+  const changer = s.changedByMemberId ? name(s.changedByMemberId) : null;
+
+  if (s.flag) {
+    const mine = members.find((m) => m.id === s.flag!.flaggedByMemberId)?.isYou ?? false;
+    return (
+      <Alert tone="warning">
+        <p>
+          {mine ? 'You flagged' : `${name(s.flag.flaggedByMemberId)} flagged`} who this is for
+          {s.flag.note ? `: “${s.flag.note}”` : '.'} It’s left out of Shared costs until it’s
+          sorted.
+        </p>
+        {s.canResolve ? (
+          <Button
+            className="mt-2"
+            variant="secondary"
+            size="sm"
+            isPending={resolve.isPending}
+            onPress={() => resolve.mutate()}
+          >
+            {mine ? 'Withdraw the flag' : 'Mark as sorted'}
+          </Button>
+        ) : null}
+      </Alert>
+    );
+  }
+  return writing ? (
+    <div className="space-y-2">
+      <TextField
+        label="What’s wrong with it (optional)"
+        value={note}
+        onChange={setNote}
+        maxLength={500}
+      />
+      <div className="flex gap-2">
+        <Button size="sm" isPending={flag.isPending} onPress={() => flag.mutate()}>
+          Flag this change
+        </Button>
+        <Button variant="ghost" size="sm" onPress={() => setWriting(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <div className="space-y-1">
+      <Button variant="secondary" size="sm" onPress={() => setWriting(true)}>
+        Flag this change
+      </Button>
+      <p className="text-xs text-muted">
+        Not right? A flagged change is left out of Shared costs until {changer ?? 'whoever paid'}{' '}
+        sorts it out.
       </p>
     </div>
   );
