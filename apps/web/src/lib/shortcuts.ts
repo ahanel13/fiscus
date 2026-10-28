@@ -10,13 +10,17 @@ export interface ShortcutHandlers {
 
 const NOT_TYPED = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color']);
 
+/** An open list or menu finds an item as you type its name ("gas" in a category picker). */
+const TYPE_TO_FIND = '[role="listbox"], [role="menu"], [role="combobox"]';
+
 /** Whether a key press goes into a field being typed in, so shortcuts leave it alone. */
 export const typing = (el: EventTarget | null) =>
   el instanceof HTMLElement &&
   (el.isContentEditable ||
     ['TEXTAREA', 'SELECT'].includes(el.tagName) ||
     // A checkbox, radio or button isn't typed into: shortcuts still work from one.
-    (el instanceof HTMLInputElement && !NOT_TYPED.has(el.type)));
+    (el instanceof HTMLInputElement && !NOT_TYPED.has(el.type)) ||
+    el.closest(TYPE_TO_FIND) !== null);
 
 /** Global keyboard shortcuts (IA §8). Ignored while typing in a field. */
 export function useShortcuts(handlers: ShortcutHandlers): void {
