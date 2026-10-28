@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
-import { allocate, expenseEffects, pairBalances, type SharedExpense } from './settle.js';
+import {
+  allocate,
+  expenseEffects,
+  pairBalances,
+  settlementEffect,
+  type SharedExpense,
+} from './settle.js';
 import type { SplitPolicyRow } from './split.js';
 
 const both = [
@@ -159,5 +165,17 @@ describe('who owes whom', () => {
     expect(pairBalances(expenseEffects([october[0]!, refund], [])).owes('sam', 'alex')).toBe(
       9320 - 1000,
     );
+  });
+});
+
+describe('settling up', () => {
+  it('lowers what the payer owed, and can go past zero', () => {
+    const effects = expenseEffects(october.slice(0, 1), []); // Sam owes Alex 93.20
+    expect(
+      pairBalances([...effects, settlementEffect('s', 'sam', 'alex', 9320)]).owes('sam', 'alex'),
+    ).toBe(0);
+    expect(
+      pairBalances([...effects, settlementEffect('s', 'sam', 'alex', 10000)]).owes('alex', 'sam'),
+    ).toBe(680);
   });
 });

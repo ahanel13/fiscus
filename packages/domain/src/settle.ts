@@ -197,3 +197,17 @@ export class PairBalances {
     return out;
   }
 }
+
+/** A settle-up as an effect: `from` paid `to`, which lowers what `from` owes (#112). */
+export function settlementEffect(
+  id: string,
+  fromMemberId: string,
+  toMemberId: string,
+  amountMinor: number,
+): ExpenseEffect {
+  const net = new Map([
+    [fromMemberId, amountMinor],
+    [toMemberId, -amountMinor],
+  ]);
+  return { expenseId: id, paid: new Map([[fromMemberId, amountMinor]]), owed: new Map(), net };
+}

@@ -189,6 +189,16 @@ describe('cross-tenant isolation (generated from routes)', () => {
     ids.b.otherMemberId = (await bob.get(`/api/v1/households/${b.id}/members`)).body.data.find(
       (m: { isYou: boolean }) => !m.isYou,
     ).id;
+    // A settle-up between B's two members (#112).
+    ids.b.settlementId = (
+      await bob.post(`/api/v1/households/${b.id}/shared-costs/settlements`, {
+        memberId: ids.b.otherMemberId,
+        direction: 'they_paid',
+        amountMinor: 100,
+        date: '2026-03-01',
+        kind: 'paid',
+      })
+    ).body.data.id;
   }, 180_000);
 
   afterAll(async () => {

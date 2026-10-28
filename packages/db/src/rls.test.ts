@@ -40,6 +40,7 @@ describe('row-level security', () => {
     'import_profiles',
     'member_preferences',
     'rules',
+    'settlements',
     'split_policies',
     'sync_holds',
     'tags',

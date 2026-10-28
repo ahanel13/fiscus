@@ -43,6 +43,7 @@ export {
   expenseEffects,
   pairBalances,
   PairBalances,
+  settlementEffect,
   type ExpenseEffect,
   type SharedExpense,
 } from './settle.js';

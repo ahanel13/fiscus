@@ -175,6 +175,106 @@ describe('shared costs: who owes whom', () => {
     ]);
   });
 
+  it('settles up with a transfer already in Fiscus, which stops counting as income (#112)', async () => {
+    const owed = 3000 + 9320 + 2000 - 3948 - 4425; // from the split rule test above
+    const zelle = await A.post(url('/transactions'), {
+      accountId: acct.ada,
+      date: `${month(0)}-01`,
+      amountMinor: owed,
+      displayName: 'Zelle from Bea',
+    });
+    await A.post(url('/transactions'), {
+      accountId: acct.ada,
+      date: `${month(0)}-01`,
+      amountMinor: 1200,
+      displayName: 'Refund',
+    });
+    const cands = await A.get(
+      url(`/shared-costs/settlement-candidates?memberId=${member.B}&balanceMinor=${owed}`),
+    );
+    expect(cands.status, JSON.stringify(cands.body)).toBe(200);
+    expect(cands.body.data[0]).toMatchObject({ displayName: 'Zelle from Bea', amountMinor: owed });
+
+    const r = await A.post(url('/shared-costs/settlements'), {
+      memberId: member.B,
+      direction: 'they_paid',
+      amountMinor: owed,
+      date: `${month(0)}-01`,
+      kind: 'transfer',
+      transactionId: zelle.body.data.id,
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    expect((await statement(A)).balances).toEqual([]);
+    const b = await statement(B);
+    expect(b.balances).toEqual([]);
+    expect(b.settlements).toEqual([
+      expect.objectContaining({ fromMemberId: member.B, toMemberId: member.A, kind: 'transfer' }),
+    ]);
+    // The transfer is a settle-up now: in the Settlement category, not income.
+    const t = (await A.get(url(`/transactions/${zelle.body.data.id}`))).body.data;
+    const settlementCat = (
+      (await A.get(url('/categories'))).body.data as {
+        categories: { id: string; systemKey: string | null }[];
+      }[]
+    )
+      .flatMap((g) => g.categories)
+      .find((c) => c.systemKey === 'settlement')!.id;
+    expect(t.categoryId).toBe(settlementCat);
+    // It can't settle twice.
+    const twice = await A.post(url('/shared-costs/settlements'), {
+      memberId: member.B,
+      direction: 'they_paid',
+      amountMinor: 1,
+      date: `${month(0)}-01`,
+      kind: 'transfer',
+      transactionId: zelle.body.data.id,
+    });
+    expect([twice.status, twice.body.code]).toEqual([422, 'not_a_settlement_transfer']);
+  });
+
+  it('records one paid another way, an adjustment with a note, and removes one', async () => {
+    const cash = await B.post(url('/shared-costs/settlements'), {
+      memberId: member.A,
+      direction: 'you_paid',
+      amountMinor: 2500,
+      date: `${month(0)}-01`,
+      kind: 'paid',
+    });
+    expect(cash.status, JSON.stringify(cash.body)).toBe(201);
+    // Bea paid 25.00 more than she owed: Ada owes it back.
+    expect((await statement(A)).balances).toEqual([{ memberId: member.B, amountMinor: -2500 }]);
+    const noNote = await A.post(url('/shared-costs/settlements'), {
+      memberId: member.B,
+      direction: 'you_paid',
+      amountMinor: 2500,
+      date: `${month(0)}-01`,
+      kind: 'adjustment',
+    });
+    expect(noNote.status).toBe(422);
+    const adj = await A.post(url('/shared-costs/settlements'), {
+      memberId: member.B,
+      direction: 'you_paid',
+      amountMinor: 2500,
+      date: `${month(0)}-01`,
+      kind: 'adjustment',
+      note: 'Paid Bea back for the concert in cash',
+    });
+    expect(adj.status, JSON.stringify(adj.body)).toBe(201);
+    expect((await statement(A)).balances).toEqual([]);
+    expect((await B.delete(url(`/shared-costs/settlements/${cash.body.data.id}`))).status).toBe(
+      204,
+    );
+    expect((await statement(A)).balances).toEqual([{ memberId: member.B, amountMinor: 2500 }]);
+    const self = await A.post(url('/shared-costs/settlements'), {
+      memberId: member.A,
+      direction: 'they_paid',
+      amountMinor: 1,
+      date: `${month(0)}-01`,
+      kind: 'paid',
+    });
+    expect([self.status, self.body.code]).toEqual([422, 'settle_with_yourself']);
+  });
+
   it('refuses a month that isn’t one', async () => {
     expect((await A.get(url('/shared-costs?month=2026-13'))).status).toBe(422);
   });

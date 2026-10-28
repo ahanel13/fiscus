@@ -97,7 +97,55 @@ export interface SharedCosts {
   carried: { memberId: string; amountMinor: number }[];
   /** The month's shared expenses that you're part of, newest first. */
   expenses: SharedExpenseLine[];
+  /** Settle-ups between you and others this month, newest first (#112). */
+  settlements: Settlement[];
   /** Shared spending you can see this month, and how much of it evens out. */
   sharedSpendingMinor: number;
   evensOutMinor: number;
+}
+
+/** A settle-up between you and someone else (#112, D20). */
+export interface Settlement {
+  id: string;
+  date: string;
+  fromMemberId: string;
+  toMemberId: string;
+  amountMinor: number;
+  /** `transfer`: a transfer in Fiscus paid it; `paid`: paid another way; `adjustment`. */
+  kind: 'transfer' | 'paid' | 'adjustment';
+  transactionId: string | null;
+  note: string | null;
+}
+
+/**
+ * Records a settle-up between you and `memberId`. `direction` is from your side: `they_paid` (they
+ * paid you) or `you_paid`. A `transfer` names the transaction in your account that paid it.
+ */
+export const recordSettlementSchema = z
+  .object({
+    memberId: z.uuid(),
+    direction: z.enum(['they_paid', 'you_paid']),
+    amountMinor: minorUnitsSchema.min(1),
+    date: z.iso.date(),
+    kind: z.enum(['transfer', 'paid', 'adjustment']),
+    transactionId: z.uuid().optional(),
+    note: z.string().trim().min(1).max(500).optional(),
+  })
+  .refine((s) => (s.kind === 'transfer') === (s.transactionId !== undefined), {
+    message: 'A transfer names its transaction; other kinds don’t',
+    path: ['transactionId'],
+  })
+  .refine((s) => s.kind !== 'adjustment' || s.note !== undefined, {
+    message: 'Say what the adjustment is for',
+    path: ['note'],
+  });
+
+/** A transfer that could be a settle-up with someone: in your account, close to the balance. */
+export interface SettlementCandidate {
+  transactionId: string;
+  date: string;
+  displayName: string;
+  accountName: string;
+  /** Positive: money in (they paid you); negative: money out (you paid them). */
+  amountMinor: number;
 }
