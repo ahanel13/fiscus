@@ -19,4 +19,14 @@ describe('typing', () => {
     }
     expect(typing(document.body)).toBe(false);
   });
+
+  it('is true in an open list or menu: it finds an item as you type its name', () => {
+    const list = document.createElement('div');
+    list.setAttribute('role', 'listbox');
+    const option = list.appendChild(document.createElement('div'));
+    option.setAttribute('role', 'option');
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    for (const el of [list, option, menu]) expect(typing(el)).toBe(true);
+  });
 });
