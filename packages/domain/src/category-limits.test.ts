@@ -14,6 +14,7 @@ const map = (o: Record<string, number>) => new Map(Object.entries(o));
 const month = (spent: Record<string, number>, incomeMinor = 0) => ({
   spentMinor: map(spent),
   incomeMinor,
+  incomeByCategory: new Map(),
   contributionsMinor: 0,
 });
 
@@ -42,6 +43,28 @@ const october = () =>
     .view as CategoryLimitsView;
 
 describe('category limits', () => {
+  it('shows income expected beside what came in, kept out of the spending limits', () => {
+    const withPay: BudgetDefinition = {
+      ...budget,
+      amounts: new Map([['2026-09', map({ paychecks: 450000, groceries: 70000, restaurants: 0 })]]),
+    };
+    const pay = new Map([
+      [
+        '2026-10',
+        { ...month({ restaurants: 3000 }, 460000), incomeByCategory: map({ paychecks: 460000 }) },
+      ],
+    ]);
+    const v = computeBudgetMonth(withPay, '2026-10', pay, { category: categoryLimits })
+      .view as CategoryLimitsView;
+    expect(v.income).toEqual([
+      { categoryId: 'paychecks', budgetedMinor: 450000, receivedMinor: 460000 },
+    ]);
+    expect(v.totals).toMatchObject({ budgetedMinor: 70000, incomeBudgetedMinor: 450000 });
+    // A limit of zero is no limit: Restaurants' spending shows as not budgeted, not as over.
+    expect(v.rows.map((r) => r.categoryId)).toEqual(['groceries']);
+    expect(v.notBudgeted).toEqual([{ categoryId: 'restaurants', spentMinor: 3000 }]);
+  });
+
   it('shows each limit, what’s been spent, and what’s left, rolling over where it’s on', () => {
     const v = october();
     expect(v.rows).toEqual([
@@ -70,6 +93,7 @@ describe('category limits', () => {
     expect(v.incomeMinor).toBe(460000);
     expect(v.totals).toEqual({
       budgetedMinor: 95000,
+      incomeBudgetedMinor: 0,
       spentMinor: 61248 + 29130 + 5999,
       leftMinor: 70000 + 5200 - 61248 - 4130,
       overCount: 1,

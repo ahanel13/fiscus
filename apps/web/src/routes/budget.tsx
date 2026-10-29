@@ -691,7 +691,6 @@ function MonthView({
           groups={groups}
           householdId={household.id}
           onOpen={setOpen}
-          onEdit={data.data.canEdit ? setEditing : undefined}
         />
       )}
       {yearly && data.data ? (
@@ -755,28 +754,88 @@ function MonthView({
 const categoryName = (groups: CategoryGroup[], id: string) =>
   groups.flatMap((g) => g.categories).find((c) => c.id === id)?.name ?? 'A deleted category';
 
+const SHOW_UNBUDGETED = 'fiscus.budget.showUnbudgeted';
+
+/** Whether this viewer shows categories without a budget; remembered in this browser only. */
+function useShowUnbudgeted(): [boolean, (show: boolean) => void] {
+  const [show, setShow] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_UNBUDGETED) === '1';
+    } catch {
+      return false;
+    }
+  });
+  return [
+    show,
+    (next) => {
+      setShow(next);
+      try {
+        if (next) localStorage.setItem(SHOW_UNBUDGETED, '1');
+        else localStorage.removeItem(SHOW_UNBUDGETED);
+      } catch {
+        // Not remembered, but still shown.
+      }
+    },
+  ];
+}
+
+const COLUMNS = 'grid-cols-[minmax(0,1fr)_7.5rem] sm:grid-cols-[minmax(0,1fr)_8.5rem_7rem_8rem]';
+
+/**
+ * A month of category limits, grouped as Monarch does: income on its own, then each spending
+ * group with its totals. Categories without a budget are hidden unless asked for, and what they
+ * spent is still counted below (D6). Every budgeted amount is edited in place.
+ */
 function MonthBody({
   data,
   groups,
   householdId,
   onOpen,
-  onEdit,
 }: {
   data: BudgetMonth & { view: CategoryLimitsMonth };
   groups: CategoryGroup[];
   householdId: string;
   onOpen: (e: { categoryId: string; row?: CategoryLimitRow }) => void;
-  onEdit: ((e: { categoryId: string; row?: CategoryLimitRow }) => void) | undefined;
 }) {
   const { view, currency, month } = data;
   const progress = monthProgress(month);
+  const [showAll, setShowAll] = useShowUnbudgeted();
   const rows = new Map(view.rows.map((r) => [r.categoryId, r]));
+  const unbudgeted = new Map(view.notBudgeted.map((n) => [n.categoryId, n.spentMinor]));
+  const income = new Map(view.income.map((r) => [r.categoryId, r]));
   const uncategorized = groups
     .flatMap((g) => g.categories)
     .find((c) => c.systemKey === 'uncategorized')?.id;
   const money = (minor: number, className?: string) => (
     <Amount minor={minor} currency={currency} kind="balance" className={className} />
   );
+  const amount = (categoryId: string, name: string, value: number) => (
+    <BudgetAmount
+      key={`${categoryId}:${value}`}
+      householdId={householdId}
+      data={data}
+      categoryId={categoryId}
+      name={name}
+      value={value}
+    />
+  );
+
+  const incomeGroups = groups.filter((g) => g.kind === 'income');
+  const incomeShown = incomeGroups
+    .flatMap((g) => g.categories)
+    .filter((c) => showAll || income.has(c.id));
+  const received = view.income.reduce((s, r) => s + r.receivedMinor, 0);
+  const spending = groups
+    .filter((g) => g.kind !== 'income' && g.kind !== 'transfer')
+    .map((g) => ({
+      group: g,
+      categories: g.categories.filter(
+        (c) => c.id !== uncategorized && (rows.has(c.id) || (showAll && data.canEdit)),
+      ),
+    }))
+    .filter((g) => g.categories.length > 0);
+  const hiddenSpent = view.notBudgeted.filter((n) => n.categoryId !== uncategorized);
+  const uncategorizedSpent = uncategorized ? unbudgeted.get(uncategorized) : undefined;
 
   return (
     <>
@@ -802,84 +861,212 @@ function MonthBody({
         </Stat>
       </div>
 
-      {view.rows.length === 0 && view.notBudgeted.length === 0 ? (
-        <EmptyState icon={PiggyBank} title={`Nothing in ${monthName(month)} yet`}>
-          <p>Set a limit for a category to start tracking it, or wait for spending to arrive.</p>
-        </EmptyState>
-      ) : (
+      {data.canEdit ? (
+        <div className="flex justify-end">
+          <Switch isSelected={showAll} onChange={setShowAll}>
+            Show unbudgeted categories
+          </Switch>
+        </div>
+      ) : null}
+
+      {incomeShown.length ? (
         <div className="overflow-hidden rounded-xl border border-border bg-surface">
-          <div className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_8rem] gap-3 border-b border-border px-4 py-2 text-xs text-muted sm:grid">
-            <span>Category</span>
+          <div
+            className={clsx(
+              'grid gap-3 border-b border-border px-4 py-2 text-xs font-semibold text-muted',
+              COLUMNS,
+            )}
+          >
+            <span>Income</span>
             <span className="text-right">Budgeted</span>
-            <span className="text-right">Spent</span>
-            <span className="text-right">Left</span>
+            <span className="hidden text-right sm:block">Received</span>
+            <span className="hidden text-right sm:block">Remaining</span>
           </div>
-          {groups.map((g) => {
-            const here = g.categories.filter((c) => rows.has(c.id));
-            if (here.length === 0) return null;
-            return (
-              <section key={g.id}>
-                <h3 className="border-b border-border bg-bg px-4 py-1.5 text-xs font-semibold tracking-wide text-muted">
-                  {g.name}
-                </h3>
-                <ul className="divide-y divide-border">
-                  {here.map((c) => {
-                    const r = rows.get(c.id)!;
-                    return (
-                      <li key={c.id}>
-                        <LimitRow
-                          name={c.name}
-                          row={r}
-                          currency={currency}
-                          progress={progress}
-                          onOpen={() => onOpen({ categoryId: c.id, row: r })}
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            );
-          })}
-          {view.notBudgeted.length ? (
-            <section>
-              <h3 className="border-b border-border bg-bg px-4 py-1.5 text-xs font-semibold tracking-wide text-muted">
-                Not budgeted
+          <ul className="divide-y divide-border">
+            {incomeShown.map((c) => {
+              const r = income.get(c.id) ?? { budgetedMinor: 0, receivedMinor: 0 };
+              const remaining = r.budgetedMinor - r.receivedMinor;
+              return (
+                <li key={c.id} className={clsx('grid items-center gap-3 px-4 py-2', COLUMNS)}>
+                  <span className="min-w-0 truncate text-sm font-medium">
+                    {c.name}
+                    <span className="block text-xs font-normal text-muted sm:hidden">
+                      {money(r.receivedMinor)} received
+                    </span>
+                  </span>
+                  {amount(c.id, c.name, r.budgetedMinor)}
+                  <span className="hidden text-right text-sm sm:block">
+                    {money(r.receivedMinor)}
+                  </span>
+                  <span className="hidden text-right text-sm sm:block">
+                    {r.budgetedMinor === 0 ? (
+                      <span className="text-muted">—</span>
+                    ) : remaining < 0 ? (
+                      <span className="text-accent-text">{money(-remaining)} more</span>
+                    ) : (
+                      money(remaining)
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <div
+            className={clsx(
+              'grid gap-3 border-t border-border bg-bg px-4 py-2 text-sm font-semibold',
+              COLUMNS,
+            )}
+          >
+            <span>Total income</span>
+            <span className="text-right">{money(view.totals.incomeBudgetedMinor)}</span>
+            <span className="hidden text-right sm:block">{money(received)}</span>
+            <span className="hidden sm:block" />
+          </div>
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div
+          className={clsx(
+            'grid gap-3 border-b border-border px-4 py-2 text-xs font-semibold text-muted',
+            COLUMNS,
+          )}
+        >
+          <span>Expenses</span>
+          <span className="text-right">Budgeted</span>
+          <span className="hidden text-right sm:block">Spent</span>
+          <span className="hidden text-right sm:block">Left</span>
+        </div>
+        {spending.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-muted">
+            No category has a budget in {monthName(month)}.
+            {data.canEdit ? ' Show unbudgeted categories to set some.' : ''}
+          </p>
+        ) : null}
+        {spending.map(({ group, categories }) => {
+          const here = categories.map((c) => rows.get(c.id)).filter((r) => r !== undefined);
+          const total = (f: (r: CategoryLimitRow) => number) => here.reduce((s, r) => s + f(r), 0);
+          const left = total((r) => r.leftMinor);
+          return (
+            <section key={group.id}>
+              <h3
+                className={clsx(
+                  'grid gap-3 border-b border-border bg-bg px-4 py-1.5 text-xs font-semibold tracking-wide text-muted',
+                  COLUMNS,
+                )}
+              >
+                <span>{group.name}</span>
+                <span className="text-right">{money(total((r) => r.budgetedMinor))}</span>
+                <span className="hidden text-right sm:block">
+                  {money(total((r) => r.spentMinor))}
+                </span>
+                <span className={clsx('hidden text-right sm:block', left < 0 && 'text-danger')}>
+                  {money(left)}
+                </span>
               </h3>
               <ul className="divide-y divide-border">
-                {view.notBudgeted.map((n) => (
-                  <li key={n.categoryId} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                    <span className="min-w-0 flex-1 text-sm">
-                      {categoryName(groups, n.categoryId)}
-                      <span className="text-muted">
-                        {n.categoryId === uncategorized ? ' · needs a category' : ' · no limit set'}
-                      </span>
-                    </span>
-                    {money(n.spentMinor, 'text-sm')}
-                    {n.categoryId === uncategorized ? (
-                      <Link
-                        to={`/h/${householdId}/review`}
-                        className="text-sm font-medium text-accent-text underline"
-                      >
-                        Review
-                      </Link>
-                    ) : onEdit ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onPress={() => onEdit({ categoryId: n.categoryId })}
-                      >
-                        Set limit
-                      </Button>
-                    ) : null}
-                  </li>
-                ))}
+                {categories.map((c) => {
+                  const r = rows.get(c.id);
+                  return (
+                    <li key={c.id}>
+                      <LimitRow
+                        name={c.name}
+                        row={r}
+                        spentMinor={r?.spentMinor ?? unbudgeted.get(c.id) ?? 0}
+                        currency={currency}
+                        progress={progress}
+                        amount={
+                          data.canEdit
+                            ? amount(c.id, c.name, r?.budgetedMinor ?? 0)
+                            : money(r?.budgetedMinor ?? 0, 'text-sm')
+                        }
+                        onOpen={() => onOpen({ categoryId: c.id, row: r })}
+                      />
+                    </li>
+                  );
+                })}
               </ul>
             </section>
-          ) : null}
-        </div>
-      )}
+          );
+        })}
+        {uncategorizedSpent ? (
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm">
+            <span className="min-w-0 flex-1">
+              Uncategorized <span className="text-muted">· needs a category</span>
+            </span>
+            {money(uncategorizedSpent)}
+            <Link
+              to={`/h/${householdId}/review`}
+              className="font-medium text-accent-text underline"
+            >
+              Review
+            </Link>
+          </div>
+        ) : null}
+        {!showAll && hiddenSpent.length ? (
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm text-muted">
+            <span className="min-w-0 flex-1">
+              {money(hiddenSpent.reduce((s, n) => s + n.spentMinor, 0))} spent in{' '}
+              {hiddenSpent.length} {hiddenSpent.length === 1 ? 'category' : 'categories'} without a
+              budget
+            </span>
+            {data.canEdit ? (
+              <Button variant="ghost" size="sm" onPress={() => setShowAll(true)}>
+                Show them
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </>
+  );
+}
+
+/** A category's budget for the month, typed straight into the row; saved on Enter or leaving it. */
+function BudgetAmount({
+  householdId,
+  data,
+  categoryId,
+  name,
+  value,
+}: {
+  householdId: string;
+  data: BudgetMonth;
+  categoryId: string;
+  name: string;
+  value: number;
+}) {
+  const queryClient = useQueryClient();
+  const [amount, setAmount] = useState<number | null>(value || null);
+  const save = useMutation({
+    mutationFn: (amountMinor: number) =>
+      api(
+        'PUT',
+        `${base(householdId)}/budgets/${data.budget.id}/months/${data.month}/amounts/${categoryId}`,
+        { body: { amountMinor } },
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', data.budget.id],
+      }),
+    onError: (e) => {
+      setAmount(value || null);
+      toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' });
+    },
+  });
+  return (
+    <AmountInput
+      aria-label={`${name}: budget for ${monthName(data.month)}`}
+      currency={data.currency}
+      value={amount}
+      placeholder="—"
+      isDisabled={save.isPending}
+      onChange={(next) => {
+        setAmount(next);
+        if ((next ?? 0) !== value) save.mutate(next ?? 0);
+      }}
+      onFocus={(e) => (e.target as HTMLInputElement).select()}
+    />
   );
 }
 
@@ -907,86 +1094,108 @@ function Stat({
   );
 }
 
-/** One category: its bar (with a mark for how far through the month it is), and the numbers. */
+/**
+ * One category: its name and bar (with a mark for how far through the month it is) open its
+ * transactions; its budget is typed in beside them. Without a budget, it shows what was spent.
+ */
 function LimitRow({
   name,
   row,
+  spentMinor,
   currency,
   progress,
+  amount,
   onOpen,
 }: {
   name: string;
-  row: CategoryLimitRow;
+  row: CategoryLimitRow | undefined;
+  spentMinor: number;
   currency: string;
   progress: number | null;
+  amount: React.ReactNode;
   onOpen: () => void;
 }) {
-  const available = row.budgetedMinor + row.rolledInMinor;
-  const used = available > 0 ? Math.min(1, row.spentMinor / available) : row.spentMinor > 0 ? 1 : 0;
-  const over = row.leftMinor < 0;
-  const body = (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_7rem_8rem]">
-      <div className="min-w-0">
+  const available = row ? row.budgetedMinor + row.rolledInMinor : 0;
+  const used = available > 0 ? Math.min(1, spentMinor / available) : spentMinor > 0 ? 1 : 0;
+  const over = row ? row.leftMinor < 0 : false;
+  const left = row ? (
+    over ? (
+      <>
+        <Amount minor={-row.leftMinor} currency={currency} kind="balance" /> over
+      </>
+    ) : (
+      <>
+        <Amount minor={row.leftMinor} currency={currency} kind="balance" />
+        <span className="font-normal text-muted sm:hidden"> left</span>
+      </>
+    )
+  ) : (
+    <span className="font-normal text-muted">—</span>
+  );
+  return (
+    <div className={clsx('grid items-center gap-x-3 px-4 py-2 hover:bg-surface-2', COLUMNS)}>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="min-w-0 py-1 text-left"
+        aria-label={`${name}: its transactions and history`}
+      >
         <p className="truncate text-sm font-medium">
           {name}
-          {row.rollover ? <Badge className="ml-2">Rollover</Badge> : null}
+          {row?.rollover ? <Badge className="ml-2">Rollover</Badge> : null}
         </p>
-        {row.rolledInMinor !== 0 ? (
+        {row && row.rolledInMinor !== 0 ? (
           <p className="text-xs text-muted">
             <Amount minor={row.rolledInMinor} currency={currency} kind="flow" /> rolled over from
             last month
           </p>
         ) : null}
-        <div
-          className="relative mt-1.5 h-1.5 max-w-md rounded-full bg-surface-2"
-          role="meter"
-          aria-label={`${name}: ${Math.round(used * 100)}% used`}
-          aria-valuenow={Math.round(used * 100)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
+        {row ? (
           <div
-            className={clsx('h-full rounded-full', over ? 'bg-danger' : 'bg-accent')}
-            style={{ width: `${used * 100}%` }}
-          />
-          {progress !== null ? (
-            <span
-              aria-hidden
-              className="absolute -top-1 -bottom-1 w-0.5 bg-fg/40"
-              style={{ left: `${progress * 100}%` }}
+            className="relative mt-1.5 h-1.5 max-w-md rounded-full bg-surface-2"
+            role="meter"
+            aria-label={`${name}: ${Math.round(used * 100)}% used`}
+            aria-valuenow={Math.round(used * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              className={clsx('h-full rounded-full', over ? 'bg-danger' : 'bg-accent')}
+              style={{ width: `${used * 100}%` }}
             />
-          ) : null}
-        </div>
-      </div>
-      <span className="hidden text-right text-sm sm:block">
-        <Amount minor={row.budgetedMinor} currency={currency} kind="balance" />
-      </span>
-      <span className="hidden text-right text-sm sm:block">
-        <Amount minor={row.spentMinor} currency={currency} kind="balance" />
-      </span>
-      <span className={clsx('text-right text-sm font-semibold', over && 'text-danger')}>
-        {over ? (
-          <>
-            <Amount minor={-row.leftMinor} currency={currency} kind="balance" /> over
-          </>
+            {progress !== null ? (
+              <span
+                aria-hidden
+                className="absolute -top-1 -bottom-1 w-0.5 bg-fg/40"
+                style={{ left: `${progress * 100}%` }}
+              />
+            ) : null}
+          </div>
         ) : (
-          <>
-            <Amount minor={row.leftMinor} currency={currency} kind="balance" />
-            <span className="font-normal text-muted sm:hidden"> left</span>
-          </>
+          <p className="text-xs text-muted">
+            No budget
+            {spentMinor ? (
+              <>
+                {' · '}
+                <Amount minor={spentMinor} currency={currency} kind="balance" /> spent
+              </>
+            ) : null}
+          </p>
         )}
+        <p className={clsx('mt-1 text-xs font-semibold sm:hidden', over && 'text-danger')}>
+          {row ? left : null}
+        </p>
+      </button>
+      <div className="text-right">{amount}</div>
+      <span className="hidden text-right text-sm sm:block">
+        <Amount minor={spentMinor} currency={currency} kind="balance" />
+      </span>
+      <span
+        className={clsx('hidden text-right text-sm font-semibold sm:block', over && 'text-danger')}
+      >
+        {left}
       </span>
     </div>
-  );
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="block w-full hover:bg-surface-2"
-      aria-label={`${name}: its transactions and history`}
-    >
-      {body}
-    </button>
   );
 }
 

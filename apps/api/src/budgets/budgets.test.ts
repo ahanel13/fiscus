@@ -122,6 +122,34 @@ describe('budgets: category limits', () => {
     expect((await A.get(url('/budgets'))).body.data).toHaveLength(1);
   });
 
+  it('expects income per income category beside what came in, apart from the limits', async () => {
+    const before = (await view(month(0))).view.totals.budgetedMinor;
+    const r = await A.request(
+      'PUT',
+      url(`/budgets/${budgetId}/months/${month(0)}/amounts/${cat.Paychecks}`),
+      { amountMinor: 450000 },
+    );
+    expect(r.status, JSON.stringify(r.body)).toBe(204);
+    const v = (await view(month(0))).view;
+    expect(v.income).toEqual([
+      { categoryId: cat.Paychecks, budgetedMinor: 450000, receivedMinor: 400000 },
+    ]);
+    expect(v.totals).toMatchObject({ budgetedMinor: before, incomeBudgetedMinor: 450000 });
+    expect(v.rows.map((x: { categoryId: string }) => x.categoryId)).not.toContain(cat.Paychecks);
+    // Transfers still take no amount.
+    const groups = (await A.get(url('/categories'))).body.data as {
+      kind: string;
+      categories: { id: string }[];
+    }[];
+    const transfer = groups.find((g) => g.kind === 'transfer')!.categories[0]!.id;
+    const t = await A.request(
+      'PUT',
+      url(`/budgets/${budgetId}/months/${month(0)}/amounts/${transfer}`),
+      { amountMinor: 1 },
+    );
+    expect(t.status).toBe(404);
+  });
+
   it('shows a month: each limit, what’s spent and left, and spending without a limit', async () => {
     await spend(month(0), '01', -40000, 'Groceries');
     await spend(month(0), '01', -20000, 'Restaurants');
@@ -138,6 +166,7 @@ describe('budgets: category limits', () => {
     expect(v.view.incomeMinor).toBe(400000);
     expect(v.view.totals).toEqual({
       budgetedMinor: 80000,
+      incomeBudgetedMinor: 450000,
       spentMinor: 65999,
       leftMinor: 20000,
       overCount: 1,

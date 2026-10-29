@@ -16,15 +16,27 @@ export interface CategoryLimitRow {
   rollover: boolean;
 }
 
+/** An income category: what you expect this month, and what came in. */
+export interface IncomeRow {
+  categoryId: string;
+  /** Expected this month; 0 when none is set. */
+  budgetedMinor: number;
+  receivedMinor: number;
+}
+
 export interface CategoryLimitsView {
   /** Categories with a limit this month. */
   rows: CategoryLimitRow[];
+  /** Income categories with an amount expected, or money in this month. */
+  income: IncomeRow[];
   /** Spending in categories without one (D6), so nothing spent goes missing. */
   notBudgeted: { categoryId: string; spentMinor: number }[];
   incomeMinor: number;
   contributionsMinor: number;
   totals: {
+    /** Limits on spending; expected income isn't in it. */
     budgetedMinor: number;
+    incomeBudgetedMinor: number;
     /** Everything spent: budgeted categories and the rest. */
     spentMinor: number;
     /** The rows' left, overspent ones counting against it. */
@@ -42,14 +54,24 @@ export const categoryLimits: BudgetStrategy<CategoryLimitsSettings, CategoryLimi
   month({ categories, amounts, activity, carry }) {
     const rows: CategoryLimitRow[] = [];
     const notBudgeted: CategoryLimitsView['notBudgeted'] = [];
+    const income: IncomeRow[] = [];
     const balances = new Map<string, number>();
     for (const c of categories) {
-      if (c.kind === 'income' || c.kind === 'transfer') continue;
+      if (c.kind === 'transfer') continue;
+      if (c.kind === 'income') {
+        const budgetedMinor = amounts.get(c.id) ?? 0;
+        const receivedMinor = activity.incomeByCategory.get(c.id) ?? 0;
+        if (budgetedMinor !== 0 || receivedMinor !== 0) {
+          income.push({ categoryId: c.id, budgetedMinor, receivedMinor });
+        }
+        continue;
+      }
       const spent = activity.spentMinor.get(c.id) ?? 0;
       const budgeted = amounts.get(c.id);
       // Rollover carries whatever the category ended with, including after its limit was removed.
       const rolledIn = c.rollover ? (carry.balances.get(c.id) ?? 0) : 0;
-      if (budgeted === undefined && rolledIn === 0) {
+      // A limit of zero is no limit, unless what's overspent against it rolls over.
+      if ((budgeted === undefined || (budgeted === 0 && !c.rollover)) && rolledIn === 0) {
         if (spent !== 0) notBudgeted.push({ categoryId: c.id, spentMinor: spent });
         continue;
       }
@@ -69,11 +91,13 @@ export const categoryLimits: BudgetStrategy<CategoryLimitsSettings, CategoryLimi
     return {
       view: {
         rows,
+        income,
         notBudgeted,
         incomeMinor: activity.incomeMinor,
         contributionsMinor: activity.contributionsMinor,
         totals: {
           budgetedMinor: sum(rows.map((r) => r.budgetedMinor)),
+          incomeBudgetedMinor: sum(income.map((r) => r.budgetedMinor)),
           spentMinor:
             sum(rows.map((r) => r.spentMinor)) + sum(notBudgeted.map((n) => n.spentMinor)),
           leftMinor: sum(rows.map((r) => r.leftMinor)),

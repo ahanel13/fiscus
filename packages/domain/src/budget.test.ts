@@ -24,6 +24,7 @@ const cat = (id: string, rollover = false): BudgetCategory => ({
 const activity = (spent: Record<string, number>, incomeMinor = 0): MonthActivity => ({
   spentMinor: new Map(Object.entries(spent)),
   incomeMinor,
+  incomeByCategory: new Map(),
   contributionsMinor: 0,
 });
 const amounts = (a: Record<string, number>) => new Map(Object.entries(a));
