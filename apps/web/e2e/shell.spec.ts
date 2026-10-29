@@ -1415,7 +1415,8 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await groceries.click();
   await groceries.fill('250');
   await groceries.press('Enter');
-  await expect(page.getByText('Budgeted').locator('..')).toContainText('$250.00');
+  // Saved: Groceries now has a budget, so it has a bar, and stays shown with the rest hidden.
+  await expect(page.getByRole('meter', { name: /^Groceries:/ })).toBeVisible();
   await page.getByText('Show unbudgeted categories', { exact: true }).click();
   await expect(groceries).toHaveValue('$250.00');
   expect(await axeViolations(page)).toEqual([]);
