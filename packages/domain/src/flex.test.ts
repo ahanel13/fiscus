@@ -20,6 +20,7 @@ const map = (o: Record<string, number>) => new Map(Object.entries(o));
 const month = (spent: Record<string, number>) => ({
   spentMinor: map(spent),
   incomeMinor: 460000,
+  incomeByCategory: new Map(),
   contributionsMinor: 0,
 });
 

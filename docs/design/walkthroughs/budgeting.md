@@ -132,14 +132,21 @@ Every strategy has the same frame:
 - **Header:** the period stepper (`‹ October 2026 ›`), the **Ours · Mine** switch, the strategy,
   and **Annual view**.
 - **Summary strip:** four numbers that answer "how are we doing".
-- **Rows by category group:** the category, its amount, what's been spent, and what's left, with
-  a bar.
+- **Income first:** each income category's expected amount beside what came in, and a total.
+  Expected income isn't a limit, and isn't in "Budgeted".
+- **Rows by category group:** the group with its totals, then each category: its amount, what's
+  been spent, and what's left, with a bar.
+- **Amounts are typed in place:** the amount in a row is a field, saved on Enter or on leaving it.
+  An amount of zero is no budget.
+- **Categories without a budget are hidden** until you turn on **Show unbudgeted categories**,
+  which shows every category, ready for an amount. Your browser remembers the choice.
 
 The bar has a thin mark for how far through the month you are. A category at 80% on the 26th is
-on pace, and one at 80% on the 10th isn't. Selecting a row opens its drawer (§4).
+on pace, and one at 80% on the 10th isn't. Selecting a category's name opens its drawer (§4).
 
 **D6. Nothing spent goes missing.**
-- Spending in a category with no budget shows under **Not budgeted**, with **Set budget**.
+- While categories without a budget are hidden, what they spent shows as one line, "$84.00 spent
+  in 3 categories without a budget", with **Show them**.
 - Uncategorized spending shows with a count, and a link to Review.
 - The summary's "Spent" includes both, so the budget always adds up to what actually left the
   household.

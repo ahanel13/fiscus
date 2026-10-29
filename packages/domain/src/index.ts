@@ -29,6 +29,7 @@ export {
   type CategoryLimitRow,
   type CategoryLimitsSettings,
   type CategoryLimitsView,
+  type IncomeRow,
 } from './category-limits.js';
 export {
   flex,

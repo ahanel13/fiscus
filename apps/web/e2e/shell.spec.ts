@@ -1407,4 +1407,17 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await month.getByRole('button', { name: 'This month' }).click();
   await expect(month.getByRole('button', { name: 'This month' })).toHaveCount(0);
   expect(await axeViolations(page)).toEqual([]);
+
+  // Categories without a budget are hidden until asked for; a budget is typed into its row.
+  await expect(page.getByRole('textbox', { name: /^Groceries: budget for/ })).toHaveCount(0);
+  await page.getByText('Show unbudgeted categories', { exact: true }).click();
+  const groceries = page.getByRole('textbox', { name: /^Groceries: budget for/ });
+  await groceries.click();
+  await groceries.fill('250');
+  await groceries.press('Enter');
+  // Saved: Groceries now has a budget, so it has a bar, and stays shown with the rest hidden.
+  await expect(page.getByRole('meter', { name: /^Groceries:/ })).toBeVisible();
+  await page.getByText('Show unbudgeted categories', { exact: true }).click();
+  await expect(groceries).toHaveValue('$250.00');
+  expect(await axeViolations(page)).toEqual([]);
 });

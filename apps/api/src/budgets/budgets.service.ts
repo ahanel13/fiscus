@@ -381,7 +381,7 @@ export class BudgetsService {
       const row = await findBudget(tx, budgetId);
       checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
       if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
-      if (!(await spendingCategories(tx)).has(categoryId)) throw problems.notFound();
+      if (!(await budgetedCategories(tx)).has(categoryId)) throw problems.notFound();
       const day = firstDayOf(month);
       const own = await tx
         .select({ c: budgetAmounts.categoryId })
@@ -627,12 +627,27 @@ export class BudgetsService {
         ),
       )
       .groupBy(sql`1`, transactions.categoryId, categoryGroups.kind);
-    const out = new Map<string, { spentMinor: Map<string, number>; incomeMinor: number }>();
+    const out = new Map<
+      string,
+      {
+        spentMinor: Map<string, number>;
+        incomeMinor: number;
+        incomeByCategory: Map<string, number>;
+      }
+    >();
     for (const r of rows) {
-      const m = out.get(r.month) ?? { spentMinor: new Map<string, number>(), incomeMinor: 0 };
+      const m = out.get(r.month) ?? {
+        spentMinor: new Map<string, number>(),
+        incomeMinor: 0,
+        incomeByCategory: new Map<string, number>(),
+      };
       const total = Number(r.total);
-      if (r.kind === 'income') m.incomeMinor += total;
-      else {
+      if (r.kind === 'income') {
+        m.incomeMinor += total;
+        if (r.categoryId) {
+          m.incomeByCategory.set(r.categoryId, (m.incomeByCategory.get(r.categoryId) ?? 0) + total);
+        }
+      } else {
         const id = r.categoryId ?? uncategorized?.id;
         if (id) m.spentMinor.set(id, (m.spentMinor.get(id) ?? 0) - total);
       }
@@ -646,6 +661,7 @@ export class BudgetsService {
         {
           spentMinor: out.get(k)?.spentMinor ?? new Map<string, number>(),
           incomeMinor: out.get(k)?.incomeMinor ?? 0,
+          incomeByCategory: out.get(k)?.incomeByCategory ?? new Map<string, number>(),
           contributionsMinor: contributed.get(k) ?? 0,
         },
       ]),
@@ -825,6 +841,16 @@ async function checkScopeChange(
       scope === 'mine' ? 'You already have a budget' : 'The household already has a budget',
     );
   }
+}
+
+/** The categories a budget has amounts for: limits on spending, and income expected. */
+async function budgetedCategories(tx: Executor): Promise<Set<string>> {
+  const rows = await tx
+    .select({ id: categories.id })
+    .from(categories)
+    .innerJoin(categoryGroups, eq(categoryGroups.id, categories.groupId))
+    .where(sql`${categoryGroups.kind} <> 'transfer'`);
+  return new Set(rows.map((r) => r.id));
 }
 
 /** The categories a budget limits: everything but income and transfers. */

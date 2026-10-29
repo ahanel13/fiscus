@@ -36,6 +36,8 @@ export interface MonthActivity {
   spentMinor: ReadonlyMap<string, number>;
   /** Income attributed to the scope. */
   incomeMinor: number;
+  /** The same income per income category: positive is money in. */
+  incomeByCategory: ReadonlyMap<string, number>;
   /**
    * Contributions (D2): for the household's budget, money members moved into joint accounts; for
    * a member's own, what they moved into joint accounts, which leaves their budget for Ours.
@@ -46,6 +48,7 @@ export interface MonthActivity {
 export const NO_ACTIVITY: MonthActivity = {
   spentMinor: new Map(),
   incomeMinor: 0,
+  incomeByCategory: new Map(),
   contributionsMinor: 0,
 };
 

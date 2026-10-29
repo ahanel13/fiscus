@@ -86,14 +86,29 @@ export interface CategoryLimitRow {
   rollover: boolean;
 }
 
+/** An income category: what you expect this month, and what came in. */
+export interface IncomeRow {
+  categoryId: string;
+  budgetedMinor: number;
+  receivedMinor: number;
+}
+
 /** A month of a budget running category limits (walkthrough §3.1). */
 export interface CategoryLimitsMonth {
   strategy: 'category';
   rows: CategoryLimitRow[];
+  /** Income categories with an amount expected, or money in this month. */
+  income: IncomeRow[];
   notBudgeted: { categoryId: string; spentMinor: number }[];
   incomeMinor: number;
   contributionsMinor: number;
-  totals: { budgetedMinor: number; spentMinor: number; leftMinor: number; overCount: number };
+  totals: {
+    budgetedMinor: number;
+    incomeBudgetedMinor: number;
+    spentMinor: number;
+    leftMinor: number;
+    overCount: number;
+  };
 }
 
 /** A month of a budget running flex (walkthrough §3.4). */
