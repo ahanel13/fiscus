@@ -28,5 +28,10 @@ describe('typing', () => {
     const menu = document.createElement('div');
     menu.setAttribute('role', 'menu');
     for (const el of [list, option, menu]) expect(typing(el)).toBe(true);
+    // A list closing after a choice, while focus moves back to its button.
+    const closing = document.createElement('div');
+    closing.setAttribute('data-exiting', 'true');
+    closing.appendChild(list);
+    expect(typing(option)).toBe(false);
   });
 });

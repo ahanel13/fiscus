@@ -723,10 +723,15 @@ function MonthView({
           householdId={household.id}
           month={data.data}
           categoryId={open.categoryId}
-          row={open.row}
+          row={
+            data.data.view.strategy === 'category'
+              ? data.data.view.rows.find((r) => r.categoryId === open.categoryId)
+              : open.row
+          }
           name={categoryName(groups, open.categoryId)}
+          canRollover={data.data.canEdit && data.data.view.strategy === 'category'}
           onEdit={
-            data.data.canEdit
+            data.data.canEdit && data.data.view.strategy === 'flex'
               ? () => {
                   setEditing(open);
                   setOpen(null);
@@ -743,7 +748,6 @@ function MonthView({
           categoryId={editing.categoryId}
           row={editing.row}
           name={categoryName(groups, editing.categoryId)}
-          showRollover={strategy === 'category'}
           onClose={() => setEditing(null)}
         />
       ) : null}
@@ -1199,14 +1203,13 @@ function LimitRow({
   );
 }
 
-/** A category's limit for this month, and whether what's left rolls over (§3.1). */
+/** A category's amount for this month, under flex (its limits are typed into their rows). */
 function LimitDialog({
   householdId,
   month,
   categoryId,
   row,
   name,
-  showRollover = true,
   onClose,
 }: {
   householdId: string;
@@ -1214,24 +1217,17 @@ function LimitDialog({
   categoryId: string;
   row: CategoryLimitRow | undefined;
   name: string;
-  showRollover?: boolean;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState<number | null>(row?.budgetedMinor ?? null);
-  const [rollover, setRollover] = useState(row?.rollover ?? false);
-  const budgetUrl = `${base(householdId)}/budgets/${month.budget.id}`;
   const save = useMutation({
-    mutationFn: async () => {
-      if (amount !== (row?.budgetedMinor ?? null)) {
-        await api('PUT', `${budgetUrl}/months/${month.month}/amounts/${categoryId}`, {
-          body: { amountMinor: amount ?? 0 },
-        });
-      }
-      if (rollover !== (row?.rollover ?? false)) {
-        await api('PUT', `${budgetUrl}/categories/${categoryId}`, { body: { rollover } });
-      }
-    },
+    mutationFn: () =>
+      api(
+        'PUT',
+        `${base(householdId)}/budgets/${month.budget.id}/months/${month.month}/amounts/${categoryId}`,
+        { body: { amountMinor: amount ?? 0 } },
+      ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['households', householdId, 'budgets', month.budget.id],
@@ -1252,17 +1248,6 @@ function LimitDialog({
           onChange={setAmount}
           description="Later months keep it until you change it."
         />
-        {showRollover ? (
-          <>
-            <Switch isSelected={rollover} onChange={setRollover}>
-              Roll over what’s left
-            </Switch>
-            <p className="text-xs text-muted">
-              What’s left at the end of each month, or what’s overspent, moves to the next month’s{' '}
-              {name}.
-            </p>
-          </>
-        ) : null}
         <DialogActions>
           <Button variant="secondary" onPress={onClose}>
             Cancel
@@ -1286,6 +1271,7 @@ function CategoryDrawer({
   row,
   name,
   onEdit,
+  canRollover,
   onClose,
 }: {
   householdId: string;
@@ -1293,10 +1279,25 @@ function CategoryDrawer({
   categoryId: string;
   row: CategoryLimitRow | undefined;
   name: string;
+  /** Flex: its amounts aren't in the rows, so they're changed here. */
   onEdit: (() => void) | undefined;
+  /** Category limits: rollover is switched right here. */
+  canRollover: boolean;
   onClose: () => void;
 }) {
   const scope = month.budget.scope;
+  const queryClient = useQueryClient();
+  const rollover = useMutation({
+    mutationFn: (on: boolean) =>
+      api('PUT', `${base(householdId)}/budgets/${month.budget.id}/categories/${categoryId}`, {
+        body: { rollover: on },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', month.budget.id],
+      }),
+    onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
+  });
   const history = useQuery({
     queryKey: [
       'households',
@@ -1365,9 +1366,24 @@ function CategoryDrawer({
         ) : (
           <p className="text-sm">No limit set for {name} this month.</p>
         )}
+        {canRollover && row ? (
+          <div className="space-y-1">
+            <Switch
+              isSelected={rollover.isPending ? rollover.variables : row.rollover}
+              isDisabled={rollover.isPending}
+              onChange={(on) => rollover.mutate(on)}
+            >
+              Roll over what’s left
+            </Switch>
+            <p className="text-xs text-muted">
+              What’s left at the end of each month, or what’s overspent, moves to the next month’s{' '}
+              {name}.
+            </p>
+          </div>
+        ) : null}
         {onEdit ? (
           <Button variant="secondary" onPress={onEdit}>
-            {row ? 'Change limit or rollover' : 'Set a limit'}
+            {row ? 'Change amount' : 'Set an amount'}
           </Button>
         ) : null}
 

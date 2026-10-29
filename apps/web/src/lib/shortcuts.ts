@@ -20,7 +20,8 @@ export const typing = (el: EventTarget | null) =>
     ['TEXTAREA', 'SELECT'].includes(el.tagName) ||
     // A checkbox, radio or button isn't typed into: shortcuts still work from one.
     (el instanceof HTMLInputElement && !NOT_TYPED.has(el.type)) ||
-    el.closest(TYPE_TO_FIND) !== null);
+    // One closing (an option was just chosen) isn't being typed in any more.
+    (el.closest(TYPE_TO_FIND) !== null && el.closest('[data-exiting]') === null));
 
 /** Global keyboard shortcuts (IA §8). Ignored while typing in a field. */
 export function useShortcuts(handlers: ShortcutHandlers): void {
