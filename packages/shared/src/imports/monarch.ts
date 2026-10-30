@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { AccountType, BalanceMode } from '../api/accounts.js';
+import type { CategoryKind } from '../api/ledger.js';
 import type { ImportBalance, ImportTransaction } from '../api/imports.js';
 import type { CsvTable } from './csv.js';
 import { explainAccountType, type RowProblem } from './mapping.js';
@@ -260,6 +261,89 @@ function findDuplicates(accounts: MonarchAccount[], byDay: Map<string, Map<strin
     }
   }
 }
+
+/** A Fiscus category group: one of the defaults by name, or one an import adds. */
+export interface GroupFor {
+  group: string;
+  kind: CategoryKind;
+}
+
+const HOME: GroupFor = { group: 'Home', kind: 'fixed' };
+const FOOD: GroupFor = { group: 'Food', kind: 'flexible' };
+const TRANSPORTATION: GroupFor = { group: 'Transportation', kind: 'flexible' };
+const SHOPPING: GroupFor = { group: 'Shopping', kind: 'flexible' };
+const HEALTH: GroupFor = { group: 'Health', kind: 'flexible' };
+const FUN: GroupFor = { group: 'Fun', kind: 'flexible' };
+const TRAVEL: GroupFor = { group: 'Travel', kind: 'non_monthly' };
+const FAMILY: GroupFor = { group: 'Family and pets', kind: 'flexible' };
+const GIFTS: GroupFor = { group: 'Gifts and giving', kind: 'non_monthly' };
+const FINANCIAL: GroupFor = { group: 'Financial', kind: 'fixed' };
+const EDUCATION: GroupFor = { group: 'Education', kind: 'flexible' };
+const BUSINESS: GroupFor = { group: 'Business', kind: 'flexible' };
+const OTHER: GroupFor = { group: 'Other', kind: 'flexible' };
+
+/**
+ * Monarch's own spending categories and the Fiscus group each belongs in, so an import sorts them
+ * as Monarch did. The export has no group column; categories you made in Monarch aren't here.
+ */
+const MONARCH_GROUPS = new Map<string, GroupFor>([
+  ['mortgage', HOME],
+  ['rent', HOME],
+  ['home improvement', HOME],
+  ['garbage', HOME],
+  ['water', HOME],
+  ['gas & electric', HOME],
+  ['internet & cable', HOME],
+  ['phone', HOME],
+  ['groceries', FOOD],
+  ['restaurants & bars', FOOD],
+  ['coffee shops', FOOD],
+  ['auto payment', TRANSPORTATION],
+  ['public transit', TRANSPORTATION],
+  ['gas', TRANSPORTATION],
+  ['auto maintenance', TRANSPORTATION],
+  ['parking & tolls', TRANSPORTATION],
+  ['taxi & ride shares', TRANSPORTATION],
+  ['shopping', SHOPPING],
+  ['clothing', SHOPPING],
+  ['furniture & housewares', SHOPPING],
+  ['electronics', SHOPPING],
+  ['personal', SHOPPING],
+  ['medical', HEALTH],
+  ['dentist', HEALTH],
+  ['fitness', HEALTH],
+  ['entertainment & recreation', FUN],
+  ['fun money', FUN],
+  ['travel & vacation', TRAVEL],
+  ['pets', FAMILY],
+  ['child care', FAMILY],
+  ['child activities', FAMILY],
+  ['charity', GIFTS],
+  ['gifts', GIFTS],
+  ['student loans', FINANCIAL],
+  ['loan repayment', FINANCIAL],
+  ['financial & legal services', FINANCIAL],
+  ['financial fees', FINANCIAL],
+  ['cash & atm', FINANCIAL],
+  ['insurance', FINANCIAL],
+  ['taxes', FINANCIAL],
+  ['education', EDUCATION],
+  ['advertising & promotion', BUSINESS],
+  ['business utilities & communication', BUSINESS],
+  ['employee wages & contract labor', BUSINESS],
+  ['business travel & meals', BUSINESS],
+  ['business auto expenses', BUSINESS],
+  ['business insurance', BUSINESS],
+  ['office supplies & expenses', BUSINESS],
+  ['office rent', BUSINESS],
+  ['postage & shipping', BUSINESS],
+  ['check', OTHER],
+  ['miscellaneous', OTHER],
+]);
+
+/** The group for one of Monarch's spending categories, by name; undefined for any other. */
+export const monarchGroup = (name: string): GroupFor | undefined =>
+  MONARCH_GROUPS.get(name.trim().toLowerCase());
 
 /** "2019 Ford F-150 XLT (...1234)" → "ford f-150 xlt": names compared loosely. */
 export const looseName = (name: string) =>

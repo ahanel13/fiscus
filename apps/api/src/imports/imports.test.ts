@@ -302,6 +302,8 @@ describe('imports', () => {
               '2026-09-05,Amex,Credit Card Payment,Ally Checking,AMEX EPAYMENT,,-195.10,,Shared,Reviewed,9004',
               '2026-09-05,Amex,Credit Card Payment,Blue Cash Preferred® ,PAYMENT THANK YOU,,195.10,,Shared,,9005',
               '2026-09-06,Mystery,Uncategorized,Ally Checking,POS 1234,,-5.00,,Shared,,9006',
+              '2026-09-07,Lantern Thai,Restaurants & Bars,Blue Cash Preferred® ,LANTERN THAI,,-42.00,,Shared,,9010',
+              '2026-09-08,Lantern Thai,Restaurants & Bars,Blue Cash Preferred® ,LANTERN THAI REFUND,,42.00,,Shared,,9011',
             ].join('\n'),
           ),
           balances: parseCsv(
@@ -342,7 +344,7 @@ describe('imports', () => {
       expect(r.res.status, JSON.stringify(r.res.body)).toBe(200);
       const data = r.preview;
       expect(data.totals).toEqual({
-        new: 6,
+        new: 8,
         duplicates: 0,
         overlaps: 0,
         skipped: 0,
@@ -356,13 +358,15 @@ describe('imports', () => {
           other: expect.objectContaining({ accountName: expect.stringContaining('Blue Cash') }),
         }),
       ]);
-      expect(r.added).toBe(6);
+      expect(r.added).toBe(8);
       expect(r.balances).toBe(data.accounts.reduce((n, a) => n + a.balances, 0));
       expect(data.newCategories).toEqual([
-        // Everyday spending goes in its own group; income and transfers join the existing ones.
+        // Monarch's own categories go in the group Monarch has them in; ones you made, in their
+        // own group. Income and transfers join the existing ones.
         { name: 'Coffee Beans', kind: 'flexible', group: 'From Monarch' },
         { name: 'Pretax Paycheck', kind: 'income', group: 'Income' },
         { name: 'Credit Card Payment', kind: 'transfer', group: 'Transfers' },
+        { name: 'Restaurants & Bars', kind: 'flexible', group: 'Food' },
       ]);
       expect(data.newTags).toEqual(['Work', 'Taxes']);
       expect(r.run!.batches).toHaveLength(4); // each account its own batch
@@ -456,10 +460,11 @@ describe('imports', () => {
         'coffee beans',
         'credit card payment',
         'pretax paycheck',
+        'restaurants & bars',
         'uncategorized',
       ]);
       const r = await run(body);
-      expect(r.preview.totals).toMatchObject({ new: 1, duplicates: 6 });
+      expect(r.preview.totals).toMatchObject({ new: 1, duplicates: 8 });
       expect(r.added).toBe(1);
 
       // Undoing the first import, all accounts at once, removes the accounts it created unless
