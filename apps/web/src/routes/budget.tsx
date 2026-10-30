@@ -1064,7 +1064,7 @@ function BudgetAmount({
       currency={data.currency}
       value={amount}
       placeholder="—"
-      isDisabled={save.isPending}
+      // Not disabled while it saves: that would drop focus, out of the drawer too.
       onChange={(next) => {
         setAmount(next);
         if ((next ?? 0) !== value) save.mutate(next ?? 0);
@@ -1088,12 +1088,42 @@ function Stat({
   return (
     <div className="bg-surface px-4 py-3">
       <p className="text-xs text-muted">{label}</p>
-      <p className="text-lg font-semibold">{children}</p>
+      <div className="text-lg font-semibold">{children}</div>
       {note ? (
         <p className={clsx('text-xs', noteTone === 'danger' ? 'text-danger' : 'text-muted')}>
           {note}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** A line across a chart at a fraction of its height, labelled just above. */
+function ChartLine({
+  at,
+  label,
+  className,
+  align,
+}: {
+  at: number;
+  label: string;
+  className: string;
+  align: 'left' | 'right';
+}) {
+  return (
+    <div
+      aria-hidden
+      className={clsx('pointer-events-none absolute inset-x-0 z-10 border-t', className)}
+      style={{ bottom: `${at * 100}%` }}
+    >
+      <span
+        className={clsx(
+          'absolute bottom-0.5 rounded bg-surface/80 px-1 text-[0.7rem] leading-tight text-muted',
+          align === 'left' ? 'left-0' : 'right-0',
+        )}
+      >
+        {label}
+      </span>
     </div>
   );
 }
@@ -1137,7 +1167,17 @@ function LimitRow({
     <span className="font-normal text-muted">—</span>
   );
   return (
-    <div className={clsx('grid items-center gap-x-3 px-4 py-2 hover:bg-surface-2', COLUMNS)}>
+    // The whole row opens the drawer, like the name does, except the amount you type into. The
+    // name stays the button, for the keyboard.
+    <div
+      className={clsx(
+        'grid cursor-pointer items-center gap-x-3 px-4 py-2 hover:bg-surface-2',
+        COLUMNS,
+      )}
+      onClick={(e) => {
+        if (!(e.target as Element).closest('input, button, a')) onOpen();
+      }}
+    >
       <button
         type="button"
         onClick={onOpen}
@@ -1281,7 +1321,7 @@ function CategoryDrawer({
   name: string;
   /** Flex: its amounts aren't in the rows, so they're changed here. */
   onEdit: (() => void) | undefined;
-  /** Category limits: rollover is switched right here. */
+  /** Category limits: the amount is typed in, and rollover switched, right here. */
   canRollover: boolean;
   onClose: () => void;
 }) {
@@ -1338,7 +1378,15 @@ function CategoryDrawer({
   });
   const { currency } = month;
   const months = history.data?.months ?? [];
-  const peak = Math.max(1, ...months.map((m) => Math.max(m.spentMinor, m.budgetedMinor ?? 0)));
+  const average = history.data?.averageSpentMinor ?? null;
+  // Lines across the bars for context: what's budgeted this month, and the average spent.
+  const budgetLine = row ? row.budgetedMinor + row.rolledInMinor : null;
+  const peak = Math.max(
+    1,
+    average ?? 0,
+    budgetLine ?? 0,
+    ...months.map((m) => Math.max(m.spentMinor, m.budgetedMinor ?? 0)),
+  );
 
   return (
     <Dialog title={name} variant="drawer" isOpen onOpenChange={(open) => (open ? null : onClose())}>
@@ -1346,13 +1394,34 @@ function CategoryDrawer({
         <p className="text-sm text-muted">{monthName(month.month)}</p>
         {row ? (
           <div className="grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-border bg-border">
-            <Stat label="Budgeted" note={row.rolledInMinor ? 'with last month’s' : undefined}>
-              <Amount
-                minor={row.budgetedMinor + row.rolledInMinor}
-                currency={currency}
-                kind="balance"
-              />
-            </Stat>
+            {canRollover ? (
+              // Typed in as in its row; what rolled over is beside it, not in it.
+              <Stat
+                label="Budgeted"
+                note={
+                  row.rolledInMinor
+                    ? `${row.rolledInMinor > 0 ? '+' : '−'}${formatMinor(Math.abs(row.rolledInMinor), currency)} rolled over`
+                    : undefined
+                }
+              >
+                <BudgetAmount
+                  key={row.budgetedMinor}
+                  householdId={householdId}
+                  data={month}
+                  categoryId={categoryId}
+                  name={name}
+                  value={row.budgetedMinor}
+                />
+              </Stat>
+            ) : (
+              <Stat label="Budgeted" note={row.rolledInMinor ? 'with last month’s' : undefined}>
+                <Amount
+                  minor={row.budgetedMinor + row.rolledInMinor}
+                  currency={currency}
+                  kind="balance"
+                />
+              </Stat>
+            )}
             <Stat label="Spent">
               <Amount minor={row.spentMinor} currency={currency} kind="balance" />
             </Stat>
@@ -1362,6 +1431,17 @@ function CategoryDrawer({
             >
               <Amount minor={Math.abs(row.leftMinor)} currency={currency} kind="balance" />
             </Stat>
+          </div>
+        ) : month.canEdit && month.view.strategy === 'category' ? (
+          <div className="max-w-48 space-y-1">
+            <p className="text-xs text-muted">Budget for {monthName(month.month)}</p>
+            <BudgetAmount
+              householdId={householdId}
+              data={month}
+              categoryId={categoryId}
+              name={name}
+              value={0}
+            />
           </div>
         ) : (
           <p className="text-sm">No limit set for {name} this month.</p>
@@ -1394,12 +1474,34 @@ function CategoryDrawer({
           ) : (
             <>
               <div
-                className="grid h-24 grid-cols-6 items-end gap-2"
+                className="relative mt-4 grid h-24 grid-cols-6 items-end gap-2"
                 role="img"
-                aria-label={months
-                  .map((m) => `${monthName(m.month)}: spent ${(m.spentMinor / 100).toFixed(2)}`)
-                  .join('; ')}
+                aria-label={[
+                  ...months.map(
+                    (m) => `${monthName(m.month)}: spent ${formatMinor(m.spentMinor, currency)}`,
+                  ),
+                  ...(budgetLine !== null
+                    ? [`budgeted this month ${formatMinor(budgetLine, currency)}`]
+                    : []),
+                  ...(average !== null ? [`average ${formatMinor(average, currency)}`] : []),
+                ].join('; ')}
               >
+                {budgetLine !== null && budgetLine > 0 ? (
+                  <ChartLine
+                    at={budgetLine / peak}
+                    label={`Budget ${formatMinor(budgetLine, currency)}`}
+                    className="border-solid border-fg/40"
+                    align="left"
+                  />
+                ) : null}
+                {average !== null ? (
+                  <ChartLine
+                    at={average / peak}
+                    label={`Avg ${formatMinor(average, currency)}`}
+                    className="border-dashed border-fg/60"
+                    align="right"
+                  />
+                ) : null}
                 {months.map((m) => (
                   <div key={m.month} className="flex h-full items-end justify-center gap-0.5">
                     {m.budgetedMinor !== null ? (
