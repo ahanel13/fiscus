@@ -915,7 +915,8 @@ function MonthBody({
       const showOthers = showAll || shownIn.has(g.id);
       return {
         group: g,
-        categories: all.filter((c) => rows.has(c.id) || (showOthers && others.includes(c))),
+        // Budgeted first; unbudgeted ones join below them, so showing them moves nothing.
+        categories: [...all.filter((c) => rows.has(c.id)), ...(showOthers ? others : [])],
         others: showAll ? [] : others,
         showOthers,
       };
