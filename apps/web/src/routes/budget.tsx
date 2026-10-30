@@ -1044,7 +1044,15 @@ function MonthBody({
                 id={`budget-group-${group.id}`}
                 name={group.name}
                 open={open}
-                onToggle={() => toggle(group.id)}
+                onToggle={() => {
+                  // Folding a group puts its unbudgeted categories away too.
+                  if (open && shownIn.has(group.id)) {
+                    const next = new Set(shownIn);
+                    next.delete(group.id);
+                    setShownIn(next);
+                  }
+                  toggle(group.id);
+                }}
               >
                 <span className="text-right">{money(total((r) => r.budgetedMinor))}</span>
                 <span className="hidden text-right sm:block">
