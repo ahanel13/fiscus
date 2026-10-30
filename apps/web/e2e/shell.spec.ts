@@ -1421,11 +1421,19 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await expect(groceries).toHaveValue('$250.00');
   expect(await axeViolations(page)).toEqual([]);
 
-  // Rollover is two clicks: the category, then the switch.
-  await page.getByRole('button', { name: 'Groceries: its transactions and history' }).click();
+  // Rollover is two clicks: the category, then the switch. Anywhere in the row but its amount
+  // opens it, here beside the amount, in the spent column.
+  const box = (await groceries.boundingBox())!;
+  await page.mouse.click(box.x + box.width + 40, box.y + box.height / 2);
   const drawer = page.getByRole('dialog', { name: 'Groceries' });
   await drawer.getByText('Roll over what’s left', { exact: true }).click();
   await expect(drawer.getByRole('switch', { name: 'Roll over what’s left' })).toBeChecked();
+  // Its amount is typed in there too, as in its row.
+  const inDrawer = drawer.getByRole('textbox', { name: /^Groceries: budget for/ });
+  await inDrawer.fill('300');
+  await inDrawer.press('Enter');
+  await expect(drawer.getByRole('img', { name: /budgeted this month \$300\.00/ })).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(groceries).toHaveValue('$300.00');
   await expect(page.getByText('Rollover', { exact: true })).toBeVisible();
 });
