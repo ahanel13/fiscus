@@ -1417,6 +1417,10 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await groceries.press('Enter');
   // Saved: Groceries now has a budget, so it has a bar, and stays shown with the rest hidden.
   await expect(page.getByRole('meter', { name: /^Groceries:/ })).toBeVisible();
+  const coffee = page.getByRole('textbox', { name: /^Coffee: budget for/ });
+  await coffee.fill('20');
+  await coffee.press('Enter');
+  await expect(page.getByRole('meter', { name: /^Coffee:/ })).toBeVisible();
   await page.getByText('Show unbudgeted categories', { exact: true }).click();
   await expect(groceries).toHaveValue('$250.00');
   // A group folds up to its totals, and opens again.
@@ -1433,6 +1437,11 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await foodGroup.getByRole('button', { name: /^Show \d+ unbudgeted$/ }).click();
   await expect(restaurants).toBeVisible();
   await expect(page.getByRole('textbox', { name: /^Gas: budget for/ })).toHaveCount(0);
+  // Below the budgeted ones, which stay where they were.
+  const order = await foodGroup
+    .getByRole('textbox')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')?.split(':')[0]));
+  expect(order).toEqual(['Groceries', 'Coffee', 'Restaurants']);
   await foodGroup.getByRole('button', { name: /^Hide \d+ unbudgeted$/ }).click();
   await expect(restaurants).toHaveCount(0);
   expect(await axeViolations(page)).toEqual([]);
