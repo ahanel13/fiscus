@@ -1444,6 +1444,13 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   expect(order).toEqual(['Groceries', 'Coffee', 'Restaurants']);
   await foodGroup.getByRole('button', { name: /^Hide \d+ unbudgeted$/ }).click();
   await expect(restaurants).toHaveCount(0);
+  // Folding the group puts them away again: it reopens with only the budgeted ones.
+  await foodGroup.getByRole('button', { name: /^Show \d+ unbudgeted$/ }).click();
+  await expect(restaurants).toBeVisible();
+  await food.click();
+  await food.click();
+  await expect(groceries).toHaveValue('$250.00');
+  await expect(restaurants).toHaveCount(0);
   expect(await axeViolations(page)).toEqual([]);
 
   // Rollover is two clicks: the category, then the switch. Anywhere in the row but its amount
