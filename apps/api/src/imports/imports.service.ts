@@ -48,6 +48,7 @@ import {
   cleanMerchantName,
   inferCategoryKind,
   MEMBER_COLORS,
+  monarchGroup,
   normalizeDescription,
   type startImportSchema,
   type updateImportProfileSchema,
@@ -898,7 +899,9 @@ export class ImportsService {
   /**
    * Category names → ids: your mapping first, then an existing category of the same name, then
    * the system categories, else a new category. New income and transfer categories join an
-   * existing group of that kind; the rest go in a "From Monarch" (or "From import") group.
+   * existing group of that kind. Monarch's own spending categories go in the group Monarch has
+   * them in (Mortgage in Home, Gym in Health), made if it's missing; the rest go in a
+   * "From Monarch" (or "From import") group.
    * Without `activity` (a preview) nothing is created; it only reports what would be.
    */
   async #categories(
@@ -944,24 +947,32 @@ export class ImportsService {
         ids.set(key, match.id);
         continue;
       }
-      const kind: CategoryKind =
+      let kind: CategoryKind =
         mapped?.kind ??
         inferCategoryKind(
           name,
           (amounts.get(key) ?? []).map((p) => p.row.amountMinor),
         );
+      // Its Monarch group, unless you chose a kind that group isn't.
+      const like = input.format === 'monarch' ? monarchGroup(name) : undefined;
+      const fits = like !== undefined && (kind === 'flexible' || kind === like.kind);
+      const likeGroup = fits ? groups.find((g) => g.name === like.group) : undefined;
+      if (fits) kind = likeGroup?.kind ?? like.kind;
+      const newGroup = fits ? like.group : groupName;
       let group =
         kind === 'income' || kind === 'transfer'
           ? groups.find((g) => g.kind === kind)
-          : groups.find((g) => g.kind === kind && g.name === groupName);
-      created.push({ name, kind, group: group?.name ?? groupName });
+          : fits
+            ? likeGroup
+            : groups.find((g) => g.kind === kind && g.name === groupName);
+      created.push({ name, kind, group: group?.name ?? newGroup });
       if (!activity) continue;
       if (!group) {
         [group] = await tx
           .insert(categoryGroups)
           .values({
             householdId: ctx.householdId,
-            name: groupName,
+            name: newGroup,
             kind,
             sortOrder: groups.length + 1,
           })

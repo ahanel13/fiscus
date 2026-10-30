@@ -8,7 +8,7 @@ import {
   inferCategoryKind,
   suggestMapping,
 } from './mapping.js';
-import { isMonarchBalances, isMonarchTransactions, readMonarch } from './monarch.js';
+import { isMonarchBalances, isMonarchTransactions, monarchGroup, readMonarch } from './monarch.js';
 import { detectDateFormat, detectDecimalSeparator, parseAmount, parseDate } from './values.js';
 
 describe('parseCsv', () => {
@@ -258,6 +258,16 @@ describe('Monarch export', () => {
       ['Blue Cash Preferred®', 'credit', 'transactions', null, false],
       ['Old Savings', 'depository', 'value', '2024-02-01', true],
     ]);
+  });
+});
+
+describe('monarchGroup', () => {
+  it('puts Monarch’s own categories in the matching group, by name', () => {
+    expect(monarchGroup('Mortgage')).toEqual({ group: 'Home', kind: 'fixed' });
+    expect(monarchGroup(' restaurants & bars ')).toEqual({ group: 'Food', kind: 'flexible' });
+    expect(monarchGroup('Travel & Vacation')).toEqual({ group: 'Travel', kind: 'non_monthly' });
+    // Ones you made in Monarch aren't known.
+    expect(monarchGroup('Coffee Beans')).toBeUndefined();
   });
 });
 

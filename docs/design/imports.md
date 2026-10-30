@@ -151,7 +151,7 @@ transactions in the export).
 | Id | The **dedupe key**. Monarch's id is stable, so importing a newer export later adds only what's new. Rows that are otherwise identical (85 in the sample: same day, account, amount, and description) stay distinct |
 | Merchant | Name (`display_name`) |
 | Original Statement | Original description; the merchant when it's empty |
-| Category | Matched by name to your categories; **unmatched ones are created**, and you can move them later: everyday spending in a "From Monarch" group, income and transfer categories in your existing Income and Transfers groups. Kind: `transfer` for Transfer, Credit Card Payment, and Balance Adjustments; `income` when every transaction in it is money in; otherwise `flexible`. "Uncategorized" and "Transfer" map to the system categories |
+| Category | Matched by name to your categories; **unmatched ones are created**, and you can move them later: Monarch's own spending categories in the group Monarch keeps them in (Mortgage in Home, Restaurants & Bars in Food, Education and Business groups made when needed), ones you made in Monarch in a "From Monarch" group, income and transfer categories in your existing Income and Transfers groups. The export has no group column, so this is a table of Monarch's defaults. Kind: `transfer` for Transfer, Credit Card Payment, and Balance Adjustments; `income` when every transaction in it is money in; otherwise `flexible`. "Uncategorized" and "Transfer" map to the system categories |
 | Tags | Comma-separated in one field; matched or created |
 | Notes | The **shared note**, encrypted |
 | Reviewed | `Needs Review` stays **needs review**; `Reviewed` and blank (most rows: Monarch leaves it blank unless you used its review flow) import as **reviewed** |
