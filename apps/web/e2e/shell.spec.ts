@@ -1434,6 +1434,7 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await inDrawer.press('Enter');
   await expect(drawer.getByRole('img', { name: /budgeted this month \$300\.00/ })).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
   await expect(groceries).toHaveValue('$300.00');
   await expect(page.getByText('Rollover', { exact: true })).toBeVisible();
 });
