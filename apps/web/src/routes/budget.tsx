@@ -20,7 +20,7 @@ import {
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { ChevronLeft, ChevronRight, PiggyBank } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, EyeOff, PiggyBank } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -783,6 +783,78 @@ function useShowUnbudgeted(): [boolean, (show: boolean) => void] {
   ];
 }
 
+const COLLAPSED = 'fiscus.budget.collapsed';
+
+/** The groups you've folded up, by id (Income is `income`), remembered in this browser. */
+function useCollapsed(): [ReadonlySet<string>, (id: string) => void] {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(COLLAPSED) ?? '[]');
+      return new Set(Array.isArray(saved) ? saved.filter((x) => typeof x === 'string') : []);
+    } catch {
+      return new Set();
+    }
+  });
+  return [
+    collapsed,
+    (id) => {
+      const next = new Set(collapsed);
+      if (!next.delete(id)) next.add(id);
+      setCollapsed(next);
+      try {
+        localStorage.setItem(COLLAPSED, JSON.stringify([...next]));
+      } catch {
+        // Not remembered, but still folded.
+      }
+    },
+  ];
+}
+
+/** A group's header: its name folds it up or opens it, and its totals show either way. */
+function GroupHeader({
+  id,
+  name,
+  open,
+  onToggle,
+  className = 'border-b',
+  children,
+}: {
+  id: string;
+  name: string;
+  open: boolean;
+  onToggle: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <h3
+      className={clsx(
+        'grid cursor-pointer items-center gap-3 border-border bg-bg px-4 py-2.5 text-sm font-semibold hover:bg-surface-2',
+        COLUMNS,
+        className,
+      )}
+      onClick={(e) => {
+        if (!(e.target as Element).closest('button')) onToggle();
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        className="flex min-w-0 items-center gap-2 text-left"
+      >
+        <ChevronRight
+          aria-hidden
+          className={clsx('size-4 shrink-0 text-muted transition-transform', open && 'rotate-90')}
+        />
+        <span className="truncate">{name}</span>
+      </button>
+      {children}
+    </h3>
+  );
+}
+
 const COLUMNS = 'grid-cols-[minmax(0,1fr)_7.5rem] sm:grid-cols-[minmax(0,1fr)_8.5rem_7rem_8rem]';
 
 /**
@@ -804,6 +876,8 @@ function MonthBody({
   const { view, currency, month } = data;
   const progress = monthProgress(month);
   const [showAll, setShowAll] = useShowUnbudgeted();
+  const [collapsed, toggle] = useCollapsed();
+  const [shownIn, setShownIn] = useState<ReadonlySet<string>>(new Set());
   const rows = new Map(view.rows.map((r) => [r.categoryId, r]));
   const unbudgeted = new Map(view.notBudgeted.map((n) => [n.categoryId, n.spentMinor]));
   const income = new Map(view.income.map((r) => [r.categoryId, r]));
@@ -829,15 +903,24 @@ function MonthBody({
     .flatMap((g) => g.categories)
     .filter((c) => showAll || income.has(c.id));
   const received = view.income.reduce((s, r) => s + r.receivedMinor, 0);
+  // Each group shows its budgeted categories; the rest are a click away in the group, or all at
+  // once with the switch.
   const spending = groups
     .filter((g) => g.kind !== 'income' && g.kind !== 'transfer')
-    .map((g) => ({
-      group: g,
-      categories: g.categories.filter(
-        (c) => c.id !== uncategorized && (rows.has(c.id) || (showAll && data.canEdit)),
-      ),
-    }))
-    .filter((g) => g.categories.length > 0);
+    .map((g) => {
+      const all = g.categories.filter(
+        (c) => c.id !== uncategorized && (!c.archived || rows.has(c.id) || unbudgeted.has(c.id)),
+      );
+      const others = data.canEdit ? all.filter((c) => !rows.has(c.id)) : [];
+      const showOthers = showAll || shownIn.has(g.id);
+      return {
+        group: g,
+        categories: all.filter((c) => rows.has(c.id) || (showOthers && others.includes(c))),
+        others: showAll ? [] : others,
+        showOthers,
+      };
+    })
+    .filter((g) => g.categories.length > 0 || g.others.length > 0);
   const hiddenSpent = view.notBudgeted.filter((n) => n.categoryId !== uncategorized);
   const uncategorizedSpent = uncategorized ? unbudgeted.get(uncategorized) : undefined;
 
@@ -886,46 +969,48 @@ function MonthBody({
             <span className="hidden text-right sm:block">Received</span>
             <span className="hidden text-right sm:block">Remaining</span>
           </div>
-          <ul className="divide-y divide-border">
-            {incomeShown.map((c) => {
-              const r = income.get(c.id) ?? { budgetedMinor: 0, receivedMinor: 0 };
-              const remaining = r.budgetedMinor - r.receivedMinor;
-              return (
-                <li key={c.id} className={clsx('grid items-center gap-3 px-4 py-2', COLUMNS)}>
-                  <span className="min-w-0 truncate text-sm font-medium">
-                    {c.name}
-                    <span className="block text-xs font-normal text-muted sm:hidden">
-                      {money(r.receivedMinor)} received
+          {collapsed.has('income') ? null : (
+            <ul id="budget-group-income" className="divide-y divide-border">
+              {incomeShown.map((c) => {
+                const r = income.get(c.id) ?? { budgetedMinor: 0, receivedMinor: 0 };
+                const remaining = r.budgetedMinor - r.receivedMinor;
+                return (
+                  <li key={c.id} className={clsx('grid items-center gap-3 px-4 py-2', COLUMNS)}>
+                    <span className="min-w-0 truncate text-sm font-medium">
+                      {c.name}
+                      <span className="block text-xs font-normal text-muted sm:hidden">
+                        {money(r.receivedMinor)} received
+                      </span>
                     </span>
-                  </span>
-                  {amount(c.id, c.name, r.budgetedMinor)}
-                  <span className="hidden text-right text-sm sm:block">
-                    {money(r.receivedMinor)}
-                  </span>
-                  <span className="hidden text-right text-sm sm:block">
-                    {r.budgetedMinor === 0 ? (
-                      <span className="text-muted">—</span>
-                    ) : remaining < 0 ? (
-                      <span className="text-accent-text">{money(-remaining)} more</span>
-                    ) : (
-                      money(remaining)
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-          <div
-            className={clsx(
-              'grid gap-3 border-t border-border bg-bg px-4 py-2 text-sm font-semibold',
-              COLUMNS,
-            )}
+                    {amount(c.id, c.name, r.budgetedMinor)}
+                    <span className="hidden text-right text-sm sm:block">
+                      {money(r.receivedMinor)}
+                    </span>
+                    <span className="hidden text-right text-sm sm:block">
+                      {r.budgetedMinor === 0 ? (
+                        <span className="text-muted">—</span>
+                      ) : remaining < 0 ? (
+                        <span className="text-accent-text">{money(-remaining)} more</span>
+                      ) : (
+                        money(remaining)
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <GroupHeader
+            id="budget-group-income"
+            name="Total income"
+            className="border-t"
+            open={!collapsed.has('income')}
+            onToggle={() => toggle('income')}
           >
-            <span>Total income</span>
             <span className="text-right">{money(view.totals.incomeBudgetedMinor)}</span>
             <span className="hidden text-right sm:block">{money(received)}</span>
             <span className="hidden sm:block" />
-          </div>
+          </GroupHeader>
         </div>
       ) : null}
 
@@ -941,25 +1026,25 @@ function MonthBody({
           <span className="hidden text-right sm:block">Spent</span>
           <span className="hidden text-right sm:block">Left</span>
         </div>
-        {spending.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted">
+        {view.rows.length === 0 ? (
+          <p className="border-b border-border px-4 py-6 text-sm text-muted">
             No category has a budget in {monthName(month)}.
-            {data.canEdit ? ' Show unbudgeted categories to set some.' : ''}
+            {data.canEdit ? ' Show a group’s unbudgeted categories to set some.' : ''}
           </p>
         ) : null}
-        {spending.map(({ group, categories }) => {
+        {spending.map(({ group, categories, others, showOthers }) => {
           const here = categories.map((c) => rows.get(c.id)).filter((r) => r !== undefined);
           const total = (f: (r: CategoryLimitRow) => number) => here.reduce((s, r) => s + f(r), 0);
           const left = total((r) => r.leftMinor);
+          const open = !collapsed.has(group.id);
           return (
             <section key={group.id}>
-              <h3
-                className={clsx(
-                  'grid gap-3 border-b border-border bg-bg px-4 py-1.5 text-xs font-semibold tracking-wide text-muted',
-                  COLUMNS,
-                )}
+              <GroupHeader
+                id={`budget-group-${group.id}`}
+                name={group.name}
+                open={open}
+                onToggle={() => toggle(group.id)}
               >
-                <span>{group.name}</span>
                 <span className="text-right">{money(total((r) => r.budgetedMinor))}</span>
                 <span className="hidden text-right sm:block">
                   {money(total((r) => r.spentMinor))}
@@ -967,29 +1052,55 @@ function MonthBody({
                 <span className={clsx('hidden text-right sm:block', left < 0 && 'text-danger')}>
                   {money(left)}
                 </span>
-              </h3>
-              <ul className="divide-y divide-border">
-                {categories.map((c) => {
-                  const r = rows.get(c.id);
-                  return (
-                    <li key={c.id}>
-                      <LimitRow
-                        name={c.name}
-                        row={r}
-                        spentMinor={r?.spentMinor ?? unbudgeted.get(c.id) ?? 0}
-                        currency={currency}
-                        progress={progress}
-                        amount={
-                          data.canEdit
-                            ? amount(c.id, c.name, r?.budgetedMinor ?? 0)
-                            : money(r?.budgetedMinor ?? 0, 'text-sm')
-                        }
-                        onOpen={() => onOpen({ categoryId: c.id, row: r })}
-                      />
+              </GroupHeader>
+              {open ? (
+                <ul
+                  id={`budget-group-${group.id}`}
+                  className="divide-y divide-border border-b border-border"
+                >
+                  {categories.map((c) => {
+                    const r = rows.get(c.id);
+                    return (
+                      <li key={c.id}>
+                        <LimitRow
+                          name={c.name}
+                          row={r}
+                          spentMinor={r?.spentMinor ?? unbudgeted.get(c.id) ?? 0}
+                          currency={currency}
+                          progress={progress}
+                          amount={
+                            data.canEdit
+                              ? amount(c.id, c.name, r?.budgetedMinor ?? 0)
+                              : money(r?.budgetedMinor ?? 0, 'text-sm')
+                          }
+                          onOpen={() => onOpen({ categoryId: c.id, row: r })}
+                        />
+                      </li>
+                    );
+                  })}
+                  {others.length ? (
+                    <li>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs text-muted hover:bg-surface-2 hover:text-fg"
+                        aria-expanded={showOthers}
+                        onClick={() => {
+                          const next = new Set(shownIn);
+                          if (!next.delete(group.id)) next.add(group.id);
+                          setShownIn(next);
+                        }}
+                      >
+                        {showOthers ? (
+                          <EyeOff aria-hidden className="size-3.5" />
+                        ) : (
+                          <Eye aria-hidden className="size-3.5" />
+                        )}
+                        {showOthers ? 'Hide' : 'Show'} {others.length} unbudgeted
+                      </button>
                     </li>
-                  );
-                })}
-              </ul>
+                  ) : null}
+                </ul>
+              ) : null}
             </section>
           );
         })}

@@ -1419,6 +1419,22 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await expect(page.getByRole('meter', { name: /^Groceries:/ })).toBeVisible();
   await page.getByText('Show unbudgeted categories', { exact: true }).click();
   await expect(groceries).toHaveValue('$250.00');
+  // A group folds up to its totals, and opens again.
+  const food = page.getByRole('button', { name: 'Food', exact: true });
+  await food.click();
+  await expect(food).toHaveAttribute('aria-expanded', 'false');
+  await expect(groceries).toHaveCount(0);
+  await food.click();
+  await expect(groceries).toHaveValue('$250.00');
+  // A group's unbudgeted categories show on their own, without the rest.
+  const restaurants = page.getByRole('textbox', { name: /^Restaurants: budget for/ });
+  await expect(restaurants).toHaveCount(0);
+  const foodGroup = page.locator('section').filter({ has: food });
+  await foodGroup.getByRole('button', { name: /^Show \d+ unbudgeted$/ }).click();
+  await expect(restaurants).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /^Gas: budget for/ })).toHaveCount(0);
+  await foodGroup.getByRole('button', { name: /^Hide \d+ unbudgeted$/ }).click();
+  await expect(restaurants).toHaveCount(0);
   expect(await axeViolations(page)).toEqual([]);
 
   // Rollover is two clicks: the category, then the switch. Anywhere in the row but its amount
@@ -1437,4 +1453,15 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await expect(drawer).toBeHidden();
   await expect(groceries).toHaveValue('$300.00');
   await expect(page.getByText('Rollover', { exact: true })).toBeVisible();
+
+  // Categories move between groups in settings, and the budget follows.
+  await page.goto(`${householdUrl}/settings/categories`);
+  await page.getByRole('button', { name: 'Move Groceries to another group' }).click();
+  await page.getByRole('menuitem', { name: /^Fun/ }).click();
+  await expect(
+    page.getByRole('region', { name: 'Fun', exact: true }).getByText('Groceries'),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Move Transfer to another group' })).toHaveCount(0);
+  await page.goto(`${householdUrl}/budget`);
+  await expect(page.getByRole('button', { name: 'Fun', exact: true })).toBeVisible();
 });
