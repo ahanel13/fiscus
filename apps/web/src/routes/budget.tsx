@@ -1064,7 +1064,7 @@ function BudgetAmount({
       currency={data.currency}
       value={amount}
       placeholder="—"
-      isDisabled={save.isPending}
+      // Not disabled while it saves: that would drop focus, out of the drawer too.
       onChange={(next) => {
         setAmount(next);
         if ((next ?? 0) !== value) save.mutate(next ?? 0);
