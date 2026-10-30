@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Category, CategoryGroup, Tag } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Archive, FolderInput, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { categoriesQuery, tagsQuery } from '../api/queries.js';
@@ -13,6 +13,9 @@ import {
   DialogActions,
   DialogTrigger,
   Form,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Select,
   SelectItem,
   SelectSection,
@@ -129,6 +132,15 @@ export function CategoriesSettings({
                             path: `/categories/${c.id}`,
                             body: { name },
                           })
+                        }
+                        onMove={(group) =>
+                          call
+                            .mutateAsync({
+                              method: 'PATCH',
+                              path: `/categories/${c.id}`,
+                              body: { groupId: group.id },
+                            })
+                            .then(() => toast(`${c.name} moved to ${group.name}.`))
                         }
                         onArchive={(archived) =>
                           call.mutate({
@@ -285,12 +297,14 @@ function CategoryActions({
   c,
   groups,
   onRename,
+  onMove,
   onArchive,
   onDelete,
 }: {
   c: Category;
   groups: CategoryGroup[];
   onRename: (name: string) => Promise<unknown>;
+  onMove: (group: CategoryGroup) => Promise<unknown>;
   onArchive: (archived: boolean) => void;
   onDelete: (replaceWith: string | null) => Promise<unknown>;
 }) {
@@ -310,6 +324,30 @@ function CategoryActions({
       />
       {c.systemKey ? null : (
         <>
+          <MenuTrigger>
+            <Tooltip content="Move to another group">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Move ${c.name} to another group`}
+                className="px-1.5"
+              >
+                <FolderInput aria-hidden className="size-3.5" />
+              </Button>
+            </Tooltip>
+            <Menu placement="bottom end" aria-label={`Move ${c.name} to`}>
+              {groups
+                .filter((g) => g.id !== c.groupId)
+                .map((g) => (
+                  <MenuItem key={g.id} textValue={g.name} onAction={() => void onMove(g)}>
+                    <span className="flex-1">{g.name}</span>
+                    {KIND_LABELS[g.kind] !== g.name ? (
+                      <span className="text-xs text-muted">{KIND_LABELS[g.kind]}</span>
+                    ) : null}
+                  </MenuItem>
+                ))}
+            </Menu>
+          </MenuTrigger>
           <Tooltip content={c.archived ? 'Restore' : 'Archive'}>
             <Button
               variant="ghost"

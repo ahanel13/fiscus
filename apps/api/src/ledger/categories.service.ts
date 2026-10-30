@@ -166,6 +166,9 @@ export class CategoriesService {
       const [row] = await tx.select().from(categories).where(eq(categories.id, id));
       if (!row) throw problems.notFound();
       if (patch.groupId) await this.#group(tx, patch.groupId);
+      if (patch.groupId && patch.groupId !== row.groupId && row.systemKey) {
+        throw new Problem(409, 'system_category', 'This category is built in and can’t be moved');
+      }
       if (patch.archived && row.systemKey) {
         throw new Problem(
           409,

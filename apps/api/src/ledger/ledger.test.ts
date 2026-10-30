@@ -85,6 +85,26 @@ describe('ledger', () => {
     expect(system).toEqual(['settlement', 'transfer', 'uncategorized']);
   });
 
+  it('moves a category to another group, but not a built-in one', async () => {
+    type G = {
+      id: string;
+      name: string;
+      categories: { id: string; name: string; systemKey: string | null }[];
+    };
+    const groups = (await A.get(url('/categories'))).body.data as G[];
+    const fun = groups.find((g) => g.name === 'Fun')!;
+    const coffee = groups.flatMap((g) => g.categories).find((c) => c.name === 'Coffee')!;
+    const moved = await A.request('PATCH', url(`/categories/${coffee.id}`), { groupId: fun.id });
+    expect(moved.status).toBe(200);
+    expect(moved.body.data.groupId).toBe(fun.id);
+    const transfer = groups.flatMap((g) => g.categories).find((c) => c.systemKey === 'transfer')!;
+    const refused = await A.request('PATCH', url(`/categories/${transfer.id}`), {
+      groupId: fun.id,
+    });
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe('system_category');
+  });
+
   it('setting a category marks it reviewed, unless the household turns that off (#349)', async () => {
     const acct = await account(A, { name: 'Review acct' });
     const all = (await A.get(url('/categories'))).body.data.flatMap(
