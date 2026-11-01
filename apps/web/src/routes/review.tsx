@@ -3,7 +3,7 @@ import type { BulkUpdateResult, Transaction } from '@fiscus/shared';
 import { useInfiniteQuery, useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { CheckCheck, ChevronDown, ClipboardCheck } from 'lucide-react';
+import { CheckCheck, ChevronDown, ClipboardCheck, Landmark } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -298,9 +298,14 @@ export function ReviewPage() {
               <div className="flex w-full items-start gap-3 pb-1">
                 <div className="min-w-0 flex-1">
                   <p className="font-medium break-words">{current.displayName}</p>
+                  {current.account ? (
+                    <p className="mt-1 flex items-center gap-1.5 text-sm font-medium">
+                      <Landmark aria-hidden className="size-4 shrink-0 text-muted" />
+                      <span className="min-w-0 break-words">{current.account.name}</span>
+                    </p>
+                  ) : null}
                   <p className="text-sm text-muted">
                     <DateText value={current.date} />
-                    {current.account ? ` · ${current.account.name}` : null}
                   </p>
                 </div>
                 <Amount
