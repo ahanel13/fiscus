@@ -3,6 +3,7 @@ import { clsx } from 'clsx';
 import { X } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import {
+  Autocomplete,
   Dialog as AriaDialog,
   DialogTrigger,
   Heading,
@@ -23,8 +24,10 @@ import {
   SubmenuTrigger,
   Tooltip as AriaTooltip,
   TooltipTrigger,
+  useFilter,
 } from 'react-aria-components';
 import { Button } from './button.js';
+import { optionCount, SEARCH_FROM, SearchBox } from './search-box.js';
 import { cx, fade, popoverStyles } from './utils.js';
 
 export { DialogTrigger, MenuTrigger, SubmenuTrigger };
@@ -195,14 +198,34 @@ export function Popover({ className, children, ...props }: PopoverProps) {
 export function Menu<T extends object>({
   placement,
   className,
+  searchable,
   ...props
-}: MenuProps<T> & { placement?: PopoverProps['placement'] }) {
+}: MenuProps<T> & {
+  placement?: PopoverProps['placement'];
+  /** A search box at the top: on by default for more than a few items; `false` turns it off. */
+  searchable?: boolean;
+}) {
+  const { contains } = useFilter({ sensitivity: 'base' });
+  const search = searchable ?? optionCount(props.items, props.children, MENU_ITEMS) > SEARCH_FROM;
+  const menu = (
+    <AriaMenu {...props} className={cx('max-h-80 overflow-auto p-1 outline-none', className)} />
+  );
   return (
     <Popover placement={placement} className="min-w-48">
-      <AriaMenu {...props} className={cx('max-h-80 overflow-auto p-1 outline-none', className)} />
+      {search ? (
+        <Autocomplete filter={contains}>
+          <SearchBox option="menuitem" />
+          {menu}
+        </Autocomplete>
+      ) : (
+        menu
+      )}
     </Popover>
   );
 }
+
+/** What counts as an item, to decide on a search box. */
+const MENU_ITEMS: ReadonlySet<unknown> = new Set([MenuItem, AriaMenuItem]);
 
 /** A menu item. Give it `href` to navigate, or `onAction` to act. */
 export function MenuItem({

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { clsx } from 'clsx';
-import { Check, ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
   Autocomplete,
@@ -13,15 +13,14 @@ import {
   ListBoxItem,
   type ListBoxItemProps,
   ListBoxSection,
-  Input as SearchInput,
   Popover,
-  SearchField,
   Select as AriaSelect,
   type SelectProps as AriaSelectProps,
   SelectValue,
   useFilter,
 } from 'react-aria-components';
 import { Description, FieldError, type FieldProps, Label } from './field.js';
+import { optionCount, SEARCH_FROM, SearchBox } from './search-box.js';
 import { controlStyles, cx, popoverStyles } from './utils.js';
 
 const listBoxStyles = 'max-h-72 overflow-auto p-1 outline-none';
@@ -67,6 +66,9 @@ export function SelectSection<T extends object>({
   );
 }
 
+/** What counts as an option, to decide on a search box. */
+const OPTIONS: ReadonlySet<unknown> = new Set([SelectItem, ListBoxItem]);
+
 export type SelectProps<T extends object> = Omit<AriaSelectProps<T>, 'children'> &
   FieldProps & {
     items?: Iterable<T>;
@@ -74,7 +76,10 @@ export type SelectProps<T extends object> = Omit<AriaSelectProps<T>, 'children'>
     triggerClassName?: string;
     /** `chip`: a small pill that fits inside a list row (a transaction's category). */
     appearance?: 'field' | 'chip';
-    /** A search box at the top of the open list: type to narrow it (long lists, categories). */
+    /**
+     * A search box at the top of the open list, to type and narrow it. On by default for more
+     * than a few options; `false` turns it off.
+     */
     searchable?: boolean;
   };
 
@@ -101,13 +106,14 @@ export function Select<T extends object>({
 }: SelectProps<T>) {
   const chip = appearance === 'chip';
   const { contains } = useFilter({ sensitivity: 'base' });
+  const search = searchable ?? optionCount(items, children, OPTIONS) > SEARCH_FROM;
   const list = (
     <ListBox
       items={items}
       className={listBoxStyles}
       // Searchable: nothing is focused until you type, so the search's first match gets focus
       // (focusing the selected option first left it pointing at an option the search had hidden).
-      {...(searchable ? { autoFocus: false } : {})}
+      {...(search ? { autoFocus: false } : {})}
     >
       {children}
     </ListBox>
@@ -130,34 +136,9 @@ export function Select<T extends object>({
       {description ? <Description>{description}</Description> : null}
       <FieldError>{errorMessage}</FieldError>
       <Popover className={clsx(popoverStyles, 'min-w-(--trigger-width)')}>
-        {searchable ? (
-          // Opening it puts the cursor in the search box; arrows still move through the list.
+        {search ? (
           <Autocomplete filter={contains}>
-            <SearchField
-              aria-label="Search"
-              autoFocus
-              className="border-b border-border p-1"
-              // Enter with no option focused yet picks the first match.
-              onSubmit={() => {
-                const input = document.activeElement;
-                if (input?.getAttribute('aria-activedescendant')) return;
-                const id = input?.getAttribute('aria-controls');
-                const first = id
-                  ? document
-                      .getElementById(id)
-                      ?.querySelector<HTMLElement>('[role=option]:not([aria-disabled=true])')
-                  : null;
-                first?.click();
-              }}
-            >
-              <div className="flex items-center gap-2 px-2">
-                <Search aria-hidden className="size-4 shrink-0 text-muted" />
-                <SearchInput
-                  placeholder="Type to search"
-                  className="min-h-9 w-full bg-transparent text-sm outline-none! placeholder:text-muted [&::-webkit-search-cancel-button]:hidden"
-                />
-              </div>
-            </SearchField>
+            <SearchBox option="option" />
             {list}
           </Autocomplete>
         ) : (
