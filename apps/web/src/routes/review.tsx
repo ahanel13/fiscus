@@ -409,6 +409,11 @@ export function ReviewPage() {
         selected={selected}
         onSelectedChange={setSelected}
         onOpen={setOpen}
+        onLongPress={(id) => {
+          setSelecting(true);
+          setSelected(new Set(selected).add(id));
+        }}
+        selectOnTap={selecting}
         onCategorized={(t, categoryId) =>
           setSuggestion(
             suggestRule(
