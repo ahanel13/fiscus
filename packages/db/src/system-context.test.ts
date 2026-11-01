@@ -579,10 +579,14 @@ describe('system context belongs to the worker', () => {
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
                                     'categories', 'household_keys', 'audit_events', 'users',
                                     'instance_settings', 'accounts', 'connections',
-                                    'connection_secrets']) t,
+                                    'connection_secrets', 'budget_amounts',
+                                    'budget_categories']) t,
                        unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) p
       WHERE has_table_privilege('fiscus_steward', t, p)`);
+    // A category merging into another adds its budget amounts into the other's (0065).
     expect(rows.map((r) => `${r.p} ${r.t}`).sort()).toEqual([
+      'INSERT budget_amounts',
+      'INSERT budget_categories',
       'INSERT household_members',
       'INSERT households',
       'INSERT instance_settings',
@@ -593,6 +597,9 @@ describe('system context belongs to the worker', () => {
     expect(columns.map((r) => r.c)).toEqual([
       'accounts.connection_id',
       'accounts.updated_at',
+      'budget_amounts.amount_minor',
+      'budget_amounts.updated_at',
+      'budget_amounts.version',
       'connections.consecutive_failures',
       'connections.disconnect_requested',
       'connections.first_failed_at',
@@ -607,6 +614,10 @@ describe('system context belongs to the worker', () => {
       'instance_settings.value',
       'invites.accepted_at',
       'invites.accepted_by_user_id',
+      'rules.actions',
+      'rules.conditions',
+      'rules.updated_at',
+      'rules.version',
       'transactions.category_id',
       'transactions.updated_at',
       'transactions.version',

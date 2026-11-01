@@ -211,8 +211,9 @@ export class CategoriesService {
   }
 
   /**
-   * CAT-03/04: deleting a category in use moves its transactions to `replaceWith`, including
-   * ones the caller can't see. The reply counts only the moved transactions they can see.
+   * CAT-03/04: deleting a category into `replaceWith` merges it: its transactions, the rules that
+   * set or look for it, and its budget amounts move there, including ones the caller can't see.
+   * The reply counts only the moved transactions they can see.
    */
   async deleteCategory(
     ctx: HouseholdContext,
@@ -254,15 +255,17 @@ export class CategoriesService {
         throw new Problem(
           409,
           'category_in_use',
-          'Choose a category to move its transactions to',
+          'Choose a category to merge it into',
           undefined,
           undefined,
           {},
           { visibleTransactions: visible },
         );
       }
-      if (rows[0]?.used) {
-        await tx.execute(sql`SELECT fiscus_reassign_category(${id}, ${replaceWith!})`);
+      // Merging even when nothing uses it yet: a hidden rule or budget may (the check above is
+      // all of them, but cheap to repeat inside the function).
+      if (replaceWith) {
+        await tx.execute(sql`SELECT fiscus_reassign_category(${id}, ${replaceWith})`);
       }
       await tx.delete(categories).where(eq(categories.id, id));
       await activity.record({

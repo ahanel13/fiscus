@@ -461,7 +461,7 @@ relied on it. Rolling back past 0.3.0 after that means restoring the pre-upgrade
 |---|---|---|---|
 | `fiscus_create_household(...)` | steward | Creating a household and its owner | A new household id and a user in context; an existing id fails on the key |
 | `fiscus_join_household(token_hash, colors)` | steward | Accepting an invite | The token, live, for the context's household, and the user's email is the invited one |
-| `fiscus_category_in_use(category)`, `fiscus_reassign_category(from, to)` | definer, steward | Deleting a category whose transactions the caller can't all see | A valid member context; to move, an owner or member, between the household's own categories |
+| `fiscus_category_in_use(category)`, `fiscus_reassign_category(from, to)` | definer, steward | Deleting a category whose transactions, rules or budget amounts the caller can't all see: in use by any of them, and merging all of them into the replacement | A valid member context; to move, an owner or member, between the household's own categories |
 | `fiscus_household_chain()` | definer | Verifying the activity history (ADR 0013) | A valid member context; the API reports only intact or not |
 | `fiscus_household_chain_leaves(after, until, limit)` | definer | History proofs (ADR 0013, #264): `(seq, entry_hash, leaf, hash_version)` only, hidden events included | A valid member context; the API returns only leaves and the head (accounts-and-visibility §6) |
 | `fiscus_household_key(household, version)` | definer | FieldCrypto's key reads | None: keys are wrapped with the master key, which is never in the database |

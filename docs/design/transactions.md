@@ -34,9 +34,12 @@ purchases (F1), splits, and the API. Phase 4 adds imports, the review queue, and
 - **System categories** (`uncategorized`, `transfer`, `settlement`) can be renamed but not deleted (CAT-04).
 - The set lives in one place, the SQL function `fiscus_seed_default_categories()`, which seeds new
   households and backfilled existing ones.
-- **Deleting a category in use** asks for a replacement, and moves every transaction to it,
-  including ones the deleting member can't see. It reports only the count of affected *visible*
-  rows, so nothing leaks (CAT-03). Archiving hides a category from pickers but keeps its history.
+- **Deleting a category in use** (by a transaction, a rule, or a budget) asks for a replacement
+  and merges into it: every transaction moves there, rules that set or look for it name the
+  replacement, and its budget amounts add into the replacement's, month by month (its rollover
+  and other budget settings carry over where the replacement has none). That includes members'
+  own rules and budgets the deleting member can't see. It reports only the count of affected
+  *visible* transactions, so nothing leaks (CAT-03). Archiving hides a category from pickers but keeps its history.
 
 ## 2. Transactions (#36)
 

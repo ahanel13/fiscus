@@ -105,6 +105,67 @@ describe('ledger', () => {
     expect(refused.body.code).toBe('system_category');
   });
 
+  it('deleting a category into another merges its rules and budget amounts, even hidden ones', async () => {
+    const group = (await A.get(url('/categories'))).body.data.find(
+      (g: { name: string }) => g.name === 'Food',
+    ).id as string;
+    const make = async (name: string) =>
+      (await A.post(url('/categories'), { name, groupId: group })).body.data.id as string;
+    const old = await make('Coffee duplicate');
+    const kept = await make('Coffee kept');
+    // B's own rule sets it (A can't see it); a household rule looks for it.
+    const bRule = (
+      await B.post(url('/rules'), {
+        scope: 'mine',
+        conditions: { description: { op: 'contains', value: 'BEANS' } },
+        actions: { categoryId: old },
+      })
+    ).body.data.id as string;
+    const hhRule = (
+      await A.post(url('/rules'), {
+        conditions: { categoryId: old },
+        actions: { markReviewed: true },
+      })
+    ).body.data.id as string;
+    // Both categories budgeted in the household's budget; the old one in B's own.
+    const budget = await A.post(url('/budgets'), {
+      scope: 'household',
+      amounts: [
+        { categoryId: old, amountMinor: 2000 },
+        { categoryId: kept, amountMinor: 5000 },
+      ],
+    });
+    expect(budget.status, JSON.stringify(budget.body)).toBe(201);
+    const mine = await B.post(url('/budgets'), {
+      scope: 'mine',
+      amounts: [{ categoryId: old, amountMinor: 700 }],
+    });
+    expect(mine.status, JSON.stringify(mine.body)).toBe(201);
+
+    // In use by rules and budgets alone, with no transactions: it asks where they go.
+    const refused = await A.request('DELETE', url(`/categories/${old}`));
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe('category_in_use');
+    const r = await A.request('DELETE', url(`/categories/${old}?replaceWith=${kept}`));
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+
+    const rules = await sql('SELECT id, conditions, actions FROM rules WHERE id = ANY($1)', [
+      [bRule, hhRule],
+    ]);
+    expect(rules.find((x) => x.id === bRule).actions.categoryId).toBe(kept);
+    expect(rules.find((x) => x.id === hhRule).conditions.categoryId).toBe(kept);
+    const amounts = await sql(
+      'SELECT budget_id, category_id, amount_minor FROM budget_amounts WHERE category_id = ANY($1)',
+      [[old, kept]],
+    );
+    expect(amounts.map((a) => [a.budget_id, a.category_id, Number(a.amount_minor)]).sort()).toEqual(
+      [
+        [budget.body.data.id, kept, 7000],
+        [mine.body.data.id, kept, 700],
+      ].sort(),
+    );
+  });
+
   it('setting a category marks it reviewed, unless the household turns that off (#349)', async () => {
     const acct = await account(A, { name: 'Review acct' });
     const all = (await A.get(url('/categories'))).body.data.flatMap(
