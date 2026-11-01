@@ -9,6 +9,7 @@ import {
   likelyOtherSide,
   lookAlikes,
   namedAccount,
+  reviewCards,
   withoutTransactions,
 } from './transfers.js';
 
@@ -162,6 +163,28 @@ describe('grouping the review (#332)', () => {
     expect(group!.ready).toEqual([
       { out: 'o1', into: 'i1' },
       { out: 'o2', into: 'i2' },
+    ]);
+  });
+
+  it('makes transfers out competing for one deposit a single choice, led by the deposit', () => {
+    const deposit = t('i1', 'Checking', 'SoFi Bank');
+    const cards = reviewCards([
+      { ...s(t('o1', 'Savings', 'Jpmorgan Chase'), [deposit], false, 'rivals') },
+      { ...s(t('o2', 'Savings', 'To Savings Balance'), [deposit], false, 'rivals') },
+      s(t('o3', 'Savings', 'Move'), [t('i3', 'Checking', 'In')], true, 'one_match'),
+      // Its rival isn't in this list: it reads as a pair.
+      s(t('o4', 'Savings', 'Move'), [t('i4', 'Checking', 'In')], false, 'rivals'),
+    ]);
+    expect(
+      cards.map((c) =>
+        c.kind === 'in'
+          ? ['in', c.into.id, c.options.map((o) => o.transaction.id)]
+          : ['out', c.suggestion.transaction.id],
+      ),
+    ).toEqual([
+      ['in', 'i1', ['o1', 'o2']],
+      ['out', 'o3'],
+      ['out', 'o4'],
     ]);
   });
 

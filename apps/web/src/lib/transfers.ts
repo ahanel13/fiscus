@@ -226,3 +226,48 @@ export function groupUnmatched(
     .map(([key, items]) => ({ key, account: accountName(items[0]!), items }))
     .sort((a, b) => b.items.length - a.items.length);
 }
+
+/**
+ * Identical round-ups show once, with how many: same account, amount, day, and name going out,
+ * and the same identical candidates. Linking one links one pair; "Link the clear pairs" takes all.
+ */
+export function mergeIdentical(list: Suggestion[]): { suggestion: Suggestion; count: number }[] {
+  const key = (x: Suggestion) =>
+    x.reason === 'identical'
+      ? `${x.transaction.account.id}|${x.transaction.date}|${x.transaction.amountMinor}|${x.transaction.displayName.toLowerCase()}`
+      : x.transaction.id;
+  return [...Map.groupBy(list, key).values()].map((group) => ({
+    suggestion: group[0]!,
+    count: group.length,
+  }));
+}
+
+/**
+ * One card per decision. Usually the money going out leads, with its possible other sides under
+ * it. When transfers out compete for the one deposit that could be theirs, the deposit leads
+ * instead, and you pick which transfer out it came from: one choice, not cards pointing at each
+ * other.
+ */
+export type ReviewCard =
+  | { kind: 'out'; suggestion: Suggestion; count: number }
+  | { kind: 'in'; into: TransferReviewTransaction; options: Suggestion[] };
+
+export function reviewCards(list: Suggestion[]): ReviewCard[] {
+  const byInto = Map.groupBy(
+    list.filter((s) => s.reason === 'rivals' && s.candidates.length === 1),
+    (s) => s.candidates[0]!.id,
+  );
+  const done = new Set<string>();
+  const cards: ReviewCard[] = [];
+  for (const { suggestion, count } of mergeIdentical(list)) {
+    const into = suggestion.candidates[0]!;
+    const options = suggestion.reason === 'rivals' ? (byInto.get(into.id) ?? []) : [];
+    if (options.length < 2) {
+      cards.push({ kind: 'out', suggestion, count });
+    } else if (!done.has(into.id)) {
+      done.add(into.id);
+      cards.push({ kind: 'in', into, options });
+    }
+  }
+  return cards;
+}
