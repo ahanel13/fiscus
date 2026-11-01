@@ -59,14 +59,21 @@ export const setBudgetAmountSchema = z.object({
    */
   applyTo: z.enum(['month', 'future']).default('future'),
 });
-/** How the budget treats a category in every month: rollover (§3.1), a yearly figure (D12). */
+/**
+ * How the budget treats a category in every month: rollover (§3.1), a yearly figure (D12), or
+ * left out of it altogether ("Don't budget").
+ */
 export const setBudgetCategorySchema = z
   .object({
     rollover: z.boolean(),
     yearlyMinor: z.number().int().min(0).max(1_000_000_000_00).nullable(),
+    excluded: z.boolean(),
   })
   .partial()
-  .refine((v) => v.rollover !== undefined || v.yearlyMinor !== undefined, 'Nothing to change');
+  .refine(
+    (v) => v.rollover !== undefined || v.yearlyMinor !== undefined || v.excluded !== undefined,
+    'Nothing to change',
+  );
 
 /** The flexible number from a month on (flex, §3.4). */
 export const setFlexibleSchema = z.object({
@@ -149,6 +156,8 @@ export interface BudgetMonth {
   currency: string;
   /** Whether you can change it: owners and members for the household's, you for your own. */
   canEdit: boolean;
+  /** Spending categories left out of this budget ("Don't budget"): in no row or total. */
+  excluded: string[];
   view: CategoryLimitsMonth | FlexMonth;
 }
 

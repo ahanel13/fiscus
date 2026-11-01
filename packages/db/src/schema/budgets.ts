@@ -145,6 +145,8 @@ export const budgetCategories = pgTable(
     bucket: text(),
     /** Non-monthly costs: the yearly figure a twelfth of is set aside each month (D12). */
     yearlyMinor: money('yearly_minor'),
+    /** "Don't budget": left out of this budget, its rows and totals, every month. */
+    excluded: boolean().notNull().default(false),
     ...timestamps(),
   },
   (t) => [

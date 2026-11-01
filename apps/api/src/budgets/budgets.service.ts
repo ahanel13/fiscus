@@ -183,6 +183,7 @@ export class BudgetsService {
         month,
         currency: h!.currency,
         canEdit: canEdit(ctx, scope),
+        excluded: definition.excluded,
         view: viewOf(out.kind, out.view),
       };
     });
@@ -554,7 +555,11 @@ export class BudgetsService {
     ctx: HouseholdContext,
     budgetId: string,
     categoryId: string,
-    change: { rollover?: boolean | undefined; yearlyMinor?: number | null | undefined },
+    change: {
+      rollover?: boolean | undefined;
+      yearlyMinor?: number | null | undefined;
+      excluded?: boolean | undefined;
+    },
   ): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
       const row = await findBudget(tx, budgetId);
@@ -568,12 +573,14 @@ export class BudgetsService {
           categoryId,
           rollover: change.rollover ?? false,
           yearlyMinor: change.yearlyMinor ?? null,
+          excluded: change.excluded ?? false,
         })
         .onConflictDoUpdate({
           target: [budgetCategories.budgetId, budgetCategories.categoryId],
           set: {
             ...(change.rollover !== undefined ? { rollover: change.rollover } : {}),
             ...(change.yearlyMinor !== undefined ? { yearlyMinor: change.yearlyMinor } : {}),
+            ...(change.excluded !== undefined ? { excluded: change.excluded } : {}),
           },
         });
       await record(activity, row, 'budget.category_changed', { categoryId, ...change });
@@ -894,6 +901,7 @@ async function loadDefinition(tx: Executor, row: BudgetRow) {
       rollover: budgetCategories.rollover,
       bucket: budgetCategories.bucket,
       yearlyMinor: budgetCategories.yearlyMinor,
+      excluded: budgetCategories.excluded,
     })
     .from(categories)
     .innerJoin(categoryGroups, eq(categoryGroups.id, categories.groupId))
@@ -919,13 +927,17 @@ async function loadDefinition(tx: Executor, row: BudgetRow) {
       kind: p.strategy,
       settings: p.settings,
     })),
-    categories: cats.map((c): BudgetCategory => ({
-      id: c.id,
-      kind: c.kind,
-      rollover: c.rollover ?? false,
-      bucket: c.bucket ?? null,
-      yearlyMinor: c.yearlyMinor ?? null,
-    })),
+    // "Don't budget": a category left out is in no row, total, or spending without a limit.
+    excluded: cats.filter((c) => c.excluded).map((c) => c.id),
+    categories: cats
+      .filter((c) => !c.excluded)
+      .map((c): BudgetCategory => ({
+        id: c.id,
+        kind: c.kind,
+        rollover: c.rollover ?? false,
+        bucket: c.bucket ?? null,
+        yearlyMinor: c.yearlyMinor ?? null,
+      })),
     amounts,
   };
 }
