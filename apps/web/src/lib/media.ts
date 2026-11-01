@@ -17,5 +17,8 @@ export function useMediaQuery(query: string): boolean {
 /** Tailwind's `xl`: wide enough for the transactions table beside the sidebar. */
 export const WIDE = '(min-width: 80rem)';
 
+/** Tailwind's `md`: room for a list beside the one it's showing. */
+export const MEDIUM = '(min-width: 48rem)';
+
 /** Tailwind's `sm`: past a phone held upright. */
 export const SMALL = '(min-width: 40rem)';

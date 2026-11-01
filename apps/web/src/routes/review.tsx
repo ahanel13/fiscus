@@ -3,7 +3,7 @@ import type { BulkUpdateResult, Transaction } from '@fiscus/shared';
 import { useInfiniteQuery, useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { CheckCheck, ClipboardCheck } from 'lucide-react';
+import { CheckCheck, ChevronDown, ClipboardCheck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -28,6 +28,7 @@ import {
   Skeleton,
   toast,
 } from '../components/ui.js';
+import { MEDIUM, useMediaQuery } from '../lib/media.js';
 import { useRangeSelect } from '../lib/range-select.js';
 import { type SuggestedRule } from '../lib/rules.js';
 import { typing } from '../lib/shortcuts.js';
@@ -91,6 +92,10 @@ export function ReviewPage() {
   const [suggestion, setSuggestion] = useState<SuggestedRule | null>(null);
   const [announce, setAnnounce] = useState('');
   const categoryRef = useRef<HTMLDivElement>(null);
+  // On a phone, one transaction at a glance: what it is, its category, and Mark reviewed. The
+  // full details (name, date, tags, notes…) open on request. Beside the list there's room for them.
+  const wide = useMediaQuery(MEDIUM);
+  const [showDetails, setShowDetails] = useState(false);
 
   const patch = useMutation({
     mutationFn: ({ t, body }: { t: Transaction; body: Record<string, unknown> }) =>
@@ -289,6 +294,22 @@ export function ReviewPage() {
           className="order-first space-y-4 md:order-none"
         >
           <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
+            {wide ? null : (
+              <div className="flex w-full items-start gap-3 pb-1">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium break-words">{current.displayName}</p>
+                  <p className="text-sm text-muted">
+                    <DateText value={current.date} />
+                    {current.account ? ` · ${current.account.name}` : null}
+                  </p>
+                </div>
+                <Amount
+                  minor={current.amountMinor}
+                  currency={current.currency}
+                  className="text-lg font-semibold"
+                />
+              </div>
+            )}
             <div ref={categoryRef} className="min-w-48 flex-1">
               {checked.length ? (
                 // With some checked, the category is theirs, all at once.
@@ -336,10 +357,26 @@ export function ReviewPage() {
                 <Button
                   onPress={() => markReviewed(current)}
                   isPending={patch.isPending && patch.variables?.body.reviewStatus !== undefined}
+                  className="max-md:flex-1"
                 >
                   Mark reviewed
                 </Button>
               </>
+            )}
+            {wide ? null : (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-expanded={showDetails}
+                onPress={() => setShowDetails(!showDetails)}
+                className="w-full"
+              >
+                {showDetails ? 'Hide details' : 'Details'}
+                <ChevronDown
+                  aria-hidden
+                  className={clsx('size-4 transition-transform', showDetails && 'rotate-180')}
+                />
+              </Button>
             )}
           </div>
           {suggestion ? (
@@ -351,7 +388,12 @@ export function ReviewPage() {
               onDone={() => setSuggestion(null)}
             />
           ) : null}
-          <div className="rounded-xl border border-border bg-surface p-4">
+          <div
+            className={clsx(
+              'rounded-xl border border-border bg-surface p-4',
+              !wide && !showDetails && 'hidden',
+            )}
+          >
             <TransactionDetails
               key={current.id}
               householdId={householdId}
