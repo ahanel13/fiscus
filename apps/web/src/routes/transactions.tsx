@@ -257,6 +257,7 @@ export function TransactionList({
   onOpen,
   onCategorized,
   showAccount = true,
+  showReview = true,
   empty,
 }: {
   householdId: string;
@@ -271,6 +272,8 @@ export function TransactionList({
   onCategorized?: (t: Transaction, categoryId: string) => void;
   /** The table's Account column; an account's own page leaves it out. */
   showAccount?: boolean;
+  /** The "Review" badge; the review queue, where every row needs it, leaves it out. */
+  showReview?: boolean;
   /** Shown when there's nothing at all, rather than nothing matching the filters. */
   empty?: ReactNode;
 }) {
@@ -327,7 +330,7 @@ export function TransactionList({
     );
   const badges = (t: Transaction) => (
     <>
-      {t.reviewStatus === 'needs_review' ? <Badge tone="accent">Review</Badge> : null}
+      {showReview && t.reviewStatus === 'needs_review' ? <Badge tone="accent">Review</Badge> : null}
       {t.transfer ? (
         // Long account names ("MyLowe's® Rewards Credit Card (...4444)") truncate.
         <Badge className="max-w-full min-w-0">
