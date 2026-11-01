@@ -188,6 +188,26 @@ describe('grouping the review (#332)', () => {
     ]);
   });
 
+  it('puts the transfer out the names point to first, then the closest date', () => {
+    const deposit = { ...t('i1', 'Travel', 'From Checking Balance'), date: '2023-11-21' };
+    const out = (id: string, date: string, name: string) => ({
+      ...s({ ...t(id, 'SoFi Checking', name), date }, [deposit], false, 'rivals'),
+    });
+    const card = reviewCards([
+      out('o1', '2023-11-30', 'SoFi'),
+      out('o2', '2023-11-24', 'SoFi'),
+      out('o3', '2023-11-21', 'SoFi'),
+      out('o4', '2023-11-21', 'To Travel Vault'),
+    ])[0]!;
+    expect(card.kind === 'in' && card.options.map((o) => o.transaction.id)).toEqual([
+      'o4',
+      'o3',
+      'o2',
+      'o1',
+    ]);
+    expect(card.kind === 'in' && card.hint).toEqual({ id: 'o4', label: 'names Travel' });
+  });
+
   it('groups transfers with no other side by account', () => {
     expect(
       groupUnmatched([t('a', 'Card', 'x'), t('b', 'Checking', 'y'), t('c', 'Checking', 'z')]).map(

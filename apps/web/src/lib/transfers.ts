@@ -250,7 +250,13 @@ export function mergeIdentical(list: Suggestion[]): { suggestion: Suggestion; co
  */
 export type ReviewCard =
   | { kind: 'out'; suggestion: Suggestion; count: number }
-  | { kind: 'in'; into: TransferReviewTransaction; options: Suggestion[] };
+  | {
+      kind: 'in';
+      into: TransferReviewTransaction;
+      /** The one the names point to first, then the closest date first. */
+      options: Suggestion[];
+      hint: Hint | null;
+    };
 
 export function reviewCards(list: Suggestion[]): ReviewCard[] {
   const byInto = Map.groupBy(
@@ -266,7 +272,19 @@ export function reviewCards(list: Suggestion[]): ReviewCard[] {
       cards.push({ kind: 'out', suggestion, count });
     } else if (!done.has(into.id)) {
       done.add(into.id);
-      cards.push({ kind: 'in', into, options });
+      // "To Travel Vault" names the deposit's account: likely that one.
+      const named = likelyOtherSide(
+        into,
+        options.map((o) => o.transaction),
+      );
+      const rank = (o: Suggestion) =>
+        o.transaction.id === named?.id ? -1 : dayGap(o.transaction.date, into.date);
+      cards.push({
+        kind: 'in',
+        into,
+        options: options.toSorted((a, b) => rank(a) - rank(b)),
+        hint: named ? { id: named.id, label: `names ${named.named}` } : null,
+      });
     }
   }
   return cards;
