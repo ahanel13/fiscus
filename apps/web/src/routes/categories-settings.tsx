@@ -400,6 +400,7 @@ function CategoryActions({
                   </p>
                   <Select
                     label="Merge into"
+                    placeholder="Choose a category"
                     value={replaceWith}
                     onChange={(v) => setReplaceWith(v ? String(v) : null)}
                   >
