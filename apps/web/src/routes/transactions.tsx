@@ -90,6 +90,7 @@ import {
   toast,
   useToday,
 } from '../components/ui.js';
+import { useLongPress } from '../lib/long-press.js';
 import { useRangeSelect } from '../lib/range-select.js';
 import { categoryIndex, byDay, forLabel, paidByLabel } from '../lib/transactions.js';
 import { historyLine } from '../lib/transaction-history.js';
@@ -255,8 +256,11 @@ export function TransactionList({
   selected,
   onSelectedChange,
   onOpen,
+  onLongPress,
+  selectOnTap,
   onCategorized,
   showAccount = true,
+  showReview = true,
   empty,
 }: {
   householdId: string;
@@ -267,10 +271,16 @@ export function TransactionList({
   selected?: Set<string>;
   onSelectedChange?: (s: Set<string>) => void;
   onOpen: (id: string) => void;
+  /** A phone's long press on a row: start selecting, with this one. */
+  onLongPress?: (id: string) => void;
+  /** While selecting on a phone, a tap checks or unchecks a row rather than opening it. */
+  selectOnTap?: boolean;
   /** After a row's category changes, e.g. to suggest a rule. */
   onCategorized?: (t: Transaction, categoryId: string) => void;
   /** The table's Account column; an account's own page leaves it out. */
   showAccount?: boolean;
+  /** The "Review" badge; the review queue, where every row needs it, leaves it out. */
+  showReview?: boolean;
   /** Shown when there's nothing at all, rather than nothing matching the filters. */
   empty?: ReactNode;
 }) {
@@ -287,6 +297,7 @@ export function TransactionList({
   const items = useMemo(() => query.data?.pages.flatMap((p) => p.data) ?? [], [query.data]);
   const shared = members.length > 1;
   const range = useRangeSelect();
+  const longPress = useLongPress((id) => onLongPress?.(id));
 
   if (query.isPending) {
     return (
@@ -327,7 +338,7 @@ export function TransactionList({
     );
   const badges = (t: Transaction) => (
     <>
-      {t.reviewStatus === 'needs_review' ? <Badge tone="accent">Review</Badge> : null}
+      {showReview && t.reviewStatus === 'needs_review' ? <Badge tone="accent">Review</Badge> : null}
       {t.transfer ? (
         // Long account names ("MyLowe's® Rewards Credit Card (...4444)") truncate.
         <Badge className="max-w-full min-w-0">
@@ -471,8 +482,17 @@ export function TransactionList({
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => onOpen(t.id)}
-                  className="min-w-0 flex-1 py-2 text-left"
+                  {...(onLongPress && t.can.categorize ? longPress.handlers(t.id) : {})}
+                  onClick={() => {
+                    if (longPress.fired()) return;
+                    if (selectOnTap && t.can.categorize) {
+                      const next = new Set(selected);
+                      if (next.has(t.id)) next.delete(t.id);
+                      else next.add(t.id);
+                      onSelectedChange?.(next);
+                    } else onOpen(t.id);
+                  }}
+                  className="min-w-0 flex-1 [-webkit-touch-callout:none] py-2 text-left select-none"
                 >
                   <span className="block truncate text-sm font-medium">{t.displayName}</span>
                   {/* One line: the account name gives way, so a row stays two lines on a phone. */}
@@ -845,6 +865,15 @@ export function TransactionsPage() {
               selected={selected}
               onSelectedChange={setSelected}
               onOpen={setOpen}
+              {...(phone
+                ? {
+                    onLongPress: (id: string) => {
+                      setSelecting(true);
+                      setSelected(new Set(selected).add(id));
+                    },
+                    selectOnTap: selecting,
+                  }
+                : {})}
               onCategorized={(t, categoryId) =>
                 setSuggestion(
                   suggestRule(

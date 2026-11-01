@@ -3,7 +3,7 @@ import type { BulkUpdateResult, Transaction } from '@fiscus/shared';
 import { useInfiniteQuery, useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { CheckCheck, ChevronDown, ClipboardCheck, Landmark } from 'lucide-react';
+import { CheckCheck, ClipboardCheck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
@@ -30,20 +30,25 @@ import {
 } from '../components/ui.js';
 import { MEDIUM, useMediaQuery } from '../lib/media.js';
 import { useRangeSelect } from '../lib/range-select.js';
-import { type SuggestedRule } from '../lib/rules.js';
+import { type SuggestedRule, suggestRule } from '../lib/rules.js';
 import { typing } from '../lib/shortcuts.js';
 import { categoryIndex } from '../lib/transactions.js';
 import { PossibleDuplicatesList } from './possible-duplicates.js';
-import { RuleSuggestion } from './rules.js';
+import { RuleSuggestion, useRuleSuggestionContext } from './rules.js';
 import { TransferReviewList } from './transfer-review.js';
 import {
   CategorySelect,
   TransactionDetails,
+  TransactionDrawer,
+  TransactionList,
   transferLabel,
   useInvalidateLedger,
 } from './transactions.js';
 
 type Data<T> = { data: T };
+
+/** The queue: what needs review, oldest first. The phone's list shares it with the page. */
+const QUEUE = { lens: 'all', review: 'needs_review', order: 'oldest' } as const;
 
 const KEYS: [string, string][] = [
   ['j', 'Next'],
@@ -71,9 +76,7 @@ export function ReviewPage() {
     startOn ?? 'transactions',
   );
   const invalidate = useInvalidateLedger(householdId);
-  const query = useInfiniteQuery(
-    transactionsQuery(householdId, { lens: 'all', review: 'needs_review', order: 'oldest' }),
-  );
+  const query = useInfiniteQuery(transactionsQuery(householdId, QUEUE));
   const items = useMemo(
     () => (query.data?.pages.flatMap((p) => p.data) ?? []).filter((t) => t.can.categorize),
     [query.data],
@@ -92,10 +95,13 @@ export function ReviewPage() {
   const [suggestion, setSuggestion] = useState<SuggestedRule | null>(null);
   const [announce, setAnnounce] = useState('');
   const categoryRef = useRef<HTMLDivElement>(null);
-  // On a phone, one transaction at a glance: what it is, its category, and Mark reviewed. The
-  // full details (name, date, tags, notes…) open on request. Beside the list there's room for them.
+  // On a phone, the queue is a list like Transactions: pick a category on a row (which marks it
+  // reviewed), tap it for the rest, or mark them all reviewed at once. Wider, one at a time with
+  // its details beside the list.
   const wide = useMediaQuery(MEDIUM);
-  const [showDetails, setShowDetails] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+  const ruleContext = useRuleSuggestionContext(householdId);
 
   const patch = useMutation({
     mutationFn: ({ t, body }: { t: Transaction; body: Record<string, unknown> }) =>
@@ -115,11 +121,17 @@ export function ReviewPage() {
   // The checked ones at once: marked reviewed (which takes them out of the queue), or given a
   // category (they stay checked, so they can be marked reviewed next).
   const bulk = useMutation({
-    mutationFn: (changes: { reviewStatus: 'reviewed' } | { categoryId: string }) =>
+    mutationFn: ({
+      changes,
+      ids = checked.map((t) => t.id),
+    }: {
+      changes: { reviewStatus: 'reviewed' } | { categoryId: string };
+      ids?: string[];
+    }) =>
       api<Data<BulkUpdateResult>>('PATCH', `/api/v1/households/${householdId}/transactions`, {
-        body: { ids: checked.map((t) => t.id), changes },
+        body: { ids, changes },
       }),
-    onSuccess: async (r, changes) => {
+    onSuccess: async (r, { changes }) => {
       const n = r.data.updated.length;
       const refused = r.data.refused.length;
       if ('reviewStatus' in changes) {
@@ -294,27 +306,6 @@ export function ReviewPage() {
           className="order-first space-y-4 md:order-none"
         >
           <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
-            {wide ? null : (
-              <div className="flex w-full items-start gap-3 pb-1">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium break-words">{current.displayName}</p>
-                  {current.account ? (
-                    <p className="mt-1 flex items-center gap-1.5 text-sm font-medium">
-                      <Landmark aria-hidden className="size-4 shrink-0 text-muted" />
-                      <span className="min-w-0 break-words">{current.account.name}</span>
-                    </p>
-                  ) : null}
-                  <p className="text-sm text-muted">
-                    <DateText value={current.date} />
-                  </p>
-                </div>
-                <Amount
-                  minor={current.amountMinor}
-                  currency={current.currency}
-                  className="text-lg font-semibold"
-                />
-              </div>
-            )}
             <div ref={categoryRef} className="min-w-48 flex-1">
               {checked.length ? (
                 // With some checked, the category is theirs, all at once.
@@ -323,7 +314,7 @@ export function ReviewPage() {
                   label={`Category for ${checked.length} checked`}
                   value={sameCategory}
                   {...(mixedCategories ? { placeholder: 'Different categories' } : {})}
-                  onChange={(categoryId) => bulk.mutate({ categoryId })}
+                  onChange={(categoryId) => bulk.mutate({ changes: { categoryId } })}
                   isDisabled={bulk.isPending}
                 />
               ) : (
@@ -343,8 +334,8 @@ export function ReviewPage() {
             </div>
             {checked.length ? (
               <Button
-                onPress={() => bulk.mutate({ reviewStatus: 'reviewed' })}
-                isPending={bulk.isPending && 'reviewStatus' in (bulk.variables ?? {})}
+                onPress={() => bulk.mutate({ changes: { reviewStatus: 'reviewed' } })}
+                isPending={bulk.isPending && 'reviewStatus' in (bulk.variables?.changes ?? {})}
               >
                 Mark {checked.length} reviewed
               </Button>
@@ -362,26 +353,10 @@ export function ReviewPage() {
                 <Button
                   onPress={() => markReviewed(current)}
                   isPending={patch.isPending && patch.variables?.body.reviewStatus !== undefined}
-                  className="max-md:flex-1"
                 >
                   Mark reviewed
                 </Button>
               </>
-            )}
-            {wide ? null : (
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-expanded={showDetails}
-                onPress={() => setShowDetails(!showDetails)}
-                className="w-full"
-              >
-                {showDetails ? 'Hide details' : 'Details'}
-                <ChevronDown
-                  aria-hidden
-                  className={clsx('size-4 transition-transform', showDetails && 'rotate-180')}
-                />
-              </Button>
             )}
           </div>
           {suggestion ? (
@@ -393,12 +368,7 @@ export function ReviewPage() {
               onDone={() => setSuggestion(null)}
             />
           ) : null}
-          <div
-            className={clsx(
-              'rounded-xl border border-border bg-surface p-4',
-              !wide && !showDetails && 'hidden',
-            )}
-          >
+          <div className="rounded-xl border border-border bg-surface p-4">
             <TransactionDetails
               key={current.id}
               householdId={householdId}
@@ -413,6 +383,94 @@ export function ReviewPage() {
         </section>
       ) : null}
     </div>
+  );
+
+  // "Mark all" covers the ones loaded so far (50 a page), and says so when there are more.
+  const loaded = items.slice(0, 500).map((t) => t.id);
+  const markingAll = bulk.isPending && bulk.variables?.ids !== undefined;
+  const list = (
+    <>
+      {suggestion ? (
+        <RuleSuggestion
+          householdId={householdId}
+          suggestion={suggestion}
+          groups={groups}
+          members={members}
+          onDone={() => setSuggestion(null)}
+        />
+      ) : null}
+      <TransactionList
+        householdId={householdId}
+        filters={QUEUE}
+        showReview={false}
+        members={members}
+        groups={groups}
+        selectable={selecting}
+        selected={selected}
+        onSelectedChange={setSelected}
+        onOpen={setOpen}
+        onLongPress={(id) => {
+          setSelecting(true);
+          setSelected(new Set(selected).add(id));
+        }}
+        selectOnTap={selecting}
+        onCategorized={(t, categoryId) =>
+          setSuggestion(
+            suggestRule(
+              {
+                originalDescription: t.originalDescription,
+                accountId: t.account?.id ?? null,
+                amountMinor: t.amountMinor,
+              },
+              { categoryId },
+              ruleContext.rules,
+              ruleContext.muted,
+              categoryIndex(groups).uncategorized ?? null,
+            ),
+          )
+        }
+      />
+      {/* Kept in reach at the bottom while scrolling, as the next thing to do. */}
+      <div className="sticky bottom-3 z-10 flex justify-center">
+        {checked.length ? (
+          <div
+            role="toolbar"
+            aria-label="Checked transactions"
+            className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2 shadow-lg"
+          >
+            <span className="px-1 text-sm font-medium">{checked.length} checked</span>
+            <div className="min-w-40 flex-1">
+              <CategorySelect
+                groups={groups}
+                hideLabel
+                label={`Category for ${checked.length} checked`}
+                value={sameCategory}
+                {...(mixedCategories ? { placeholder: 'Different categories' } : {})}
+                onChange={(categoryId) => bulk.mutate({ changes: { categoryId } })}
+                isDisabled={bulk.isPending}
+              />
+            </div>
+            <Button
+              className="w-full"
+              onPress={() => bulk.mutate({ changes: { reviewStatus: 'reviewed' } })}
+              isPending={bulk.isPending && 'reviewStatus' in (bulk.variables?.changes ?? {})}
+            >
+              Mark {checked.length} reviewed
+            </Button>
+          </div>
+        ) : (
+          <Button
+            className="shadow-lg"
+            onPress={() => bulk.mutate({ changes: { reviewStatus: 'reviewed' }, ids: loaded })}
+            isPending={markingAll}
+          >
+            {query.hasNextPage
+              ? `Mark these ${loaded.length} reviewed`
+              : `Mark all ${loaded.length} reviewed`}
+          </Button>
+        )}
+      </div>
+    </>
   );
 
   return (
@@ -463,22 +521,48 @@ export function ReviewPage() {
                 <span className="mr-auto">
                   {counts?.transactions ?? items.length} to review, oldest first.
                 </span>
-                <span aria-hidden className="hidden flex-wrap gap-x-3 md:flex">
-                  {KEYS.map(([key, label]) => (
-                    <span key={key}>
-                      <Kbd>{key}</Kbd> {label}
-                    </span>
-                  ))}
-                </span>
+                {wide ? (
+                  <span aria-hidden className="flex flex-wrap gap-x-3">
+                    {KEYS.map(([key, label]) => (
+                      <span key={key}>
+                        <Kbd>{key}</Kbd> {label}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <Button
+                    variant={selecting ? 'primary' : 'secondary'}
+                    size="sm"
+                    onPress={() => {
+                      if (selecting) setSelected(new Set());
+                      setSelecting(!selecting);
+                    }}
+                  >
+                    {selecting ? 'Done' : 'Select'}
+                  </Button>
+                )}
               </div>
             ) : null}
-            {view === 'transactions' ? body : null}
+            {view === 'transactions'
+              ? wide || query.isPending || query.isError || items.length === 0
+                ? body
+                : list
+              : null}
           </>
         )}
         <p role="status" className="sr-only">
           {announce}
         </p>
       </div>
+      {open ? (
+        <TransactionDrawer
+          householdId={householdId}
+          transactionId={open}
+          members={members}
+          groups={groups}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
     </>
   );
 }
