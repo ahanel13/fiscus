@@ -33,6 +33,7 @@ import {
   type Hint,
   hints,
   lookAlikes,
+  reviewCards,
   type SuggestionGroup,
   withoutTransactions,
 } from '../lib/transfers.js';
@@ -80,56 +81,38 @@ const apart = (from: string, to: string) => {
 
 type SuggestionData = TransferReview['suggested'][number];
 
-/** Why a pair wasn't linked automatically, in words. */
+/**
+ * Why a pair wasn't linked automatically, when the rows don't already say: the dates, the Likely
+ * badge, and the choice itself carry the rest.
+ */
 function reasonText(
   { reason, transaction: out, candidates, rivals }: SuggestionData,
   hint: Hint | null,
-): string {
-  const first = candidates[0]!;
+): string | null {
   switch (reason) {
     case 'identical':
-      return `Identical transfers, like round-ups: any pairing is right, so “Link the clear pairs” takes them.`;
+      return 'Identical transfers, like round-ups: any pairing is right, so “Link the clear pairs” takes them.';
     case 'several': {
       // Same day and amount in different accounts (Roth IRA, Brokerage): only you know (#332).
       const alike = hint ? null : lookAlikes(candidates, out.date);
-      if (alike) {
-        return `The same amount on the same day into ${andList(alike)}. Nothing in the names says which it went to, so link the one it really did.`;
-      }
-      return hint?.label === 'closest date'
-        ? `${candidates.length} possible matches, like a recurring transfer; this one is the closest date both ways.`
-        : hint
-          ? `${candidates.length} possible matches, and the names point to this one. Linking one can settle others.`
-          : `${candidates.length} possible matches: link the one that’s really the other side. Linking one can settle others.`;
+      return alike
+        ? `The same amount on the same day into ${andList(alike)}, and nothing in the names says which.`
+        : null;
     }
     case 'rivals': {
+      // Its rival is further down the list (or past the first thousand), so say it here.
       const r = rivals[0]!;
       const more = rivals.length > 1 ? ` and ${rivals.length - 1} more` : '';
-      return `The only match, but it could also be the other side of ${accountOf(r)}’s ${r.displayName} (${formatDay(r.date)})${more}.`;
+      return `This deposit could also be from ${accountOf(r)}’s ${r.displayName} (${formatDay(r.date)})${more}.`;
     }
     case 'far_apart':
-      return `${Math.abs(daysBetween(out.date, first.date))} days apart, more than the 3 business days Fiscus links on its own.`;
     case 'one_match':
-      return 'The only match either way, so “Link the clear pairs” takes it.';
+      return null;
   }
 }
 
 const formatDay = (date: string) =>
   new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-
-/**
- * Identical round-ups show once, with how many: same account, amount, day, and name going out,
- * and the same identical candidates. Linking one links one pair; "Link the clear pairs" takes all.
- */
-function mergeIdentical(list: SuggestionData[]): { suggestion: SuggestionData; count: number }[] {
-  const key = (x: SuggestionData) =>
-    x.reason === 'identical'
-      ? `${x.transaction.account.id}|${x.transaction.date}|${x.transaction.amountMinor}|${x.transaction.displayName.toLowerCase()}`
-      : x.transaction.id;
-  return [...Map.groupBy(list, key).values()].map((group) => ({
-    suggestion: group[0]!,
-    count: group.length,
-  }));
-}
 
 /** "3 transfers linked, and 2 more they settled." */
 function linkedText(linked: number, settled: number): string {
@@ -171,15 +154,132 @@ function GroupToggle({
   );
 }
 
+type Linking = { out: string; into: string } | null;
+
 /**
- * A suggested pair, flat enough to read on a phone (#332): the money going out, then its best
- * match (the one a hint points to, else the closest date) with the others a tap away, and why it
- * wasn't linked automatically. Each side names its account, since the group's heading scrolls away
- * and banks name transfers after accounts ("From Checking Balance"). **Don't link**
- * offers the ways out the rows with no other side have: it was spending, or its other side is in an
- * account outside Fiscus.
+ * One side of a transfer (#332): which way the money went, the account (banks name transfers after
+ * accounts, so the account is what tells sides apart), the amount, then when and what the bank
+ * called it. `from` is the date it's compared to.
  */
-function Suggestion({
+function SideRow({
+  dir,
+  t,
+  from,
+  badge,
+  action,
+}: {
+  dir: 'From' | 'To';
+  t: TransferReviewTransaction;
+  from?: string;
+  badge?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    // On a phone the Link button takes its own line, so the account and the bank's words, which
+    // tell the sides apart, aren't cut off.
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+      <span className="w-9 shrink-0 self-start pt-0.5 text-xs font-semibold tracking-wide text-muted uppercase">
+        {dir}
+      </span>
+      <span className="min-w-48 flex-1">
+        <span className="flex items-baseline gap-3">
+          <span className="min-w-0 flex-1 font-medium break-words">{accountOf(t)}</span>
+          <Amount minor={t.amountMinor} currency={t.currency} className="shrink-0 font-medium" />
+        </span>
+        <span className="block text-xs break-words text-muted">
+          <DateText value={t.date} />
+          {from ? ` · ${apart(from, t.date)}` : ''} · {t.displayName}
+        </span>
+        {badge}
+      </span>
+      {action ? <span className="ml-auto">{action}</span> : null}
+    </div>
+  );
+}
+
+function LinkButton({
+  out,
+  into,
+  linking,
+  onLink,
+}: {
+  out: TransferReviewTransaction;
+  into: TransferReviewTransaction;
+  linking: Linking;
+  onLink: (out: string, into: string) => void;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      className="shrink-0"
+      aria-label={`Link ${accountOf(out)} ${out.displayName} ${out.date} to ${accountOf(into)} ${into.displayName} ${into.date}`}
+      onPress={() => onLink(out.id, into.id)}
+      isPending={linking?.out === out.id && linking.into === into.id}
+    >
+      <Link2 aria-hidden className="size-4" /> Link
+    </Button>
+  );
+}
+
+/** The ways out of linking: it was spending, or its other side is outside Fiscus. */
+function Decline({
+  list,
+  categories,
+  names,
+  onRecategorize,
+  onOutside,
+}: {
+  list: TransferReviewTransaction[];
+  categories: CategoryGroup[];
+  names: Map<string, string>;
+  onRecategorize: (t: TransferReviewTransaction, categoryId: string) => void;
+  onOutside: (t: TransferReviewTransaction) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
+      <p className="text-muted">
+        If it isn’t a transfer, give it its real category. If its other side is in an account you
+        don’t track here, it goes outside Fiscus, and the review stops asking.
+      </p>
+      {list.map((t) => (
+        <div key={t.id} className="flex flex-wrap items-center gap-2">
+          {list.length > 1 ? (
+            <span className="min-w-40 flex-1 text-xs">
+              <span className="font-medium">{t.displayName}</span> · <DateText value={t.date} />
+            </span>
+          ) : null}
+          <div className="w-48">
+            <RowCategory
+              groups={categories}
+              names={names}
+              t={t}
+              onChange={(categoryId) => onRecategorize(t, categoryId)}
+            />
+          </div>
+          <Button size="sm" variant="secondary" onPress={() => onOutside(t)}>
+            Outside Fiscus
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const note = (text: string | null) =>
+  text ? (
+    <p className="flex gap-1.5 text-xs text-muted">
+      <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+      {text}
+    </p>
+  ) : null;
+
+/**
+ * Money going out and its possible other sides (#332), flat enough to read on a phone. A pair is
+ * one box, From and To. With several possible deposits, it asks which: the one a hint points to
+ * first, the rest a tap away. **Don't link** offers what the rows with no other side have.
+ */
+function OutCard({
   suggestion,
   count,
   hint,
@@ -194,12 +294,12 @@ function Suggestion({
   /** Identical transfers out shown as this one. */
   count: number;
   hint: Hint | null;
-  onLink: (into: string) => void;
-  linking: string | null;
+  onLink: (out: string, into: string) => void;
+  linking: Linking;
   groups: CategoryGroup[];
   names: Map<string, string>;
-  onRecategorize: (categoryId: string) => void;
-  onOutside: () => void;
+  onRecategorize: (t: TransferReviewTransaction, categoryId: string) => void;
+  onOutside: (t: TransferReviewTransaction) => void;
 }) {
   const [more, setMore] = useState(false);
   const [declining, setDeclining] = useState(false);
@@ -211,81 +311,73 @@ function Suggestion({
     (a, b) => Number(b[0]!.id === hint?.id) - Number(a[0]!.id === hint?.id),
   );
   const shown = more ? groups : groups.slice(0, 1);
+  const identical = count > 1 ? <Badge className="mt-1">×{count} identical</Badge> : null;
+  const to = (group: TransferReviewTransaction[], withLink = true) => {
+    const c = group[0]!;
+    return (
+      <SideRow
+        dir="To"
+        t={c}
+        from={out.date}
+        badge={
+          c.id === hint?.id ? (
+            <Badge tone="accent" className="mt-1">
+              Likely: {hint.label}
+            </Badge>
+          ) : group.length > 1 ? (
+            <Badge className="mt-1">×{group.length} identical</Badge>
+          ) : null
+        }
+        action={
+          withLink ? <LinkButton out={out} into={c} linking={linking} onLink={onLink} /> : null
+        }
+      />
+    );
+  };
   return (
     <li className="space-y-2 px-3 py-3">
-      <div className="flex items-baseline gap-3 text-sm">
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium">
-            {out.displayName}
-            {count > 1 ? <span className="font-normal text-muted"> ×{count} identical</span> : null}
-          </span>
-          <span className="block text-xs text-muted">
-            Out of <span className="font-medium text-fg">{accountOf(out)}</span> ·{' '}
-            <DateText value={out.date} />
-          </span>
-        </span>
-        <Amount minor={out.amountMinor} currency={out.currency} className="shrink-0 font-medium" />
-      </div>
-      <ul aria-label={`Possible other sides of ${out.displayName}`} className="space-y-1.5">
-        {shown.map((group) => {
-          const c = group[0]!;
-          return (
-            <li
-              key={c.id}
-              className="flex items-center gap-2 rounded-lg bg-surface-2 py-2 pr-2 pl-3 text-sm"
-            >
-              <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{c.displayName}</span>
-                <span className="block text-xs text-muted">
-                  Into <span className="font-medium text-fg">{accountOf(c)}</span> ·{' '}
-                  <DateText value={c.date} /> · {apart(out.date, c.date)}
-                  {group.length > 1 ? ` · ×${group.length} identical` : ''}
-                </span>
-                {c.id === hint?.id ? (
-                  <Badge tone="accent" className="mt-1">
-                    Likely: {hint.label}
-                  </Badge>
-                ) : null}
-              </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="shrink-0"
-                aria-label={`Link ${accountOf(out)} ${out.displayName} ${out.date} to ${accountOf(c)} ${c.displayName} ${c.date}`}
-                onPress={() => onLink(c.id)}
-                isPending={linking === c.id}
-              >
-                <Link2 aria-hidden className="size-4" /> Link
-              </Button>
-            </li>
-          );
-        })}
-      </ul>
-      {groups.length > 1 && !more ? (
-        <Button variant="ghost" size="sm" onPress={() => setMore(true)}>
-          Show {groups.length - 1} other {groups.length === 2 ? 'match' : 'matches'}
-        </Button>
-      ) : null}
-      <p className="flex gap-1.5 text-xs text-muted">
-        <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-        {reasonText(suggestion, hint)}
-      </p>
-      {declining ? (
-        <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
-          <p className="text-muted">
-            If it isn’t a transfer, give it its real category. If its other side is in an account
-            you don’t track here, it goes outside Fiscus, and the review stops asking.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="w-48">
-              <RowCategory groups={categories} names={names} t={out} onChange={onRecategorize} />
-            </div>
-            <Button size="sm" variant="secondary" onPress={onOutside}>
-              Outside Fiscus
-            </Button>
+      {groups.length === 1 ? (
+        // A pair: both sides, then its Link, so the amounts line up.
+        <div
+          role="group"
+          aria-label={`${out.displayName} and its other side`}
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-surface-2 py-2 pr-2 pl-3"
+        >
+          <div className="min-w-0 flex-1 basis-80 space-y-2">
+            <SideRow dir="From" t={out} badge={identical} />
+            {to(groups[0]!, false)}
           </div>
+          <span className="ml-auto">
+            <LinkButton out={out} into={groups[0]![0]!} linking={linking} onLink={onLink} />
+          </span>
         </div>
+      ) : (
+        <>
+          <SideRow dir="From" t={out} badge={identical} />
+          <p className="text-xs font-medium text-muted">Which deposit was it?</p>
+          <ul aria-label={`Possible other sides of ${out.displayName}`} className="space-y-1.5">
+            {shown.map((group) => (
+              <li key={group[0]!.id} className="rounded-lg bg-surface-2 py-2 pr-2 pl-3">
+                {to(group)}
+              </li>
+            ))}
+          </ul>
+          {!more ? (
+            <Button variant="ghost" size="sm" onPress={() => setMore(true)}>
+              Show {groups.length - 1} other {groups.length === 2 ? 'match' : 'matches'}
+            </Button>
+          ) : null}
+        </>
+      )}
+      {note(reasonText(suggestion, hint))}
+      {declining ? (
+        <Decline
+          list={[out]}
+          categories={categories}
+          names={names}
+          onRecategorize={onRecategorize}
+          onOutside={onOutside}
+        />
       ) : (
         <Button
           variant="ghost"
@@ -294,6 +386,69 @@ function Suggestion({
           onPress={() => setDeclining(true)}
         >
           Don’t link
+        </Button>
+      )}
+    </li>
+  );
+}
+
+/**
+ * A deposit that could be the other side of more than one transfer out (#332): one choice, led by
+ * the deposit, rather than a card for each transfer pointing at the others.
+ */
+function InCard({
+  into,
+  options,
+  onLink,
+  linking,
+  groups: categories,
+  names,
+  onRecategorize,
+  onOutside,
+}: {
+  into: TransferReviewTransaction;
+  options: SuggestionData[];
+  onLink: (out: string, into: string) => void;
+  linking: Linking;
+  groups: CategoryGroup[];
+  names: Map<string, string>;
+  onRecategorize: (t: TransferReviewTransaction, categoryId: string) => void;
+  onOutside: (t: TransferReviewTransaction) => void;
+}) {
+  const [declining, setDeclining] = useState(false);
+  const outs = options.map((s) => s.transaction);
+  return (
+    <li className="space-y-2 px-3 py-3">
+      <SideRow dir="To" t={into} />
+      <p className="text-xs font-medium text-muted">Which transfer out was it?</p>
+      <ul aria-label={`Possible other sides of ${into.displayName}`} className="space-y-1.5">
+        {outs.map((out) => (
+          <li key={out.id} className="rounded-lg bg-surface-2 py-2 pr-2 pl-3">
+            <SideRow
+              dir="From"
+              t={out}
+              from={into.date}
+              action={<LinkButton out={out} into={into} linking={linking} onLink={onLink} />}
+            />
+          </li>
+        ))}
+      </ul>
+      {declining ? (
+        <Decline
+          list={outs}
+          categories={categories}
+          names={names}
+          onRecategorize={onRecategorize}
+          onOutside={onOutside}
+        />
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Neither: don’t link ${into.displayName} ${into.date}`}
+          onPress={() => setDeclining(true)}
+        >
+          Neither
         </Button>
       )}
     </li>
@@ -495,6 +650,16 @@ export function TransferReviewList({
     );
   }
 
+  const cardProps = {
+    onLink: (out: string, into: string) => link.mutate({ out, into }),
+    linking: link.isPending ? (link.variables ?? null) : null,
+    groups,
+    names,
+    onRecategorize: (t: TransferReviewTransaction, categoryId: string) =>
+      categoryId !== t.categoryId && patch.mutate({ t, body: { categoryId } }),
+    onOutside: (t: TransferReviewTransaction) =>
+      patch.mutate({ t, body: { transferExternal: true } }),
+  };
   const allSelected = unmatched.length > 0 && unmatched.every((t) => selected.has(t.id));
   const unmatchedGroups = groupUnmatched(unmatched);
   const isOpen = (g: (typeof unmatchedGroups)[number], all: unknown[]) =>
@@ -525,7 +690,7 @@ export function TransferReviewList({
           </div>
           <p className="text-sm text-muted">
             Money out of one account and the same amount into another that Fiscus didn’t link on its
-            own. Why is under each.
+            own. Link each to its other side, or say it has none.
           </p>
           {/* By account pair (#332): a large import reads as a few groups, not hundreds of cards. */}
           <ul className="space-y-3">
@@ -560,25 +725,24 @@ export function TransferReviewList({
                       id={`group-${g.key}`}
                       className="divide-y divide-border border-t border-border"
                     >
-                      {mergeIdentical(g.items).map(({ suggestion: s, count }) => (
-                        <Suggestion
-                          key={s.transaction.id}
-                          suggestion={s}
-                          count={count}
-                          hint={hinted.get(s.transaction.id) ?? null}
-                          onLink={(into) => link.mutate({ out: s.transaction.id, into })}
-                          linking={link.isPending ? (link.variables?.into ?? null) : null}
-                          groups={groups}
-                          names={names}
-                          onRecategorize={(categoryId) =>
-                            categoryId !== s.transaction.categoryId &&
-                            patch.mutate({ t: s.transaction, body: { categoryId } })
-                          }
-                          onOutside={() =>
-                            patch.mutate({ t: s.transaction, body: { transferExternal: true } })
-                          }
-                        />
-                      ))}
+                      {reviewCards(g.items).map((card) =>
+                        card.kind === 'out' ? (
+                          <OutCard
+                            key={card.suggestion.transaction.id}
+                            suggestion={card.suggestion}
+                            count={card.count}
+                            hint={hinted.get(card.suggestion.transaction.id) ?? null}
+                            {...cardProps}
+                          />
+                        ) : (
+                          <InCard
+                            key={card.into.id}
+                            into={card.into}
+                            options={card.options}
+                            {...cardProps}
+                          />
+                        ),
+                      )}
                     </ul>
                   ) : null}
                 </li>
