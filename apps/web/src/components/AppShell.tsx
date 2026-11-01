@@ -25,6 +25,7 @@ import { GROUP_LABELS, phoneTabs, type Section, sectionPath, visibleSections } f
 import { useShortcuts } from '../lib/shortcuts.js';
 import { applyTheme } from '../lib/theme.js';
 import { CommandPalette } from './CommandPalette.js';
+import { ShellTitleContext } from './shell-title.js';
 import { HistoryBanner } from './HistoryCheck.js';
 import {
   Avatar,
@@ -51,6 +52,8 @@ export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // The phone's top bar names the page (PageHeader sets it), else the section it's in.
+  const [pageTitle, setPageTitle] = useState<string | null>(null);
   // What waits in the review queue (#44), shown on Transactions. Viewers can't review.
   const toReview =
     useQuery({ ...reviewCountQuery(householdId), enabled: household.you.role !== 'viewer' }).data
@@ -183,15 +186,12 @@ export function AppShell() {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Phone top bar */}
+        {/* Phone top bar: the page's name and Search. Switching households is a rare thing, so
+            it's in Household settings rather than taking this space. */}
         <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
-          <HouseholdSwitcher
-            current={household.name}
-            householdId={householdId}
-            memberships={me.memberships}
-            isOwner={household.you.role === 'owner'}
-            compact
-          />
+          <p aria-hidden className="min-w-0 flex-1 truncate text-lg font-semibold">
+            {pageTitle ?? sections.find(isActive)?.label ?? household.name}
+          </p>
           <Button
             variant="ghost"
             size="icon"
@@ -208,7 +208,9 @@ export function AppShell() {
           <TimeZoneProvider timeZone={household.timezone}>
             {/* This device's check of the household's history (#264), on every page. */}
             <HistoryBanner householdId={householdId} />
-            <Outlet />
+            <ShellTitleContext.Provider value={setPageTitle}>
+              <Outlet />
+            </ShellTitleContext.Provider>
           </TimeZoneProvider>
         </main>
 
@@ -285,34 +287,26 @@ export function AppShell() {
 }
 
 /**
- * The household's name, as a menu: other households to switch to, inviting someone (owners), the
- * household's settings, and creating another household. On phones it's in the top bar.
+ * The household's name, as a menu in the sidebar: other households to switch to, inviting someone
+ * (owners), and creating another household. A phone has these in Household settings.
  */
 function HouseholdSwitcher({
   current,
   householdId,
   memberships,
   isOwner,
-  compact,
 }: {
   current: string;
   householdId: string;
   memberships: { householdId: string; householdName: string; role: string }[];
   isOwner: boolean;
-  /** The phone top bar: no padding of its own. */
-  compact?: boolean;
 }) {
   const navigate = useNavigate();
   return (
-    <div className={compact ? 'flex min-w-0 flex-1' : 'px-3 pb-2 pt-4'}>
+    <div className="px-3 pb-2 pt-4">
       <MenuTrigger>
-        <Button
-          variant="ghost"
-          className={clsx('justify-start text-left', compact ? '-ml-2.5 max-w-full' : 'w-full')}
-        >
-          <span className={clsx('truncate text-base font-semibold', !compact && 'flex-1')}>
-            {current}
-          </span>
+        <Button variant="ghost" className="w-full justify-start text-left">
+          <span className="flex-1 truncate text-base font-semibold">{current}</span>
           <ChevronsUpDown aria-hidden className="size-4 shrink-0 text-muted" />
         </Button>
         <ActionMenu placement="bottom start" aria-label="Household">
@@ -345,12 +339,6 @@ function HouseholdSwitcher({
               }
             >
               <UserPlus aria-hidden /> Invite someone
-            </MenuItem>
-          ) : null}
-          {/* The sidebar links to it on a computer; a phone has no sidebar. */}
-          {compact ? (
-            <MenuItem href={`/h/${householdId}/settings`}>
-              <Settings aria-hidden /> Household settings
             </MenuItem>
           ) : null}
           <MenuItem href="/welcome">
