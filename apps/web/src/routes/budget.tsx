@@ -882,6 +882,9 @@ function MonthBody({
   const rows = new Map(view.rows.map((r) => [r.categoryId, r]));
   const unbudgeted = new Map(view.notBudgeted.map((n) => [n.categoryId, n.spentMinor]));
   const income = new Map(view.income.map((r) => [r.categoryId, r]));
+  // "Don't budget": not in any group, nor among the unbudgeted; listed below to bring back.
+  const excluded = new Set(data.excluded);
+  const leftOut = groups.flatMap((g) => g.categories).filter((c) => excluded.has(c.id));
   const uncategorized = groups
     .flatMap((g) => g.categories)
     .find((c) => c.systemKey === 'uncategorized')?.id;
@@ -910,7 +913,10 @@ function MonthBody({
     .filter((g) => g.kind !== 'income' && g.kind !== 'transfer')
     .map((g) => {
       const all = g.categories.filter(
-        (c) => c.id !== uncategorized && (!c.archived || rows.has(c.id) || unbudgeted.has(c.id)),
+        (c) =>
+          c.id !== uncategorized &&
+          !excluded.has(c.id) &&
+          (!c.archived || rows.has(c.id) || unbudgeted.has(c.id)),
       );
       const others = data.canEdit ? all.filter((c) => !rows.has(c.id)) : [];
       const showOthers = showAll || shownIn.has(g.id);
@@ -1143,6 +1149,25 @@ function MonthBody({
           </div>
         ) : null}
       </div>
+
+      {leftOut.length ? (
+        <p className="px-1 text-sm text-muted">
+          Not budgeted:{' '}
+          {leftOut.map((c, i) => (
+            <span key={c.id}>
+              {i ? ', ' : null}
+              <button
+                type="button"
+                className="underline hover:text-fg"
+                onClick={() => onOpen({ categoryId: c.id })}
+              >
+                {c.name}
+              </button>
+            </span>
+          ))}
+          .
+        </p>
+      ) : null}
     </>
   );
 }
@@ -1457,6 +1482,21 @@ function CategoryDrawer({
   // As in Monarch: a change counts for the months after this one too, unless unticked.
   const [future, setFuture] = useState(true);
   const applyTo = future ? 'future' : 'month';
+  const excluded = month.excluded.includes(categoryId);
+  const leaveOut = useMutation({
+    mutationFn: (out: boolean) =>
+      api('PUT', `${base(householdId)}/budgets/${month.budget.id}/categories/${categoryId}`, {
+        body: { excluded: out },
+      }),
+    onSuccess: async (_r, out) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', month.budget.id],
+      });
+      toast(out ? `${name} is left out of this budget.` : `${name} is back in this budget.`);
+      if (out) onClose();
+    },
+    onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
+  });
   const rollover = useMutation({
     mutationFn: (on: boolean) =>
       api('PUT', `${base(householdId)}/budgets/${month.budget.id}/categories/${categoryId}`, {
@@ -1602,6 +1642,21 @@ function CategoryDrawer({
           <Button variant="secondary" onPress={onEdit}>
             {row ? 'Change amount' : 'Set an amount'}
           </Button>
+        ) : null}
+        {month.canEdit ? (
+          <div className="space-y-1">
+            <Switch
+              isSelected={leaveOut.isPending ? leaveOut.variables : excluded}
+              isDisabled={leaveOut.isPending}
+              onChange={(out) => leaveOut.mutate(out)}
+            >
+              Don’t budget {name}
+            </Switch>
+            <p className="text-xs text-muted">
+              Left out of this budget: no limit, and its spending isn’t in the totals. It still
+              counts in reports.
+            </p>
+          </div>
         ) : null}
 
         <section className="space-y-2">

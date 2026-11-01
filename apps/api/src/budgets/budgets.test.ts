@@ -345,6 +345,31 @@ describe('budgets: category limits', () => {
     expect(y.spentMinor[i(month(0))]).toBe(65999);
   });
 
+  it('leaves a category out of the budget with Don’t budget, and brings it back', async () => {
+    const exclude = async (excluded: boolean) => {
+      const r = await A.request('PUT', url(`/budgets/${budgetId}/categories/${cat.Groceries}`), {
+        excluded,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(204);
+    };
+    const before = await view(month(0));
+    expect(row(before, 'Groceries')).toBeDefined();
+    await exclude(true);
+    const out = await view(month(0));
+    expect(out.excluded).toEqual([cat.Groceries]);
+    // In no row, not among spending without a limit, and not in the totals.
+    expect(row(out, 'Groceries')).toBeUndefined();
+    expect(
+      out.view.notBudgeted.some((n: { categoryId: string }) => n.categoryId === cat.Groceries),
+    ).toBe(false);
+    expect(out.view.totals.spentMinor).toBe(before.view.totals.spentMinor - 40000);
+    expect(out.view.totals.budgetedMinor).toBe(before.view.totals.budgetedMinor - 65000);
+    await exclude(false);
+    const back = await view(month(0));
+    expect(back.excluded).toEqual([]);
+    expect(row(back, 'Groceries')).toMatchObject({ budgetedMinor: 65000 });
+  });
+
   it('has nothing before its first month, or for a month that isn’t one', async () => {
     const before = await A.get(url(`/budgets/${budgetId}/months/${month(-1)}`));
     expect([before.status, before.body.code]).toEqual([404, 'before_budget']);
