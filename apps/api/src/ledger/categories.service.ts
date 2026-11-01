@@ -28,6 +28,7 @@ const toCategory = (c: CategoryRow): Category => ({
   icon: c.icon,
   systemKey: c.systemKey as Category['systemKey'],
   archived: c.archivedAt !== null,
+  oneSided: c.oneSided,
   sortOrder: c.sortOrder,
 });
 
@@ -165,7 +166,7 @@ export class CategoriesService {
     return this.scope.run(ctx, async (tx, activity) => {
       const [row] = await tx.select().from(categories).where(eq(categories.id, id));
       if (!row) throw problems.notFound();
-      if (patch.groupId) await this.#group(tx, patch.groupId);
+      const group = await this.#group(tx, patch.groupId ?? row.groupId);
       if (patch.groupId && patch.groupId !== row.groupId && row.systemKey) {
         throw new Problem(409, 'system_category', 'This category is built in and can’t be moved');
       }
@@ -176,11 +177,21 @@ export class CategoriesService {
           'This category is built in and can’t be archived',
         );
       }
+      // Only a transfer has another side to go without; Transfer itself is where linked ones go.
+      if (patch.oneSided && (group.kind !== 'transfer' || row.systemKey)) {
+        throw new Problem(
+          422,
+          'not_one_sided',
+          'Only a transfer category you made can go without another side',
+        );
+      }
       const { archived, ...columns } = patch;
       const [updated] = await tx
         .update(categories)
         .set({
           ...columns,
+          // Moving out of transfers ends it: a spending category has no other side to look for.
+          ...(group.kind !== 'transfer' ? { oneSided: false } : {}),
           ...(archived !== undefined
             ? { archivedAt: archived ? (row.archivedAt ?? new Date()) : null }
             : {}),
@@ -328,9 +339,10 @@ export class CategoriesService {
 
   async #group(tx: Executor, groupId: string) {
     const [g] = await tx
-      .select({ id: categoryGroups.id })
+      .select({ id: categoryGroups.id, kind: categoryGroups.kind })
       .from(categoryGroups)
       .where(eq(categoryGroups.id, groupId));
     if (!g) throw new Problem(422, 'invalid_group', 'Choose an existing group');
+    return g;
   }
 }

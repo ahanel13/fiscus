@@ -27,17 +27,25 @@ export interface TransferCategories {
   uncategorized: string | null;
   /** Categories in groups of kind `transfer` (Transfer, Credit Card Payment, …). */
   transferKind: Set<string>;
+  /** The transfer categories that can be one side of a pair: not the one-sided ones (Buy, Sell). */
+  pairable: Set<string>;
 }
 
 export async function transferCategories(tx: Executor): Promise<TransferCategories> {
   const rows = await tx
-    .select({ id: categories.id, systemKey: categories.systemKey, kind: categoryGroups.kind })
+    .select({
+      id: categories.id,
+      systemKey: categories.systemKey,
+      oneSided: categories.oneSided,
+      kind: categoryGroups.kind,
+    })
     .from(categories)
     .innerJoin(categoryGroups, eq(categoryGroups.id, categories.groupId));
   return {
     transfer: rows.find((r) => r.systemKey === 'transfer')!.id,
     uncategorized: rows.find((r) => r.systemKey === 'uncategorized')?.id ?? null,
     transferKind: new Set(rows.filter((r) => r.kind === 'transfer').map((r) => r.id)),
+    pairable: new Set(rows.filter((r) => r.kind === 'transfer' && !r.oneSided).map((r) => r.id)),
   };
 }
 
@@ -52,9 +60,7 @@ export const linkable = (r: Row) =>
 const detectable = (r: Row, cats: TransferCategories) =>
   linkable(r) &&
   !r.transferExternal &&
-  (r.categoryId === null ||
-    r.categoryId === cats.uncategorized ||
-    cats.transferKind.has(r.categoryId));
+  (r.categoryId === null || r.categoryId === cats.uncategorized || cats.pairable.has(r.categoryId));
 
 /** One side of a possible transfer: a transaction, or a file row not imported yet (preview). */
 export type Leg = Pick<Row, 'id' | 'accountId' | 'amountMinor' | 'currency' | 'effectiveDate'>;
@@ -122,7 +128,7 @@ async function ledgerCandidates(
   window: Window = DETECT,
 ): Promise<Leg[]> {
   if (legs.length === 0) return [];
-  const eligible = [...cats.transferKind, ...(cats.uncategorized ? [cats.uncategorized] : [])];
+  const eligible = [...cats.pairable, ...(cats.uncategorized ? [cats.uncategorized] : [])];
   const dates = legs.map((l) => l.effectiveDate).sort();
   return tx
     .select({
@@ -395,7 +401,7 @@ export async function transferReview(
     rivals: new Map(),
     unmatched: [],
   };
-  if (owned.size === 0 || cats.transferKind.size === 0) return empty;
+  if (owned.size === 0 || cats.pairable.size === 0) return empty;
   const sources = await tx
     .select({
       id: transactions.id,
@@ -409,7 +415,7 @@ export async function transferReview(
     .where(
       and(
         inArray(transactions.accountId, [...owned]),
-        inArray(transactions.categoryId, [...cats.transferKind]),
+        inArray(transactions.categoryId, [...cats.pairable]),
         isNull(transactions.transferGroupId),
         eq(transactions.transferExternal, false),
         isNull(transactions.deletedAt),

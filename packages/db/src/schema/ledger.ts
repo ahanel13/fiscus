@@ -67,6 +67,11 @@ export const categories = pgTable(
     icon: text(),
     /** `uncategorized`, `transfer`, `settlement`: can be renamed, never deleted. */
     systemKey: text(),
+    /**
+     * A transfer category whose transactions never have another side (a brokerage's Buy and Sell
+     * move money inside one account): detection and the transfer review leave it alone.
+     */
+    oneSided: boolean().notNull().default(false),
     archivedAt: timestamp({ withTimezone: true }),
     sortOrder: integer().notNull().default(0),
     ...timestamps(),

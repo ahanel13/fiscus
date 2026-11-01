@@ -35,6 +35,8 @@ export const updateCategorySchema = z
     icon: z.string().max(40).nullable(),
     sortOrder: z.number().int().min(0),
     archived: z.boolean(),
+    /** Its transactions never have another side; only for a transfer category. */
+    oneSided: z.boolean(),
   })
   .partial()
   .strict();
@@ -48,6 +50,11 @@ export interface Category {
   icon: string | null;
   systemKey: 'uncategorized' | 'transfer' | 'settlement' | null;
   archived: boolean;
+  /**
+   * A transfer category whose transactions never have another side (a brokerage's Buy and Sell):
+   * the transfer review doesn't look for one.
+   */
+  oneSided: boolean;
   sortOrder: number;
 }
 export interface CategoryGroup {
