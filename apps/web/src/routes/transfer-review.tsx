@@ -36,6 +36,7 @@ import {
   type SuggestionGroup,
   withoutTransactions,
 } from '../lib/transfers.js';
+import { useRangeSelect } from '../lib/range-select.js';
 import { categoryIndex } from '../lib/transactions.js';
 import { CategorySelect, TransactionDrawer, useInvalidateLedger } from './transactions.js';
 
@@ -371,6 +372,7 @@ export function TransferReviewList({
   };
   const base = `/api/v1/households/${householdId}/transactions`;
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const range = useRangeSelect();
   const [open, setOpen] = useState<string | null>(null);
   const onError = (e: unknown) => {
     toast((e as ApiError).title, { tone: 'error' });
@@ -494,6 +496,13 @@ export function TransferReviewList({
   }
 
   const allSelected = unmatched.length > 0 && unmatched.every((t) => selected.has(t.id));
+  const unmatchedGroups = groupUnmatched(unmatched);
+  const isOpen = (g: (typeof unmatchedGroups)[number], all: unknown[]) =>
+    all.length === 1 || openGroups.has(`u:${g.key}`);
+  // The rows on screen, in order: a shift-click range covers only what you can see.
+  const shown = unmatchedGroups.flatMap((g) =>
+    isOpen(g, unmatchedGroups) ? g.items.map((t) => t.id) : [],
+  );
   return (
     <div className="space-y-8">
       <WhyTransfers />
@@ -629,8 +638,8 @@ export function TransferReviewList({
           </div>
           {/* By account (#332), so a card's or a bank's unpaired transfers can be handled together. */}
           <ul className="space-y-3">
-            {groupUnmatched(unmatched).map((g, _, all) => {
-              const open = all.length === 1 || openGroups.has(`u:${g.key}`);
+            {unmatchedGroups.map((g, _, all) => {
+              const open = isOpen(g, all);
               const every = g.items.every((t) => selected.has(t.id));
               const some = g.items.some((t) => selected.has(t.id));
               return (
@@ -667,16 +676,15 @@ export function TransferReviewList({
                     >
                       {g.items.map((t) => (
                         <li key={t.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
-                          <Checkbox
-                            aria-label={`Select ${t.displayName}`}
-                            isSelected={selected.has(t.id)}
-                            onChange={(on) => {
-                              const next = new Set(selected);
-                              if (on) next.add(t.id);
-                              else next.delete(t.id);
-                              setSelected(next);
-                            }}
-                          />
+                          <span className="select-none" {...range.capture}>
+                            <Checkbox
+                              aria-label={`Select ${t.displayName}`}
+                              isSelected={selected.has(t.id)}
+                              onChange={(on) =>
+                                setSelected(range.toggle(shown, selected, t.id, on))
+                              }
+                            />
+                          </span>
                           <button
                             type="button"
                             onClick={() => setOpen(t.id)}

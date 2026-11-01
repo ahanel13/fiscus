@@ -90,6 +90,7 @@ import {
   toast,
   useToday,
 } from '../components/ui.js';
+import { useRangeSelect } from '../lib/range-select.js';
 import { categoryIndex, byDay, forLabel, paidByLabel } from '../lib/transactions.js';
 import { historyLine } from '../lib/transaction-history.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
@@ -285,6 +286,7 @@ export function TransactionList({
   const categorize = useRowCategory(householdId, groups, onCategorized);
   const items = useMemo(() => query.data?.pages.flatMap((p) => p.data) ?? [], [query.data]);
   const shared = members.length > 1;
+  const range = useRangeSelect();
 
   if (query.isPending) {
     return (
@@ -449,17 +451,23 @@ export function TransactionList({
                 style={{ minHeight: 'var(--row-h)', paddingInline: 'var(--cell-px)' }}
               >
                 {selectable ? (
-                  <Checkbox
-                    aria-label={`Select ${t.displayName}`}
-                    isSelected={selected?.has(t.id) ?? false}
-                    isDisabled={!t.can.categorize}
-                    onChange={(on) => {
-                      const next = new Set(selected);
-                      if (on) next.add(t.id);
-                      else next.delete(t.id);
-                      onSelectedChange?.(next);
-                    }}
-                  />
+                  <span className="select-none" {...range.capture}>
+                    <Checkbox
+                      aria-label={`Select ${t.displayName}`}
+                      isSelected={selected?.has(t.id) ?? false}
+                      isDisabled={!t.can.categorize}
+                      onChange={(on) =>
+                        onSelectedChange?.(
+                          range.toggle(
+                            items.filter((x) => x.can.categorize).map((x) => x.id),
+                            selected ?? new Set(),
+                            t.id,
+                            on,
+                          ),
+                        )
+                      }
+                    />
+                  </span>
                 ) : null}
                 <button
                   type="button"
