@@ -225,7 +225,7 @@ export function ReviewPage() {
       ) : null}
     </EmptyState>
   ) : (
-    <div className="grid gap-6 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
       <section aria-label="To review" className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Checkbox
