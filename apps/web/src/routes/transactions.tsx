@@ -1205,7 +1205,7 @@ export function TransactionDetails({
     if (!document.activeElement || document.activeElement === document.body) root.current?.focus();
   }, [t.version]);
   return (
-    <div ref={root} tabIndex={-1} className="space-y-5 outline-none">
+    <div ref={root} tabIndex={-1} data-focus-target className="space-y-5">
       <div>
         <Amount
           minor={t.amountMinor}
