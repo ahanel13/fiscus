@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { HouseholdMember } from '@fiscus/shared';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
 import { type Lens, lensOptions, parseLens } from '../lib/lens.js';
 import type { RangeState } from '../lib/use-range.js';
 import { RangeSelect } from './RangeControls.js';
+import { useShellTitle } from './shell-title.js';
 import { SegmentedControl, Select, SelectItem } from './ui.js';
 
 /** Title · time range · lens · action: the same header on every data page (IA §3). */
@@ -32,16 +34,25 @@ export function PageHeader({
       replace: true,
     });
   const options = lensOptions(members);
+  useShellTitle(title);
 
   const controls = range || showLens;
-  // Phones: the title and its actions on one row, the range and "whose money" on the next.
-  // Wider screens: all on one row.
+  // Phones: the title is in the top bar, so the range, "whose money" and the actions share one
+  // row (wrapping if they must). Wider screens: the title, then all of them, on one row.
   return (
-    <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 md:px-8 md:py-5">
-      {/* It gives way before the actions wrap under it. */}
-      <h1 className="min-w-0 flex-1 basis-0 truncate text-xl font-semibold md:text-2xl">{title}</h1>
+    <header
+      className={clsx(
+        'flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 md:px-8 md:py-5',
+        // Nothing else to show on a phone: no empty band under the top bar.
+        !controls && !action && 'max-md:border-0 max-md:p-0',
+      )}
+    >
+      {/* It gives way before the actions wrap under it. Read out on a phone, shown above. */}
+      <h1 className="min-w-0 flex-1 basis-0 truncate text-xl font-semibold max-md:sr-only md:text-2xl">
+        {title}
+      </h1>
       {controls ? (
-        <div className="order-last flex w-full items-start gap-2 sm:order-none sm:w-auto sm:flex-wrap sm:items-center">
+        <div className="flex min-w-0 flex-1 items-start gap-2 sm:flex-none sm:flex-wrap sm:items-center">
           {range ? <RangeSelect state={range} /> : null}
           {showLens ? (
             <>
@@ -66,7 +77,7 @@ export function PageHeader({
           ) : null}
         </div>
       ) : null}
-      {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
+      {action ? <div className="ml-auto flex shrink-0 items-center gap-2">{action}</div> : null}
     </header>
   );
 }

@@ -2,7 +2,7 @@
 import { type HouseholdMember, MEMBER_COLORS } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Monitor, Smartphone } from 'lucide-react';
+import { ArrowRightLeft, Monitor, Plus, Smartphone } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { SourceLinks } from '../components/About.js';
@@ -17,6 +17,7 @@ import {
   Avatar,
   Badge,
   Button,
+  ButtonLink,
   Card,
   DateText,
   Form,
@@ -195,7 +196,48 @@ export function GeneralSettings() {
       <p className="-mt-3 px-1 text-sm text-muted">Your role: {ROLE_LABELS[household.you.role]}</p>
       <MakeJointOffer householdId={householdId} />
       <HistoryCheckSettings householdId={householdId} />
+      <OtherHouseholds householdId={householdId} />
     </>
+  );
+}
+
+/**
+ * Switching to another household you're in, or starting a new one: rare, so here rather than on a
+ * phone's top bar. A computer also has them in the sidebar's household menu.
+ */
+function OtherHouseholds({ householdId }: { householdId: string }) {
+  const me = useSuspenseQuery(meQuery).data;
+  const others = me.memberships.filter((m) => m.householdId !== householdId);
+  return (
+    <Card>
+      <h2 className="mb-1 font-semibold">Other households</h2>
+      <p className="mb-4 text-sm text-muted">
+        {others.length
+          ? 'Switch to another household you’re in, or start a new one.'
+          : 'Start another household, kept apart from this one.'}
+      </p>
+      {others.length ? (
+        <ul className="mb-4 divide-y divide-border rounded-lg border border-border">
+          {others.map((m) => (
+            <li key={m.householdId} className="flex items-center gap-3 px-3 py-2">
+              <span className="min-w-0 flex-1 truncate font-medium">{m.householdName}</span>
+              <span className="text-xs text-muted capitalize">{m.role}</span>
+              <ButtonLink
+                variant="secondary"
+                size="sm"
+                to="/h/$householdId"
+                params={{ householdId: m.householdId }}
+              >
+                <ArrowRightLeft aria-hidden className="size-4" /> Switch
+              </ButtonLink>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <ButtonLink variant="secondary" to="/welcome">
+        <Plus aria-hidden className="size-4" /> Create household
+      </ButtonLink>
+    </Card>
   );
 }
 
