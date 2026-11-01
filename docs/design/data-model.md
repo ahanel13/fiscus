@@ -346,7 +346,7 @@ The effective date for ranges, budgets, and reports is `date_override` if set, e
 
 **`category_groups`**: `household_id`, `name`, `kind` enum `income`/`fixed`/`flexible`/`non_monthly`/`savings`/`transfer`, `sort_order`.
 
-**`categories`**: `household_id`, `group_id`, `name`, `icon`, `system_key` text null (`uncategorized`, `transfer`, `settlement`; these can't be deleted), `archived_at`, `sort_order`.
+**`categories`**: `household_id`, `group_id`, `name`, `icon`, `system_key` text null (`uncategorized`, `transfer`, `settlement`; these can't be deleted), `one_sided` bool (a transfer category whose transactions never have another side, like a brokerage's Buy and Sell: detection and the transfer review leave it alone, [transfers §2](transfers.md)), `archived_at`, `sort_order`.
 
 **`tags`** (`household_id`, `name`, `color`) + **`transaction_tags`** (`transaction_id`, `tag_id`) PK.
 

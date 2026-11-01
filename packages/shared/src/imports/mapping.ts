@@ -160,7 +160,17 @@ const TRANSFER_NAMES = new Set([
   'transfers',
   'credit card payment',
   'balance adjustments',
+  'buy',
+  'sell',
 ]);
+
+/**
+ * Transfer categories with no other side: a brokerage's trades turn cash into shares inside one
+ * account, and a balance adjustment corrects one. They're made one-sided, so the transfer review
+ * doesn't look for their other side.
+ */
+const ONE_SIDED_NAMES = new Set(['buy', 'sell', 'balance adjustments']);
+export const isOneSidedName = (name: string) => ONE_SIDED_NAMES.has(name.trim().toLowerCase());
 
 /**
  * The kind for a category the import creates: transfers by name, income when every amount in it

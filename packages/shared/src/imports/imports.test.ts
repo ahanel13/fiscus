@@ -6,6 +6,7 @@ import {
   chunkRowsByDate,
   guessAccountType,
   inferCategoryKind,
+  isOneSidedName,
   suggestMapping,
 } from './mapping.js';
 import { isMonarchBalances, isMonarchTransactions, monarchGroup, readMonarch } from './monarch.js';
@@ -141,6 +142,9 @@ describe('CSV mapping', () => {
     expect(inferCategoryKind('Credit Card Payment', [-5])).toBe('transfer');
     expect(inferCategoryKind('Paychecks', [100, 200])).toBe('income');
     expect(inferCategoryKind('Groceries', [-100, 20])).toBe('flexible');
+    // A brokerage's trades: transfers with no other side, even when every sale is money in.
+    expect(inferCategoryKind('Sell', [100, 200])).toBe('transfer');
+    expect([isOneSidedName(' Buy '), isOneSidedName('Credit Card Payment')]).toEqual([true, false]);
   });
 });
 

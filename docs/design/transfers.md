@@ -41,6 +41,13 @@ A **Transfers** section on the Review page, worked out when you open it (no back
   suggestions, and **Link all** links them in one go. No re-import.
 - Only rows in accounts you own are listed (linking needs ownership of both sides, TXN-08); "isn't
   in Fiscus" and recategorizing need categorize access (owner or full).
+- **One-sided categories** aren't asked about at all. A brokerage's **Buy** and **Sell** move money
+  between cash and shares inside one account, and a **Balance Adjustment** corrects one, so there's
+  no other side to find. The deposit into the brokerage is the transfer, and it links as usual.
+  A transfer category's **No other side** switch (Settings → Categories) marks it; detection and
+  the review leave its transactions alone, and it still stays out of spending and cash flow. An
+  import makes Buy, Sell, and Balance Adjustments one-sided, and the release that added the switch
+  turned it on for the ones already there. Transfer itself can't be: it's where linked ones go.
 - The count of both lists joins the review badge.
 - **Grouped** (#332): suggestions by account pair ("SoFi Checking → House: 12") and rows with no
   other side by account, the biggest group first, so a large import reads as a few groups. A
@@ -109,6 +116,7 @@ When the rule matches a transaction as it arrives:
 | `GET transactions/transfer-review` | Any member who can categorize | `{ suggested, unmatched, counts }`, rows you can see in accounts you own or have full access to. Each row carries only what the list shows (name, date, amount, account, category, version); opening one loads the rest |
 | `POST transactions/transfer-review/link-all` | Owners of both sides (TXN-08) | Links every suggested pair with exactly one candidate each, as shown |
 | `PATCH transactions/:id` `{ transferExternal }` | Categorize access (TXN-04) | "The other account isn't in Fiscus" |
+| `PATCH categories/:id` `{ oneSided }` | Owners and members (CAT-02) | A transfer category you made, not Transfer (`not_one_sided`); moving it out of transfers turns it off |
 | `GET transactions/review-count` | Any member | Now `{ count, transactions, transfers }` |
 | Rules: action `transferTo: { accountId, withinDays, recordIfMissing }` | RULE-03, reach RULE-05 | Refused when saved for an account you don't own (`invalid_account`), or "record" into one that can't take it (`cannot_record`) |
 

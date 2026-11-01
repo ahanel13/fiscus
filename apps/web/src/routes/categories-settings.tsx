@@ -19,6 +19,7 @@ import {
   Select,
   SelectItem,
   SelectSection,
+  Switch,
   TextField,
   toast,
   Tooltip,
@@ -114,6 +115,13 @@ export function CategoriesSettings({
                   />
                 ) : null}
               </div>
+              {g.kind === 'transfer' ? (
+                <p className="mb-2 text-xs text-muted">
+                  Turn on <strong>No other side</strong> for a category whose transactions stay in
+                  one account, like a brokerage’s Buy and Sell. The transfer review stops looking
+                  for where the money went.
+                </p>
+              ) : null}
               <ul className="divide-y divide-border rounded-lg border border-border">
                 {g.categories.map((c) => (
                   <li key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
@@ -122,6 +130,26 @@ export function CategoriesSettings({
                     </span>
                     {c.systemKey ? <Badge>Built in</Badge> : null}
                     {c.archived ? <Badge>Archived</Badge> : null}
+                    {g.kind === 'transfer' && !c.systemKey ? (
+                      canEdit ? (
+                        <Switch
+                          className="text-xs text-muted"
+                          aria-label={`${c.name}: no other side`}
+                          isSelected={c.oneSided}
+                          onChange={(oneSided) =>
+                            call.mutate({
+                              method: 'PATCH',
+                              path: `/categories/${c.id}`,
+                              body: { oneSided },
+                            })
+                          }
+                        >
+                          No other side
+                        </Switch>
+                      ) : c.oneSided ? (
+                        <Badge>No other side</Badge>
+                      ) : null
+                    ) : null}
                     {canEdit ? (
                       <CategoryActions
                         c={c}

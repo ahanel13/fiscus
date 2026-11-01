@@ -47,6 +47,7 @@ import {
   type ImportRun,
   cleanMerchantName,
   inferCategoryKind,
+  isOneSidedName,
   MEMBER_COLORS,
   monarchGroup,
   normalizeDescription,
@@ -238,8 +239,8 @@ export class ImportsService {
       if (!key) return true;
       const id = resolved.ids.get(key);
       return id
-        ? id === cats.uncategorized || cats.transferKind.has(id)
-        : created.get(key) === 'transfer';
+        ? id === cats.uncategorized || cats.pairable.has(id)
+        : created.get(key) === 'transfer' && !isOneSidedName(key);
     };
     const existing = summaries.flatMap((s) => (s.accountId ? [s.accountId] : []));
     const currencies = new Map(
@@ -987,7 +988,13 @@ export class ImportsService {
       }
       const [row] = await tx
         .insert(categories)
-        .values({ householdId: ctx.householdId, groupId: group!.id, name: name.slice(0, 60) })
+        .values({
+          householdId: ctx.householdId,
+          groupId: group!.id,
+          name: name.slice(0, 60),
+          // A brokerage's Buy and Sell: no other side for the transfer review to look for.
+          oneSided: kind === 'transfer' && isOneSidedName(name),
+        })
         .returning({ id: categories.id });
       existing.push({ id: row!.id, name, systemKey: null, archivedAt: null });
       ids.set(key, row!.id);

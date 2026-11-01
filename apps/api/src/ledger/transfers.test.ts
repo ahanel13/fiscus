@@ -224,6 +224,62 @@ describe('transfers and the review queue', { timeout: 20_000 }, () => {
     expect(after.counts).toEqual({ suggested: 1, unmatched: 0, unique: 0 });
   });
 
+  it('leaves a one-sided transfer category (a brokerage’s Buy) out of the review', async () => {
+    const home = (
+      await A.post('/api/v1/households', { name: 'Trades', baseCurrency: 'USD', timezone: 'UTC' })
+    ).body.data.id as string;
+    const base = `/api/v1/households/${home}`;
+    const acct = async (name: string) =>
+      (await A.post(`${base}/accounts`, { name, type: 'depository' })).body.data.id as string;
+    const groups = (await A.get(`${base}/categories`)).body.data as CategoryGroup[];
+    const transfers = groups.find((g) => g.kind === 'transfer')!;
+    const food = groups.find((g) => g.name === 'Food')!;
+    const transfer = transfers.categories.find((c) => c.systemKey === 'transfer')!.id;
+    const buy = (await A.post(`${base}/categories`, { name: 'Buy', groupId: transfers.id })).body
+      .data.id as string;
+    const set = (id: string, body: Record<string, unknown>) =>
+      A.request('PATCH', `${base}/categories/${id}`, body);
+    const day = (offset: number) =>
+      new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const brokerage = await acct('Brokerage');
+    const checking = await acct('Checking');
+    // A refund into checking, then a trade six days later: the same amount in another account,
+    // too far apart to link on entry, so without the switch the review offers it as a pair.
+    await A.post(`${base}/transactions`, {
+      accountId: checking,
+      amountMinor: 30000,
+      date: day(-36),
+      displayName: 'Refund',
+    });
+    await A.post(`${base}/transactions`, {
+      accountId: brokerage,
+      amountMinor: -30000,
+      date: day(-30),
+      displayName: 'Buy VTI',
+      categoryId: buy,
+    });
+    const review = async () =>
+      (await A.get(`${base}/transactions/transfer-review`)).body.data.counts as Record<
+        string,
+        number
+      >;
+    expect(await review()).toMatchObject({ suggested: 1 });
+
+    const on = await set(buy, { oneSided: true });
+    expect(on.status, JSON.stringify(on.body)).toBe(200);
+    expect(on.body.data.oneSided).toBe(true);
+    expect(await review()).toEqual({ suggested: 0, unmatched: 0, unique: 0 });
+    expect((await A.get(`${base}/transactions/review-count`)).body.data.transfers).toBe(0);
+
+    // Only a transfer category you made: Transfer is where linked ones go.
+    expect((await set(transfer, { oneSided: true })).body.code).toBe('not_one_sided');
+    const groceries = food.categories.find((c) => c.name === 'Groceries')!.id;
+    expect((await set(groceries, { oneSided: true })).body.code).toBe('not_one_sided');
+    // Out of transfers, it's spending: nothing to go without.
+    const moved = await set(buy, { groupId: food.id });
+    expect(moved.body.data.oneSided).toBe(false);
+  });
+
   it('a "transfer to" rule records the other side, links further apart, and waits for it', async () => {
     const home = (
       await A.post('/api/v1/households', { name: 'Rules', baseCurrency: 'USD', timezone: 'UTC' })
