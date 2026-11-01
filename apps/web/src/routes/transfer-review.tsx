@@ -399,6 +399,7 @@ function OutCard({
 function InCard({
   into,
   options,
+  hint,
   onLink,
   linking,
   groups: categories,
@@ -407,7 +408,9 @@ function InCard({
   onOutside,
 }: {
   into: TransferReviewTransaction;
+  /** The likely one first, then the closest date. */
   options: SuggestionData[];
+  hint: Hint | null;
   onLink: (out: string, into: string) => void;
   linking: Linking;
   groups: CategoryGroup[];
@@ -416,23 +419,38 @@ function InCard({
   onOutside: (t: TransferReviewTransaction) => void;
 }) {
   const [declining, setDeclining] = useState(false);
+  const [more, setMore] = useState(false);
   const outs = options.map((s) => s.transaction);
+  // The closest few; a recurring transfer can have many the same amount within the window.
+  const shown = more ? outs : outs.slice(0, 3);
   return (
     <li className="space-y-2 px-3 py-3">
       <SideRow dir="To" t={into} />
       <p className="text-xs font-medium text-muted">Which transfer out was it?</p>
       <ul aria-label={`Possible other sides of ${into.displayName}`} className="space-y-1.5">
-        {outs.map((out) => (
+        {shown.map((out) => (
           <li key={out.id} className="rounded-lg bg-surface-2 py-2 pr-2 pl-3">
             <SideRow
               dir="From"
               t={out}
               from={into.date}
+              badge={
+                out.id === hint?.id ? (
+                  <Badge tone="accent" className="mt-1">
+                    Likely: {hint.label}
+                  </Badge>
+                ) : null
+              }
               action={<LinkButton out={out} into={into} linking={linking} onLink={onLink} />}
             />
           </li>
         ))}
       </ul>
+      {outs.length > shown.length ? (
+        <Button variant="ghost" size="sm" onPress={() => setMore(true)}>
+          Show {outs.length - shown.length} more
+        </Button>
+      ) : null}
       {declining ? (
         <Decline
           list={outs}
@@ -739,6 +757,7 @@ export function TransferReviewList({
                             key={card.into.id}
                             into={card.into}
                             options={card.options}
+                            hint={card.hint}
                             {...cardProps}
                           />
                         ),
