@@ -151,7 +151,7 @@ caller can't see ("Transfer to Anthony").
 |---|---|---|---|---|---|
 | CAT-01 | Read categories, groups, tags, merchants | ✅ | ✅ | ✅ | Household-wide taxonomy |
 | CAT-02 | Create / edit / reorder | ✅ | ✅ | ❌ | |
-| CAT-03 | Delete or archive a category in use | ✅ | ✅ | ❌ | Requires a replacement category. Reassigns rows the deleting member **can't see** too, but reveals nothing (only the count of affected *visible* rows is shown) |
+| CAT-03 | Delete or archive a category in use | ✅ | ✅ | ❌ | Requires a replacement category, and merges into it: transactions, rules and budget amounts, including ones the deleting member **can't see**, but reveals nothing (only the count of affected *visible* rows is shown) |
 | CAT-04 | Delete system categories (`uncategorized`, `transfer`, `settlement`) | ❌ | ❌ | ❌ | |
 
 ### 4.7 Rules

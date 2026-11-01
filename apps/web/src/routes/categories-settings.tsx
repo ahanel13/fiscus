@@ -395,11 +395,11 @@ function CategoryActions({
               {(close) => (
                 <div className="space-y-4">
                   <p className="text-sm text-muted">
-                    Transactions in this category move to the one you choose, including ones only
-                    other members can see.
+                    It merges into the one you choose: its transactions, the rules that use it, and
+                    its budget amounts, including ones only other members can see.
                   </p>
                   <Select
-                    label="Move its transactions to"
+                    label="Merge into"
                     value={replaceWith}
                     onChange={(v) => setReplaceWith(v ? String(v) : null)}
                   >
