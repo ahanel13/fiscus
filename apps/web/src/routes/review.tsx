@@ -28,6 +28,7 @@ import {
   Skeleton,
   toast,
 } from '../components/ui.js';
+import { useRangeSelect } from '../lib/range-select.js';
 import { type SuggestedRule } from '../lib/rules.js';
 import { typing } from '../lib/shortcuts.js';
 import { categoryIndex } from '../lib/transactions.js';
@@ -85,6 +86,8 @@ export function ReviewPage() {
   const current = index >= 0 ? items[index] : undefined;
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const range = useRangeSelect();
+  const order = items.map((t) => t.id);
   const [suggestion, setSuggestion] = useState<SuggestedRule | null>(null);
   const [announce, setAnnounce] = useState('');
   const categoryRef = useRef<HTMLDivElement>(null);
@@ -239,16 +242,13 @@ export function ReviewPage() {
               key={t.id}
               className={clsx('flex items-center gap-3 px-3', i === index && 'bg-surface-2')}
             >
-              <Checkbox
-                aria-label={`Select ${t.displayName}`}
-                isSelected={selected.has(t.id)}
-                onChange={(on) => {
-                  const next = new Set(selected);
-                  if (on) next.add(t.id);
-                  else next.delete(t.id);
-                  setSelected(next);
-                }}
-              />
+              <span className="select-none" {...range.capture}>
+                <Checkbox
+                  aria-label={`Select ${t.displayName}`}
+                  isSelected={selected.has(t.id)}
+                  onChange={(on) => setSelected(range.toggle(order, selected, t.id, on))}
+                />
+              </span>
               <button
                 type="button"
                 aria-current={i === index ? 'true' : undefined}
