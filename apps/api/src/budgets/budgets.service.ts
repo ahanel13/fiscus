@@ -376,6 +376,7 @@ export class BudgetsService {
     month: string,
     categoryId: string,
     amountMinor: number,
+    applyTo: 'month' | 'future' = 'future',
   ): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
       const row = await findBudget(tx, budgetId);
@@ -383,6 +384,7 @@ export class BudgetsService {
       if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
       if (!(await budgetedCategories(tx)).has(categoryId)) throw problems.notFound();
       const day = firstDayOf(month);
+      const next = firstDayOf(addMonths(month, 1));
       const own = await tx
         .select({ c: budgetAmounts.categoryId })
         .from(budgetAmounts)
@@ -399,6 +401,16 @@ export class BudgetsService {
             SELECT household_id, budget_id, ${day}::date, category_id, amount_minor
             FROM budget_amounts WHERE budget_id = ${budgetId} AND month = ${last.month}::date`);
         }
+      }
+      // This month only: the next one keeps what it showed, by having its own amounts (copied
+      // from this month's, before the change) unless it already has them.
+      if (applyTo === 'month') {
+        await tx.execute(sql`
+          INSERT INTO budget_amounts (household_id, budget_id, month, category_id, amount_minor)
+          SELECT household_id, budget_id, ${next}::date, category_id, amount_minor
+          FROM budget_amounts WHERE budget_id = ${budgetId} AND month = ${day}::date
+            AND NOT EXISTS (SELECT 1 FROM budget_amounts n
+                            WHERE n.budget_id = ${budgetId} AND n.month = ${next}::date)`);
       }
       const [before] = await tx
         .select({ amountMinor: budgetAmounts.amountMinor })
@@ -417,11 +429,22 @@ export class BudgetsService {
           target: [budgetAmounts.budgetId, budgetAmounts.month, budgetAmounts.categoryId],
           set: { amountMinor, version: sql`${budgetAmounts.version} + 1` },
         });
+      // Every month after: later months with their own amounts take it too (months without
+      // their own already repeat this one).
+      if (applyTo === 'future') {
+        await tx.execute(sql`
+          INSERT INTO budget_amounts AS a (household_id, budget_id, month, category_id, amount_minor)
+          SELECT DISTINCT household_id, budget_id, month, ${categoryId}::uuid, ${amountMinor}::bigint
+          FROM budget_amounts WHERE budget_id = ${budgetId} AND month > ${day}::date
+          ON CONFLICT (budget_id, month, category_id) DO UPDATE
+            SET amount_minor = EXCLUDED.amount_minor, version = a.version + 1, updated_at = now()
+            WHERE a.amount_minor <> EXCLUDED.amount_minor`);
+      }
       await record(
         activity,
         row,
         'budget.amount_changed',
-        { month, categoryId },
+        { month, categoryId, applyTo },
         { before: before?.amountMinor ?? null, after: amountMinor },
       );
     });

@@ -188,6 +188,36 @@ describe('budgets: category limits', () => {
     expect(row(await view(month(0)), 'Groceries')).toMatchObject({ budgetedMinor: 65000 });
   });
 
+  it('applies a change to all future months, or to this month only', async () => {
+    const set = async (m: string, amountMinor: number, applyTo?: 'month' | 'future') => {
+      const r = await A.request(
+        'PUT',
+        url(`/budgets/${budgetId}/months/${m}/amounts/${cat.Restaurants}`),
+        applyTo ? { amountMinor, applyTo } : { amountMinor },
+      );
+      expect(r.status, JSON.stringify(r.body)).toBe(204);
+    };
+    const restaurants = async (n: number) =>
+      (row(await view(month(n)), 'Restaurants') as { budgetedMinor?: number } | undefined)
+        ?.budgetedMinor;
+    // All future months (the default): next month had its own amounts, and takes it too.
+    await set(month(0), 20000);
+    expect([await restaurants(0), await restaurants(1), await restaurants(2)]).toEqual([
+      20000, 20000, 20000,
+    ]);
+    // This month only: the month after keeps what it had.
+    await set(month(2), 30000, 'month');
+    expect([await restaurants(1), await restaurants(2), await restaurants(3)]).toEqual([
+      20000, 30000, 20000,
+    ]);
+    // And all future months again overrides months with their own.
+    await set(month(0), 15000, 'future');
+    expect([await restaurants(0), await restaurants(2), await restaurants(3)]).toEqual([
+      15000, 15000, 15000,
+    ]);
+    expect(row(await view(month(1)), 'Groceries')).toMatchObject({ budgetedMinor: 70000 });
+  });
+
   it('rolls what’s left into next month once rollover is on', async () => {
     const r = await A.request('PUT', url(`/budgets/${budgetId}/categories/${cat.Groceries}`), {
       rollover: true,

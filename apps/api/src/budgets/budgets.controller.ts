@@ -86,7 +86,7 @@ export class BudgetsController {
     @Param('categoryId', UuidPipe) categoryId: string,
     @Body(new ZodPipe(setBudgetAmountSchema)) body: z.infer<typeof setBudgetAmountSchema>,
   ): Promise<void> {
-    await this.budgets.setAmount(ctx, budgetId, month, categoryId, body.amountMinor);
+    await this.budgets.setAmount(ctx, budgetId, month, categoryId, body.amountMinor, body.applyTo);
   }
 
   @Get(':budgetId/categories/:categoryId/history')

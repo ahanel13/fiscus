@@ -53,6 +53,11 @@ export interface BudgetSuggestion {
 
 export const setBudgetAmountSchema = z.object({
   amountMinor: z.number().int().min(0).max(1_000_000_000_00),
+  /**
+   * `future` (the default): this month and every month after it, including later months that
+   * had their own amount. `month`: this month only; the next one keeps what it had.
+   */
+  applyTo: z.enum(['month', 'future']).default('future'),
 });
 /** How the budget treats a category in every month: rollover (§3.1), a yearly figure (D12). */
 export const setBudgetCategorySchema = z
