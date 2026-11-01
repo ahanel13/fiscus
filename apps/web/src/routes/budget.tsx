@@ -40,6 +40,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Dialog,
   DialogActions,
   LoadingRegion,
@@ -1153,12 +1154,15 @@ function BudgetAmount({
   categoryId,
   name,
   value,
+  applyTo = 'future',
 }: {
   householdId: string;
   data: BudgetMonth;
   categoryId: string;
   name: string;
   value: number;
+  /** This month and the ones after it (the default, as in a row), or this month only. */
+  applyTo?: 'month' | 'future';
 }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState<number | null>(value || null);
@@ -1167,7 +1171,7 @@ function BudgetAmount({
       api(
         'PUT',
         `${base(householdId)}/budgets/${data.budget.id}/months/${data.month}/amounts/${categoryId}`,
-        { body: { amountMinor } },
+        { body: { amountMinor, applyTo } },
       ),
     onSuccess: () =>
       queryClient.invalidateQueries({
@@ -1381,12 +1385,13 @@ function LimitDialog({
 }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState<number | null>(row?.budgetedMinor ?? null);
+  const [future, setFuture] = useState(true);
   const save = useMutation({
     mutationFn: () =>
       api(
         'PUT',
         `${base(householdId)}/budgets/${month.budget.id}/months/${month.month}/amounts/${categoryId}`,
-        { body: { amountMinor: amount ?? 0 } },
+        { body: { amountMinor: amount ?? 0, applyTo: future ? 'future' : 'month' } },
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -1406,8 +1411,10 @@ function LimitDialog({
           currency={month.currency}
           value={amount}
           onChange={setAmount}
-          description="Later months keep it until you change it."
         />
+        <Checkbox isSelected={future} onChange={setFuture}>
+          Apply to all future months
+        </Checkbox>
         <DialogActions>
           <Button variant="secondary" onPress={onClose}>
             Cancel
@@ -1447,6 +1454,9 @@ function CategoryDrawer({
 }) {
   const scope = month.budget.scope;
   const queryClient = useQueryClient();
+  // As in Monarch: a change counts for the months after this one too, unless unticked.
+  const [future, setFuture] = useState(true);
+  const applyTo = future ? 'future' : 'month';
   const rollover = useMutation({
     mutationFn: (on: boolean) =>
       api('PUT', `${base(householdId)}/budgets/${month.budget.id}/categories/${categoryId}`, {
@@ -1531,6 +1541,7 @@ function CategoryDrawer({
                   categoryId={categoryId}
                   name={name}
                   value={row.budgetedMinor}
+                  applyTo={applyTo}
                 />
               </Stat>
             ) : (
@@ -1561,11 +1572,17 @@ function CategoryDrawer({
               categoryId={categoryId}
               name={name}
               value={0}
+              applyTo={applyTo}
             />
           </div>
         ) : (
           <p className="text-sm">No limit set for {name} this month.</p>
         )}
+        {month.canEdit && month.view.strategy === 'category' && (canRollover || !row) ? (
+          <Checkbox isSelected={future} onChange={setFuture}>
+            Apply to all future months
+          </Checkbox>
+        ) : null}
         {canRollover && row ? (
           <div className="space-y-1">
             <Switch

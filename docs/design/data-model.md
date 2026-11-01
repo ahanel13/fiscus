@@ -375,7 +375,7 @@ Budgets (#98, migrations `0053`, `0054`; [budgeting walkthrough](walkthroughs/bu
 
 **`budget_strategies`**: `(budget_id, from_month)` PK, `household_id`, `strategy` enum `category`/`zero_based`/`percentage`/`flex`, `settings jsonb` (the strategy's own, read by its `settings()`). A month runs under the last row starting on or before it, so switching adds a row and earlier months keep their strategy (D14).
 
-**`budget_amounts`**: `(budget_id, month, category_id)` PK, `household_id`, `amount_minor` (≥ 0, household currency), `version`, `updated_at`. One amount per category per month, whatever the strategy: a limit, an assignment, a fixed cost. A month with no rows repeats the last month that has some (`amountsFor`); changing an amount in such a month copies that month's amounts first.
+**`budget_amounts`**: `(budget_id, month, category_id)` PK, `household_id`, `amount_minor` (≥ 0, household currency), `version`, `updated_at`. One amount per category per month, whatever the strategy: a limit, an assignment, a fixed cost. A month with no rows repeats the last month that has some (`amountsFor`); changing an amount in such a month copies that month's amounts first. A change applies to all future months by default: later months with their own rows take the new amount too. "This month only" (`applyTo: month`) instead gives the next month its own rows, copied from before the change, so it keeps what it showed.
 
 **`budget_categories`**: `(budget_id, category_id)` PK, `household_id`, `rollover` bool, `bucket` text null (50/30/20, D10), `yearly_minor` null (non-monthly, D12). How the budget treats a category in every month.
 
