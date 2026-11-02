@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
-import type { RecurringMonth, RecurringSeries, RecurringSuggestion } from '@fiscus/shared';
+import type {
+  DetectedSeries,
+  RecurringMonth,
+  RecurringSeries,
+  RecurringSuggestion,
+} from '@fiscus/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -307,5 +312,34 @@ describe('recurring series', () => {
     // Due today at the latest: anything after has gone.
     expect(ended.body.data.next === null || ended.body.data.next === today).toBe(true);
     expect(ended.body.data.paidCount).toBe(8);
+  });
+
+  it('finds what repeats, leaves out what’s already a series, and remembers Not recurring', async () => {
+    // Through this month's, once it's passed: a missed one would mean it had ended.
+    for (const back of [4, 3, 2, 1, 0].filter((b) => `${monthsAgo(b)}-18` <= today)) {
+      await A.post(url('/transactions'), {
+        accountId: joint,
+        date: `${monthsAgo(back)}-18`,
+        amountMinor: -8_500,
+        displayName: 'Northwind Mobile',
+      });
+    }
+    expect((await V.get(url('/recurring/suggestions'))).status).toBe(403);
+    const found = async () =>
+      (await A.get(url('/recurring/suggestions'))).body.data as DetectedSeries[];
+    const mobile = (await found()).find((s) => s.name === 'Northwind Mobile')!;
+    expect(mobile.kind).toBe('bill');
+    expect(mobile.seenCount).toBeGreaterThanOrEqual(4);
+    expect(mobile.draft.schedule).toMatchObject({ unit: 'month', every: 1, days: [18] });
+    // The paychecks are already a series.
+    expect((await found()).some((s) => s.name === 'Brightline Labs payroll')).toBe(false);
+
+    const r = await A.post(url('/recurring/suggestions/dismiss'), {
+      accountId: joint,
+      direction: 'out',
+      key: mobile.key,
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(204);
+    expect((await found()).some((s) => s.name === 'Northwind Mobile')).toBe(false);
   });
 });

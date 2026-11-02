@@ -40,6 +40,7 @@ describe('row-level security', () => {
     'import_batches',
     'import_profiles',
     'member_preferences',
+    'recurring_dismissals',
     'recurring_marks',
     'recurring_series',
     'rules',

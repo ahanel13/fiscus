@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
 import {
+  detectRecurring,
   describeSchedule,
   estimateNext,
   guessSchedule,
@@ -254,5 +255,114 @@ describe('guessSchedule', () => {
 
   it('needs two dates', () => {
     expect(guessSchedule(['2026-11-06'], 'in')).toBeNull();
+  });
+});
+
+describe('detectRecurring', () => {
+  const group = (
+    dates: string[],
+    amounts: (i: number) => number,
+    direction: 'in' | 'out' = 'out',
+  ) => ({
+    accountId: 'acct',
+    direction,
+    key: 'lakeside power',
+    name: 'Lakeside Power',
+    transfer: false,
+    payments: dates.map((date, i) => ({
+      id: `p${i}`,
+      date,
+      amountMinor: (direction === 'out' ? -1 : 1) * amounts(i),
+      displayName: 'Lakeside Power',
+      originalDescription: 'LAKESIDE PWR',
+    })),
+  });
+  const monthly = [
+    '2026-05-24',
+    '2026-06-24',
+    '2026-07-24',
+    '2026-08-24',
+    '2026-09-24',
+    '2026-10-24',
+  ];
+
+  it('finds a monthly bill that varies, with room for its amounts', () => {
+    const found = detectRecurring(
+      group(monthly, (i) => 9_600 + i * 900),
+      '2026-11-12',
+    )!;
+    expect(found.kind).toBe('bill');
+    expect(found.draft.schedule).toMatchObject({ unit: 'month', every: 1, days: [24] });
+    expect(found.draft.match.amount!.min).toBeLessThanOrEqual(9_600);
+    expect(found.draft.match.amount!.max).toBeGreaterThanOrEqual(14_100);
+    expect(found.next).toBe('2026-11-24');
+  });
+
+  it('leaves out one that stopped', () => {
+    expect(
+      detectRecurring(
+        group(monthly, () => 9_600),
+        '2027-03-01',
+      ),
+    ).toBeNull();
+    // Its Nov 24 payment never came: a week and a half later, it's ended.
+    expect(
+      detectRecurring(
+        group(monthly, () => 9_600),
+        '2026-12-05',
+      ),
+    ).toBeNull();
+  });
+
+  it('leaves out a yearly one that missed its year', () => {
+    const yearly = ['2023-03-03', '2024-03-04', '2025-03-03'];
+    const g = { ...group(yearly, () => 9_900), key: 'atlas', name: 'Atlas' };
+    expect(detectRecurring(g, '2026-11-12')).toBeNull();
+    expect(detectRecurring(g, '2025-11-12')).not.toBeNull();
+  });
+
+  it('leaves out spending that’s frequent but not steady', () => {
+    const groceries = [
+      '2026-10-02',
+      '2026-10-05',
+      '2026-10-13',
+      '2026-10-15',
+      '2026-10-24',
+      '2026-10-31',
+      '2026-11-03',
+      '2026-11-11',
+    ];
+    expect(
+      detectRecurring(
+        group(groceries, (i) => 4_000 + i * 1_300),
+        '2026-11-12',
+      ),
+    ).toBeNull();
+  });
+
+  it('needs three', () => {
+    expect(
+      detectRecurring(
+        group(monthly.slice(-2), () => 9_600),
+        '2026-11-12',
+      ),
+    ).toBeNull();
+  });
+
+  it('finds a paycheck twice a month', () => {
+    const dates = [
+      '2026-08-14',
+      '2026-09-01',
+      '2026-09-15',
+      '2026-10-01',
+      '2026-10-15',
+      '2026-10-30',
+    ];
+    const found = detectRecurring(
+      group(dates, (i) => (i % 2 ? 260_000 : 245_000), 'in'),
+      '2026-11-12',
+    )!;
+    expect(found.kind).toBe('income');
+    expect(found.draft.schedule).toMatchObject({ unit: 'month', days: [1, 15], weekend: 'before' });
   });
 });

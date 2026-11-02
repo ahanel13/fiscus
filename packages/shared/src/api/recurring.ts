@@ -470,3 +470,113 @@ export function guessSchedule(
   }
   return { unit: 'day', every: Math.max(1, Math.min(366, gap)), anchor, weekend };
 }
+
+// ── Finding them in history (#119; bills walkthrough §2, D3, D4) ────────────────────────────
+
+/** Payments that might be one series: one account, one direction, one name. */
+export interface DetectGroup {
+  accountId: string;
+  direction: 'in' | 'out';
+  /** The name, cleaned up: what "Not recurring" remembers. */
+  key: string;
+  name: string;
+  /** Oldest first. */
+  payments: RecurringCandidate[];
+  /** Linked as transfers between your own accounts. */
+  transfer: boolean;
+}
+
+/** A series Fiscus found, to confirm or dismiss. */
+export interface DetectedSeries {
+  key: string;
+  name: string;
+  kind: RecurringKind;
+  draft: RecurringDraft;
+  seenCount: number;
+  since: string;
+  /** The last few amounts, oldest first, signed: for the little bars. */
+  amounts: number[];
+  next: string | null;
+}
+
+/** The name a group of payments goes by: case and spacing don't matter. */
+export const recurringKey = (name: string) => norm(name);
+
+/** About how many days apart its dates are. */
+const cycleDays = (s: RecurringSchedule) =>
+  s.unit === 'week'
+    ? 7 * s.every
+    : s.unit === 'day'
+      ? s.every
+      : s.days.length === 2
+        ? 15
+        : 30.4 * s.every;
+
+/** How many of the most recent payments detection looks at. */
+const RECENT_FOR_DETECTION = 24;
+
+/**
+ * A series these payments make, or null (D4): at least 3 at a steady pace that fits a schedule
+ * (2 for yearly ones), still coming (the last no more than one and a half cycles ago), with an
+ * amount condition wide enough for what's been paid. Frequent but unsteady spending (groceries)
+ * fits no schedule well enough to be suggested.
+ */
+export function detectRecurring(g: DetectGroup, today: string): DetectedSeries | null {
+  const byDay = new Map<string, RecurringCandidate>();
+  for (const p of g.payments) if (!byDay.has(p.date)) byDay.set(p.date, p);
+  const recent = [...byDay.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-RECENT_FOR_DETECTION);
+  if (recent.length < 2) return null;
+  const schedule = guessSchedule(
+    recent.map((p) => p.date),
+    g.direction,
+  );
+  if (!schedule || schedule.unit === 'day') return null;
+  const yearly = schedule.unit === 'month' && schedule.every === 12;
+  if (recent.length < (yearly ? 2 : 3)) return null;
+  const cycle = cycleDays(schedule);
+  const last = recent[recent.length - 1]!;
+  const slack = Math.min(7, Math.max(3, Math.round(cycle / 6)));
+  // Still coming: the date after its last payment hasn't gone by unpaid. One that's missed a
+  // payment has most likely ended (a cancelled subscription, an old job's paychecks).
+  const after = occurrences(schedule, addDays(last.date, slack + 1), addDays(today, cycle + 31))[0];
+  if (!after || addDays(after, slack + LATE_AFTER_DAYS) < today) return null;
+  // Steady: most of its dates over the stretch were paid, within a few days.
+  const dates = occurrences(schedule, addDays(recent[0]!.date, -slack), addDays(last.date, slack));
+  const paid = payOccurrences(dates, recent, slack);
+  if (paid.length < (yearly ? 2 : 3) || paid.length / Math.max(1, dates.length) < 0.75) return null;
+  const gaps = paid.map((p) => Math.abs(daysBetween(p.due, p.date)));
+  const drift = Math.max(...gaps);
+  // On its dates, give or take a day or two, and not much paid in between: a weekly shop isn't.
+  const average = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  if (average > Math.max(1, cycle / 10)) return null;
+  if ((recent.length - paid.length) / recent.length > 0.2) return null;
+  const sizes = paid.map((p) => Math.abs(p.amountMinor));
+  const lo = Math.min(...sizes);
+  const hi = Math.max(...sizes);
+  const margin = hi - lo <= lo * 0.1 ? 0.05 : 0.1;
+  const match: RecurringMatch = {
+    direction: g.direction,
+    description: { op: 'equals', value: g.name },
+    amount: {
+      min: Math.max(0, Math.floor((lo * (1 - margin)) / 100) * 100),
+      max: Math.ceil((hi * (1 + margin)) / 100) * 100,
+    },
+  };
+  return {
+    key: g.key,
+    name: g.name,
+    kind: g.transfer ? 'transfer' : g.direction === 'in' ? 'income' : 'bill',
+    draft: {
+      accountId: g.accountId,
+      match,
+      schedule,
+      windowDays: Math.max(RECURRING_DEFAULT_WINDOW, Math.min(7, drift)),
+    },
+    seenCount: g.payments.length,
+    since: g.payments[0]!.date,
+    amounts: paid.slice(-10).map((p) => p.amountMinor),
+    next: nextOccurrences(schedule, today, 1)[0] ?? null,
+  };
+}

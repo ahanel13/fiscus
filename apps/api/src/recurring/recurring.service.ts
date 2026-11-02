@@ -4,6 +4,7 @@ import {
   accounts,
   type Executor,
   households,
+  recurringDismissals,
   recurringMarks,
   recurringSeries,
   transactions,
@@ -12,6 +13,9 @@ import { accessLevels } from '@fiscus/ledger';
 import {
   addDays,
   type createRecurringSchema,
+  type DetectedSeries,
+  type DetectGroup,
+  detectRecurring,
   estimateCount,
   estimateNext,
   guessSchedule,
@@ -28,6 +32,7 @@ import {
   recurringMatches,
   type RecurringMonth,
   type RecurringOccurrence,
+  recurringKey,
   type RecurringPayment,
   type RecurringPreview,
   type RecurringSchedule,
@@ -57,6 +62,9 @@ interface SeriesLike {
   windowDays: number;
   endedOn?: string | null;
 }
+
+/** The most suggestions shown at once: the most-paid first. */
+const MAX_SUGGESTIONS = 50;
 
 /** How far back Upcoming looks for dates still late. */
 const LATE_LOOKBACK_DAYS = 62;
@@ -473,6 +481,99 @@ export class RecurringService {
         targetId: id,
         accountId: series.accountId,
         metadata: { due },
+      });
+    });
+  }
+
+  /**
+   * What looks recurring in the history you can change (§2, D3–D5): payments grouped by account,
+   * direction and name, steady enough to be a series, still coming, and not already one of yours
+   * or put away with "Not recurring".
+   */
+  async suggestions(ctx: HouseholdContext): Promise<DetectedSeries[]> {
+    return this.scope.run(ctx, async (tx) => {
+      const today = await this.#today(tx, ctx);
+      const levels = await accessLevels(tx);
+      const rows = await tx
+        .select({
+          id: transactions.id,
+          accountId: transactions.accountId,
+          date: transactions.effectiveDate,
+          amountMinor: transactions.amountMinor,
+          displayName: transactions.displayName,
+          originalDescription: transactions.originalDescription,
+          transferGroupId: transactions.transferGroupId,
+        })
+        .from(transactions)
+        .where(and(isNull(transactions.parentId), isNull(transactions.deletedAt)))
+        .orderBy(asc(transactions.effectiveDate), asc(transactions.id));
+      const series = await tx.select().from(recurringSeries);
+      const dismissed = new Set(
+        (await tx.select().from(recurringDismissals)).map(
+          (d) => `${d.accountId}|${d.direction}|${d.key}`,
+        ),
+      );
+      const groups = new Map<string, DetectGroup>();
+      for (const r of rows) {
+        const level = levels.get(r.accountId);
+        if (level !== 'owner' && level !== 'full') continue;
+        if (r.amountMinor === 0) continue;
+        const direction = r.amountMinor > 0 ? 'in' : 'out';
+        const key = recurringKey(r.displayName);
+        if (!key) continue;
+        const id = `${r.accountId}|${direction}|${key}`;
+        if (dismissed.has(id)) continue;
+        let g = groups.get(id);
+        if (!g) {
+          g = {
+            accountId: r.accountId,
+            direction,
+            key,
+            name: r.displayName,
+            payments: [],
+            transfer: false,
+          };
+          groups.set(id, g);
+        }
+        g.payments.push({ ...r, date: r.date! });
+        g.name = r.displayName;
+        if (r.transferGroupId) g.transfer = true;
+      }
+      const out: DetectedSeries[] = [];
+      for (const g of groups.values()) {
+        if (g.payments.length < 2) continue;
+        // Already one of yours: a series on the account that takes most of these payments.
+        const covered = series.some((s) => {
+          const m = s.match as RecurringMatch;
+          if (s.accountId !== g.accountId || m.direction !== g.direction) return false;
+          const hits = g.payments.filter((p) => recurringMatches(m, p)).length;
+          return hits >= g.payments.length / 2;
+        });
+        if (covered) continue;
+        const found = detectRecurring(g, today);
+        if (found) out.push(found);
+      }
+      return out.sort((a, b) => b.seenCount - a.seenCount).slice(0, MAX_SUGGESTIONS);
+    });
+  }
+
+  /** "Not recurring" (D5): detection doesn't suggest these payments again. */
+  async dismiss(
+    ctx: HouseholdContext,
+    input: { accountId: string; direction: 'in' | 'out'; key: string },
+  ): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      await this.#checkAccount(tx, input.accountId);
+      await tx
+        .insert(recurringDismissals)
+        .values({ householdId: ctx.householdId, ...input, createdByMemberId: ctx.memberId })
+        .onConflictDoNothing();
+      await activity.record({
+        action: 'recurring.dismissed',
+        targetType: 'account',
+        targetId: input.accountId,
+        accountId: input.accountId,
+        metadata: { direction: input.direction },
       });
     });
   }
