@@ -28,6 +28,8 @@ export type AmountInputProps = Omit<
     /** Allow amounts below zero (refunds, adjustments). Off by default. */
     allowNegative?: boolean;
     placeholder?: string;
+    /** Leave off ".00" when there are no cents, where space is short ("$5,000", "$12.50"). */
+    trimZeroCents?: boolean;
   };
 
 /**
@@ -45,6 +47,7 @@ export function AmountInput({
   name,
   allowNegative,
   placeholder,
+  trimZeroCents,
   className,
   ...props
 }: AmountInputProps) {
@@ -52,6 +55,7 @@ export function AmountInput({
   const minor = value !== undefined ? value : uncontrolled;
   const exponent = minorUnitExponent(currency);
   const max = maxMajor(currency);
+  const decimals = trimZeroCents && minor !== null && minor % 10 ** exponent === 0 ? 0 : exponent;
 
   return (
     <NumberField
@@ -67,7 +71,7 @@ export function AmountInput({
       formatOptions={{
         style: 'currency',
         currency,
-        minimumFractionDigits: exponent,
+        minimumFractionDigits: decimals,
         maximumFractionDigits: exponent,
       }}
       className={cx('flex flex-col gap-1.5', className)}

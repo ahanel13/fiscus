@@ -17,11 +17,14 @@ export function Amount({
   minor,
   currency,
   kind = 'flow',
+  whole,
   className,
 }: {
   minor: number;
   currency: string;
   kind?: AmountKind;
+  /** Rounded to whole units, as a budget shows them. */
+  whole?: boolean;
   className?: string;
 }) {
   const { locale } = useLocale();
@@ -30,6 +33,7 @@ export function Amount({
   const text = formatMoney(minor, currency, {
     locale,
     signDisplay: kind === 'flow' ? 'exceptZero' : 'auto',
+    whole,
   }).replace('-', '−');
   const label =
     kind === 'flow' && minor !== 0

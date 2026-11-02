@@ -43,6 +43,8 @@ export function minorUnitExponent(currency: string): number {
 export interface FormatMoneyOptions {
   locale?: string;
   signDisplay?: Intl.NumberFormatOptions['signDisplay'];
+  /** Rounded to whole units ("$1,235"), for totals read at a glance, like a budget's. */
+  whole?: boolean;
 }
 
 /**
@@ -52,7 +54,7 @@ export interface FormatMoneyOptions {
 export function formatMoney(
   amountMinor: number | bigint,
   currency: string,
-  { locale = 'en-US', signDisplay = 'auto' }: FormatMoneyOptions = {},
+  { locale = 'en-US', signDisplay = 'auto', whole: rounded = false }: FormatMoneyOptions = {},
 ): string {
   if (typeof amountMinor === 'number' && !Number.isSafeInteger(amountMinor)) {
     throw new RangeError(`Money amounts must be integer minor units, got ${amountMinor}`);
@@ -68,7 +70,7 @@ export function formatMoney(
     style: 'currency',
     currency,
     signDisplay,
-    minimumFractionDigits: exponent,
-    maximumFractionDigits: exponent,
+    minimumFractionDigits: rounded ? 0 : exponent,
+    maximumFractionDigits: rounded ? 0 : exponent,
   }).format(decimal as Intl.StringNumericLiteral);
 }

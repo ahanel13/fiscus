@@ -20,8 +20,8 @@ import {
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { ChevronLeft, ChevronRight, Eye, EyeOff, PiggyBank } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Eye, EyeOff, MoreHorizontal, PiggyBank } from 'lucide-react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
   budgetMonthQuery,
@@ -44,6 +44,9 @@ import {
   Dialog,
   DialogActions,
   LoadingRegion,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   RadioCard,
   RadioGroup,
   SegmentedControl,
@@ -140,7 +143,7 @@ export function BudgetPage() {
         members={members}
         action={budgets.length > 1 ? <ScopeSwitch budgets={budgets} chosen={chosen!} /> : null}
       />
-      <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 md:px-8">
+      <div className="mx-auto max-w-5xl space-y-5 px-4 pt-3 pb-6 sm:pt-6 md:px-8">
         {adding ? (
           <SetUp household={household} memberCount={members.length} scope={adding} />
         ) : chosen && search.view === 'year' ? (
@@ -653,13 +656,15 @@ function MonthView({
   );
   const [flexible, setFlexible] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [showAll, setShowAll] = useShowUnbudgeted();
+  const goTo = useGoToView();
   const strategy = data.data?.view.strategy ?? budget.strategy;
 
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <MonthStepper month={shown} startsMonth={budget.startsMonth} />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="hidden flex-wrap items-center gap-2 sm:flex">
           <Badge>{STRATEGY_NAMES[strategy as 'category' | 'flex'] ?? 'Category limits'}</Badge>
           <ViewLink view="year">Annual view</ViewLink>
           {data.data?.canEdit ? (
@@ -668,6 +673,25 @@ function MonthView({
             </Button>
           ) : null}
         </div>
+        {/* On a phone, the same in a menu, so the month starts right below. */}
+        <MenuTrigger>
+          <Button variant="ghost" size="icon" aria-label="Budget options" className="sm:hidden">
+            <MoreHorizontal aria-hidden className="size-5" />
+          </Button>
+          <Menu placement="bottom end">
+            <MenuItem onAction={() => goTo('year')}>Annual view</MenuItem>
+            {data.data?.canEdit && strategy === 'category' ? (
+              <MenuItem onAction={() => setShowAll(!showAll)}>
+                {showAll ? 'Hide' : 'Show'} unbudgeted categories
+              </MenuItem>
+            ) : null}
+            {data.data?.canEdit ? (
+              <MenuItem onAction={() => setSwitching(true)}>
+                Change how you budget ({STRATEGY_NAMES[strategy as 'category' | 'flex']})
+              </MenuItem>
+            ) : null}
+          </Menu>
+        </MenuTrigger>
       </div>
       {data.isPending ? (
         <LoadingRegion label="Loading the month">
@@ -691,6 +715,8 @@ function MonthView({
           data={data.data as BudgetMonth & { view: CategoryLimitsMonth }}
           groups={groups}
           householdId={household.id}
+          showAll={showAll}
+          onShowAll={setShowAll}
           onOpen={setOpen}
         />
       )}
@@ -830,8 +856,10 @@ function GroupHeader({
   return (
     <h3
       className={clsx(
-        'grid cursor-pointer items-center gap-3 border-border bg-bg px-4 py-2.5 text-sm font-semibold hover:bg-surface-2',
+        'grid cursor-pointer items-center gap-3 border-border bg-bg px-4 py-2.5 text-sm font-semibold hover:bg-surface-2 max-sm:bg-surface max-sm:py-3',
         COLUMNS,
+        // A total is narrower than the box it lines up with; its name gets the room.
+        'max-sm:grid-cols-[minmax(0,1fr)_auto_4.5rem]',
         className,
       )}
       onClick={(e) => {
@@ -849,14 +877,20 @@ function GroupHeader({
           aria-hidden
           className={clsx('size-4 shrink-0 text-muted transition-transform', open && 'rotate-90')}
         />
-        <span className="truncate">{name}</span>
+        {/* On a phone, a long name takes a second line rather than losing its end. */}
+        <span className="line-clamp-2 sm:truncate">{name}</span>
       </button>
       {children}
     </h3>
   );
 }
 
-const COLUMNS = 'grid-cols-[minmax(0,1fr)_7.5rem] sm:grid-cols-[minmax(0,1fr)_8.5rem_7rem_8rem]';
+const COLUMNS =
+  'grid-cols-[minmax(0,1fr)_5rem_4.5rem] max-sm:gap-x-2 sm:grid-cols-[minmax(0,1fr)_8.5rem_7rem_8rem]';
+
+/** A group, or a note, as a card of its own on a phone; on wider screens, a part of one card. */
+const PHONE_CARD =
+  'max-sm:overflow-hidden max-sm:rounded-xl max-sm:border max-sm:border-border max-sm:bg-surface';
 
 /**
  * A month of category limits, grouped as Monarch does: income on its own, then each spending
@@ -867,16 +901,19 @@ function MonthBody({
   data,
   groups,
   householdId,
+  showAll,
+  onShowAll: setShowAll,
   onOpen,
 }: {
   data: BudgetMonth & { view: CategoryLimitsMonth };
   groups: CategoryGroup[];
   householdId: string;
+  showAll: boolean;
+  onShowAll: (show: boolean) => void;
   onOpen: (e: { categoryId: string; row?: CategoryLimitRow }) => void;
 }) {
   const { view, currency, month } = data;
   const progress = monthProgress(month);
-  const [showAll, setShowAll] = useShowUnbudgeted();
   const [collapsed, toggle] = useCollapsed();
   const [shownIn, setShownIn] = useState<ReadonlySet<string>>(new Set());
   const rows = new Map(view.rows.map((r) => [r.categoryId, r]));
@@ -888,8 +925,10 @@ function MonthBody({
   const uncategorized = groups
     .flatMap((g) => g.categories)
     .find((c) => c.systemKey === 'uncategorized')?.id;
+  const [quietOpen, setQuietOpen] = useState(false);
+  // In whole units, as Monarch shows a budget: the cents are in each category's drawer.
   const money = (minor: number, className?: string) => (
-    <Amount minor={minor} currency={currency} kind="balance" className={className} />
+    <Amount minor={minor} currency={currency} kind="balance" whole className={className} />
   );
   const amount = (categoryId: string, name: string, value: number) => (
     <BudgetAmount
@@ -928,14 +967,42 @@ function MonthBody({
         showOthers,
       };
     })
-    .filter((g) => g.categories.length > 0 || g.others.length > 0);
+    .filter((g) => g.categories.length > 0 || g.others.length > 0)
+    .map((g) => ({ ...g, quiet: !g.categories.some((c) => rows.has(c.id)) }));
+  // Groups with nothing budgeted go last; on a phone, folded away under "Other groups".
+  const quiet = spending.filter((g) => g.quiet);
   const hiddenSpent = view.notBudgeted.filter((n) => n.categoryId !== uncategorized);
   const uncategorizedSpent = uncategorized ? unbudgeted.get(uncategorized) : undefined;
+  const toBudget = view.totals.incomeBudgetedMinor - view.totals.budgetedMinor;
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4">
-        <MoneyIn data={data} />
+      {view.totals.incomeBudgetedMinor > 0 ? (
+        // On a phone, what's left to give a job stays in sight as you scroll, as in Monarch.
+        <p
+          className={clsx(
+            'sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 px-4 py-2.5 font-semibold sm:hidden',
+            toBudget > 0
+              ? 'bg-accent-soft text-accent-text'
+              : toBudget < 0
+                ? 'bg-danger-soft text-danger'
+                : 'bg-surface-2',
+          )}
+        >
+          <span>{toBudget < 0 ? 'Over budget' : 'Left to budget'}</span>
+          {money(Math.abs(toBudget))}
+        </p>
+      ) : null}
+
+      <PhoneSummary
+        data={data}
+        progress={progress}
+        open={!collapsed.has('summary')}
+        onToggle={() => toggle('summary')}
+      />
+
+      <div className="hidden grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid md:grid-cols-4">
+        <MoneyIn data={data} whole />
         <Stat label="Budgeted">{money(view.totals.budgetedMinor)}</Stat>
         <Stat
           label="Spent"
@@ -957,7 +1024,7 @@ function MonthBody({
       </div>
 
       {data.canEdit ? (
-        <div className="flex justify-end">
+        <div className="hidden justify-end sm:flex">
           <Switch isSelected={showAll} onChange={setShowAll}>
             Show unbudgeted categories
           </Switch>
@@ -965,163 +1032,198 @@ function MonthBody({
       ) : null}
 
       {incomeShown.length ? (
-        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="rounded-xl border border-border bg-surface max-sm:space-y-3 max-sm:border-0 max-sm:bg-transparent sm:overflow-hidden">
           <div
             className={clsx(
-              'grid gap-3 border-b border-border px-4 py-2 text-xs font-semibold text-muted',
+              'grid gap-3 border-b border-border px-4 py-2 text-xs font-semibold text-muted max-sm:border-0 max-sm:pb-0',
               COLUMNS,
             )}
           >
-            <span>Income</span>
-            <span className="text-right">Budgeted</span>
+            <span className="max-sm:text-base max-sm:text-fg">Income</span>
+            <span className="self-end text-right">Budgeted</span>
             <span className="hidden text-right sm:block">Received</span>
-            <span className="hidden text-right sm:block">Remaining</span>
+            <span className="self-end text-right">Left</span>
           </div>
-          {collapsed.has('income') ? null : (
-            <ul id="budget-group-income" className="divide-y divide-border">
-              {incomeShown.map((c) => {
-                const r = income.get(c.id) ?? { budgetedMinor: 0, receivedMinor: 0 };
-                const remaining = r.budgetedMinor - r.receivedMinor;
-                return (
-                  <li key={c.id} className={clsx('grid items-center gap-3 px-4 py-2', COLUMNS)}>
-                    <span className="min-w-0 truncate text-sm font-medium">
-                      {c.name}
-                      <span className="block text-xs font-normal text-muted sm:hidden">
-                        {money(r.receivedMinor)} received
+          <div className={PHONE_CARD}>
+            {collapsed.has('income') ? null : (
+              <ul id="budget-group-income" className="divide-y divide-border">
+                {incomeShown.map((c) => {
+                  const r = income.get(c.id) ?? { budgetedMinor: 0, receivedMinor: 0 };
+                  const remaining = r.budgetedMinor - r.receivedMinor;
+                  return (
+                    <li key={c.id} className={clsx('grid items-center gap-3 px-4 py-2', COLUMNS)}>
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {c.name}
+                        <span className="block text-xs font-normal text-muted sm:hidden">
+                          {money(r.receivedMinor)} received
+                        </span>
                       </span>
-                    </span>
-                    {amount(c.id, c.name, r.budgetedMinor)}
-                    <span className="hidden text-right text-sm sm:block">
-                      {money(r.receivedMinor)}
-                    </span>
-                    <span className="hidden text-right text-sm sm:block">
-                      {r.budgetedMinor === 0 ? (
-                        <span className="text-muted">—</span>
-                      ) : remaining < 0 ? (
-                        <span className="text-accent-text">{money(-remaining)} more</span>
-                      ) : (
-                        money(remaining)
-                      )}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <GroupHeader
-            id="budget-group-income"
-            name="Total income"
-            className="border-t"
-            open={!collapsed.has('income')}
-            onToggle={() => toggle('income')}
-          >
-            <span className="text-right">{money(view.totals.incomeBudgetedMinor)}</span>
-            <span className="hidden text-right sm:block">{money(received)}</span>
-            <span className="hidden sm:block" />
-          </GroupHeader>
+                      {amount(c.id, c.name, r.budgetedMinor)}
+                      <span className="hidden text-right text-sm sm:block">
+                        {money(r.receivedMinor)}
+                      </span>
+                      <span className="text-right text-sm">
+                        {r.budgetedMinor === 0 ? (
+                          <span className="text-muted">—</span>
+                        ) : remaining < 0 ? (
+                          <span className="text-accent-text">{money(-remaining)} more</span>
+                        ) : (
+                          money(remaining)
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <GroupHeader
+              id="budget-group-income"
+              name="Total"
+              className="border-t"
+              open={!collapsed.has('income')}
+              onToggle={() => toggle('income')}
+            >
+              <span className="text-right">{money(view.totals.incomeBudgetedMinor)}</span>
+              <span className="hidden text-right sm:block">{money(received)}</span>
+              <span className="text-right">
+                <span className="sm:hidden">
+                  {money(Math.max(0, view.totals.incomeBudgetedMinor - received))}
+                </span>
+              </span>
+            </GroupHeader>
+          </div>
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      {/* On a phone, each group is a card of its own under one row of headings. */}
+      <div className="rounded-xl border border-border bg-surface max-sm:space-y-3 max-sm:border-0 max-sm:bg-transparent sm:overflow-hidden">
         <div
           className={clsx(
-            'grid gap-3 border-b border-border px-4 py-2 text-xs font-semibold text-muted',
+            'grid gap-3 border-b border-border px-4 py-2 text-xs font-semibold text-muted max-sm:border-0 max-sm:pb-0',
             COLUMNS,
           )}
         >
-          <span>Expenses</span>
-          <span className="text-right">Budgeted</span>
+          <span className="max-sm:text-base max-sm:text-fg">Expenses</span>
+          <span className="self-end text-right">Budgeted</span>
           <span className="hidden text-right sm:block">Spent</span>
-          <span className="hidden text-right sm:block">Left</span>
+          <span className="self-end text-right">Left</span>
         </div>
         {view.rows.length === 0 ? (
-          <p className="border-b border-border px-4 py-6 text-sm text-muted">
+          <p className={clsx('border-b border-border px-4 py-6 text-sm text-muted', PHONE_CARD)}>
             No category has a budget in {monthName(month)}.
             {data.canEdit ? ' Show a group’s unbudgeted categories to set some.' : ''}
           </p>
         ) : null}
-        {spending.map(({ group, categories, others, showOthers }) => {
-          const here = categories.map((c) => rows.get(c.id)).filter((r) => r !== undefined);
-          const total = (f: (r: CategoryLimitRow) => number) => here.reduce((s, r) => s + f(r), 0);
-          const left = total((r) => r.leftMinor);
-          const open = !collapsed.has(group.id);
-          return (
-            <section key={group.id}>
-              <GroupHeader
-                id={`budget-group-${group.id}`}
-                name={group.name}
-                open={open}
-                onToggle={() => {
-                  // Folding a group puts its unbudgeted categories away too.
-                  if (open && shownIn.has(group.id)) {
-                    const next = new Set(shownIn);
-                    next.delete(group.id);
-                    setShownIn(next);
-                  }
-                  toggle(group.id);
-                }}
-              >
-                <span className="text-right">{money(total((r) => r.budgetedMinor))}</span>
-                <span className="hidden text-right sm:block">
-                  {money(total((r) => r.spentMinor))}
-                </span>
-                <span className={clsx('hidden text-right sm:block', left < 0 && 'text-danger')}>
-                  {money(left)}
-                </span>
-              </GroupHeader>
-              {open ? (
-                <ul
-                  id={`budget-group-${group.id}`}
-                  className="divide-y divide-border border-b border-border"
-                >
-                  {categories.map((c) => {
-                    const r = rows.get(c.id);
-                    return (
-                      <li key={c.id}>
-                        <LimitRow
-                          name={c.name}
-                          row={r}
-                          spentMinor={r?.spentMinor ?? unbudgeted.get(c.id) ?? 0}
-                          currency={currency}
-                          progress={progress}
-                          amount={
-                            data.canEdit
-                              ? amount(c.id, c.name, r?.budgetedMinor ?? 0)
-                              : money(r?.budgetedMinor ?? 0, 'text-sm')
-                          }
-                          onOpen={() => onOpen({ categoryId: c.id, row: r })}
-                        />
-                      </li>
-                    );
-                  })}
-                  {others.length ? (
-                    <li>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs text-muted hover:bg-surface-2 hover:text-fg"
-                        aria-expanded={showOthers}
-                        onClick={() => {
-                          const next = new Set(shownIn);
-                          if (!next.delete(group.id)) next.add(group.id);
-                          setShownIn(next);
-                        }}
-                      >
-                        {showOthers ? (
-                          <EyeOff aria-hidden className="size-3.5" />
-                        ) : (
-                          <Eye aria-hidden className="size-3.5" />
-                        )}
-                        {showOthers ? 'Hide' : 'Show'} {others.length} unbudgeted
-                      </button>
-                    </li>
+        {[...spending.filter((g) => !g.quiet), ...quiet].map(
+          ({ group, categories, others, showOthers, quiet: isQuiet }, i, all) => {
+            const here = categories.map((c) => rows.get(c.id)).filter((r) => r !== undefined);
+            const total = (f: (r: CategoryLimitRow) => number) =>
+              here.reduce((s, r) => s + f(r), 0);
+            const left = total((r) => r.leftMinor);
+            const open = !collapsed.has(group.id);
+            return (
+              <Fragment key={group.id}>
+                {isQuiet && !all[i - 1]?.quiet ? (
+                  <button
+                    type="button"
+                    aria-expanded={quietOpen}
+                    onClick={() => setQuietOpen(!quietOpen)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold hover:bg-surface-2 sm:hidden"
+                  >
+                    <ChevronRight
+                      aria-hidden
+                      className={clsx(
+                        'size-4 transition-transform',
+                        quietOpen ? '-rotate-90' : 'rotate-90',
+                      )}
+                    />
+                    {quietOpen ? 'Hide' : 'Other'} groups ({quiet.length})
+                  </button>
+                ) : null}
+                <section className={clsx(PHONE_CARD, isQuiet && !quietOpen && 'max-sm:hidden')}>
+                  <GroupHeader
+                    id={`budget-group-${group.id}`}
+                    name={group.name}
+                    className={open ? 'border-b' : 'border-b max-sm:border-b-0'}
+                    open={open}
+                    onToggle={() => {
+                      // Folding a group puts its unbudgeted categories away too.
+                      if (open && shownIn.has(group.id)) {
+                        const next = new Set(shownIn);
+                        next.delete(group.id);
+                        setShownIn(next);
+                      }
+                      toggle(group.id);
+                    }}
+                  >
+                    <span className="text-right">{money(total((r) => r.budgetedMinor))}</span>
+                    <span className="hidden text-right sm:block">
+                      {money(total((r) => r.spentMinor))}
+                    </span>
+                    <span className={clsx('text-right', left < 0 && 'text-danger')}>
+                      {money(left)}
+                    </span>
+                  </GroupHeader>
+                  {open ? (
+                    <ul
+                      id={`budget-group-${group.id}`}
+                      className="divide-y divide-border border-b border-border max-sm:border-b-0"
+                    >
+                      {categories.map((c) => {
+                        const r = rows.get(c.id);
+                        return (
+                          <li key={c.id}>
+                            <LimitRow
+                              name={c.name}
+                              row={r}
+                              spentMinor={r?.spentMinor ?? unbudgeted.get(c.id) ?? 0}
+                              currency={currency}
+                              progress={progress}
+                              amount={
+                                data.canEdit
+                                  ? amount(c.id, c.name, r?.budgetedMinor ?? 0)
+                                  : money(r?.budgetedMinor ?? 0, 'text-sm')
+                              }
+                              onOpen={() => onOpen({ categoryId: c.id, row: r })}
+                            />
+                          </li>
+                        );
+                      })}
+                      {others.length ? (
+                        <li>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs text-muted hover:bg-surface-2 hover:text-fg"
+                            aria-expanded={showOthers}
+                            onClick={() => {
+                              const next = new Set(shownIn);
+                              if (!next.delete(group.id)) next.add(group.id);
+                              setShownIn(next);
+                            }}
+                          >
+                            {showOthers ? (
+                              <EyeOff aria-hidden className="size-3.5" />
+                            ) : (
+                              <Eye aria-hidden className="size-3.5" />
+                            )}
+                            {showOthers ? 'Hide' : 'Show'} {others.length} unbudgeted
+                          </button>
+                        </li>
+                      ) : null}
+                    </ul>
                   ) : null}
-                </ul>
-              ) : null}
-            </section>
-          );
-        })}
+                </section>
+              </Fragment>
+            );
+          },
+        )}
         {uncategorizedSpent ? (
-          <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm">
+          <div
+            className={clsx(
+              'flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm',
+              PHONE_CARD,
+            )}
+          >
             <span className="min-w-0 flex-1">
               Uncategorized <span className="text-muted">· needs a category</span>
             </span>
@@ -1135,7 +1237,12 @@ function MonthBody({
           </div>
         ) : null}
         {!showAll && hiddenSpent.length ? (
-          <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm text-muted">
+          <div
+            className={clsx(
+              'flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm text-muted',
+              PHONE_CARD,
+            )}
+          >
             <span className="min-w-0 flex-1">
               {money(hiddenSpent.reduce((s, n) => s + n.spentMinor, 0))} spent in{' '}
               {hiddenSpent.length} {hiddenSpent.length === 1 ? 'category' : 'categories'} without a
@@ -1213,6 +1320,7 @@ function BudgetAmount({
       currency={data.currency}
       value={amount}
       placeholder="—"
+      trimZeroCents
       // Not disabled while it saves: that would drop focus, out of the drawer too.
       onChange={(next) => {
         setAmount(next);
@@ -1220,6 +1328,103 @@ function BudgetAmount({
       }}
       onFocus={(e) => (e.target as HTMLInputElement).select()}
     />
+  );
+}
+
+/**
+ * The month at a glance on a phone, as Monarch puts it: income and expenses, each planned against
+ * what's come in or gone out so far. It folds away, and stays folded in this browser.
+ */
+function PhoneSummary({
+  data,
+  progress,
+  open,
+  onToggle,
+}: {
+  data: BudgetMonth & { view: CategoryLimitsMonth };
+  progress: number | null;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const { totals } = data.view;
+  const earned = moneyIn(data);
+  const money = (minor: number) => (
+    <Amount minor={minor} currency={data.currency} kind="balance" whole />
+  );
+  const line = (
+    label: string,
+    planned: number,
+    done: number,
+    doneLabel: string,
+    mark: number | null,
+  ) => {
+    const left = planned - done;
+    const used = planned > 0 ? Math.min(1, done / planned) : done > 0 ? 1 : 0;
+    const over = left < 0 && label === 'Expenses';
+    return (
+      <div className="space-y-2 px-4 py-3">
+        <p className="flex justify-between gap-3 text-sm">
+          <span className="font-medium">{label}</span>
+          <span className="text-muted">{money(planned)} planned</span>
+        </p>
+        <div
+          className="relative h-1.5 rounded-full bg-surface-2"
+          role="meter"
+          aria-label={`${label}: ${Math.round(used * 100)}% of planned`}
+          aria-valuenow={Math.round(used * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className={clsx('h-full rounded-full', over ? 'bg-danger' : 'bg-accent')}
+            style={{ width: `${used * 100}%` }}
+          />
+          {mark !== null ? (
+            <span
+              aria-hidden
+              className="absolute -top-1 -bottom-1 w-0.5 bg-fg/40"
+              style={{ left: `${mark * 100}%` }}
+            />
+          ) : null}
+        </div>
+        <p className="flex justify-between gap-3 text-sm">
+          <span className="font-semibold">
+            {money(done)} {doneLabel}
+          </span>
+          <span className="text-muted">
+            <span className={clsx('font-semibold', over ? 'text-danger' : 'text-accent-text')}>
+              {money(Math.abs(left))}
+            </span>{' '}
+            {over ? 'over' : left < 0 ? 'more' : 'remaining'}
+          </span>
+        </p>
+      </div>
+    );
+  };
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-surface sm:hidden">
+      <h2>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={open ? 'budget-summary' : undefined}
+          className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-semibold"
+        >
+          <ChevronRight
+            aria-hidden
+            className={clsx('size-4 shrink-0 text-muted transition-transform', open && 'rotate-90')}
+          />
+          Summary
+        </button>
+      </h2>
+      {open ? (
+        <div id="budget-summary" className="divide-y divide-border border-t border-border">
+          {line('Income', totals.incomeBudgetedMinor, earned, 'earned', null)}
+          {line('Expenses', totals.budgetedMinor, totals.spentMinor, 'spent', progress)}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -1304,17 +1509,42 @@ function LimitRow({
   const left = row ? (
     over ? (
       <>
-        <Amount minor={-row.leftMinor} currency={currency} kind="balance" /> over
+        <span className="sm:hidden">
+          <Amount minor={row.leftMinor} currency={currency} kind="balance" whole />
+        </span>
+        <span className="hidden sm:inline">
+          <Amount minor={-row.leftMinor} currency={currency} kind="balance" whole /> over
+        </span>
       </>
     ) : (
-      <>
-        <Amount minor={row.leftMinor} currency={currency} kind="balance" />
-        <span className="font-normal text-muted sm:hidden"> left</span>
-      </>
+      <Amount minor={row.leftMinor} currency={currency} kind="balance" whole />
     )
   ) : (
     <span className="font-normal text-muted">—</span>
   );
+  const meter = (className: string) =>
+    row ? (
+      <div
+        className={clsx('relative h-1.5 rounded-full bg-surface-2', className)}
+        role="meter"
+        aria-label={`${name}: ${Math.round(used * 100)}% used`}
+        aria-valuenow={Math.round(used * 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div
+          className={clsx('h-full rounded-full', over ? 'bg-danger' : 'bg-accent')}
+          style={{ width: `${used * 100}%` }}
+        />
+        {progress !== null ? (
+          <span
+            aria-hidden
+            className="absolute -top-1 -bottom-1 w-0.5 bg-fg/40"
+            style={{ left: `${progress * 100}%` }}
+          />
+        ) : null}
+      </div>
+    ) : null;
   return (
     // The whole row opens the drawer, like the name does, except the amount you type into. The
     // name stays the button, for the keyboard.
@@ -1333,7 +1563,7 @@ function LimitRow({
         className="min-w-0 py-1 text-left"
         aria-label={`${name}: its transactions and history`}
       >
-        <p className="truncate text-sm font-medium">
+        <p className="line-clamp-2 text-sm font-medium sm:truncate">
           {name}
           {row?.rollover ? <Badge className="ml-2">Rollover</Badge> : null}
         </p>
@@ -1344,26 +1574,7 @@ function LimitRow({
           </p>
         ) : null}
         {row ? (
-          <div
-            className="relative mt-1.5 h-1.5 max-w-md rounded-full bg-surface-2"
-            role="meter"
-            aria-label={`${name}: ${Math.round(used * 100)}% used`}
-            aria-valuenow={Math.round(used * 100)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <div
-              className={clsx('h-full rounded-full', over ? 'bg-danger' : 'bg-accent')}
-              style={{ width: `${used * 100}%` }}
-            />
-            {progress !== null ? (
-              <span
-                aria-hidden
-                className="absolute -top-1 -bottom-1 w-0.5 bg-fg/40"
-                style={{ left: `${progress * 100}%` }}
-              />
-            ) : null}
-          </div>
+          meter('mt-1.5 hidden max-w-md sm:block')
         ) : (
           <p className="text-xs text-muted">
             No budget
@@ -1375,19 +1586,28 @@ function LimitRow({
             ) : null}
           </p>
         )}
-        <p className={clsx('mt-1 text-xs font-semibold sm:hidden', over && 'text-danger')}>
-          {row ? left : null}
-        </p>
       </button>
       <div className="text-right">{amount}</div>
       <span className="hidden text-right text-sm sm:block">
-        <Amount minor={spentMinor} currency={currency} kind="balance" />
+        <Amount minor={spentMinor} currency={currency} kind="balance" whole />
       </span>
-      <span
-        className={clsx('hidden text-right text-sm font-semibold sm:block', over && 'text-danger')}
-      >
-        {left}
+      <span className="text-right text-sm font-semibold">
+        {/* On a phone, a pill: green while there's some left, red once it's over. */}
+        <span
+          className={clsx(
+            'max-sm:inline-block max-sm:rounded-full max-sm:px-2 max-sm:py-0.5',
+            over
+              ? 'text-danger max-sm:bg-danger-soft'
+              : row && row.leftMinor > 0
+                ? 'max-sm:bg-accent-soft max-sm:text-accent-text'
+                : 'max-sm:text-muted',
+          )}
+        >
+          {left}
+        </span>
       </span>
+      {/* On a phone, the bar runs the width of the row, under it all. */}
+      {meter('col-span-full mt-1 mb-1 sm:hidden')}
     </div>
   );
 }
@@ -2070,8 +2290,14 @@ function FlexBody({
  * Money in (D2): for the shared budget, its income and what members moved into joint accounts;
  * for yours, your income, with what you moved into joint accounts going to Ours.
  */
-function MoneyIn({ data }: { data: BudgetMonth }) {
+/** What came in this month; in the household's budget, with what members put in. */
+function moneyIn(data: BudgetMonth) {
   const { incomeMinor, contributionsMinor } = data.view;
+  return incomeMinor + (data.budget.scope === 'household' ? contributionsMinor : 0);
+}
+
+function MoneyIn({ data, whole }: { data: BudgetMonth; whole?: boolean }) {
+  const { contributionsMinor } = data.view;
   const shared = data.budget.scope === 'household';
   return (
     <Stat
@@ -2084,11 +2310,7 @@ function MoneyIn({ data }: { data: BudgetMonth }) {
             : `${formatMinor(contributionsMinor, data.currency)} went to Ours`
       }
     >
-      <Amount
-        minor={incomeMinor + (shared ? contributionsMinor : 0)}
-        currency={data.currency}
-        kind="balance"
-      />
+      <Amount minor={moneyIn(data)} currency={data.currency} kind="balance" whole={whole} />
     </Stat>
   );
 }
@@ -2349,27 +2571,28 @@ function ViewLink({
   year?: number;
   children: React.ReactNode;
 }) {
-  const navigate = useNavigate();
+  const goTo = useGoToView();
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onPress={() =>
-        void navigate({
-          to: '.',
-          search: (prev: Record<string, unknown>) => {
-            const { view: _view, year: _year, ...rest } = prev;
-            return view === 'year'
-              ? { ...rest, view: 'year', ...(year ? { year: String(year) } : {}) }
-              : rest;
-          },
-          replace: true,
-        })
-      }
-    >
+    <Button variant="ghost" size="sm" onPress={() => goTo(view, year)}>
       {children}
     </Button>
   );
+}
+
+/** Switches between the month and the year at a glance, keeping the rest of the address. */
+function useGoToView() {
+  const navigate = useNavigate();
+  return (view: 'month' | 'year', year?: number) =>
+    void navigate({
+      to: '.',
+      search: (prev: Record<string, unknown>) => {
+        const { view: _view, year: _year, ...rest } = prev;
+        return view === 'year'
+          ? { ...rest, view: 'year', ...(year ? { year: String(year) } : {}) }
+          : rest;
+      },
+      replace: true,
+    });
 }
 
 function YearView({
