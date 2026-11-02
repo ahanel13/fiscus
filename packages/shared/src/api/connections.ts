@@ -203,8 +203,11 @@ export type ConnectSuggestion =
   | { choice: 'link'; accountId: string; by: 'mask' | 'name' }
   /** A new account, owned by you, with the household's default visibility (D4, ADR 0006 §8). */
   | { choice: 'new'; owners: { memberId: string }[]; visibility: AccountVisibility }
-  /** Not tracked: it matches one of your accounts that you closed. */
-  | { choice: 'skip'; reason: 'closed'; accountId: string };
+  /**
+   * Not tracked: it matches one of your accounts that you closed, or one that another of your
+   * connections syncs already (`synced`: linking it moves it here, Plaid to SimpleFIN or back).
+   */
+  | { choice: 'skip'; reason: 'closed' | 'synced'; accountId: string };
 
 /** An account the bank offers, from Plaid's `/accounts/get` (never Link's metadata). */
 export interface OfferedAccount {

@@ -101,7 +101,7 @@ caller can't see ("Transfer to Anthony").
 |---|---|---|---|---|---|
 | ACC-01 | Link a bank (create connection) | ✅ | ✅ | ❌ | The linking member becomes the connection owner and the default account owner |
 | ACC-02 | Read connection status | vis | vis | vis | Visible if the caller can see ≥1 of its accounts |
-| ACC-03 | Re-auth / refresh / unlink connection, or move it to new keys | own | own | ❌ | Connection owner only. If the owner has left, any household OWN may unlink |
+| ACC-03 | Re-auth / refresh / unlink connection, move it to new keys, or move its accounts to another of your connections | own | own | ❌ | Connection owner only. If the owner has left, any household OWN may unlink. Moving an account also needs you to own it (ACC-01); the connection it leaves ends once it syncs nothing |
 | ACC-04 | Create manual account | ✅ | ✅ | ❌ | Creator becomes the sole owner |
 | ACC-05 | Read account (§3) | vis | vis | vis | |
 | ACC-06 | Rename / edit account settings, account notes | acct-own | acct-own | ❌ | |
