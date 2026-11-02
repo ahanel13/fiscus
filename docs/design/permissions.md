@@ -183,7 +183,14 @@ caller can't see ("Transfer to Anthony").
 | SHR-03 | Read your balance with each person, and the month's shared expenses | own | own | own | Only balances that involve you, from shared expenses you're for or paid. Someone else's payment shows as them, never their account (F1) |
 | SHR-04 | Record or remove a settle-up between you and someone else | own | own | ❌ | Only the two people it's between see or remove it. A transfer that paid it must be in an account you own; it's then marked a settle-up |
 
-### 4.10 Tokens and sessions
+### 4.10 Bills and recurring (bills walkthrough §1–§3)
+| ID | Action | OWN | MEM | VIEW | Notes |
+|---|---|---|---|---|---|
+| REC-01 | Read the recurring series on accounts whose transactions you see | ✅ | ✅ | ✅ | With its payments and estimate, from the transactions you can see (D10) |
+| REC-02 | Make, change, end or delete a series | ✅ | ✅ | ❌ | Needs owner or full access to its account: the same as changing its transactions. Each change is in the activity of those who see the account |
+| REC-03 | A series on an account you can't see | — | — | — | Not listed, not readable, and not changeable: it doesn't exist for you (404), as the account doesn't |
+
+### 4.11 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
 | TOK-01 | Create / list / revoke own PATs | ✅ | ✅ | ✅ (read scope only) | The token value is shown once |
@@ -191,7 +198,7 @@ caller can't see ("Transfer to Anthony").
 | TOK-03 | Use a PAT for admin endpoints | ❌ | ❌ | ❌ | |
 | TOK-04 | List / revoke own sessions | ✅ | ✅ | ✅ | |
 
-### 4.11 Matrix by actor type (non-role actors)
+### 4.12 Matrix by actor type (non-role actors)
 | ID | Rule | Test focus |
 |---|---|---|
 | PAT-01 | PAT-R can call every read endpoint its member can, and no write endpoint (403 `token_scope`) | All write routes × PAT-R |

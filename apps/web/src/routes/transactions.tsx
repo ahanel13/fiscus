@@ -5,6 +5,7 @@ import type {
   BulkUpdateResult,
   CategoryGroup,
   HouseholdMember,
+  RecurringSuggestion,
   Tag,
   Transaction,
   TransactionSort,
@@ -25,6 +26,7 @@ import {
   Landmark,
   Link2,
   Plus,
+  Repeat,
   Rows3,
   Rows4,
   Search,
@@ -53,6 +55,7 @@ import {
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { RecurringDialog } from '../components/RecurringDialog.js';
 import {
   Alert,
   AmountInput,
@@ -1259,6 +1262,9 @@ export function TransactionDetails({
           {t.can.categorize && !t.parentId ? (
             <MakeRule householdId={householdId} t={t} groups={groups} members={members} />
           ) : null}
+          {t.can.categorize && !t.parentId && t.account ? (
+            <MakeRecurring householdId={householdId} t={t} />
+          ) : null}
           {t.account && t.can.edit && t.source !== 'provider' ? (
             // A part of a split moves with its whole purchase.
             <MoveToAccount
@@ -2138,6 +2144,45 @@ function TransferSection({
         </section>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * "Make recurring" from a transaction (bills walkthrough §3, D6): starts from it and the payments
+ * like it, guessing the schedule and an amount range, to change before saving.
+ */
+function MakeRecurring({ householdId, t }: { householdId: string; t: Transaction }) {
+  const [open, setOpen] = useState(false);
+  const suggestion = useQuery({
+    queryKey: ['households', householdId, 'recurring', 'suggest', t.id],
+    queryFn: async () =>
+      (
+        await api<{ data: RecurringSuggestion }>(
+          'GET',
+          `/api/v1/households/${householdId}/recurring/suggest?transactionId=${t.id}`,
+        )
+      ).data,
+    enabled: open,
+  });
+  return (
+    <>
+      <Button variant="secondary" size="sm" onPress={() => setOpen(true)}>
+        <Repeat aria-hidden className="size-4" /> Make recurring
+      </Button>
+      {open && suggestion.data ? (
+        <RecurringDialog
+          householdId={householdId}
+          initial={suggestion.data}
+          accountName={t.account!.name}
+          currency={t.currency}
+          onClose={() => setOpen(false)}
+        />
+      ) : open && suggestion.isError ? (
+        <Dialog title="Make recurring" isOpen onOpenChange={(o) => (o ? null : setOpen(false))}>
+          <Alert>Couldn’t look at this transaction’s history. Try again in a moment.</Alert>
+        </Dialog>
+      ) : null}
+    </>
   );
 }
 

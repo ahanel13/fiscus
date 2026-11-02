@@ -470,6 +470,20 @@
       "when": 1793574752632,
       "tag": "0066_dont_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793596935139,
+      "tag": "0067_recurring_series",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1793596937030,
+      "tag": "0068_recurring_series_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -1033,7 +1033,7 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
       }),
     ),
 
-  // ── 4.10 Sessions ──
+  // ── 4.11 Sessions ──
   'TOK-04/OWN': async () => ok(await f.A.get('/api/v1/me/sessions')),
   'TOK-04/MEM': async () => ok(await f.B.get('/api/v1/me/sessions')),
   'TOK-04/VIEW': async () => ok(await f.V.get('/api/v1/me/sessions')),
