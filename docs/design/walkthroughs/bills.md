@@ -59,7 +59,9 @@ is added up separately from bills, and transfers can be hidden from the upcoming
 
 **D2. Schedules people actually have.**
 - Every week, or every 2 weeks, on a weekday.
-- **Twice a month**, on two days (the 15th and the last day, for many paychecks).
+- **Twice a month**, on two days (the 1st and the 15th, or the 15th and the last day, for many
+  paychecks). **Each day has its own amount**: a paycheck on the 1st of $2,600 and one on the
+  15th of $2,450, when a deduction such as an HSA contribution comes out of one of them only.
 - Every month, on a day or on the last day; every 2, 3 or 6 months; every year.
 - Custom: every N days, weeks or months.
 
@@ -99,7 +101,8 @@ rather than deciding for you.
     stopped two years ago isn't suggested. With years of history, the alternative is pages of
     old, ended payments to dismiss.
   - **Fixed or varies:** fixed when the amounts stay within 5% of each other, otherwise "varies",
-    shown as a range. A price change that sticks (Northwind Mobile, $80 to $85 since June) is
+    shown as a range. For twice a month, each day is judged on its own. A paycheck that's always
+    smaller on the 15th is two fixed amounts, one for each day, not one that varies. A price change that sticks (Northwind Mobile, $80 to $85 since June) is
     still fixed, at the new amount, and noted.
   - Not suggested: spending that's frequent but not steady (groceries, gas), and transfers
     between your own accounts that are already linked as transfers, unless they're steady (the
@@ -140,8 +143,9 @@ month, and a 3-paycheck month looks like a windfall, or a 2-paycheck month like 
 - An amount typed in the budget for a month still wins for that month.
 - The checkbox shows for income series when there's a budget that counts the category. It
   starts ticked.
-- Twice-a-month paychecks get two a month, every month, so they don't need it as much; it's
-  offered anyway.
+- Twice-a-month paychecks get two a month, every month: the budget expects the two days' amounts
+  added together ($2,600 + $2,450 = $5,050), and when one changes (a raise, a new HSA
+  contribution), the months after it follow.
 
 ---
 
@@ -205,7 +209,8 @@ same list. Calendar and All are a tap away.
 transaction comes in:
 - from the same payee, in the same direction, through the same account;
 - within its window (by default 3 days either side, or a week for a monthly bill that varies);
-- with an amount within its tolerance (by default 5%, or any amount for one that varies).
+- with an amount within its tolerance (by default 5%, or any amount for one that varies). For
+  twice a month, that's the amount for its own day.
 
 Each transaction pays at most one occurrence. A matched transaction gets the series' category if
 it has none, and shows the series in its drawer.
@@ -329,7 +334,7 @@ card, which Alex's doesn't. A quiet week still sends a short recap, so it's clea
 | # | Decision | Shapes |
 |---|---|---|
 | D1 | One model for bills, subscriptions, income and transfers | #118 |
-| D2 | Schedules include twice a month and a weekend rule; no holiday calendar | #118 |
+| D2 | Schedules include twice a month, with an amount per day, and a weekend rule; no holiday calendar | #118 |
 | D3 | Fiscus detects from all its own history, for every account, not Plaid's recurring endpoint | #119 |
 | D4 | Found: 3+ at a steady pace, still coming; fixed within 5%, otherwise varies | #119 |
 | D5 | Suggestions are reviewed on Bills & recurring; Not recurring is remembered | #119 |
