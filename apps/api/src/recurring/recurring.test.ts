@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
-import type { RecurringSeries, RecurringSuggestion } from '@fiscus/shared';
+import type { RecurringMonth, RecurringSeries, RecurringSuggestion } from '@fiscus/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TestClient } from '../testing/test-app.js';
 
@@ -179,6 +180,121 @@ describe('recurring series', () => {
     expect(
       (await B.request('PATCH', url(`/recurring/${made.body.data.id}`), { name: 'x' })).status,
     ).toBe(404);
+  });
+
+  /** `YYYY-MM`, this many months ago. */
+  const monthsAgo = (n: number) => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - n, 1))
+      .toISOString()
+      .slice(0, 7);
+  };
+
+  it('shows a month: what was paid, and what came in [REC-01]', async () => {
+    const r = await A.get(url(`/recurring/month?month=${monthsAgo(1)}`));
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const m = r.body.data as RecurringMonth;
+    // Which dates fall in it depends on the calendar: the 1st can move into the month before.
+    const paid = m.occurrences.filter((o) => o.name === 'Paycheck' && o.status === 'paid');
+    expect(paid.length).toBeGreaterThan(0);
+    for (const o of paid) expect([260_000, 245_000]).toContain(o.payment!.amountMinor);
+    expect(m.totals.incomeReceivedMinor).toBe(
+      paid.reduce((sum, o) => sum + o.payment!.amountMinor!, 0),
+    );
+  });
+
+  it('a date nothing paid is late; it can be skipped, or marked paid by another payment', async () => {
+    const [m3, m2, m1] = [monthsAgo(3), monthsAgo(2), monthsAgo(1)];
+    for (const [date, displayName] of [
+      [`${m3}-10`, 'Cascade Water'],
+      [`${m2}-10`, 'Cascade Water'],
+      [`${m1}-20`, 'Check 1042'],
+    ]) {
+      await A.post(url('/transactions'), {
+        accountId: joint,
+        date,
+        amountMinor: -6_420,
+        displayName,
+      });
+    }
+    const series = (
+      await A.post(url('/recurring'), {
+        accountId: joint,
+        name: 'Water',
+        kind: 'bill',
+        match: { direction: 'out', description: { op: 'equals', value: 'Cascade Water' } },
+        schedule: { unit: 'month', every: 1, days: [10], anchor: `${m3}-10`, weekend: 'as_is' },
+      })
+    ).body.data as RecurringSeries;
+    const water = async () =>
+      (
+        (await A.get(url(`/recurring/month?month=${m1}`))).body.data as RecurringMonth
+      ).occurrences.find((o) => o.seriesId === series.id)!;
+    expect((await water()).status).toBe('late');
+
+    const at = url(`/recurring/${series.id}/occurrences/${m1}-10`);
+    expect((await V.request('PUT', at, { status: 'skipped' })).status).toBe(403);
+    expect((await A.request('PUT', at, { status: 'skipped' })).status).toBe(204);
+    expect((await water()).status).toBe('skipped');
+
+    const check = (
+      (await A.get(url(`/transactions?accounts=${joint}&limit=200`))).body.data as {
+        id: string;
+        displayName: string;
+      }[]
+    ).find((t) => t.displayName === 'Check 1042')!;
+    expect((await A.request('PUT', at, { status: 'paid', transactionId: check.id })).status).toBe(
+      204,
+    );
+    const paid = await water();
+    expect(paid.status).toBe('paid');
+    expect(paid.payment).toMatchObject({ transactionId: check.id, amountMinor: -6_420 });
+
+    expect((await A.request('DELETE', at)).status).toBe(204);
+    expect((await water()).status).toBe('late');
+    // Not one of its dates.
+    expect(
+      (
+        await A.request('PUT', url(`/recurring/${series.id}/occurrences/${m1}-11`), {
+          status: 'skipped',
+        })
+      ).status,
+    ).toBe(422);
+    await A.delete(url(`/recurring/${series.id}`));
+  });
+
+  it('shows a card’s statement from the bank, paid once enough has gone in [REC-03]', async () => {
+    const m1 = monthsAgo(1);
+    const db = new pg.Client({ connectionString: tdb.ownerUrl });
+    await db.connect();
+    try {
+      await db.query(
+        `INSERT INTO account_liabilities (account_id, household_id, minimum_payment_minor,
+           next_due_date, last_statement_balance_minor, last_statement_date)
+         VALUES ($1, $2, 3500, $3, -50000, $4)`,
+        [mine, hh, `${m1}-21`, `${monthsAgo(2)}-25`],
+      );
+    } finally {
+      await db.end();
+    }
+    const statement = async (c: TestClient) =>
+      (
+        (await c.get(url(`/recurring/month?month=${m1}`))).body.data as RecurringMonth
+      ).occurrences.find((o) => o.kind === 'statement');
+    expect(await statement(A)).toMatchObject({
+      status: 'late',
+      expectedMinor: -50_000,
+      minimumMinor: 3_500,
+    });
+    // Bea can't see the card, nor its statement.
+    expect(await statement(B)).toBeUndefined();
+    await A.post(url('/transactions'), {
+      accountId: mine,
+      date: `${m1}-15`,
+      amountMinor: 50_000,
+      displayName: 'Payment, thank you',
+    });
+    expect(await statement(A)).toMatchObject({ status: 'paid', paidSoFarMinor: 50_000 });
   });
 
   it('ends: no next date after it', async () => {

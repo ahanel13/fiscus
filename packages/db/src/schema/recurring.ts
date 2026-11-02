@@ -9,13 +9,16 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
+  timestamp,
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { id, timestamps, versioning } from '../columns.js';
 import { accounts } from './accounts.js';
 import { householdMembers, households } from './households.js';
+import { transactions } from './ledger.js';
 
 // Recurring series (#118; bills walkthrough §1, D1, D2, D11): a payment that comes at a steady
 // pace, on one account. Its payments aren't stored: they're the transactions that match it near
@@ -65,5 +68,47 @@ export const recurringSeries = pgTable(
     index().on(t.accountId),
     check('recurring_series_name', sql`length(btrim(${t.name})) BETWEEN 1 AND 80`),
     check('recurring_series_window', sql`${t.windowDays} BETWEEN 0 AND 15`),
+  ],
+);
+
+export const recurringMark = pgEnum('recurring_mark', ['paid', 'skipped']);
+
+/**
+ * What someone said about one date a series was due (D12): paid, by a transaction or another way
+ * (`transaction_id` null), or skipped. Without one, a date's payment is worked out from the
+ * transactions. Row-level security: migration 0070.
+ */
+export const recurringMarks = pgTable(
+  'recurring_marks',
+  {
+    householdId: uuid().notNull(),
+    seriesId: uuid().notNull(),
+    due: date({ mode: 'string' }).notNull(),
+    mark: recurringMark().notNull(),
+    transactionId: uuid(),
+    createdByMemberId: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.seriesId, t.due] }),
+    foreignKey({
+      columns: [t.householdId, t.seriesId],
+      foreignColumns: [recurringSeries.householdId, recurringSeries.id],
+    }).onDelete('cascade'),
+    // The transaction going takes the mark with it: the date is worked out again.
+    foreignKey({
+      columns: [t.householdId, t.transactionId],
+      foreignColumns: [transactions.householdId, transactions.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.createdByMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    unique('recurring_marks_transaction').on(t.seriesId, t.transactionId),
+    index().on(t.transactionId),
+    check(
+      'recurring_marks_transaction_paid',
+      sql`${t.transactionId} IS NULL OR ${t.mark} = 'paid'`,
+    ),
   ],
 );

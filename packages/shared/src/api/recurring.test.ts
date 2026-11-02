@@ -180,8 +180,25 @@ describe('payOccurrences', () => {
     ]);
   });
 
-  it('leaves a date unpaid when nothing is close enough', () => {
-    expect(payOccurrences(['2026-11-09'], [pay('late', '2026-11-16')], 3)).toEqual([]);
+  it('a late payment still pays its date, until the next one is due', () => {
+    const paid = payOccurrences(['2026-09-09', '2026-11-09'], [pay('late', '2026-09-16')], 3);
+    expect(paid.map((p) => [p.due, p.transactionId])).toEqual([['2026-09-09', 'late']]);
+  });
+
+  it('but not one that belongs to the next date', () => {
+    // Monthly on the 24th: Nov 22 is early for Nov 24, not late for Oct 24.
+    const paid = payOccurrences(['2026-10-24', '2026-11-24'], [pay('nov', '2026-11-22')], 3);
+    expect(paid.map((p) => [p.due, p.transactionId])).toEqual([['2026-11-24', 'nov']]);
+  });
+
+  it('takes a payment someone linked first, wherever it is', () => {
+    const paid = payOccurrences(
+      ['2026-11-06', '2026-11-20'],
+      [pay('a', '2026-11-06'), pay('b', '2026-11-20')],
+      3,
+      new Map([['2026-11-20', pay('a', '2026-11-06')]]),
+    );
+    expect(paid.map((p) => [p.due, p.transactionId])).toEqual([['2026-11-20', 'a']]);
   });
 });
 
@@ -195,6 +212,7 @@ describe('estimateNext', () => {
     ];
     expect(estimateNext(paid)).toBe(250_000);
     expect(estimateNext([])).toBeNull();
+    expect(estimateNext(paid, 4)).toBe(252_500);
   });
 });
 
