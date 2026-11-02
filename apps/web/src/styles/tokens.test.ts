@@ -39,6 +39,22 @@ const PAIRS: [string, string, number][] = [
   ['border-strong', 'surface', 1.4],
 ];
 
+// Dark mode separates layers by lightness, not shadows (#471): each step visible, and a control's
+// outline at 3:1 (WCAG 1.4.11). Light mode's layers read fine with shadows and white cards.
+const DARK_PAIRS: [string, string, number][] = [
+  ['surface', 'bg', 1.1],
+  ['surface-2', 'surface', 1.15],
+  ['border', 'surface', 1.35],
+  ['border-strong', 'surface', 3],
+];
+
+describe('dark theme layers', () => {
+  const t = tokens('dark');
+  it.each(DARK_PAIRS)('%s on %s ≥ %d:1', (fg, bg, min) => {
+    expect(contrast(t[fg]!, t[bg]!)).toBeGreaterThanOrEqual(min);
+  });
+});
+
 describe.each(['root', 'dark'] as const)('%s theme tokens', (block) => {
   const t = tokens(block);
 
