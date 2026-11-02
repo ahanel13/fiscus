@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="96" height="96">
+  <style>
+    .ink { fill: #121917; } .acc { fill: #0e6b57; }
+    @media (prefers-color-scheme: dark) { .ink { fill: #ececec; } .acc { fill: #3dc9a4; } }
+  </style>
+  <path class="acc" d="M6 22 32 8l26 14Z"/>
+  <g class="ink">
+    <rect x="9" y="25" width="46" height="5" rx="1.5"/>
+    <rect x="13" y="33" width="6" height="16" rx="1"/>
+    <rect x="23.67" y="33" width="6" height="16" rx="1"/>
+    <rect x="34.33" y="33" width="6" height="16" rx="1"/>
+    <rect x="45" y="33" width="6" height="16" rx="1"/>
+    <rect x="7" y="52" width="50" height="5" rx="1.5"/>
+  </g>
+</svg>

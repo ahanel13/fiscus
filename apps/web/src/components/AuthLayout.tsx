@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { SourceLinks } from './About.js';
+import { FiscusLogo } from './Logo.js';
 import type { ReactNode } from 'react';
 
 export function AuthLayout({
@@ -15,7 +16,7 @@ export function AuthLayout({
     <main className="flex min-h-full items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-2 text-center">
-          <p className="text-sm font-semibold tracking-wide text-accent">Fiscus</p>
+          <FiscusLogo className="mb-2" />
           <h1 className="text-2xl font-semibold">{title}</h1>
           {subtitle ? <p className="text-sm text-muted">{subtitle}</p> : null}
         </div>
