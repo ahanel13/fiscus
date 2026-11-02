@@ -53,7 +53,7 @@ matched it), **late**, or **skipped**.
 
 **What it matches and what it expects are separate.** What it matches decides which payments
 count, and is plain enough to read and change: like a rule's conditions. What it expects is only
-an estimate, for totals, the budget and reminders. A paycheck that's smaller on the 15th, because
+an estimate, for totals and reminders. A paycheck that's smaller on the 15th, because
 an HSA contribution comes out of that one only, a commission that changes every month, a power
 bill that's higher in winter: each is one series with an amount condition wide enough for it
 ("between $2,300 and $2,700", "at least $1,000", "any amount"), and an estimate that follows what
@@ -144,17 +144,10 @@ what gives a new series its history and its "seen 48 times", and lets Fiscus est
 amount. They keep their categories, notes and splits. **+ Add recurring** on the page does the
 same without a transaction to start from, for a bill that hasn't been paid yet.
 
-**D7. Paychecks can set the budget's income.** With **Expect it in your budget** on, the budget's
-expected income for that category follows the paycheck's schedule: two paychecks in November
-($4,824.72), three in January ($7,237.08). Without it, a budget expects the same amount every
-month, and a 3-paycheck month looks like a windfall, or a 2-paycheck month like a shortfall.
-- An amount typed in the budget for a month still wins for that month.
-- The checkbox shows for income series when there's a budget that counts the category. It
-  starts ticked.
-- What it expects for a month is the estimate for each paycheck due in it, added up. For a
-  paycheck that's $2,600 on the 1st and $2,450 on the 15th, the estimate comes from recent
-  paychecks, so the month adds up to about $5,050; a raise or a new HSA contribution shows up in
-  the months after it.
+**D7. Recurring stays apart from the budget.** A series is for knowing what's coming and being
+reminded: it never sets or changes a budget's amounts, which stay the ones you typed. The
+budget counts what actually came in and went out, as before; Bills & recurring shows what's
+expected. They meet only in what you read: the weekly recap shows both (§8).
 
 ---
 
@@ -379,7 +372,7 @@ card, which Alex's doesn't. A quiet week still sends a short recap, so it's clea
 | D4 | Found: 3+ at a steady pace, still coming; it proposes an amount condition to edit | #119 |
 | D5 | Suggestions are reviewed on Bills & recurring; Not recurring is remembered | #119 |
 | D6 | Any transaction can start a series, and its past payments are linked | #118, #119 |
-| D7 | A paycheck can set the budget's expected income, month by month | #118, budgets |
+| D7 | Recurring never sets or changes a budget's amounts | #118 |
 | D8 | What's expected is estimated from last year's month and the last 3, apart from what matches | #120 |
 | D9 | Card statements come from the bank, and aren't added to bills | #122, #86 |
 | D10 | Series follow account visibility; Ours and Mine filter by who it's for | #118, ADR 0006 |
