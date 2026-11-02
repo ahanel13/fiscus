@@ -1,0 +1,107 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notifications (phone) · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="phone">
+      <div class="topbar"><span>‹ Notifications</span><span></span></div>
+      <div class="content stack">
+        <h2>Where to send them</h2>
+        <div class="list">
+          <div class="item">
+            <div class="grow">
+              <b>In Fiscus</b>
+              <div class="small muted">Always on</div>
+            </div>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <b>Email</b>
+              <div class="small muted">alex@rivera.test · full detail</div>
+            </div>
+            <span class="muted">›</span>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <b>Phone, through ntfy</b>
+              <div class="small muted">Summary</div>
+            </div>
+            <span class="muted">›</span>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <b>Gotify, or a webhook</b>
+              <div class="small muted">Not set up</div>
+            </div>
+            <span class="muted">›</span>
+          </div>
+        </div>
+        <h2 style="margin-top: 16px">What to send</h2>
+        <div class="list">
+          <div class="item" style="display: block">
+            <div class="row spread"><b>A bill is due</b><span class="muted">›</span></div>
+            <div class="small muted">3 days before · bills you look after</div>
+            <div style="margin-top: 6px">
+              <span class="badge ok" style="margin-right: 4px">In Fiscus</span
+              ><span class="badge ok" style="margin-right: 4px">Email</span
+              ><span class="badge ok" style="margin-right: 4px">Phone</span>
+            </div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread">
+              <b>A bill or paycheck is late</b><span class="muted">›</span>
+            </div>
+            <div class="small muted">2 days after</div>
+            <div style="margin-top: 6px">
+              <span class="badge ok" style="margin-right: 4px">In Fiscus</span
+              ><span class="badge ok" style="margin-right: 4px">Email</span
+              ><span class="badge ok" style="margin-right: 4px">Phone</span>
+            </div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread"><b>A big transaction</b><span class="muted">›</span></div>
+            <div class="small muted">Over $500</div>
+            <div style="margin-top: 6px">
+              <span class="badge ok" style="margin-right: 4px">In Fiscus</span
+              ><span class="badge" style="margin-right: 4px">Email</span
+              ><span class="badge ok" style="margin-right: 4px">Phone</span>
+            </div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread"><b>Low balance</b><span class="muted">›</span></div>
+            <div class="small muted">Everyday checking under $1,000</div>
+            <div style="margin-top: 6px">
+              <span class="badge ok" style="margin-right: 4px">In Fiscus</span
+              ><span class="badge ok" style="margin-right: 4px">Email</span
+              ><span class="badge ok" style="margin-right: 4px">Phone</span>
+            </div>
+          </div>
+          <div class="item" style="display: block">
+            <div class="row spread"><b>Weekly recap</b><span class="muted">›</span></div>
+            <div class="small muted">Mondays at 8 am</div>
+            <div style="margin-top: 6px">
+              <span class="badge ok" style="margin-right: 4px">In Fiscus</span
+              ><span class="badge ok" style="margin-right: 4px">Email</span
+              ><span class="badge" style="margin-right: 4px">Phone</span>
+            </div>
+          </div>
+        </div>
+        <div class="small muted">Tap a row to change when it’s sent, and where.</div>
+        <div style="height: 70px"></div>
+      </div>
+      <div class="tabs">
+        <div class="">Dashboard</div>
+        <div class="">Transactions</div>
+        <div class="">Budget</div>
+        <div class="">Accounts</div>
+        <div class="on">More</div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>

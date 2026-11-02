@@ -210,6 +210,17 @@ same list. Calendar and All are a tap away.
 
 ![Upcoming on a phone](bills/08-phone-upcoming.png)
 
+**The rest on a phone.** Opening a series is a full page, not a drawer: what's next and its
+estimate, then who looks after it, what it matches and its reminders as rows to tap, then its
+payments. **Make recurring…** is a full page too, with Save at the top. The calendar is a small
+month with a dot per day (black for a bill, green for money in, red for late, grey once paid),
+and tapping a day lists what's due under it. Notification rules are one row each, with the
+channels it goes to as chips.
+
+| A bill | Make recurring | Calendar | Notifications |
+|---|---|---|---|
+| ![A bill on a phone](bills/11-phone-bill.png) | ![Make recurring on a phone](bills/12-phone-make-recurring.png) | ![Calendar on a phone](bills/13-phone-calendar.png) | ![Notifications on a phone](bills/14-phone-notifications.png) |
+
 ---
 
 ## 5. Paid, late, and matching
