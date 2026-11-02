@@ -128,8 +128,16 @@ export const connections = pgTable(
     /** The provider says all older history has arrived. */
     historicalComplete: boolean().notNull().default(false),
     webhookEnabled: boolean().notNull().default(false),
-    /** The bank offers accounts not tracked yet (Plaid's NEW_ACCOUNTS_AVAILABLE). */
+    /**
+     * The bank offers accounts nobody chose about yet: a sync saw one that isn't tracked and isn't
+     * in `knownAccountIds` (a SimpleFIN account added at the Bridge later). Its owner is asked.
+     */
     newAccountsAvailable: boolean().notNull().default(false),
+    /** The provider's ids of every account its owner chose about: tracked, or not. */
+    knownAccountIds: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     /** Disconnected, and the worker still has to end it at the provider, then drop its secret. */
     disconnectRequested: boolean().notNull().default(false),
     /** Plaid's /transactions/sync cursor. */

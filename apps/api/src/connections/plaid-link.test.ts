@@ -444,15 +444,17 @@ describe('connecting a bank through Plaid Link (#79)', () => {
     expect(await actions(B)).toContain('connection.added');
   });
 
-  it('confirms once', async () => {
+  it('once confirmed, chooses again: one choice for every account still', async () => {
     refused(
       await A.post(url(`/connections/${connA}/confirm`), {
         accounts: [{ providerAccountId: RIVERA.checking, choice: 'skip' }],
       }),
-      409,
-      'not_in_setup',
+      422,
+      'choices_mismatch',
     );
-    refused(await A.get(url(`/connections/${connA}/setup`)), 409, 'not_in_setup');
+    const again = await A.get(url(`/connections/${connA}/setup`));
+    ok(again);
+    expect(again.body.data.chosen).toBe(true);
   });
 
   describe('Link’s metadata', () => {

@@ -353,19 +353,41 @@ export function mergePages(pages: SyncPage[]): SyncPage {
   return merged;
 }
 
-/** Advances the connection past a sync's pages, in the transaction that applied them. */
+/**
+ * Advances the connection past a sync's pages, in the transaction that applied them. A window
+ * (a provider without a cursor) sent everything it was asked for, so its history is complete. An
+ * account the bank offers that isn't tracked and nobody chose about (a SimpleFIN account added at
+ * the Bridge later) asks its owner to choose.
+ */
 export async function advanceConnection(
   tx: Executor,
   connectionId: string,
   page: SyncPage,
 ): Promise<void> {
   const cursor = page.mode === 'delta' && page.nextCursor !== null;
-  if (!cursor && !page.historicalComplete) return;
+  const complete = page.historicalComplete || page.mode === 'window';
+  let unchosen = false;
+  if (page.accounts?.length) {
+    const [c] = await tx
+      .select({ known: connections.knownAccountIds, flagged: connections.newAccountsAvailable })
+      .from(connections)
+      .where(eq(connections.id, connectionId));
+    if (c && !c.flagged) {
+      const tracked = await tx
+        .select({ id: accounts.providerAccountId })
+        .from(accounts)
+        .where(eq(accounts.connectionId, connectionId));
+      const chosen = new Set([...c.known, ...tracked.flatMap((a) => a.id ?? [])]);
+      unchosen = page.accounts.some((a) => !chosen.has(a.providerAccountId));
+    }
+  }
+  if (!cursor && !complete && !unchosen) return;
   await tx
     .update(connections)
     .set({
       ...(cursor && { syncCursor: page.nextCursor }),
-      ...(page.historicalComplete && { historicalComplete: true }),
+      ...(complete && { historicalComplete: true }),
+      ...(unchosen && { newAccountsAvailable: true }),
       updatedAt: new Date(),
     })
     .where(eq(connections.id, connectionId));

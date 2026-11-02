@@ -459,6 +459,7 @@ describe('cross-member visibility (generated)', () => {
               'institution',
               'institutionName',
               'lastSyncedAt',
+              'newAccountsAvailable',
               'nextSyncAt',
               'notWorking',
               'onOldKeys',

@@ -1,0 +1,1 @@
+ALTER TABLE "connections" ADD COLUMN "known_account_ids" text[] DEFAULT '{}'::text[] NOT NULL;

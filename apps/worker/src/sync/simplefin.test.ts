@@ -106,6 +106,14 @@ describe('SimpleFIN sync, end to end (#91)', { timeout: 60_000 }, () => {
       // The Bridge's daily budget: never sooner than 6 hours.
       nextInMinutes: 360,
     });
+    // The Bridge offers an account nobody chose about (old savings): its owner is asked. And the
+    // window sent everything from sync_from, so the next asks only from near the latest.
+    expect(
+      await sql(
+        'SELECT new_accounts_available, historical_complete FROM connections WHERE id = $1',
+        [b.connectionId],
+      ),
+    ).toEqual([{ new_accounts_available: true, historical_complete: true }]);
     const [first] = fake.requests.filter((r) => r.path === '/simplefin/accounts');
     expect(first!.query.get('pending')).toBe('1');
     expect(first!.query.get('version')).toBe('2');
@@ -150,6 +158,23 @@ describe('SimpleFIN sync, end to end (#91)', { timeout: 60_000 }, () => {
     expect(coffee).toHaveLength(1);
     expect(coffee[0]).toMatchObject({ pending: false, provider_transaction_id: 'txn-coffee-1005' });
     expect(logs.join('\n')).not.toContain('rivera-bridge-password');
+  });
+
+  it('doesn’t ask about an account its owner chose not to track', async () => {
+    fake = await startFakeSimpleFin();
+    const b = await connect(fake, [
+      [RIVERA.checking, 'depository'],
+      [RIVERA.savings, 'depository'],
+      [RIVERA.visa, 'credit'],
+    ]);
+    await h.owner.query('UPDATE connections SET known_account_ids = $2 WHERE id = $1', [
+      b.connectionId,
+      [RIVERA.oldSavings],
+    ]);
+    await run(fake);
+    expect(
+      await sql('SELECT new_accounts_available FROM connections WHERE id = $1', [b.connectionId]),
+    ).toEqual([{ new_accounts_available: false }]);
   });
 
   it('fails a revoked token as needing its owner, and doesn’t poll it', async () => {

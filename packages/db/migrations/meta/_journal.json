@@ -519,6 +519,20 @@
       "when": 1793654791675,
       "tag": "0073_connection_has_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1793656128209,
+      "tag": "0074_connection_known_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1793656130056,
+      "tag": "0075_connection_tracked",
+      "breakpoints": true
     }
   ]
 }
