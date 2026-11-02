@@ -24,6 +24,7 @@ import type {
   NetWorth,
   PlaidAvailability,
   PossibleDuplicate,
+  RecurringSeries,
   ReviewCount,
   ServerInvite,
   ServerInvitePreview,
@@ -242,6 +243,13 @@ export const budgetMonthQuery = (id: string, budgetId: string, month: string) =>
     queryKey: ['households', id, 'budgets', budgetId, month],
     queryFn: async () =>
       (await api<Data<BudgetMonth>>('GET', `${hh(id)}/budgets/${budgetId}/months/${month}`)).data,
+  });
+
+/** Recurring series on the accounts you can see, with their payments and next date (#118). */
+export const recurringQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'recurring'],
+    queryFn: async () => (await api<Data<RecurringSeries[]>>('GET', `${hh(id)}/recurring`)).data,
   });
 
 /** The household's split rules for shared costs (#109). */
