@@ -128,8 +128,18 @@ describe('cross-tenant isolation (generated from routes)', () => {
         })
       ).body.data;
       const budget = (await c.post(`${base}/budgets`, { amounts: [] })).body.data;
+      const series = (
+        await c.post(`${base}/recurring`, {
+          accountId,
+          name: tag,
+          kind: 'bill',
+          match: { direction: 'out' },
+          schedule: { unit: 'month', every: 1, days: [3], anchor: '2026-01-03', weekend: 'as_is' },
+        })
+      ).body.data;
       return {
         ruleId: rule.id,
+        seriesId: series.id,
         splitRuleId: splitRule.id,
         budgetId: budget.id,
         transactionId: txn.id,

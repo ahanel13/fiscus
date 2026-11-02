@@ -40,6 +40,7 @@ describe('row-level security', () => {
     'import_batches',
     'import_profiles',
     'member_preferences',
+    'recurring_series',
     'rules',
     'settlements',
     'split_policies',
