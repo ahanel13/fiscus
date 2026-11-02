@@ -537,9 +537,12 @@ export function detectRecurring(g: DetectGroup, today: string): DetectedSeries |
   if (recent.length < (yearly ? 2 : 3)) return null;
   const cycle = cycleDays(schedule);
   const last = recent[recent.length - 1]!;
-  if (daysBetween(last.date, today) > cycle * 1.5 + 7) return null;
-  // Steady: most of its dates over the stretch were paid, within a few days.
   const slack = Math.min(7, Math.max(3, Math.round(cycle / 6)));
+  // Still coming: the date after its last payment hasn't gone by unpaid. One that's missed a
+  // payment has most likely ended (a cancelled subscription, an old job's paychecks).
+  const after = occurrences(schedule, addDays(last.date, slack + 1), addDays(today, cycle + 31))[0];
+  if (!after || addDays(after, slack + LATE_AFTER_DAYS) < today) return null;
+  // Steady: most of its dates over the stretch were paid, within a few days.
   const dates = occurrences(schedule, addDays(recent[0]!.date, -slack), addDays(last.date, slack));
   const paid = payOccurrences(dates, recent, slack);
   if (paid.length < (yearly ? 2 : 3) || paid.length / Math.max(1, dates.length) < 0.75) return null;

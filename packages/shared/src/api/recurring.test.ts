@@ -305,6 +305,20 @@ describe('detectRecurring', () => {
         '2027-03-01',
       ),
     ).toBeNull();
+    // Its Nov 24 payment never came: a week and a half later, it's ended.
+    expect(
+      detectRecurring(
+        group(monthly, () => 9_600),
+        '2026-12-05',
+      ),
+    ).toBeNull();
+  });
+
+  it('leaves out a yearly one that missed its year', () => {
+    const yearly = ['2023-03-03', '2024-03-04', '2025-03-03'];
+    const g = { ...group(yearly, () => 9_900), key: 'atlas', name: 'Atlas' };
+    expect(detectRecurring(g, '2026-11-12')).toBeNull();
+    expect(detectRecurring(g, '2025-11-12')).not.toBeNull();
   });
 
   it('leaves out spending that’s frequent but not steady', () => {

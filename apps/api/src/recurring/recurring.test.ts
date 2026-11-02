@@ -315,7 +315,8 @@ describe('recurring series', () => {
   });
 
   it('finds what repeats, leaves out what’s already a series, and remembers Not recurring', async () => {
-    for (const back of [4, 3, 2, 1]) {
+    // Through this month's, once it's passed: a missed one would mean it had ended.
+    for (const back of [4, 3, 2, 1, 0].filter((b) => `${monthsAgo(b)}-18` <= today)) {
       await A.post(url('/transactions'), {
         accountId: joint,
         date: `${monthsAgo(back)}-18`,
@@ -327,7 +328,8 @@ describe('recurring series', () => {
     const found = async () =>
       (await A.get(url('/recurring/suggestions'))).body.data as DetectedSeries[];
     const mobile = (await found()).find((s) => s.name === 'Northwind Mobile')!;
-    expect(mobile).toMatchObject({ kind: 'bill', seenCount: 4 });
+    expect(mobile.kind).toBe('bill');
+    expect(mobile.seenCount).toBeGreaterThanOrEqual(4);
     expect(mobile.draft.schedule).toMatchObject({ unit: 'month', every: 1, days: [18] });
     // The paychecks are already a series.
     expect((await found()).some((s) => s.name === 'Brightline Labs payroll')).toBe(false);

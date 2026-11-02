@@ -247,7 +247,7 @@ export function RecurringDialog({
   });
   const remove = useMutation({
     mutationFn: () => api('DELETE', `/api/v1/households/${householdId}/recurring/${series!.id}`),
-    onSuccess: () => done(`${form.name.trim()} is no longer recurring.`),
+    onSuccess: () => done(`${form.name.trim()} is removed. Its transactions stay as they are.`),
     onError: fail,
   });
   const p = preview.data;
@@ -458,7 +458,7 @@ export function RecurringDialog({
                 isDisabled={remove.isPending}
                 onPress={() => remove.mutate()}
               >
-                Not recurring
+                Remove
               </Button>
               <Button
                 variant="secondary"
