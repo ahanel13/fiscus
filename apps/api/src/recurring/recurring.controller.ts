@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
   createRecurringSchema,
+  type DetectedSeries,
   markOccurrenceSchema,
   recurringDraftSchema,
   type RecurringMonth,
@@ -36,6 +37,11 @@ import { RecurringService } from './recurring.service.js';
 const suggestQuery = z.object({ transactionId: z.uuid() });
 const monthQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) });
 const dueParam = z.iso.date();
+const dismissSchema = z.object({
+  accountId: z.uuid(),
+  direction: z.enum(['in', 'out']),
+  key: z.string().min(1).max(200),
+});
 
 /**
  * Recurring series (REC-01–03): everyone reads the series on accounts whose transactions they
@@ -58,6 +64,24 @@ export class RecurringController {
     @Query(new ZodPipe(monthQuery)) query: z.infer<typeof monthQuery>,
   ): Promise<{ data: RecurringMonth }> {
     return { data: await this.recurring.month(ctx, query.month) };
+  }
+
+  /** What looks recurring in your history, to confirm or dismiss (§2). */
+  @Get('suggestions')
+  @HouseholdRoles('owner', 'member')
+  async suggestions(@Household() ctx: HouseholdContext): Promise<{ data: DetectedSeries[] }> {
+    return { data: await this.recurring.suggestions(ctx) };
+  }
+
+  /** "Not recurring": these payments aren't suggested again. */
+  @Post('suggestions/dismiss')
+  @HouseholdRoles('owner', 'member')
+  @HttpCode(204)
+  async dismiss(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(dismissSchema)) body: z.infer<typeof dismissSchema>,
+  ): Promise<void> {
+    await this.recurring.dismiss(ctx, body);
   }
 
   /** A starting point for Make recurring, from one transaction. */

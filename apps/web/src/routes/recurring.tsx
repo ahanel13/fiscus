@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  type DetectedSeries,
   describeSchedule,
   type RecurringKind,
   type RecurringMonth,
@@ -31,6 +32,8 @@ import {
   Radio,
   RadioGroup,
   SegmentedControl,
+  Select,
+  SelectItem,
   Skeleton,
   toast,
   useToday,
@@ -41,12 +44,12 @@ import { SMALL, useMediaQuery } from '../lib/media.js';
 // first, as a list or a calendar, and every series under All. Paid and late are worked out from
 // the transactions; someone can say a date was paid another way, or skipped (D12).
 
-type Tab = 'upcoming' | 'calendar' | 'all';
-const TABS = [
+type Tab = 'upcoming' | 'calendar' | 'all' | 'review';
+const TABS: readonly { value: Exclude<Tab, 'review'>; label: string }[] = [
   { value: 'upcoming', label: 'Upcoming' },
   { value: 'calendar', label: 'Calendar' },
   { value: 'all', label: 'All' },
-] as const;
+];
 
 const SECTIONS: { kind: RecurringKind; title: string }[] = [
   { kind: 'income', title: 'Income' },
@@ -80,10 +83,23 @@ export function RecurringPage() {
   const household = useSuspenseQuery(householdQuery(householdId)).data;
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const today = useToday();
-  const tab: Tab = search.tab === 'calendar' || search.tab === 'all' ? search.tab : 'upcoming';
+  const tab: Tab =
+    search.tab === 'calendar' || search.tab === 'all' || search.tab === 'review'
+      ? search.tab
+      : 'upcoming';
   const series = useQuery(recurringQuery(householdId));
   const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
   const [editing, setEditing] = useState<RecurringSeries | null>(null);
+  // What Fiscus found (§2): for those who can make a series, not viewers.
+  const found = useQuery({
+    queryKey: ['households', householdId, 'recurring', 'suggestions'],
+    queryFn: async () =>
+      (await api<{ data: DetectedSeries[] }>('GET', `${base(householdId)}/recurring/suggestions`))
+        .data,
+    enabled: household.you.role !== 'viewer',
+    staleTime: 60_000,
+  });
+  const suggestions = found.data ?? [];
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? 'An account';
   const open = (seriesId: string | null) => {
     const s = series.data?.find((x) => x.id === seriesId);
@@ -103,8 +119,43 @@ export function RecurringPage() {
     <>
       <PageHeader title="Bills & recurring" showLens={false} members={members} />
       <div className="mx-auto max-w-4xl space-y-5 px-4 py-4 sm:py-6 md:px-8">
-        <SegmentedControl aria-label="Show" options={TABS} value={tab} onChange={go} />
-        {series.isPending ? (
+        {tab === 'review' ? (
+          <Button variant="ghost" size="sm" onPress={() => go('upcoming')}>
+            <ChevronLeft aria-hidden className="size-4" /> Back
+          </Button>
+        ) : (
+          <SegmentedControl aria-label="Show" options={TABS} value={tab} onChange={go} />
+        )}
+        {tab !== 'review' && suggestions.length ? (
+          <div className="flex items-center gap-3 rounded-xl border border-accent/40 bg-accent-soft px-4 py-3 text-sm text-accent-text">
+            <span className="min-w-0 flex-1">
+              <b>
+                Fiscus found {suggestions.length}{' '}
+                {suggestions.length === 1 ? 'payment' : 'payments'} that repeat.
+              </b>{' '}
+              <span className="hidden sm:inline">
+                {suggestions
+                  .slice(0, 3)
+                  .map((x) => x.name)
+                  .join(', ')}
+                {suggestions.length > 3 ? ', and more' : ''}.
+              </span>
+            </span>
+            <Button size="sm" onPress={() => go('review')}>
+              Review
+            </Button>
+          </div>
+        ) : null}
+        {tab === 'review' ? (
+          <Review
+            householdId={householdId}
+            suggestions={suggestions}
+            loading={found.isPending}
+            currency={household.baseCurrency}
+            accountName={accountName}
+            onDone={() => go('upcoming')}
+          />
+        ) : series.isPending ? (
           <LoadingRegion label="Loading recurring payments">
             <div className="space-y-3">
               <Skeleton className="h-20" />
@@ -794,5 +845,176 @@ function AllSeries({
         To add another, open one of its payments in Transactions and choose <b>Make recurring</b>.
       </p>
     </>
+  );
+}
+
+/**
+ * What Fiscus found in your history (§2, D5): each with its schedule, how often it's been seen and
+ * its amounts, to confirm (as a bill, a subscription, income or a transfer) or put away.
+ */
+function Review({
+  householdId,
+  suggestions,
+  loading,
+  currency,
+  accountName,
+  onDone,
+}: {
+  householdId: string;
+  currency: string;
+  suggestions: DetectedSeries[];
+  loading: boolean;
+  accountName: (id: string) => string;
+  onDone: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [kinds, setKinds] = useState<Record<string, RecurringKind>>({});
+  const id = (x: DetectedSeries) => `${x.draft.accountId}|${x.draft.match.direction}|${x.key}`;
+  const kindOf = (x: DetectedSeries) => kinds[id(x)] ?? x.kind;
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: ['households', householdId, 'recurring'] });
+  const fail = (e: unknown) =>
+    toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' });
+  const confirm = useMutation({
+    mutationFn: async (list: DetectedSeries[]) => {
+      for (const x of list) {
+        await api('POST', `${base(householdId)}/recurring`, {
+          body: { ...x.draft, name: x.name, kind: kindOf(x) },
+        });
+      }
+      return list.length;
+    },
+    onSuccess: async (n) => {
+      await refresh();
+      toast(n === 1 ? 'It’s recurring now.' : `${n} are recurring now.`);
+      if (n === suggestions.length) onDone();
+    },
+    onError: async (e) => {
+      await refresh();
+      fail(e);
+    },
+  });
+  const dismiss = useMutation({
+    mutationFn: (x: DetectedSeries) =>
+      api('POST', `${base(householdId)}/recurring/suggestions/dismiss`, {
+        body: { accountId: x.draft.accountId, direction: x.draft.match.direction, key: x.key },
+      }),
+    onSuccess: () => refresh(),
+    onError: fail,
+  });
+  if (loading) return <Skeleton className="h-64" />;
+  if (suggestions.length === 0) {
+    return (
+      <EmptyState icon={Calendar} title="Nothing more to review">
+        <p>Everything that repeats in your history is a series, or you said it isn’t.</p>
+      </EmptyState>
+    );
+  }
+  const busy = confirm.isPending || dismiss.isPending;
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="max-w-xl">
+          <h2 className="text-lg font-semibold">Review what Fiscus found</h2>
+          <p className="text-sm text-muted">
+            Payments that came at a steady pace, at least three times, and are still coming. Confirm
+            one to see it coming; what you don’t confirm stays a plain transaction.
+          </p>
+        </div>
+        <Button isDisabled={busy} onPress={() => confirm.mutate(suggestions)}>
+          Confirm all {suggestions.length}
+        </Button>
+      </div>
+      <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+        {suggestions.map((x) => {
+          const sizes = x.amounts.map(Math.abs);
+          const top = Math.max(...sizes, 1);
+          const lo = Math.min(...sizes);
+          const hi = Math.max(...sizes);
+          return (
+            <li key={id(x)} className="space-y-3 px-4 py-3">
+              <div className="flex items-start gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{x.name}</p>
+                  <p className="text-xs text-muted">
+                    {describeSchedule(x.draft.schedule)}
+                    {x.next ? ` · next ${fmt(x.next, { month: 'short', day: 'numeric' })}` : ''}
+                  </p>
+                  <p className="text-xs text-muted">
+                    Seen {x.seenCount} times since{' '}
+                    {fmt(x.since, { month: 'short', year: 'numeric' })} ·{' '}
+                    {accountName(x.draft.accountId)}
+                  </p>
+                </div>
+                <span className="hidden h-6 shrink-0 items-end gap-0.5 sm:flex" aria-hidden>
+                  {sizes.map((a, i) => (
+                    <span
+                      key={i}
+                      className={clsx(
+                        'w-1.5 rounded-sm',
+                        i === sizes.length - 1 ? 'bg-accent' : 'bg-border-strong',
+                      )}
+                      style={{ height: `${Math.max(15, (a / top) * 100)}%` }}
+                    />
+                  ))}
+                </span>
+                <span
+                  className={clsx(
+                    'shrink-0 text-right text-sm font-medium',
+                    x.draft.match.direction === 'in' && 'text-positive',
+                  )}
+                >
+                  {hi - lo <= lo * 0.1 ? (
+                    <>
+                      <span className="text-xs font-normal text-muted">about </span>
+                      <Amount
+                        minor={Math.round((lo + hi) / 2)}
+                        currency={currency}
+                        kind="balance"
+                        whole
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Amount minor={lo} currency={currency} kind="balance" whole />–
+                      <Amount minor={hi} currency={currency} kind="balance" whole />
+                    </>
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 sm:justify-end">
+                <Select
+                  aria-label={`What ${x.name} is`}
+                  className="min-w-0 flex-1 sm:w-36 sm:flex-none"
+                  value={kindOf(x)}
+                  onChange={(v) => setKinds({ ...kinds, [id(x)]: v as RecurringKind })}
+                >
+                  {SECTIONS.map(({ kind, title }) => (
+                    <SelectItem key={kind} id={kind}>
+                      {title.replace(/s$/, '')}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <Button size="sm" isDisabled={busy} onPress={() => confirm.mutate([x])}>
+                  Confirm
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  isDisabled={busy}
+                  onPress={() => dismiss.mutate(x)}
+                >
+                  Not recurring
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="px-1 text-xs text-muted">
+        Not shown: payments that stopped, and spending that’s frequent but not steady, like
+        groceries. You can still make any transaction recurring yourself.
+      </p>
+    </div>
   );
 }

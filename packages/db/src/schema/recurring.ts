@@ -112,3 +112,33 @@ export const recurringMarks = pgTable(
     ),
   ],
 );
+
+/**
+ * Payments someone said aren't recurring (D5): one account, one direction, one name. Detection
+ * doesn't suggest them again. Row-level security: migration 0072.
+ */
+export const recurringDismissals = pgTable(
+  'recurring_dismissals',
+  {
+    householdId: uuid().notNull(),
+    accountId: uuid().notNull(),
+    direction: text().notNull(),
+    /** The name, cleaned up as detection groups it. */
+    key: text().notNull(),
+    createdByMemberId: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.direction, t.key] }),
+    foreignKey({
+      columns: [t.householdId, t.accountId],
+      foreignColumns: [accounts.householdId, accounts.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.createdByMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    check('recurring_dismissals_direction', sql`${t.direction} IN ('in', 'out')`),
+    check('recurring_dismissals_key', sql`length(${t.key}) BETWEEN 1 AND 200`),
+  ],
+);
