@@ -190,7 +190,9 @@ The provider interface these tables serve, and the conformance suite every adapt
 | last_synced_at, next_sync_at | timestamptz null | `next_sync_at` is when the worker next syncs it; null = never |
 | lease_until | timestamptz null | Held by a worker until then (`fiscus_claim_due_connections`) |
 | historical_complete | bool | The provider says all older history has arrived |
-| webhook_enabled, new_accounts_available | bool | Plaid (#82, #84) |
+| webhook_enabled | bool | Plaid (#82, #84) |
+| new_accounts_available | bool | A sync saw an account the bank offers that isn't tracked and isn't in known_account_ids: its owner is asked to choose (bank-sync D19) |
+| known_account_ids | text[] | The provider's ids of every account its owner chose about, tracked or not; set by confirming |
 | disconnect_requested | bool | Disconnected, and the worker still has to end it at the provider and delete its secret (D14) |
 | sync_cursor | text null | Plaid `/transactions/sync` cursor |
 | replaces_connection_id | uuid null | The connection this one moves to other Plaid keys (#83, D15): confirming it takes over that one's accounts and ends it. Same household (composite foreign key) |
