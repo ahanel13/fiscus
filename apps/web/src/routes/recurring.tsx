@@ -11,7 +11,7 @@ import {
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { Calendar, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { accountsQuery, householdQuery, membersQuery, recurringQuery } from '../api/queries.js';
@@ -869,6 +869,7 @@ function Review({
 }) {
   const queryClient = useQueryClient();
   const [kinds, setKinds] = useState<Record<string, RecurringKind>>({});
+  const [editing, setEditing] = useState<DetectedSeries | null>(null);
   const id = (x: DetectedSeries) => `${x.draft.accountId}|${x.draft.match.direction}|${x.key}`;
   const kindOf = (x: DetectedSeries) => kinds[id(x)] ?? x.kind;
   const refresh = () =>
@@ -995,6 +996,16 @@ function Review({
                     </SelectItem>
                   ))}
                 </Select>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  isDisabled={busy}
+                  aria-label={`Edit ${x.name} before confirming`}
+                  onPress={() => setEditing(x)}
+                >
+                  <Pencil aria-hidden className="size-4" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
                 <Button size="sm" isDisabled={busy} onPress={() => confirm.mutate([x])}>
                   Confirm
                 </Button>
@@ -1015,6 +1026,16 @@ function Review({
         Not shown: payments that stopped, and spending that’s frequent but not steady, like
         groceries. You can still make any transaction recurring yourself.
       </p>
+      {editing ? (
+        // The same dialog as Make recurring: change anything, and saving confirms it.
+        <RecurringDialog
+          householdId={householdId}
+          initial={{ name: editing.name, kind: kindOf(editing), draft: editing.draft }}
+          accountName={accountName(editing.draft.accountId)}
+          currency={currency}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
     </div>
   );
 }
