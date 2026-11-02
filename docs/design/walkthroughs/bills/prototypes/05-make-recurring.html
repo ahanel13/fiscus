@@ -1,0 +1,105 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Make recurring · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="on">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a class="">Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header"><h1>Transactions</h1></div>
+        <div class="content">
+          <div class="list">
+            <div class="item">
+              <div class="when small muted">Nov 6</div>
+              <div class="grow">
+                Brightline Labs payroll
+                <div class="small muted">Paychecks · Everyday checking</div>
+              </div>
+              <div class="amount pos" style="width: 120px">+$2,412.36</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Nov 5</div>
+              <div class="grow">
+                Costco
+                <div class="small muted">Groceries · Joint card</div>
+              </div>
+              <div class="amount" style="width: 120px">−$412.18</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Nov 4</div>
+              <div class="grow">
+                Shell
+                <div class="small muted">Gas · Joint card</div>
+              </div>
+              <div class="amount" style="width: 120px">−$48.20</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="overlay">
+      <div class="dialog stack" style="max-width: 600px">
+        <h2>Make recurring: Brightline Labs payroll</h2>
+        <div class="muted">From the transaction on Nov 6, +$2,412.36 into Everyday checking.</div>
+        <div class="grid2" style="gap: 12px">
+          <label class="field"
+            ><span>What it is</span><span class="select">Income: paycheck</span></label
+          >
+          <label class="field"><span>For</span><span class="select">Alex</span></label>
+          <label class="field"
+            ><span>Repeats</span><span class="select">Every 2 weeks, on Friday</span></label
+          >
+          <label class="field"
+            ><span>On a weekend</span><span class="select">The Friday before</span></label
+          >
+          <label class="field"
+            ><span>Expected amount</span><span class="input amount">$2,412.36</span></label
+          >
+          <label class="field"
+            ><span>Counts as paid within</span><span class="select">$25 and 3 days</span></label
+          >
+        </div>
+        <div class="card" style="padding: 12px 16px; background: var(--bg)">
+          <div class="small muted">Next six</div>
+          <div>Nov 20 · Dec 4 · Dec 18 · Jan 1 · Jan 15 · Jan 29</div>
+          <div class="small muted">January has three paychecks.</div>
+        </div>
+        <div>
+          <span class="check on"></span><b>Link the 48 past paychecks that match</b>
+          <div class="small muted" style="margin-left: 22px">
+            Since Jan 2025. They keep their categories and notes.
+          </div>
+        </div>
+        <div>
+          <span class="check on"></span><b>Expect it in your budget</b>
+          <div class="small muted" style="margin-left: 22px">
+            Paychecks, in your budget, then expects $4,824.72 in November and $7,237.08 in January,
+            not the same amount every month. You can still type over it.
+          </div>
+        </div>
+        <div class="actions">
+          <span class="btn secondary">Cancel</span><span class="btn">Make recurring</span>
+        </div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>

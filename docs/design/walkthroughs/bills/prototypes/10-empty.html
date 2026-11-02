@@ -1,0 +1,73 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bills & recurring, empty · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="on">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a class="">Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Bills &amp; recurring</h1>
+          <div class="row">
+            <span class="seg"
+              ><span class="on">Upcoming</span><span class="">Calendar</span
+              ><span class="">All</span></span
+            >
+            <span class="seg"><span class="on">Ours</span><span>Mine</span></span>
+            <span class="btn">+ Add recurring</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="card" style="text-align: center; padding: 40px 32px">
+            <h2 style="font-size: 18px">Nothing repeating yet</h2>
+            <p class="muted" style="max-width: 520px; margin: 8px auto 16px">
+              Fiscus looks for bills, subscriptions and paychecks once there are 3 months of
+              transactions: you have 5 weeks so far. Import older history, or add one yourself.
+            </p>
+            <div class="row" style="justify-content: center">
+              <span class="btn secondary">Import history</span
+              ><span class="btn">+ Add recurring</span>
+            </div>
+          </div>
+          <div class="list">
+            <div class="sect">FROM YOUR BANK</div>
+            <div class="item">
+              <div class="when small muted">Sat<b>Nov 21</b></div>
+              <div class="logo" style="background: #1f5f8b">H</div>
+              <div class="grow">
+                <div style="font-weight: 500">
+                  Joint card statement <span class="badge">From the bank</span>
+                </div>
+                <div class="small muted">Harbor CU ••3301 · minimum $40.00</div>
+              </div>
+              <span class="av" title="Alex">A</span>
+              <div class="amount" style="width: 130px; font-weight: 500">$1,807.22</div>
+            </div>
+          </div>
+          <div class="small muted">
+            Card due dates come from the bank, so they show from the first sync.
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>

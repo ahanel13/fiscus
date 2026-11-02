@@ -1,0 +1,182 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notification settings · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a class="">Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header"><h1>Settings</h1></div>
+        <div class="content" style="max-width: 900px">
+          <div class="steps">
+            <span>General</span><span>Categories</span><span>Rules</span
+            ><span class="on">Notifications</span><span>Security</span>
+          </div>
+          <div class="card stack">
+            <h2>Where to send them</h2>
+            <div class="small muted">Yours only: everyone in the household chooses their own.</div>
+            <div class="list">
+              <div class="item">
+                <div class="grow">
+                  <b>In Fiscus</b>
+                  <div class="small muted">The bell, at the top of every page</div>
+                </div>
+                <span class="badge ok">Always on</span>
+              </div>
+              <div class="item">
+                <div class="grow">
+                  <b>Email</b>
+                  <div class="small muted">alex@rivera.test · from the server’s mail settings</div>
+                </div>
+                <span class="select" style="width: 150px">Full detail</span
+                ><span class="btn secondary sm">Send a test</span>
+              </div>
+              <div class="item">
+                <div class="grow">
+                  <b>Phone, through ntfy</b>
+                  <div class="small muted">ntfy.sh or your own server · topic rivera-alex-…</div>
+                </div>
+                <span class="select" style="width: 150px">Summary</span
+                ><span class="btn secondary sm">Send a test</span>
+              </div>
+              <div class="item">
+                <div class="grow">
+                  <b>Gotify, or a webhook</b>
+                  <div class="small muted">For your own server or home automation</div>
+                </div>
+                <span class="btn secondary sm">Set up</span>
+              </div>
+            </div>
+            <div class="small muted">
+              <b>Full detail</b>: “$412.18 at Costco on Joint card”. <b>Summary</b>: “3 new
+              transactions, 1 over budget”. <b>Minimal</b>: “You have new activity in Fiscus”. Email
+              and push services can read what they carry.
+            </div>
+          </div>
+          <div class="card">
+            <h2>What to send</h2>
+            <table class="tbl matrix">
+              <tr>
+                <th></th>
+                <th class="c">In Fiscus</th>
+                <th class="c">Email</th>
+                <th class="c">Phone</th>
+              </tr>
+              <tr>
+                <td>
+                  <b>A bill is due</b>
+                  <div class="small muted">3 days before · bills you look after</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>A bill or paycheck is late</b>
+                  <div class="small muted">2 days after it was expected</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>A card statement is due</b>
+                  <div class="small muted">5 days before · cards you own</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>A big transaction</b>
+                  <div class="small muted">Over $500 · accounts you see</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check"></span></td>
+                <td class="c"><span class="check on"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>Low balance</b>
+                  <div class="small muted">
+                    Everyday checking under $1,000, now or in the next 2 weeks
+                  </div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>A budget category is nearly spent</b>
+                  <div class="small muted">At 90% · your budgets</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check"></span></td>
+                <td class="c"><span class="check"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>A new subscription, or a price went up</b>
+                  <div class="small muted">Found in your transactions</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check"></span></td>
+                <td class="c"><span class="check"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>A bank connection needs you</b>
+                  <div class="small muted">Connections you linked</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>Transactions to review</b>
+                  <div class="small muted">Once a day, if there are any</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check"></span></td>
+                <td class="c"><span class="check"></span></td>
+              </tr>
+              <tr>
+                <td>
+                  <b>Weekly recap</b>
+                  <div class="small muted">Mondays at 8 am · on the dashboard, and by email</div>
+                </td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check on"></span></td>
+                <td class="c"><span class="check"></span></td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>
