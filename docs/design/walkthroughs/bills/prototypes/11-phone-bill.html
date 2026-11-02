@@ -1,0 +1,157 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lakeside Power (phone) · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="phone">
+      <div class="topbar"><span>‹ Lakeside Power</span><span class="muted">⋯</span></div>
+      <div class="content stack">
+        <div class="muted small">
+          Bill · Utilities · monthly, around the 24th · Everyday checking (Ours)
+        </div>
+        <div class="card" style="padding: 12px 14px">
+          <div class="small muted">Next · Tue, Nov 24</div>
+          <div class="big">about $131</div>
+          <div class="small muted">Last November $129.40; the last 3 months averaged $116.52.</div>
+          <div class="hist" style="grid-template-columns: repeat(12, 1fr); margin-top: 10px">
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 96%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">D</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 100%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">J</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 94%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">F</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 80%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">M</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 68%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">A</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 65%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">M</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 74%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">J</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 86%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">J</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 90%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">A</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 76%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">S</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i class="s" style="width: 8px; height: 70%"></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">O</span>
+            </div>
+            <div>
+              <div class="cols2" style="height: 44px">
+                <i
+                  class="s"
+                  style="
+                    width: 8px;
+                    height: 89%;
+                    background: transparent;
+                    border: 1.5px dashed var(--accent);
+                  "
+                ></i>
+              </div>
+              <span class="small muted" style="font-size: 9px">N</span>
+            </div>
+          </div>
+        </div>
+        <div class="list">
+          <div class="item">
+            <div class="grow">
+              <div class="small muted">Who looks after it</div>
+              <b>Sam</b>
+            </div>
+            <span class="muted">›</span>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <div class="small muted">Matches</div>
+              Payments to Lakeside Power from Everyday checking, any amount, a week either side
+            </div>
+            <span class="muted">›</span>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <div class="small muted">Reminders</div>
+              Sam’s: 3 days before, and if it’s late
+            </div>
+          </div>
+        </div>
+        <h2 style="margin-top: 16px">Payments</h2>
+        <div class="list">
+          <div class="item">
+            <div class="grow">Oct 24 <span class="small muted">· paid Oct 23</span></div>
+            <div class="amount">$104.12</div>
+          </div>
+          <div class="item">
+            <div class="grow">Sep 24 <span class="small muted">· paid Sep 24</span></div>
+            <div class="amount">$112.40</div>
+          </div>
+          <div class="item">
+            <div class="grow">Aug 24 <span class="small muted">· paid Aug 26</span></div>
+            <div class="amount">$133.05</div>
+          </div>
+        </div>
+        <div class="grid2" style="gap: 8px">
+          <span class="btn secondary" style="justify-content: center">Edit</span>
+          <span class="btn secondary" style="justify-content: center">It’s ended</span>
+        </div>
+        <div style="height: 70px"></div>
+      </div>
+      <div class="tabs">
+        <div class="">Dashboard</div>
+        <div class="">Transactions</div>
+        <div class="">Budget</div>
+        <div class="">Accounts</div>
+        <div class="on">More</div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>

@@ -1,0 +1,86 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Make recurring (phone) · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="phone">
+      <div class="topbar">
+        <span>✕ &nbsp;Make recurring</span
+        ><span style="color: var(--accent); font-weight: 650">Save</span>
+      </div>
+      <div class="content stack">
+        <div class="muted small">
+          From Brightline Labs payroll, Nov 6, +$2,412.36 into Everyday checking.
+        </div>
+        <div class="list">
+          <div class="item">
+            <div class="grow">
+              <div class="small muted">What it is</div>
+              Income: paycheck
+            </div>
+            <span class="muted">›</span>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <div class="small muted">For</div>
+              Alex
+            </div>
+            <span class="muted">›</span>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <div class="small muted">Repeats</div>
+              Every 2 weeks, on Friday
+            </div>
+            <span class="muted">›</span>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <div class="small muted">On a weekend</div>
+              The Friday before
+            </div>
+            <span class="muted">›</span>
+          </div>
+        </div>
+        <div class="card stack" style="padding: 12px 14px">
+          <div class="small muted" style="font-weight: 600">MATCHES</div>
+          <div>Deposits into <b>Everyday checking</b></div>
+          <div>from <b>Brightline Labs payroll</b></div>
+          <div class="row">
+            <span class="select" style="width: 110px">Between</span
+            ><span class="input amount" style="width: 84px">$2,300</span
+            ><span class="input amount" style="width: 84px">$2,700</span>
+          </div>
+          <div class="small muted">Expects about $2,412.36, from the last six.</div>
+        </div>
+        <div class="card" style="padding: 10px 14px; background: var(--bg)">
+          <div class="small muted">Next</div>
+          Nov 20 · Dec 4 · Dec 18 · Jan 1 · Jan 15 · Jan 29
+          <div class="small muted">January has three paychecks.</div>
+        </div>
+        <div class="row spread">
+          <span>Link 48 past paychecks</span><span class="toggle on"></span>
+        </div>
+        <div class="row spread">
+          <span>Expect it in your budget</span><span class="toggle on"></span>
+        </div>
+        <div class="small muted">
+          Paychecks then expects $4,824.72 in November and $7,237.08 in January.
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="">Dashboard</div>
+        <div class="on">Transactions</div>
+        <div class="">Budget</div>
+        <div class="">Accounts</div>
+        <div class="">More</div>
+      </div>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>

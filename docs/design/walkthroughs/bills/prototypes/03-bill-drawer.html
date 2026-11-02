@@ -1,0 +1,323 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lakeside Power · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="on">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a class="">Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Bills &amp; recurring</h1>
+          <div class="row">
+            <span class="seg"
+              ><span class="on">Upcoming</span><span class="">Calendar</span
+              ><span class="">All</span></span
+            >
+            <span class="seg"><span class="on">Ours</span><span>Mine</span></span>
+            <span class="btn secondary">+ Add recurring</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="summary">
+            <div>
+              <div class="small muted">Bills in November</div>
+              <div class="big">$2,474.69</div>
+              <div class="small muted">
+                $2,140.00 paid · <b style="color: var(--fg)">$334.69 to pay</b>
+              </div>
+            </div>
+            <div>
+              <div class="small muted">Income expected</div>
+              <div class="big pos">+$8,784.72</div>
+              <div class="small muted">$2,412.36 in so far</div>
+            </div>
+            <div>
+              <div class="small muted">Card statements</div>
+              <div class="big">$1,807.22</div>
+              <div class="small muted">Joint card, due Nov 21</div>
+            </div>
+            <div>
+              <div class="small muted">Subscriptions</div>
+              <div class="big">
+                $54.49<span class="small muted" style="font-weight: 400"> a month</span>
+              </div>
+              <div class="small muted">2 of them · <span class="link">See all</span></div>
+            </div>
+          </div>
+          <div class="list">
+            <div class="sect">LATE</div>
+            <div class="item">
+              <div class="when small muted">Mon<b>Nov 9</b></div>
+              <div class="logo" style="background: #2a7fa8">C</div>
+              <div class="grow">
+                <div style="font-weight: 500">
+                  Cascade Water <span class="badge bad">3 days late</span>
+                </div>
+                <div class="small muted">Every 2 months · Everyday checking · not seen yet</div>
+              </div>
+              <span class="btn secondary sm">Mark paid</span
+              ><span class="av sam" title="Sam">S</span>
+              <div class="amount" style="width: 130px; font-weight: 500">about $64.20</div>
+            </div>
+            <div class="sect">THIS WEEK</div>
+            <div class="item">
+              <div class="when small muted">Fri<b>Nov 13</b></div>
+              <div class="logo" style="background: #6b7f2a">C</div>
+              <div class="grow">
+                <div style="font-weight: 500">County Schools payroll</div>
+                <div class="small muted">
+                  Sam’s paycheck · twice a month · the 15th is a Sunday, so Friday
+                </div>
+              </div>
+              <span class="av sam" title="Sam">S</span>
+              <div class="amount pos" style="width: 130px; font-weight: 500">+$1,980.00</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Sat<b>Nov 14</b></div>
+              <div class="logo" style="background: #c0392b">S</div>
+              <div class="grow">
+                <div style="font-weight: 500">Streamly <span class="badge">Subscription</span></div>
+                <div class="small muted">Monthly · Joint card</div>
+              </div>
+              <span class="av" title="Alex">A</span>
+              <div class="amount" style="width: 130px; font-weight: 500">$15.49</div>
+            </div>
+            <div class="sect">LATER IN NOVEMBER</div>
+            <div class="item">
+              <div class="when small muted">Wed<b>Nov 18</b></div>
+              <div class="logo" style="background: #4b5bb3">N</div>
+              <div class="grow">
+                <div style="font-weight: 500">
+                  Northwind Mobile <span class="badge warn">Up $5.00 since June</span>
+                </div>
+                <div class="small muted">Monthly · Joint card</div>
+              </div>
+              <span class="av" title="Alex">A</span>
+              <div class="amount" style="width: 130px; font-weight: 500">$85.00</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Fri<b>Nov 20</b></div>
+              <div class="logo" style="background: #16806a">B</div>
+              <div class="grow">
+                <div style="font-weight: 500">Brightline Labs payroll</div>
+                <div class="small muted">Alex’s paycheck · every 2 weeks</div>
+              </div>
+              <span class="av" title="Alex">A</span>
+              <div class="amount pos" style="width: 130px; font-weight: 500">+$2,412.36</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Sat<b>Nov 21</b></div>
+              <div class="logo" style="background: #1f5f8b">H</div>
+              <div class="grow">
+                <div style="font-weight: 500">
+                  Joint card statement <span class="badge">From the bank</span>
+                </div>
+                <div class="small muted">Harbor CU ••3301 · minimum $40.00</div>
+              </div>
+              <span class="av" title="Alex">A</span>
+              <div class="amount" style="width: 130px; font-weight: 500">$1,807.22</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Tue<b>Nov 24</b></div>
+              <div class="logo" style="background: #c98a12">L</div>
+              <div class="grow">
+                <div style="font-weight: 500">Lakeside Power</div>
+                <div class="small muted">Monthly · Everyday checking · varies, $96–$148</div>
+              </div>
+              <span class="av sam" title="Sam">S</span>
+              <div class="amount" style="width: 130px; font-weight: 500">about $131</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Sat<b>Nov 28</b></div>
+              <div class="logo" style="background: #a3416b">P</div>
+              <div class="grow">
+                <div style="font-weight: 500">
+                  Peak Fitness <span class="badge">Subscription</span>
+                </div>
+                <div class="small muted">Monthly · Joint card · for Alex</div>
+              </div>
+              <span class="av" title="Alex">A</span>
+              <div class="amount" style="width: 130px; font-weight: 500">$39.00</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Mon<b>Nov 30</b></div>
+              <div class="logo" style="background: #6b7f2a">C</div>
+              <div class="grow">
+                <div style="font-weight: 500">County Schools payroll</div>
+                <div class="small muted">Sam’s paycheck · twice a month</div>
+              </div>
+              <span class="av sam" title="Sam">S</span>
+              <div class="amount pos" style="width: 130px; font-weight: 500">+$1,980.00</div>
+            </div>
+            <div class="sect">PAID IN NOVEMBER · 2</div>
+            <div class="item">
+              <div class="when small muted">Sun<b>Nov 1</b></div>
+              <div class="logo" style="background: #1f5f8b">H</div>
+              <div class="grow">
+                <div style="font-weight: 500">
+                  Mortgage <span class="badge ok">Paid Nov 2</span>
+                </div>
+                <div class="small muted">Monthly · Everyday checking</div>
+              </div>
+              <span class="av" title="Alex">A</span>
+              <div class="amount muted" style="width: 130px; font-weight: 500">$2,140.00</div>
+            </div>
+            <div class="item">
+              <div class="when small muted">Fri<b>Nov 6</b></div>
+              <div class="logo" style="background: #16806a">B</div>
+              <div class="grow">
+                <div style="font-weight: 500">
+                  Brightline Labs payroll <span class="badge ok">Received Nov 6</span>
+                </div>
+                <div class="small muted">Alex’s paycheck · every 2 weeks</div>
+              </div>
+              <span class="av" title="Alex">A</span>
+              <div class="amount muted" style="width: 130px; font-weight: 500">+$2,412.36</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="overlay" style="place-items: stretch"></div>
+    <div class="drawer stack" style="width: 480px">
+      <div class="row spread">
+        <div class="row">
+          <div class="logo" style="background: #c98a12">L</div>
+          <h2 style="font-size: 20px; margin: 0">Lakeside Power</h2>
+        </div>
+        <span class="muted">✕</span>
+      </div>
+      <div class="muted">
+        Bill · Utilities · monthly, around the 24th · paid from Everyday checking (Ours)
+      </div>
+      <div class="card" style="padding: 12px 16px">
+        <div class="row spread">
+          <div>
+            <div class="small muted">Next · Tue, Nov 24</div>
+            <div class="big">about $131</div>
+          </div>
+          <div class="small muted" style="text-align: right; max-width: 220px">
+            Last November it was $129.40; the last three months averaged $116.52, and winter costs
+            more.
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2>The last 12 months</h2>
+        <div class="hist" style="grid-template-columns: repeat(12, 1fr)">
+          <div>
+            <div class="cols2"><i class="s" style="height: 96%"></i></div>
+            <span class="small muted">Dec</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 100%"></i></div>
+            <span class="small muted">Jan</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 94%"></i></div>
+            <span class="small muted">Feb</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 80%"></i></div>
+            <span class="small muted">Mar</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 68%"></i></div>
+            <span class="small muted">Apr</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 65%"></i></div>
+            <span class="small muted">May</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 74%"></i></div>
+            <span class="small muted">Jun</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 86%"></i></div>
+            <span class="small muted">Jul</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 90%"></i></div>
+            <span class="small muted">Aug</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 76%"></i></div>
+            <span class="small muted">Sep</span>
+          </div>
+          <div>
+            <div class="cols2"><i class="s" style="height: 70%"></i></div>
+            <span class="small muted">Oct</span>
+          </div>
+          <div>
+            <div class="cols2">
+              <i
+                class="s"
+                style="height: 89%; background: transparent; border: 1.5px dashed var(--accent)"
+              ></i>
+            </div>
+            <span class="small muted">Nov</span>
+          </div>
+        </div>
+      </div>
+      <div class="grid2" style="gap: 12px">
+        <label class="field"><span>Who looks after it</span><span class="select">Sam</span></label>
+        <label class="field"
+          ><span>Amount it matches</span><span class="select">Any amount</span></label
+        >
+      </div>
+      <div class="small muted" style="margin-top: 6px">
+        Sam gets the reminders, as set in Sam’s notifications: 3 days before, and if it’s late. Alex
+        sees it here too, since it’s paid from an account you both see.
+      </div>
+      <div>
+        <h2>Payments</h2>
+        <div class="list">
+          <div class="item">
+            <div class="grow">Oct 24 <span class="small muted">· paid Oct 23</span></div>
+            <span class="badge ok">Paid</span>
+            <div class="amount" style="width: 90px">$104.12</div>
+          </div>
+          <div class="item">
+            <div class="grow">Sep 24 <span class="small muted">· paid Sep 24</span></div>
+            <span class="badge ok">Paid</span>
+            <div class="amount" style="width: 90px">$112.40</div>
+          </div>
+          <div class="item">
+            <div class="grow">Aug 24 <span class="small muted">· paid Aug 26</span></div>
+            <span class="badge ok">Paid</span>
+            <div class="amount" style="width: 90px">$133.05</div>
+          </div>
+        </div>
+      </div>
+      <div class="small muted">
+        Matched when a payment to Lakeside Power leaves Everyday checking up to a week either side
+        of the 24th, whatever its amount.
+      </div>
+      <div class="row">
+        <span class="btn secondary sm">Edit schedule</span>
+        <span class="btn secondary sm">It’s ended</span>
+        <span class="btn ghost sm">Not recurring</span>
+      </div>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>

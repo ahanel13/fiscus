@@ -1,0 +1,207 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Review recurring · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="on">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a class="">Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Bills &amp; recurring</h1>
+          <div class="row">
+            <span class="seg"
+              ><span class="on">Upcoming</span><span class="">Calendar</span
+              ><span class="">All</span></span
+            >
+            <span class="seg"><span class="on">Ours</span><span>Mine</span></span>
+            <span class="btn secondary">+ Add recurring</span>
+          </div>
+        </div>
+        <div class="content" style="max-width: 1120px">
+          <div class="row spread">
+            <div>
+              <h2 style="font-size: 18px; margin: 0">Review what Fiscus found</h2>
+              <div class="muted">
+                Payments that came at a steady pace, at least 3 times, and are still coming. Confirm
+                one to see it coming and get reminders; anything you don’t confirm stays a plain
+                transaction.
+              </div>
+            </div>
+            <span class="btn">Confirm all 8</span>
+          </div>
+          <div class="list">
+            <div class="item">
+              <div class="logo" style="background: #16806a">B</div>
+              <div class="grow">
+                <div style="font-weight: 500">Brightline Labs payroll</div>
+                <div class="small muted">Every 2 weeks, on Fridays · next Nov 20</div>
+                <div class="small muted">Seen 48 times since Jan 2025 · Everyday checking</div>
+              </div>
+              <span class="spark" aria-hidden="true"
+                ><i style="height: 80%"></i><i style="height: 80%"></i><i style="height: 80%"></i
+                ><i style="height: 80%"></i><i style="height: 80%"></i><i style="height: 80%"></i
+                ><i style="height: 80%"></i><i style="height: 80%" class="now"></i
+              ></span>
+              <div class="amount pos" style="width: 120px; font-weight: 500">+$2,412.36</div>
+              <span class="select" style="width: 148px">Income: paycheck</span>
+              <span class="select" style="width: 112px">For Alex</span>
+              <span class="btn sm">Confirm</span><span class="btn ghost sm">Not recurring</span>
+            </div>
+            <div class="item">
+              <div class="logo" style="background: #6b7f2a">C</div>
+              <div class="grow">
+                <div style="font-weight: 500">County Schools payroll</div>
+                <div class="small muted">
+                  Twice a month, the 15th and the last day (the Friday before, on a weekend)
+                </div>
+                <div class="small muted">
+                  Seen 44 times since Jan 2025 · Everyday checking · raised in August
+                </div>
+              </div>
+              <span class="spark" aria-hidden="true"
+                ><i style="height: 74%"></i><i style="height: 74%"></i><i style="height: 74%"></i
+                ><i style="height: 74%"></i><i style="height: 80%"></i><i style="height: 80%"></i
+                ><i style="height: 80%"></i><i style="height: 80%" class="now"></i
+              ></span>
+              <div class="amount pos" style="width: 120px; font-weight: 500">+$1,980.00</div>
+              <span class="select" style="width: 148px">Income: paycheck</span>
+              <span class="select" style="width: 112px">For Sam</span>
+              <span class="btn sm">Confirm</span><span class="btn ghost sm">Not recurring</span>
+            </div>
+            <div class="item">
+              <div class="logo" style="background: #c98a12">L</div>
+              <div class="grow">
+                <div style="font-weight: 500">Lakeside Power</div>
+                <div class="small muted">Monthly, around the 24th · next Nov 24</div>
+                <div class="small muted">
+                  Seen 22 times · Everyday checking · varies with the season
+                </div>
+              </div>
+              <span class="spark" aria-hidden="true"
+                ><i style="height: 100%"></i><i style="height: 94%"></i><i style="height: 80%"></i
+                ><i style="height: 68%"></i><i style="height: 65%"></i><i style="height: 74%"></i
+                ><i style="height: 86%"></i><i style="height: 90%"></i><i style="height: 76%"></i
+                ><i style="height: 70%" class="now"></i
+              ></span>
+              <div class="amount" style="width: 120px; font-weight: 500">$96–$148</div>
+              <span class="select" style="width: 148px">Bill</span>
+              <span class="select" style="width: 112px">Sam</span>
+              <span class="btn sm">Confirm</span><span class="btn ghost sm">Not recurring</span>
+            </div>
+            <div class="item">
+              <div class="logo" style="background: #2a7fa8">C</div>
+              <div class="grow">
+                <div style="font-weight: 500">Cascade Water</div>
+                <div class="small muted">Every 2 months, around the 9th · last Sep 9</div>
+                <div class="small muted">Seen 11 times · Everyday checking</div>
+              </div>
+              <span class="spark" aria-hidden="true"
+                ><i style="height: 90%"></i><i style="height: 92%"></i><i style="height: 94%"></i
+                ><i style="height: 95%"></i><i style="height: 96%"></i
+                ><i style="height: 100%" class="now"></i
+              ></span>
+              <div class="amount" style="width: 120px; font-weight: 500">about $64</div>
+              <span class="select" style="width: 148px">Bill</span>
+              <span class="select" style="width: 112px">Sam</span>
+              <span class="btn sm">Confirm</span><span class="btn ghost sm">Not recurring</span>
+            </div>
+            <div class="item">
+              <div class="logo" style="background: #4b5bb3">N</div>
+              <div class="grow">
+                <div style="font-weight: 500">Northwind Mobile</div>
+                <div class="small muted">Monthly, on the 18th · next Nov 18</div>
+                <div class="small muted">
+                  Seen 22 times · Joint card ·
+                  <span style="color: var(--warning)">was $80.00 until June</span>
+                </div>
+              </div>
+              <span class="spark" aria-hidden="true"
+                ><i style="height: 94%"></i><i style="height: 94%"></i><i style="height: 94%"></i
+                ><i style="height: 94%"></i><i style="height: 100%"></i><i style="height: 100%"></i
+                ><i style="height: 100%"></i><i style="height: 100%" class="now"></i
+              ></span>
+              <div class="amount" style="width: 120px; font-weight: 500">$85.00</div>
+              <span class="select" style="width: 148px">Bill</span>
+              <span class="select" style="width: 112px">Alex</span>
+              <span class="btn sm">Confirm</span><span class="btn ghost sm">Not recurring</span>
+            </div>
+            <div class="item">
+              <div class="logo" style="background: #c0392b">S</div>
+              <div class="grow">
+                <div style="font-weight: 500">Streamly</div>
+                <div class="small muted">Monthly, on the 14th · next Nov 14</div>
+                <div class="small muted">Seen 22 times · Joint card · was $13.99 until March</div>
+              </div>
+              <span class="spark" aria-hidden="true"
+                ><i style="height: 90%"></i><i style="height: 90%"></i><i style="height: 90%"></i
+                ><i style="height: 90%"></i><i style="height: 100%"></i><i style="height: 100%"></i
+                ><i style="height: 100%"></i><i style="height: 100%" class="now"></i
+              ></span>
+              <div class="amount" style="width: 120px; font-weight: 500">$15.49</div>
+              <span class="select" style="width: 148px">Subscription</span>
+              <span class="select" style="width: 112px">Alex</span>
+              <span class="btn sm">Confirm</span><span class="btn ghost sm">Not recurring</span>
+            </div>
+            <div class="item">
+              <div class="logo" style="background: #5a6470">A</div>
+              <div class="grow">
+                <div style="font-weight: 500">Atlas Mutual</div>
+                <div class="small muted">Every 6 months, around the 3rd · next Mar 3, 2027</div>
+                <div class="small muted">Seen 4 times · Everyday checking</div>
+              </div>
+              <span class="spark" aria-hidden="true"
+                ><i style="height: 92%"></i><i style="height: 96%"></i><i style="height: 100%"></i
+                ><i style="height: 100%" class="now"></i
+              ></span>
+              <div class="amount" style="width: 120px; font-weight: 500">$612.00</div>
+              <span class="select" style="width: 148px">Bill</span>
+              <span class="select" style="width: 112px">Alex</span>
+              <span class="btn sm">Confirm</span><span class="btn ghost sm">Not recurring</span>
+            </div>
+            <div class="item">
+              <div class="logo" style="background: #1f5f8b">H</div>
+              <div class="grow">
+                <div style="font-weight: 500">To Holiday fund</div>
+                <div class="small muted">Monthly, on the 1st · next Dec 1</div>
+                <div class="small muted">Seen 14 times · from Everyday checking</div>
+              </div>
+              <span class="spark" aria-hidden="true"
+                ><i style="height: 100%"></i><i style="height: 100%"></i><i style="height: 100%"></i
+                ><i style="height: 100%"></i><i style="height: 100%"></i
+                ><i style="height: 100%" class="now"></i
+              ></span>
+              <div class="amount" style="width: 120px; font-weight: 500">$200.00</div>
+              <span class="select" style="width: 148px">Transfer</span>
+              <span class="select" style="width: 112px">Alex</span>
+              <span class="btn sm">Confirm</span><span class="btn ghost sm">Not recurring</span>
+            </div>
+          </div>
+          <div class="small muted">
+            Not shown: payments that stopped (the last one was more than two cycles ago), and
+            spending that’s frequent but not steady, like groceries. You can still make any
+            transaction recurring yourself.
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>

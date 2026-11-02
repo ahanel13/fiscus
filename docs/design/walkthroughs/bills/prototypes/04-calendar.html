@@ -1,0 +1,117 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bills & recurring calendar · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="on">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a class="">Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <h1>Bills &amp; recurring</h1>
+          <div class="row">
+            <span class="seg"
+              ><span class="">Upcoming</span><span class="on">Calendar</span
+              ><span class="">All</span></span
+            >
+            <span class="seg"><span class="on">Ours</span><span>Mine</span></span>
+            <span class="btn secondary">+ Add recurring</span>
+          </div>
+        </div>
+        <div class="content" style="max-width: 1040px">
+          <div class="row spread">
+            <span class="stepper">‹ <b>November 2026</b> ›</span>
+            <span class="small muted">
+              <span
+                class="ev in"
+                style="
+                  display: inline;
+                  padding: 1px 6px;
+                  border-radius: 4px;
+                  background: var(--accent-soft);
+                  color: var(--accent-text);
+                "
+                >Income</span
+              >
+              &nbsp;<span
+                style="
+                  padding: 1px 6px;
+                  border-radius: 4px;
+                  background: var(--danger-soft);
+                  color: var(--danger);
+                "
+                >Late</span
+              >
+              &nbsp;<s>Paid</s>
+            </span>
+          </div>
+          <div class="cal">
+            <div class="dow">Sun</div>
+            <div class="dow">Mon</div>
+            <div class="dow">Tue</div>
+            <div class="dow">Wed</div>
+            <div class="dow">Thu</div>
+            <div class="dow">Fri</div>
+            <div class="dow">Sat</div>
+            <div class=""><b>1</b><span class="ev paid">Mortgage $2,140</span></div>
+            <div class=""><b>2</b></div>
+            <div class=""><b>3</b></div>
+            <div class=""><b>4</b></div>
+            <div class=""><b>5</b></div>
+            <div class=""><b>6</b><span class="ev in paid">Brightline +$2,412</span></div>
+            <div class=""><b>7</b></div>
+            <div class=""><b>8</b></div>
+            <div class=""><b>9</b><span class="ev late">Cascade Water ~$64</span></div>
+            <div class=""><b>10</b></div>
+            <div class=""><b>11</b></div>
+            <div class="today"><b>12</b></div>
+            <div class=""><b>13</b><span class="ev in">County Schools +$1,980</span></div>
+            <div class=""><b>14</b><span class="ev">Streamly $15.49</span></div>
+            <div class=""><b>15</b></div>
+            <div class=""><b>16</b></div>
+            <div class=""><b>17</b></div>
+            <div class=""><b>18</b><span class="ev">Northwind $85</span></div>
+            <div class=""><b>19</b></div>
+            <div class=""><b>20</b><span class="ev in">Brightline +$2,412</span></div>
+            <div class=""><b>21</b><span class="ev">Joint card $1,807</span></div>
+            <div class=""><b>22</b></div>
+            <div class=""><b>23</b></div>
+            <div class=""><b>24</b><span class="ev">Lakeside ~$131</span></div>
+            <div class=""><b>25</b></div>
+            <div class=""><b>26</b></div>
+            <div class=""><b>27</b></div>
+            <div class=""><b>28</b><span class="ev">Peak Fitness $39</span></div>
+            <div class=""><b>29</b></div>
+            <div class=""><b>30</b><span class="ev in">County Schools +$1,980</span></div>
+            <div class="out">1</div>
+            <div class="out">2</div>
+            <div class="out">3</div>
+            <div class="out">4</div>
+            <div class="out">5</div>
+          </div>
+          <div class="small muted">
+            Click a day for its payments; click a payment for its series.
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#340), not the built app</div>
+  </body>
+</html>
