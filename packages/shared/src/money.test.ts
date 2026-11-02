@@ -26,6 +26,13 @@ describe('formatMoney', () => {
     expect(formatMoney(0, 'USD')).toBe('$0.00');
   });
 
+  it('rounds to whole units when asked', () => {
+    expect(formatMoney(123_449, 'USD', { whole: true })).toBe('$1,234');
+    expect(formatMoney(123_450, 'USD', { whole: true })).toBe('$1,235');
+    expect(formatMoney(-2_250, 'USD', { whole: true })).toBe('-$23');
+    expect(formatMoney(1_234, 'JPY', { whole: true })).toBe('¥1,234');
+  });
+
   // Intl separates some currency symbols with a non-breaking space (U+00A0).
   it('uses each currency exponent', () => {
     expect(formatMoney(4200, 'EUR')).toBe('€42.00');
