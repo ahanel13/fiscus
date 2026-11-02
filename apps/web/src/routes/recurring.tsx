@@ -471,7 +471,7 @@ function OccurrenceRow({
               minor={Math.abs(amount)}
               currency={o.currency}
               kind="balance"
-              whole={o.status !== 'paid'}
+              whole={o.status !== 'paid' && Math.abs(amount) >= 1_000}
             />
           </>
         )}
@@ -804,7 +804,11 @@ function AllSeries({
             {s.estimateMinor !== null ? (
               <>
                 <span className="text-xs font-normal text-muted">about </span>
-                <Amount minor={s.estimateMinor} currency={s.currency} whole />
+                <Amount
+                  minor={s.estimateMinor}
+                  currency={s.currency}
+                  whole={Math.abs(s.estimateMinor) >= 1_000}
+                />
               </>
             ) : (
               <span className="text-muted">—</span>
@@ -932,6 +936,8 @@ function Review({
           const top = Math.max(...sizes, 1);
           const lo = Math.min(...sizes);
           const hi = Math.max(...sizes);
+          // Cents matter below $10: a few cents' reinvestment isn't "$0".
+          const whole = lo >= 1_000;
           return (
             <li key={id(x)} className="space-y-3 px-4 py-3">
               <div className="flex items-start gap-4">
@@ -972,21 +978,22 @@ function Review({
                         minor={Math.round((lo + hi) / 2)}
                         currency={currency}
                         kind="balance"
-                        whole
+                        whole={whole}
                       />
                     </>
                   ) : (
                     <>
-                      <Amount minor={lo} currency={currency} kind="balance" whole />–
-                      <Amount minor={hi} currency={currency} kind="balance" whole />
+                      <Amount minor={lo} currency={currency} kind="balance" whole={whole} />–
+                      <Amount minor={hi} currency={currency} kind="balance" whole={whole} />
                     </>
                   )}
                 </span>
               </div>
-              <div className="flex items-center gap-2 sm:justify-end">
+              {/* On a phone: what it is and Edit, then Confirm and Not recurring. */}
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:justify-end">
                 <Select
                   aria-label={`What ${x.name} is`}
-                  className="min-w-0 flex-1 sm:w-36 sm:flex-none"
+                  className="min-w-0 sm:w-36"
                   value={kindOf(x)}
                   onChange={(v) => setKinds({ ...kinds, [id(x)]: v as RecurringKind })}
                 >
