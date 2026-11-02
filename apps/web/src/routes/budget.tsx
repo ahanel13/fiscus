@@ -10,6 +10,7 @@ import {
   type CategoryLimitsMonth,
   type FlexMonth,
   type HouseholdMember,
+  type IncomeRow,
   type ScopePreview,
   type StrategyPreview,
   type Household,
@@ -650,7 +651,11 @@ function MonthView({
   const [editing, setEditing] = useState<{ categoryId: string; row?: CategoryLimitRow } | null>(
     null,
   );
-  const [open, setOpen] = useState<{ categoryId: string; row?: CategoryLimitRow } | null>(null);
+  const [open, setOpen] = useState<{
+    categoryId: string;
+    row?: CategoryLimitRow;
+    income?: boolean;
+  } | null>(null);
   const [yearly, setYearly] = useState<{ categoryId: string; yearlyMinor: number | null } | null>(
     null,
   );
@@ -749,6 +754,15 @@ function MonthView({
             data.data.view.strategy === 'category'
               ? data.data.view.rows.find((r) => r.categoryId === open.categoryId)
               : open.row
+          }
+          income={
+            open.income && data.data.view.strategy === 'category'
+              ? (data.data.view.income.find((r) => r.categoryId === open.categoryId) ?? {
+                  categoryId: open.categoryId,
+                  budgetedMinor: 0,
+                  receivedMinor: 0,
+                })
+              : undefined
           }
           name={categoryName(groups, open.categoryId)}
           canRollover={data.data.canEdit && data.data.view.strategy === 'category'}
@@ -905,7 +919,7 @@ function MonthBody({
   householdId: string;
   showAll: boolean;
   onShowAll: (show: boolean) => void;
-  onOpen: (e: { categoryId: string; row?: CategoryLimitRow }) => void;
+  onOpen: (e: { categoryId: string; row?: CategoryLimitRow; income?: boolean }) => void;
 }) {
   const { view, currency, month } = data;
   const progress = monthProgress(month);
@@ -1046,13 +1060,29 @@ function MonthBody({
                   const r = income.get(c.id) ?? { budgetedMinor: 0, receivedMinor: 0 };
                   const remaining = r.budgetedMinor - r.receivedMinor;
                   return (
-                    <li key={c.id} className={clsx('grid items-center gap-3 px-4 py-2', COLUMNS)}>
-                      <span className="min-w-0 truncate text-sm font-medium">
-                        {c.name}
-                        <span className="block text-xs font-normal text-muted sm:hidden">
+                    // As a spending row: the whole row opens its drawer, except the amount.
+                    <li
+                      key={c.id}
+                      className={clsx(
+                        'grid cursor-pointer items-center gap-3 px-4 py-2 hover:bg-surface-2',
+                        COLUMNS,
+                      )}
+                      onClick={(e) => {
+                        if (!(e.target as Element).closest('input, button, a'))
+                          onOpen({ categoryId: c.id, income: true });
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onOpen({ categoryId: c.id, income: true })}
+                        className="min-w-0 py-1 text-left"
+                        aria-label={`${c.name}: what came in, and its budget`}
+                      >
+                        <span className="block truncate text-sm font-medium">{c.name}</span>
+                        <span className="block text-xs text-muted sm:hidden">
                           {money(r.receivedMinor)} received
                         </span>
-                      </span>
+                      </button>
                       {amount(c.id, c.name, r.budgetedMinor)}
                       <span className="hidden text-right text-sm sm:block">
                         {money(r.receivedMinor)}
@@ -1676,6 +1706,7 @@ function CategoryDrawer({
   month,
   categoryId,
   row,
+  income,
   name,
   onEdit,
   canRollover,
@@ -1685,6 +1716,8 @@ function CategoryDrawer({
   month: BudgetMonth;
   categoryId: string;
   row: CategoryLimitRow | undefined;
+  /** An income category: what's expected, and what came in. No rollover, no history of spending. */
+  income?: IncomeRow | undefined;
   name: string;
   /** Flex: its amounts aren't in the rows, so they're changed here. */
   onEdit: (() => void) | undefined;
@@ -1777,8 +1810,40 @@ function CategoryDrawer({
     <Dialog title={name} variant="drawer" isOpen onOpenChange={(open) => (open ? null : onClose())}>
       <div className="space-y-5">
         <p className="text-sm text-muted">{monthName(month.month)}</p>
-        {row ? (
-          <div className="grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-border bg-border">
+        {income ? (
+          <div className="grid grid-cols-2 gap-px sm:grid-cols-3 [&>:first-child]:col-span-2 sm:[&>:first-child]:col-span-1 overflow-hidden rounded-xl border border-border bg-border">
+            <Stat label="Expected">
+              {month.canEdit ? (
+                <BudgetAmount
+                  key={income.budgetedMinor}
+                  householdId={householdId}
+                  data={month}
+                  categoryId={categoryId}
+                  name={name}
+                  value={income.budgetedMinor}
+                  applyTo={applyTo}
+                />
+              ) : (
+                <Amount minor={income.budgetedMinor} currency={currency} kind="balance" />
+              )}
+            </Stat>
+            <Stat label="Received">
+              <Amount minor={income.receivedMinor} currency={currency} kind="balance" />
+            </Stat>
+            <Stat
+              label={
+                income.receivedMinor > income.budgetedMinor ? 'More than expected' : 'Still to come'
+              }
+            >
+              <Amount
+                minor={Math.abs(income.budgetedMinor - income.receivedMinor)}
+                currency={currency}
+                kind="balance"
+              />
+            </Stat>
+          </div>
+        ) : row ? (
+          <div className="grid grid-cols-2 gap-px sm:grid-cols-3 [&>:first-child]:col-span-2 sm:[&>:first-child]:col-span-1 overflow-hidden rounded-xl border border-border bg-border">
             {canRollover ? (
               // Typed in as in its row; what rolled over is beside it, not in it.
               <Stat
@@ -1833,12 +1898,12 @@ function CategoryDrawer({
         ) : (
           <p className="text-sm">No limit set for {name} this month.</p>
         )}
-        {month.canEdit && month.view.strategy === 'category' && (canRollover || !row) ? (
+        {month.canEdit && month.view.strategy === 'category' && (canRollover || !row || income) ? (
           <Checkbox isSelected={future} onChange={setFuture}>
             Apply to all future months
           </Checkbox>
         ) : null}
-        {canRollover && row ? (
+        {canRollover && row && !income ? (
           <div className="space-y-1">
             <Switch
               isSelected={rollover.isPending ? rollover.variables : row.rollover}
@@ -1858,7 +1923,7 @@ function CategoryDrawer({
             {row ? 'Change amount' : 'Set an amount'}
           </Button>
         ) : null}
-        {month.canEdit ? (
+        {month.canEdit && !income ? (
           <div className="space-y-1">
             <Switch
               isSelected={leaveOut.isPending ? leaveOut.variables : excluded}
@@ -1874,85 +1939,87 @@ function CategoryDrawer({
           </div>
         ) : null}
 
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Last 6 months</h3>
-          {history.isPending ? (
-            <Skeleton className="h-24" />
-          ) : (
-            <>
-              <div
-                className="relative mt-4 grid h-24 grid-cols-6 items-end gap-2"
-                role="img"
-                aria-label={[
-                  ...months.map(
-                    (m) => `${monthName(m.month)}: spent ${formatMinor(m.spentMinor, currency)}`,
-                  ),
-                  ...(budgetLine !== null
-                    ? [`budgeted this month ${formatMinor(budgetLine, currency)}`]
-                    : []),
-                  ...(average !== null ? [`average ${formatMinor(average, currency)}`] : []),
-                ].join('; ')}
-              >
-                {budgetLine !== null && budgetLine > 0 ? (
-                  <ChartLine
-                    at={budgetLine / peak}
-                    label={`Budget ${formatMinor(budgetLine, currency)}`}
-                    className="border-solid border-fg/40"
-                    align="left"
-                  />
-                ) : null}
-                {average !== null ? (
-                  <ChartLine
-                    at={average / peak}
-                    label={`Avg ${formatMinor(average, currency)}`}
-                    className="border-dashed border-fg/60"
-                    align="right"
-                  />
-                ) : null}
-                {months.map((m) => (
-                  <div key={m.month} className="flex h-full items-end justify-center gap-0.5">
-                    {m.budgetedMinor !== null ? (
-                      <span
-                        className="w-2.5 rounded-t bg-border"
-                        style={{ height: `${(m.budgetedMinor / peak) * 100}%` }}
-                      />
-                    ) : null}
-                    <span
-                      className={clsx(
-                        'w-2.5 rounded-t',
-                        m.budgetedMinor !== null && m.spentMinor > m.budgetedMinor
-                          ? 'bg-danger'
-                          : 'bg-accent',
-                      )}
-                      style={{ height: `${(m.spentMinor / peak) * 100}%` }}
+        {income ? null : (
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">Last 6 months</h3>
+            {history.isPending ? (
+              <Skeleton className="h-24" />
+            ) : (
+              <>
+                <div
+                  className="relative mt-4 grid h-24 grid-cols-6 items-end gap-2"
+                  role="img"
+                  aria-label={[
+                    ...months.map(
+                      (m) => `${monthName(m.month)}: spent ${formatMinor(m.spentMinor, currency)}`,
+                    ),
+                    ...(budgetLine !== null
+                      ? [`budgeted this month ${formatMinor(budgetLine, currency)}`]
+                      : []),
+                    ...(average !== null ? [`average ${formatMinor(average, currency)}`] : []),
+                  ].join('; ')}
+                >
+                  {budgetLine !== null && budgetLine > 0 ? (
+                    <ChartLine
+                      at={budgetLine / peak}
+                      label={`Budget ${formatMinor(budgetLine, currency)}`}
+                      className="border-solid border-fg/40"
+                      align="left"
                     />
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-6 gap-2 text-center text-xs text-muted">
-                {months.map((m) => (
-                  <span key={m.month}>
-                    {new Date(`${m.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
-                      month: 'short',
-                      timeZone: 'UTC',
-                    })}
-                  </span>
-                ))}
-              </div>
-              {history.data?.averageSpentMinor != null ? (
-                <p className="text-xs text-muted">
-                  Average spent:{' '}
-                  <Amount
-                    minor={history.data.averageSpentMinor}
-                    currency={currency}
-                    kind="balance"
-                  />{' '}
-                  a month
-                </p>
-              ) : null}
-            </>
-          )}
-        </section>
+                  ) : null}
+                  {average !== null ? (
+                    <ChartLine
+                      at={average / peak}
+                      label={`Avg ${formatMinor(average, currency)}`}
+                      className="border-dashed border-fg/60"
+                      align="right"
+                    />
+                  ) : null}
+                  {months.map((m) => (
+                    <div key={m.month} className="flex h-full items-end justify-center gap-0.5">
+                      {m.budgetedMinor !== null ? (
+                        <span
+                          className="w-2.5 rounded-t bg-border"
+                          style={{ height: `${(m.budgetedMinor / peak) * 100}%` }}
+                        />
+                      ) : null}
+                      <span
+                        className={clsx(
+                          'w-2.5 rounded-t',
+                          m.budgetedMinor !== null && m.spentMinor > m.budgetedMinor
+                            ? 'bg-danger'
+                            : 'bg-accent',
+                        )}
+                        style={{ height: `${(m.spentMinor / peak) * 100}%` }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-6 gap-2 text-center text-xs text-muted">
+                  {months.map((m) => (
+                    <span key={m.month}>
+                      {new Date(`${m.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
+                        month: 'short',
+                        timeZone: 'UTC',
+                      })}
+                    </span>
+                  ))}
+                </div>
+                {history.data?.averageSpentMinor != null ? (
+                  <p className="text-xs text-muted">
+                    Average spent:{' '}
+                    <Amount
+                      minor={history.data.averageSpentMinor}
+                      currency={currency}
+                      kind="balance"
+                    />{' '}
+                    a month
+                  </p>
+                ) : null}
+              </>
+            )}
+          </section>
+        )}
 
         <section className="space-y-2">
           <h3 className="text-sm font-semibold">
