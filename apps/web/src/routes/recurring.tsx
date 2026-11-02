@@ -11,7 +11,7 @@ import {
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { Calendar, ChevronLeft, ChevronRight, MoreHorizontal, Pencil } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { accountsQuery, householdQuery, membersQuery, recurringQuery } from '../api/queries.js';
@@ -90,6 +90,12 @@ export function RecurringPage() {
   const series = useQuery(recurringQuery(householdId));
   const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
   const [editing, setEditing] = useState<RecurringSeries | null>(null);
+  const [adding, setAdding] = useState(false);
+  // Adding by hand: on an account whose transactions you can change, still open.
+  const editable = accounts.filter(
+    (a) => !a.closedAt && (a.yourAccess === 'owner' || a.yourAccess === 'full'),
+  );
+  const canAdd = household.you.role !== 'viewer' && editable.length > 0;
   // What Fiscus found (§2): for those who can make a series, not viewers.
   const found = useQuery({
     queryKey: ['households', householdId, 'recurring', 'suggestions'],
@@ -124,7 +130,15 @@ export function RecurringPage() {
             <ChevronLeft aria-hidden className="size-4" /> Back
           </Button>
         ) : (
-          <SegmentedControl aria-label="Show" options={TABS} value={tab} onChange={go} />
+          <div className="flex items-center justify-between gap-3">
+            <SegmentedControl aria-label="Show" options={TABS} value={tab} onChange={go} />
+            {canAdd ? (
+              <Button variant="secondary" size="sm" onPress={() => setAdding(true)}>
+                <Plus aria-hidden className="size-4" /> Add
+                <span className="hidden sm:inline"> recurring</span>
+              </Button>
+            ) : null}
+          </div>
         )}
         {tab !== 'review' && suggestions.length ? (
           <div className="flex items-center gap-3 rounded-xl border border-accent/40 bg-accent-soft px-4 py-3 text-sm text-accent-text">
@@ -185,6 +199,31 @@ export function RecurringPage() {
           />
         )}
       </div>
+      {adding ? (
+        <RecurringDialog
+          householdId={householdId}
+          initial={{
+            name: '',
+            kind: 'bill',
+            draft: {
+              accountId: editable[0]!.id,
+              match: { direction: 'out' },
+              schedule: {
+                unit: 'month',
+                every: 1,
+                days: [Number(today.slice(8, 10))],
+                anchor: today,
+                weekend: 'after',
+              },
+              windowDays: 3,
+            },
+          }}
+          accounts={editable}
+          accountName={editable[0]!.name}
+          currency={editable[0]!.currency}
+          onClose={() => setAdding(false)}
+        />
+      ) : null}
       {editing ? (
         <RecurringDialog
           householdId={householdId}
@@ -212,8 +251,9 @@ function NothingYet() {
   return (
     <EmptyState icon={Calendar} title="Nothing recurring yet">
       <p>
-        Open a paycheck, a bill or a subscription in Transactions, and choose <b>Make recurring</b>.
-        Fiscus finds the payments before it, and when the next one is due.
+        Choose <b>Add</b> above, or open a paycheck, a bill or a subscription in Transactions and
+        choose <b>Make recurring</b>: Fiscus finds the payments before it, and when the next one is
+        due.
       </p>
     </EmptyState>
   );
@@ -846,7 +886,8 @@ function AllSeries({
         </section>
       ) : null}
       <p className="px-1 text-xs text-muted">
-        To add another, open one of its payments in Transactions and choose <b>Make recurring</b>.
+        To add another, choose <b>Add</b> above, or open one of its payments in Transactions and
+        choose <b>Make recurring</b>.
       </p>
     </>
   );

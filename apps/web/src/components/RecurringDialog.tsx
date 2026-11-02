@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  type Account,
   describeSchedule,
   LAST_DAY,
   type RecurringDraft,
@@ -182,8 +183,9 @@ export function RecurringDialog({
   householdId,
   initial,
   series,
-  accountName,
-  currency,
+  accountName: givenAccountName,
+  currency: givenCurrency,
+  accounts,
   onClose,
 }: {
   householdId: string;
@@ -191,13 +193,24 @@ export function RecurringDialog({
   series?: RecurringSeries;
   accountName: string;
   currency: string;
+  /** Adding one by hand: the accounts it can be on, to pick from. */
+  accounts?: readonly Account[];
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
   const today = useToday();
   const [form, setForm] = useState(() => toForm(initial.name, initial.kind, initial.draft));
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
-  const draft = useSettled(toDraft(form));
+  // Added by hand with no name to match: its own name, so not every payment from the account
+  // counts as this one.
+  const effective =
+    accounts && !form.named.trim() && form.name.trim()
+      ? { ...form, named: form.name.trim(), namedOp: 'contains' as const }
+      : form;
+  const draft = useSettled(toDraft(effective));
+  const picked = accounts?.find((a) => a.id === form.accountId);
+  const accountName = picked?.name ?? givenAccountName;
+  const currency = picked?.currency ?? givenCurrency;
   const preview = useQuery({
     queryKey: ['households', householdId, 'recurring', 'preview', draft],
     queryFn: async () =>
@@ -219,7 +232,7 @@ export function RecurringDialog({
     toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' });
   const save = useMutation({
     mutationFn: () => {
-      const body = { name: form.name.trim(), kind: form.kind, ...toDraft(form) };
+      const body = { name: form.name.trim(), kind: form.kind, ...toDraft(effective) };
       return series
         ? api('PATCH', `/api/v1/households/${householdId}/recurring/${series.id}`, {
             body: {
@@ -256,13 +269,31 @@ export function RecurringDialog({
 
   return (
     <Dialog
-      title={series ? series.name : 'Make recurring'}
+      title={series ? series.name : accounts ? 'Add recurring' : 'Make recurring'}
       isOpen
       onOpenChange={(open) => (open ? null : onClose())}
     >
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField label="Name" value={form.name} onChange={(name) => set({ name })} />
+          <TextField
+            label="Name"
+            value={form.name}
+            onChange={(name) => set({ name })}
+            placeholder={accounts ? 'Power bill, rent, paycheck…' : undefined}
+          />
+          {accounts ? (
+            <Select
+              label="Account"
+              value={form.accountId}
+              onChange={(v) => set({ accountId: String(v) })}
+            >
+              {accounts.map((a) => (
+                <SelectItem key={a.id} id={a.id}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </Select>
+          ) : null}
           <Select
             label="What it is"
             value={form.kind}
@@ -376,7 +407,9 @@ export function RecurringDialog({
               label="Name to match"
               value={form.named}
               onChange={(named) => set({ named })}
-              placeholder="Any name"
+              placeholder={
+                accounts && form.name.trim() ? `Containing “${form.name.trim()}”` : 'Any name'
+              }
             />
           </div>
           <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)_minmax(0,1fr)]">
