@@ -1422,14 +1422,14 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await coffee.press('Enter');
   await expect(page.getByRole('meter', { name: /^Coffee:/ })).toBeVisible();
   await page.getByText('Show unbudgeted categories', { exact: true }).click();
-  await expect(groceries).toHaveValue('$250.00');
+  await expect(groceries).toHaveValue('$250');
   // A group folds up to its totals, and opens again.
   const food = page.getByRole('button', { name: 'Food', exact: true });
   await food.click();
   await expect(food).toHaveAttribute('aria-expanded', 'false');
   await expect(groceries).toHaveCount(0);
   await food.click();
-  await expect(groceries).toHaveValue('$250.00');
+  await expect(groceries).toHaveValue('$250');
   // A group's unbudgeted categories show on their own, without the rest.
   const restaurants = page.getByRole('textbox', { name: /^Restaurants: budget for/ });
   await expect(restaurants).toHaveCount(0);
@@ -1449,7 +1449,7 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await expect(restaurants).toBeVisible();
   await food.click();
   await food.click();
-  await expect(groceries).toHaveValue('$250.00');
+  await expect(groceries).toHaveValue('$250');
   await expect(restaurants).toHaveCount(0);
   expect(await axeViolations(page)).toEqual([]);
 
@@ -1467,7 +1467,7 @@ test('starts a budget in one step, and steps through its months (#99, #103)', as
   await expect(drawer.getByRole('img', { name: /budgeted this month \$300\.00/ })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
-  await expect(groceries).toHaveValue('$300.00');
+  await expect(groceries).toHaveValue('$300');
   await expect(page.getByText('Rollover', { exact: true })).toBeVisible();
 
   // Categories move between groups in settings, and the budget follows.
