@@ -452,8 +452,10 @@ function InCard({
         </Button>
       ) : null}
       {declining ? (
+        // Neither: it's the deposit that isn't a transfer (a refund, a paycheck), so it's the one
+        // to give a category, or to send outside Fiscus. The transfers out keep their own cards.
         <Decline
-          list={outs}
+          list={[into]}
           categories={categories}
           names={names}
           onRecategorize={onRecategorize}
