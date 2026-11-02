@@ -52,26 +52,28 @@
 }
 
 .dark {
-  --bg: #0c1110;
-  --surface: #131a18;
-  --surface-2: #1a2321;
-  --border: #283330;
-  --border-strong: #36443f;
-  --fg: #e6ecea;
-  --muted: #9eaaa5;
-  --subtle: #808c87;
+  /* Neutral grays, as in VS Code or ChatGPT: the page darkest, cards a step up, hover and
+     headers another (#471). No green cast, so the teal accent is the only color. */
+  --bg: #121212;
+  --surface: #1e1e1e;
+  --surface-2: #2b2b2b;
+  --border: #383838;
+  --border-strong: #6b6b6b;
+  --fg: #ececec;
+  --muted: #a3a3a3;
+  --subtle: #8a8a8a;
 
   --accent: #3dc9a4;
   --accent-hover: #5ad6b5;
-  --accent-soft: #12302a;
+  --accent-soft: #163029;
   --accent-text: #5ad6b5;
   --accent-fg: #04201a;
 
   --positive: #58d58a;
   --danger: #ff8b7e;
-  --danger-soft: #3a1714;
+  --danger-soft: #3b1c19;
   --warning: #f2b455;
-  --warning-soft: #33240c;
+  --warning-soft: #36290f;
 
   --chart-1: #56b4e9;
   --chart-2: #e69f00;

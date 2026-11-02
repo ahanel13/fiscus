@@ -20,24 +20,24 @@ needs attention.
 ## 2. Color
 
 ### Neutrals
-A cool gray with a faint green cast, so the accent feels native.
+Light: a cool gray with a faint green cast, so the accent feels native. Dark: plain neutral grays, as in VS Code or ChatGPT, in clear steps (#471). The page is darkest, cards are a step up, and hover and headers another. Each step must stay visible (`tokens.test.ts` checks surface on bg ≥ 1.1:1, surface-2 on surface ≥ 1.15:1, and border-strong on surface ≥ 3:1 for control outlines, WCAG 1.4.11).
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--bg` | `#f6f7f6` | `#0c1110` | App canvas |
-| `--surface` | `#ffffff` | `#131a18` | Cards, sidebar, dialogs |
-| `--surface-2` | `#eef1ef` | `#1a2321` | Hover, selected rows, subtle fills |
-| `--border` / `--border-strong` | `#dfe4e1` / `#c8d0cc` | `#283330` / `#36443f` | Dividers / inputs |
-| `--fg` | `#121917` | `#e6ecea` | Primary text (≥ 7:1, AAA) |
-| `--muted` | `#55605b` | `#9eaaa5` | Secondary text (≥ 4.5:1) |
-| `--subtle` | `#6e7974` | `#808c87` | Icons, large hints only (≥ 3:1) |
+| `--bg` | `#f6f7f6` | `#121212` | App canvas |
+| `--surface` | `#ffffff` | `#1e1e1e` | Cards, sidebar, dialogs |
+| `--surface-2` | `#eef1ef` | `#2b2b2b` | Hover, selected rows, subtle fills |
+| `--border` / `--border-strong` | `#dfe4e1` / `#c8d0cc` | `#383838` / `#6b6b6b` | Dividers / inputs |
+| `--fg` | `#121917` | `#ececec` | Primary text (≥ 7:1, AAA) |
+| `--muted` | `#55605b` | `#a3a3a3` | Secondary text (≥ 4.5:1) |
+| `--subtle` | `#6e7974` | `#8a8a8a` | Icons, large hints only (≥ 3:1) |
 
 ### Accent: deep teal-green
 | Token | Light | Dark | Use |
 |---|---|---|---|
 | `--accent` | `#0e6b57` | `#3dc9a4` | Primary buttons, active nav, focus ring, selected lens |
 | `--accent-hover` | `#0a5646` | `#5ad6b5` | Hover/pressed |
-| `--accent-soft` | `#e2f0eb` | `#12302a` | Selected backgrounds, success alerts |
+| `--accent-soft` | `#e2f0eb` | `#163029` | Selected backgrounds, success alerts |
 | `--accent-text` | `#0b5d4b` | `#5ad6b5` | Accent-colored text and links on surfaces |
 | `--accent-fg` | `#ffffff` | `#04201a` | Text on the accent |
 
