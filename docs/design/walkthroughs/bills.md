@@ -41,15 +41,23 @@ paycheck, or a transfer you make every month. Each one has:
 
 | | What it is | Example |
 |---|---|---|
-| **Payee** | The merchant it's to or from, and the account it moves through | Lakeside Power, from Everyday checking |
+| **Matches** | The account, the merchant, or both, and an amount: any, at least, at most, or between | Lakeside Power, from Everyday checking, any amount |
 | **Kind** | Bill, subscription, income, or transfer | Bill |
 | **Schedule** | How often, and on which day | Monthly, around the 24th |
-| **Amount** | Fixed, or varies | Varies: $96–$148 |
+| **Expected** | An estimate of the next one, from the payments so far | About $131 |
 | **Category** | The category its payments get | Utilities |
 | **Who looks after it** | For a bill: the member who gets its reminders. For income: who it's for | Sam |
 
 Each time a payment is due is an **occurrence**: expected on a date, then **paid** (a transaction
 matched it), **late**, or **skipped**.
+
+**What it matches and what it expects are separate.** What it matches decides which payments
+count, and is plain enough to read and change: like a rule's conditions. What it expects is only
+an estimate, for totals, the budget and reminders. A paycheck that's smaller on the 15th, because
+an HSA contribution comes out of that one only, a commission that changes every month, a power
+bill that's higher in winter: each is one series with an amount condition wide enough for it
+("between $2,300 and $2,700", "at least $1,000", "any amount"), and an estimate that follows what
+actually came in.
 
 **D1. One kind of thing for bills, subscriptions, income and transfers.** They differ only in
 their wording and defaults: income says "received" instead of "paid", and has a "for" instead of
@@ -60,8 +68,7 @@ is added up separately from bills, and transfers can be hidden from the upcoming
 **D2. Schedules people actually have.**
 - Every week, or every 2 weeks, on a weekday.
 - **Twice a month**, on two days (the 1st and the 15th, or the 15th and the last day, for many
-  paychecks). **Each day has its own amount**: a paycheck on the 1st of $2,600 and one on the
-  15th of $2,450, when a deduction such as an HSA contribution comes out of one of them only.
+  paychecks).
 - Every month, on a day or on the last day; every 2, 3 or 6 months; every year.
 - Custom: every N days, weeks or months.
 
@@ -100,10 +107,11 @@ rather than deciding for you.
   - **Still coming:** the last one is no more than one and a half cycles ago. A subscription that
     stopped two years ago isn't suggested. With years of history, the alternative is pages of
     old, ended payments to dismiss.
-  - **Fixed or varies:** fixed when the amounts stay within 5% of each other, otherwise "varies",
-    shown as a range. For twice a month, each day is judged on its own. A paycheck that's always
-    smaller on the 15th is two fixed amounts, one for each day, not one that varies. A price change that sticks (Northwind Mobile, $80 to $85 since June) is
-    still fixed, at the new amount, and noted.
+  - **The amount it proposes:** when the payments stay within 5% of each other, "about" that
+    amount, matched within 5%. Otherwise "between" the lowest and highest seen, with a margin, or
+    "any amount" when they're all over the place. You can change it before confirming, as with a
+    rule. A price change that sticks (Northwind Mobile, $80 to $85 since June) moves the amount,
+    and is noted.
   - Not suggested: spending that's frequent but not steady (groceries, gas), and transfers
     between your own accounts that are already linked as transfers, unless they're steady (the
     $200 a month to Holiday fund is).
@@ -143,9 +151,10 @@ month, and a 3-paycheck month looks like a windfall, or a 2-paycheck month like 
 - An amount typed in the budget for a month still wins for that month.
 - The checkbox shows for income series when there's a budget that counts the category. It
   starts ticked.
-- Twice-a-month paychecks get two a month, every month: the budget expects the two days' amounts
-  added together ($2,600 + $2,450 = $5,050), and when one changes (a raise, a new HSA
-  contribution), the months after it follow.
+- What it expects for a month is the estimate for each paycheck due in it, added up. For a
+  paycheck that's $2,600 on the 1st and $2,450 on the 15th, the estimate comes from recent
+  paychecks, so the month adds up to about $5,050; a raise or a new HSA contribution shows up in
+  the months after it.
 
 ---
 
@@ -157,8 +166,8 @@ month, and a 3-paycheck month looks like a windfall, or a 2-paycheck month like 
 - **Totals for the month:** bills paid and to pay, income expected and received, card
   statements, and subscriptions a month.
 - **The list:** late first, then this week, then the rest of the month. Each row shows the
-  payee, its schedule and account, who looks after it, and the amount: exact, or "about" for
-  one that varies.
+  payee, its schedule and account, who looks after it, and what it expects: exact for a payment
+  that's always the same, otherwise "about".
 - **Paid this month** sits at the end, folded.
 
 **Calendar** shows the same occurrences by day. **All** lists every series, active and ended,
@@ -170,8 +179,8 @@ for editing.
 statements beside bills.
 
 **Do better.**
-- **D8. An amount that varies gets a real estimate.** "About $131" for Lakeside Power comes from
-  the same month last year and the last 3 months, not the last payment alone. A power bill in
+- **D8. The estimate is a real one.** "About $131" for Lakeside Power comes from the same month
+  last year and the last 3 months, not the last payment alone. A power bill in
   November is more like last November than like October. The drawer says how it was worked out
   (§6).
 - **D9. Card statements come from the bank, not from detection.** For cards linked through
@@ -205,15 +214,18 @@ same list. Calendar and All are a tap away.
 
 ## 5. Paid, late, and matching
 
-**D11. A payment is matched by payee, account, date and amount.** An occurrence is paid when a
-transaction comes in:
-- from the same payee, in the same direction, through the same account;
-- within its window (by default 3 days either side, or a week for a monthly bill that varies);
-- with an amount within its tolerance (by default 5%, or any amount for one that varies). For
-  twice a month, that's the amount for its own day.
+**D11. A payment is matched by conditions you can read, like a rule's.** An occurrence is paid
+when a transaction comes in:
+- through the series' account, from or to its merchant, or both, whichever it names. A
+  paycheck can be "any deposit into Everyday checking from Brightline Labs"; a series can also be
+  "any deposit of at least $1,000 into Everyday checking", for income with no steady name;
+- in the same direction (money in, or money out);
+- within its window: by default 3 days either side of its date, or a week for a monthly bill;
+- with an amount that meets its condition: any, at least, at most, between, or about (within 5%).
 
-Each transaction pays at most one occurrence. A matched transaction gets the series' category if
-it has none, and shows the series in its drawer.
+The conditions use the rule editor's pieces, so they read the same. Each transaction pays at most
+one occurrence. A matched transaction gets the series' category if it has none, and shows the
+series in its drawer.
 
 **D12. Late, and what to do about it.** An occurrence nobody's seen 2 days after its expected
 date is **late** (Cascade Water above, due November 9). A payment that turns up afterwards still
@@ -247,7 +259,7 @@ who can see it still sees it; only that person is reminded.
   reminders to send, but a late paycheck is worth knowing about (§7).
 
 **D14. Changes worth noticing.** Badges on the series, and insights (#129, #123):
-- **Price went up** ("Up $5.00 since June"), when a fixed amount moves and stays.
+- **Price went up** ("Up $5.00 since June"), when an "about" amount moves and stays.
 - **New subscription**, when a new one is found.
 - **Looks ended**, after two late occurrences.
 
@@ -334,16 +346,16 @@ card, which Alex's doesn't. A quiet week still sends a short recap, so it's clea
 | # | Decision | Shapes |
 |---|---|---|
 | D1 | One model for bills, subscriptions, income and transfers | #118 |
-| D2 | Schedules include twice a month, with an amount per day, and a weekend rule; no holiday calendar | #118 |
+| D2 | Schedules include twice a month and a weekend rule; no holiday calendar | #118 |
 | D3 | Fiscus detects from all its own history, for every account, not Plaid's recurring endpoint | #119 |
-| D4 | Found: 3+ at a steady pace, still coming; fixed within 5%, otherwise varies | #119 |
+| D4 | Found: 3+ at a steady pace, still coming; it proposes an amount condition to edit | #119 |
 | D5 | Suggestions are reviewed on Bills & recurring; Not recurring is remembered | #119 |
 | D6 | Any transaction can start a series, and its past payments are linked | #118, #119 |
 | D7 | A paycheck can set the budget's expected income, month by month | #118, budgets |
-| D8 | Variable amounts are estimated from last year's month and the last 3 | #120 |
+| D8 | What's expected is estimated from last year's month and the last 3, apart from what matches | #120 |
 | D9 | Card statements come from the bank, and aren't added to bills | #122, #86 |
 | D10 | Series follow account visibility; Ours and Mine filter by who it's for | #118, ADR 0006 |
-| D11 | Matching by payee, account, a date window and an amount tolerance | #120 |
+| D11 | Matching by conditions like a rule's: account and/or merchant, direction, a date window, an amount condition | #120, rules |
 | D12 | Late 2 days after its date; mark paid, skip, or ended; two lates ask if it's ended | #120 |
 | D13 | One person looks after each bill and gets its reminders | #121, ADR 0006 §6 |
 | D14 | Price rises, new subscriptions and ended series are noticed | #123, #129 |
@@ -357,7 +369,7 @@ card, which Alex's doesn't. A quiet week still sends a short recap, so it's clea
 
 ## Open questions
 
-- **Detection thresholds (D4).** 3 payments, 5% for "fixed", one and a half cycles for "still
+- **Detection thresholds (D4).** 3 payments, 5% for "about", one and a half cycles for "still
   coming" are starting points. They should be checked against real histories, including one
   with nine years of Monarch imports, before #119 is done.
 - **Reviewer assignment and review reminders (#45).** "Transactions to review" here is your own
