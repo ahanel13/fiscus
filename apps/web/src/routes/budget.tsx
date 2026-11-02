@@ -680,11 +680,6 @@ function MonthView({
           </Button>
           <Menu placement="bottom end">
             <MenuItem onAction={() => goTo('year')}>Annual view</MenuItem>
-            {data.data?.canEdit && strategy === 'category' ? (
-              <MenuItem onAction={() => setShowAll(!showAll)}>
-                {showAll ? 'Hide' : 'Show'} unbudgeted categories
-              </MenuItem>
-            ) : null}
             {data.data?.canEdit ? (
               <MenuItem onAction={() => setSwitching(true)}>
                 Change how you budget ({STRATEGY_NAMES[strategy as 'category' | 'flex']})
@@ -1024,7 +1019,7 @@ function MonthBody({
       </div>
 
       {data.canEdit ? (
-        <div className="hidden justify-end sm:flex">
+        <div className="flex justify-end">
           <Switch isSelected={showAll} onChange={setShowAll}>
             Show unbudgeted categories
           </Switch>
