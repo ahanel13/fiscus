@@ -187,7 +187,7 @@ caller can't see ("Transfer to Anthony").
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
 | REC-01 | Read the recurring series on accounts whose transactions you see | ✅ | ✅ | ✅ | With its payments and estimate, from the transactions you can see (D10) |
-| REC-02 | Make, change, end or delete a series | ✅ | ✅ | ❌ | Needs owner or full access to its account: the same as changing its transactions. Each change is in the activity of those who see the account |
+| REC-02 | Make, change, end or delete a series; mark a date paid or skipped | ✅ | ✅ | ❌ | Needs owner or full access to its account: the same as changing its transactions. Each change is in the activity of those who see the account |
 | REC-03 | A series on an account you can't see | — | — | — | Not listed, not readable, and not changeable: it doesn't exist for you (404), as the account doesn't |
 
 ### 4.11 Tokens and sessions

@@ -156,6 +156,60 @@ export interface RecurringPreview {
   recent: RecurringPayment[];
 }
 
+/** A paycheck or bill counts as late this many days after its date (D12). */
+export const LATE_AFTER_DAYS = 2;
+
+/** How many recent payments make the estimate: a month's worth for weekly ones. */
+export const estimateCount = (s: RecurringSchedule) => (s.unit === 'week' && s.every === 1 ? 4 : 3);
+
+/** Saying a date was paid (by a transaction, or another way) or skipped (D12). */
+export const markOccurrenceSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('paid'), transactionId: z.uuid().nullable() }),
+  z.object({ status: z.literal('skipped') }),
+]);
+export type MarkOccurrence = z.infer<typeof markOccurrenceSchema>;
+
+/**
+ * One date something is due. `paid` with a payment; `late` when nothing has paid it two days
+ * after its date; `skipped` when someone said nothing was due; otherwise `due`.
+ */
+export interface RecurringOccurrence {
+  /** Null for a card statement, which comes from the bank (D9). */
+  seriesId: string | null;
+  name: string;
+  kind: RecurringKind | 'statement';
+  accountId: string;
+  currency: string;
+  due: string;
+  status: 'paid' | 'late' | 'due' | 'skipped';
+  /** About how much, signed as its payments are. A statement: its balance, as money out. */
+  expectedMinor: number | null;
+  /** What paid it: a transaction, or null for "paid another way". */
+  payment: { transactionId: string | null; date: string | null; amountMinor: number | null } | null;
+  /** Card statements: the minimum, and what's gone into the card since the statement. */
+  minimumMinor?: number | null;
+  paidSoFarMinor?: number;
+}
+
+/** A month of what's due, for Upcoming and the calendar (§4). */
+export interface RecurringMonth {
+  month: string;
+  today: string;
+  /** This month's, by date; for the current month, late ones from before it come first. */
+  occurrences: RecurringOccurrence[];
+  /** In the household's base currency, as positive amounts. */
+  totals: {
+    billsMinor: number;
+    billsPaidMinor: number;
+    incomeMinor: number;
+    incomeReceivedMinor: number;
+    statementsMinor: number;
+    /** Subscriptions, about how much a month. */
+    subscriptionsMinor: number;
+    subscriptionCount: number;
+  };
+}
+
 /** A starting point for Make recurring, from one transaction and the ones like it (D6). */
 export interface RecurringSuggestion {
   name: string;
@@ -291,19 +345,23 @@ export function recurringMatches(m: RecurringMatch, t: RecurringCandidate): bool
 }
 
 /**
- * Pairs payments with the dates they were due: each date takes the closest payment within
- * `windowDays` that no earlier date took. Payments must already match; they're taken in date
- * order, so a payment early for one date can't be claimed by the date before.
+ * Pairs payments with the dates they were due. Each date takes the closest payment within
+ * `windowDays` that no earlier date took; payments are taken in date order, so a payment early
+ * for one date can't be claimed by the date before. A date left unpaid then takes the first
+ * payment after its window that comes before the next date's window: paid late (D12).
+ * `linked` are payments someone said paid a date: they're taken first, whatever their date.
  */
 export function payOccurrences(
   dates: readonly string[],
   payments: readonly RecurringCandidate[],
   windowDays: number,
+  linked: ReadonlyMap<string, RecurringCandidate> = new Map(),
 ): RecurringPayment[] {
   const sorted = [...payments].sort((a, b) => a.date.localeCompare(b.date));
-  const taken = new Set<string>();
-  const out: RecurringPayment[] = [];
+  const taken = new Set([...linked.values()].map((p) => p.id));
+  const paid = new Map<string, RecurringCandidate>(linked);
   for (const due of dates) {
+    if (paid.has(due)) continue;
     let best: RecurringCandidate | undefined;
     for (const p of sorted) {
       if (taken.has(p.id)) continue;
@@ -313,18 +371,37 @@ export function payOccurrences(
     }
     if (best) {
       taken.add(best.id);
-      out.push({ due, transactionId: best.id, date: best.date, amountMinor: best.amountMinor });
+      paid.set(due, best);
     }
   }
-  return out;
+  dates.forEach((due, i) => {
+    if (paid.has(due)) return;
+    const after = addDays(due, windowDays);
+    const next = dates[i + 1];
+    const before = next ? addDays(next, -windowDays) : null;
+    const late = sorted.find(
+      (p) => !taken.has(p.id) && p.date > after && (before === null || p.date < before),
+    );
+    if (late) {
+      taken.add(late.id);
+      paid.set(due, late);
+    }
+  });
+  return dates
+    .filter((due) => paid.has(due))
+    .map((due) => {
+      const p = paid.get(due)!;
+      return { due, transactionId: p.id, date: p.date, amountMinor: p.amountMinor };
+    });
 }
 
 /**
- * About how much the next one is: the average of the last three payments (D8). A month that
- * alternates (a paycheck that's smaller on the 15th) averages out over the month.
+ * About how much the next one is: the average of the last `count` payments (D8), three unless
+ * said otherwise; a weekly paycheck uses a month's worth, so one big week doesn't swing it. A
+ * month that alternates (a paycheck that's smaller on the 15th) averages out over the month.
  */
-export function estimateNext(payments: readonly RecurringPayment[]): number | null {
-  const last = [...payments].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+export function estimateNext(payments: readonly RecurringPayment[], count = 3): number | null {
+  const last = [...payments].sort((a, b) => b.date.localeCompare(a.date)).slice(0, count);
   if (last.length === 0) return null;
   return Math.round(last.reduce((s, p) => s + p.amountMinor, 0) / last.length);
 }

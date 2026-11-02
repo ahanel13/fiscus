@@ -18,6 +18,8 @@ const SECRET_INSTITUTION = 'Bob bank (secret)';
 /** Path parameters that aren't ids: the same value in every household. */
 const FIXED: Record<string, string> = {
   date: '2026-01-01',
+  // One of the seeded series' dates: monthly on the 3rd.
+  due: '2026-01-03',
   kind: 'shared',
   key: 'range:reports',
   month: new Date().toISOString().slice(0, 7),

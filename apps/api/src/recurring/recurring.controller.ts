@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
   createRecurringSchema,
+  markOccurrenceSchema,
   recurringDraftSchema,
+  type RecurringMonth,
   type RecurringPreview,
   type RecurringSeries,
   type RecurringSuggestion,
@@ -16,6 +18,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -31,6 +34,8 @@ import {
 import { RecurringService } from './recurring.service.js';
 
 const suggestQuery = z.object({ transactionId: z.uuid() });
+const monthQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) });
+const dueParam = z.iso.date();
 
 /**
  * Recurring series (REC-01–03): everyone reads the series on accounts whose transactions they
@@ -44,6 +49,15 @@ export class RecurringController {
   @Get()
   async list(@Household() ctx: HouseholdContext): Promise<{ data: RecurringSeries[] }> {
     return { data: await this.recurring.list(ctx) };
+  }
+
+  /** A month of what's due: paid, late, due or skipped, with card statements (§4, §5). */
+  @Get('month')
+  async month(
+    @Household() ctx: HouseholdContext,
+    @Query(new ZodPipe(monthQuery)) query: z.infer<typeof monthQuery>,
+  ): Promise<{ data: RecurringMonth }> {
+    return { data: await this.recurring.month(ctx, query.month) };
   }
 
   /** A starting point for Make recurring, from one transaction. */
@@ -84,6 +98,30 @@ export class RecurringController {
     @Body(new ZodPipe(updateRecurringSchema)) body: z.infer<typeof updateRecurringSchema>,
   ): Promise<{ data: RecurringSeries }> {
     return { data: await this.recurring.update(ctx, id, body) };
+  }
+
+  /** Paid (by a transaction, or another way) or skipped, for one date it was due (D12). */
+  @Put(':seriesId/occurrences/:due')
+  @HouseholdRoles('owner', 'member')
+  @HttpCode(204)
+  async mark(
+    @Household() ctx: HouseholdContext,
+    @Param('seriesId', UuidPipe) id: string,
+    @Param('due', new ZodPipe(dueParam)) due: string,
+    @Body(new ZodPipe(markOccurrenceSchema)) body: z.infer<typeof markOccurrenceSchema>,
+  ): Promise<void> {
+    await this.recurring.mark(ctx, id, due, body);
+  }
+
+  @Delete(':seriesId/occurrences/:due')
+  @HouseholdRoles('owner', 'member')
+  @HttpCode(204)
+  async unmark(
+    @Household() ctx: HouseholdContext,
+    @Param('seriesId', UuidPipe) id: string,
+    @Param('due', new ZodPipe(dueParam)) due: string,
+  ): Promise<void> {
+    await this.recurring.unmark(ctx, id, due);
   }
 
   @Delete(':seriesId')
