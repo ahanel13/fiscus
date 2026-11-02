@@ -1147,11 +1147,14 @@ test('connects a bank through Plaid Link, on its own page, and chooses what to t
   await expect(connections).not.toContainText('sign in again');
   expect(await plaidLoaded()).toBe(false);
 
-  // The setup is over: its page says so, and sends you back.
+  // The setup is over: its page chooses the accounts again (D19), keeping what it tracks.
   await page.goto(setupUrl);
   await expect(
-    page.getByRole('heading', { level: 1, name: 'This bank is already connected' }),
+    page.getByRole('heading', { level: 1, name: 'Harbor Credit Union: choose what to track' }),
   ).toBeVisible();
+  await expect(page.getByText('Tracked already, as Everyday checking.')).toBeVisible();
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
 });
 
 test('moves a bank to the household’s own Plaid keys, keeping its accounts (#83)', async ({
