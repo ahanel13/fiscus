@@ -258,6 +258,23 @@ who can see it still sees it; only that person is reminded.
 - **Income has "for" instead:** who it's for, from the transaction's attribution. There are no
   reminders to send, but a late paycheck is worth knowing about (§7).
 
+**D22. Who, only when there's a choice.** The person on a series, and **Ours · Mine**, show only
+where someone could answer differently. Otherwise Fiscus fills them in and says nothing, as a
+household with one budget sees no scope (budgeting D21).
+- **Someone on their own:** no person anywhere. No "who looks after it", no "for", no Ours · Mine.
+  Every reminder is theirs.
+- **Separate finances** (each person's own accounts, not shared): a series paid from or into
+  your own account is yours, with no question asked. It shows no person, and nobody else sees it
+  (D10).
+- **Shared accounts:** the person shows, and can be changed, only for series on an account more
+  than one of you sees: the joint card's Streamly, the checking account the power bill comes out
+  of. On the review screen and in the drawer, the person picker is left out for the rest.
+- **Ours · Mine** shows only when you can see both: some series for you alone, and some for more
+  than one of you. A Separate household's members each see only their own, so it doesn't show.
+
+The prototypes show the Riveras, a Hybrid household with joint accounts, so they show people
+throughout. A Separate household, or someone on their own, sees the same screens without them.
+
 **D14. Changes worth noticing.** Badges on the series, and insights (#129, #123):
 - **Price went up** ("Up $5.00 since June"), when an "about" amount moves and stays.
 - **New subscription**, when a new one is found.
@@ -366,6 +383,7 @@ card, which Alex's doesn't. A quiet week still sends a short recap, so it's clea
 | D19 | Low balance looks 2 weeks ahead with confirmed series | #127, ADR 0010 |
 | D20 | Reminders are sent once, on time, in the household's timezone | #127 |
 | D21 | Each person's weekly recap is built from what they can see | #128, #389 |
+| D22 | People and Ours · Mine show only where there's a choice: never on your own, or on your own accounts | #118, #121 |
 
 ## Open questions
 
