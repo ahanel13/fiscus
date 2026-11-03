@@ -365,8 +365,30 @@ describe('notifications', () => {
         `UPDATE users SET is_instance_admin = true WHERE email = 'ada@notify.test'`,
       );
       const r = await A.get('/api/v1/admin/mail');
-      expect(r.body.data).toEqual({ configured: true, from: 'Fiscus <fiscus@notify.test>' });
+      expect(r.body.data).toEqual({
+        configured: true,
+        source: 'environment',
+        host: 'mail.test',
+        port: 587,
+        security: 'starttls',
+        username: null,
+        hasPassword: false,
+        passwordUnreadable: false,
+        from: 'Fiscus <fiscus@notify.test>',
+      });
       expect(JSON.stringify(r.body)).not.toContain('smtp://');
+    });
+
+    it('leaves the mail server to the environment when SMTP_URL is set', async () => {
+      const put = await A.request('PUT', '/api/v1/admin/mail', {
+        host: 'other.test',
+        port: 465,
+        security: 'tls',
+        from: 'x@other.test',
+      });
+      expect(put.status).toBe(409);
+      expect(put.body.code).toBe('mail_set_by_environment');
+      expect((await A.request('DELETE', '/api/v1/admin/mail')).status).toBe(409);
     });
 
     it('sends the admin a test, and says why one fails without the server’s words', async () => {
@@ -415,5 +437,129 @@ describe('notifications without the server’s mail settings', () => {
       .data as NotificationSettingsView;
     expect(s.emailAvailable).toBe(false);
     expect(s.channels[0]).toMatchObject({ kind: 'email', configured: false });
+  });
+});
+
+describe('Server → Email, set on the Server page (D16)', () => {
+  let tdb: TestDatabase;
+  let app: NestFastifyApplication;
+  let owner: pg.Client;
+  let admin: TestClient;
+  let bea: TestClient;
+  const sent: { to: string; subject: string }[] = [];
+  const transport: MailTransport = {
+    async sendMail(m) {
+      sent.push(m);
+    },
+  };
+  const body = {
+    host: 'smtp.example.test',
+    port: 587,
+    security: 'starttls',
+    username: 'fiscus',
+    password: 'hunter2-secret',
+    from: 'Fiscus <fiscus@example.test>',
+  };
+
+  beforeAll(async () => {
+    tdb = await startTestDatabase();
+    owner = new pg.Client({ connectionString: tdb.ownerUrl });
+    await owner.connect();
+    app = await createTestApp(tdb.appUrl, { signupMode: 'open', mailTransport: transport });
+    const signup = async (name: string) => {
+      const c = new TestClient(app);
+      await c.post('/api/v1/auth/signup', {
+        email: `${name}@mail.test`,
+        password: 'mail settings test Password1!',
+        displayName: name,
+      });
+      return c;
+    };
+    admin = await signup('ada');
+    bea = await signup('bea');
+    await owner.query(`UPDATE users SET is_instance_admin = true WHERE email = 'ada@mail.test'`);
+  }, 120_000);
+  afterAll(async () => {
+    await app?.close();
+    await owner?.end();
+    await tdb?.stop();
+  });
+
+  it('is for instance admins only (ADM-05, in part)', async () => {
+    expect((await bea.get('/api/v1/admin/mail')).status).toBe(403);
+    expect((await bea.request('PUT', '/api/v1/admin/mail', body)).status).toBe(403);
+    expect((await bea.request('DELETE', '/api/v1/admin/mail')).status).toBe(403);
+  });
+
+  it('starts with none, and says so', async () => {
+    expect((await admin.get('/api/v1/admin/mail')).body.data).toMatchObject({
+      configured: false,
+      source: null,
+    });
+    expect((await admin.post('/api/v1/admin/mail/test')).body.code).toBe('mail_not_configured');
+  });
+
+  it('saves the mail server, its password encrypted and never returned', async () => {
+    const r = await admin.request('PUT', '/api/v1/admin/mail', body);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.data).toEqual({
+      configured: true,
+      source: 'settings',
+      host: 'smtp.example.test',
+      port: 587,
+      security: 'starttls',
+      username: 'fiscus',
+      hasPassword: true,
+      passwordUnreadable: false,
+      from: 'Fiscus <fiscus@example.test>',
+    });
+    expect(JSON.stringify((await admin.get('/api/v1/admin/mail')).body)).not.toContain('hunter2');
+    const { rows } = await owner.query(
+      `SELECT value FROM instance_settings WHERE key = 'mail.smtp'`,
+    );
+    expect(JSON.stringify(rows[0].value)).not.toContain('hunter2');
+    expect(rows[0].value.passwordEnc).toEqual(expect.any(String));
+    // In the activity: what changed, never the password.
+    const { rows: events } = await owner.query(
+      `SELECT action, metadata FROM audit_events WHERE action LIKE 'admin.mail%' ORDER BY seq`,
+    );
+    expect(events.at(-1)).toMatchObject({ action: 'admin.mail_settings_set' });
+    expect(JSON.stringify(events)).not.toContain('hunter2');
+  });
+
+  it('keeps the password when it’s left out, and clears it when empty', async () => {
+    const { password: _password, ...rest } = body;
+    const kept = await admin.request('PUT', '/api/v1/admin/mail', { ...rest, port: 2525 });
+    expect(kept.body.data).toMatchObject({ port: 2525, hasPassword: true });
+    const before = (
+      await owner.query(`SELECT value FROM instance_settings WHERE key = 'mail.smtp'`)
+    ).rows[0].value.passwordEnc;
+    expect(before).toEqual(expect.any(String));
+    const cleared = await admin.request('PUT', '/api/v1/admin/mail', { ...rest, password: '' });
+    expect(cleared.body.data).toMatchObject({ hasPassword: false });
+    const bad = await admin.request('PUT', '/api/v1/admin/mail', { ...rest, security: 'ssl' });
+    expect(bad.status).toBe(422);
+  });
+
+  it('sends the test through the saved settings, and members can choose email', async () => {
+    expect((await admin.post('/api/v1/admin/mail/test')).status).toBe(204);
+    expect(sent.at(-1)).toMatchObject({ to: 'ada@mail.test', subject: 'A test from Fiscus' });
+    const hh = (
+      await bea.post('/api/v1/households', {
+        name: 'Bea',
+        baseCurrency: 'USD',
+        timezone: 'UTC',
+        financeStyle: 'combined',
+      })
+    ).body.data.id;
+    const s = (await bea.get(`/api/v1/households/${hh}/notifications/settings`)).body.data;
+    expect(s.emailAvailable).toBe(true);
+  });
+
+  it('removes it', async () => {
+    const r = await admin.request('DELETE', '/api/v1/admin/mail');
+    expect(r.status).toBe(200);
+    expect(r.body.data).toMatchObject({ configured: false, source: null });
+    expect((await admin.request('DELETE', '/api/v1/admin/mail')).status).toBe(404);
   });
 });

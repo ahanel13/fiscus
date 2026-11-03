@@ -4,15 +4,17 @@ import { z } from 'zod';
 import { ChannelError, type NotificationChannel, type OutgoingMessage } from './channel.js';
 import { renderEmail } from './templates.js';
 
-// Email (D16, #125): sent by the server, set up once by whoever runs it with SMTP_URL and
-// MAIL_FROM. Each member's go to the address they sign in with.
+// Email (D16, #125): sent by the server, set up once by whoever runs it: with SMTP_URL and
+// MAIL_FROM, or on the Server page (stored in instance settings), the environment winning. Each
+// member's go to the address they sign in with.
 
 export const mailEnvVars = {
   SMTP_URL: {
     schema: z.url({ protocol: /^smtps?$/, error: 'must be an smtp:// or smtps:// URL' }).optional(),
     description:
       'Mail server for notification emails, as smtp://user:password@host:587 (STARTTLS) or ' +
-      'smtps://user:password@host:465. Unset: Fiscus sends no email. Set it with MAIL_FROM.',
+      'smtps://user:password@host:465. Set it with MAIL_FROM. Unset: an instance admin can set ' +
+      'the mail server on the Server page instead; set, it wins over that.',
     example: 'smtp://fiscus:password@mail.example.com:587',
     secret: true,
   },
@@ -20,7 +22,7 @@ export const mailEnvVars = {
     schema: z.string().trim().min(3).max(200).optional(),
     description:
       'Who notification emails are from, such as "Fiscus <fiscus@example.com>". Set it with ' +
-      'SMTP_URL.',
+      'SMTP_URL (or set both on the Server page).',
   },
 };
 
@@ -29,10 +31,53 @@ export interface MailEnv {
   MAIL_FROM?: string | undefined;
 }
 
-/** The server's mail settings; never logged or returned (the URL has a password). */
-export interface MailConfig {
-  smtpUrl: string;
+export const MAIL_SECURITY = ['tls', 'starttls', 'none'] as const;
+/** TLS from the start (usually port 465), STARTTLS after connecting (587), or none (25). */
+export type MailSecurity = (typeof MAIL_SECURITY)[number];
+
+/** A mail server as the Server page sets it. */
+export interface SmtpServer {
+  host: string;
+  port: number;
+  security: MailSecurity;
+  username: string | null;
+  password: string | null;
+}
+
+/**
+ * The server's mail settings: SMTP_URL's, or the Server page's. Never logged or returned whole
+ * (they hold a password).
+ */
+export type MailConfig = { from: string } & (
+  { smtpUrl: string; server?: undefined } | { server: SmtpServer; smtpUrl?: undefined }
+);
+
+/** What the Server page shows of the settings in use: never the password. */
+export interface MailSummary {
+  host: string;
+  port: number;
+  security: MailSecurity;
+  username: string | null;
+  hasPassword: boolean;
   from: string;
+}
+
+/** The settings in use, as the Server page shows them. */
+export function summarizeMail(config: MailConfig): MailSummary {
+  if (config.server) {
+    const { password, ...rest } = config.server;
+    return { ...rest, hasPassword: !!password, from: config.from };
+  }
+  const url = new URL(config.smtpUrl);
+  const tls = url.protocol === 'smtps:';
+  return {
+    host: url.hostname,
+    port: url.port ? Number(url.port) : tls ? 465 : 587,
+    security: tls ? 'tls' : 'starttls',
+    username: url.username ? decodeURIComponent(url.username) : null,
+    hasPassword: !!url.password,
+    from: config.from,
+  };
 }
 
 /**
@@ -67,11 +112,22 @@ export interface MailTransport {
 
 /** A transport for the server's mail settings, with timeouts so a dead server fails quickly. */
 export function smtpTransport(config: MailConfig): MailTransport {
+  const timeouts = { connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 };
+  if (!config.server) {
+    return nodemailer.createTransport({
+      url: config.smtpUrl,
+      ...timeouts,
+    } as Parameters<typeof nodemailer.createTransport>[0]);
+  }
+  const s = config.server;
   return nodemailer.createTransport({
-    url: config.smtpUrl,
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 20_000,
+    host: s.host,
+    port: s.port,
+    secure: s.security === 'tls',
+    requireTLS: s.security === 'starttls',
+    ignoreTLS: s.security === 'none',
+    ...(s.username ? { auth: { user: s.username, pass: s.password ?? '' } } : {}),
+    ...timeouts,
   } as Parameters<typeof nodemailer.createTransport>[0]);
 }
 

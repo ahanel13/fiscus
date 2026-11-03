@@ -358,11 +358,47 @@ export interface ChannelTestStatus {
   code: string | null;
 }
 
-/** Server → Email (D16): whether the server can send it. The SMTP URL is never shown. */
+/** TLS from the start (usually port 465), STARTTLS after connecting (587), or none (25). */
+export const mailSecuritySchema = z.enum(['tls', 'starttls', 'none']);
+export type MailSecurity = z.infer<typeof mailSecuritySchema>;
+
+/**
+ * Server → Email (D16): the mail server in use, and where it's set. `environment`: SMTP_URL and
+ * MAIL_FROM, which win and can't be changed here; `settings`: what an admin saved on the Server
+ * page; null: none, so the server sends no email. Its password is never shown.
+ */
 export interface MailStatus {
   configured: boolean;
+  source: 'environment' | 'settings' | null;
+  host: string | null;
+  port: number | null;
+  security: MailSecurity | null;
+  username: string | null;
+  /** A password is saved (or in SMTP_URL). */
+  hasPassword: boolean;
+  /** The saved password can't be read any more (the master key changed): save it again. */
+  passwordUnreadable: boolean;
   from: string | null;
 }
+
+/**
+ * Saving the mail server on the Server page. The password is write-only: left out, the saved one
+ * stays; empty, it's cleared.
+ */
+export const setMailSettingsSchema = z.strictObject({
+  host: z
+    .string()
+    .trim()
+    .min(1)
+    .max(253)
+    .regex(/^[A-Za-z0-9.-]+$|^\[[0-9A-Fa-f:.]+\]$/, 'Enter a host name, such as mail.example.com'),
+  port: z.number().int().min(1).max(65535),
+  security: mailSecuritySchema,
+  username: z.string().trim().max(200).optional(),
+  password: z.string().max(500).optional(),
+  from: z.string().trim().min(3).max(200),
+});
+export type SetMailSettings = z.infer<typeof setMailSettingsSchema>;
 
 /** What a webhook receives (docs/design/notifications.md). */
 export interface WebhookPayload {

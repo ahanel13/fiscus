@@ -31,10 +31,10 @@ import {
   type SetChannel,
   type SetRule,
 } from '@fiscus/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Problem, problems } from '../common/problem.js';
-import { APP_CONFIG, type AppConfig } from '../config.js';
+import { InstanceSettingsService } from '../admin/instance-settings.service.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
 
@@ -57,7 +57,7 @@ export class NotificationsService {
   constructor(
     private readonly scope: HouseholdScope,
     private readonly crypto: FieldCrypto,
-    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly instance: InstanceSettingsService,
   ) {}
 
   async list(ctx: HouseholdContext): Promise<NotificationList> {
@@ -157,7 +157,8 @@ export class NotificationsService {
       .select({ email: users.email })
       .from(users)
       .where(eq(users.id, ctx.userId));
-    const emailAvailable = !!this.config.mail;
+    // The mail server in use: the environment's, or the Server page's (D16).
+    const emailAvailable = !!(await this.instance.effectiveMail()).config;
     const byKind = new Map(channelRows.map((c) => [c.kind, c]));
     const channels = EXTERNAL_CHANNELS.map((kind): NotificationChannelView => {
       const row = byKind.get(kind);

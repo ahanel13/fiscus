@@ -548,7 +548,7 @@ otherwise, the function can be backed by a table without changing any policy.
 
 `users.totp_secret_enc` (instance KEK) · `aggregation_credentials.secret_enc` ·
 `connection_secrets.secret_enc` · `accounts.account_number_enc` · `accounts.notes_enc` ·
-`transaction_notes.body_enc` · `notification_channels.secret_enc`. Receipt files and conversation history are encrypted the same way when
+`transaction_notes.body_enc` · `notification_channels.secret_enc` · the mail server's password in `instance_settings` (`mail.smtp`, instance key). Receipt files and conversation history are encrypted the same way when
 they arrive in M9/M10.
 
 **Consequence:** notes are **not searchable in SQL**. Search covers names and descriptions. Note
