@@ -386,6 +386,50 @@ describe('notification rules', { timeout: 120_000 }, () => {
     expect((await sent(alex, 'bill_due')).map((n) => n.title)).toEqual(['Rent is due tomorrow']);
   });
 
+  it('says a price went up, or a subscription is new, once, to those who see it [SYS-02] (D14)', async () => {
+    const { householdId, alex, sam } = await household();
+    const joint = await h.account({
+      householdId,
+      owners: [alex, sam],
+      name: 'Joint card',
+      type: 'credit',
+    });
+    const alexs = await h.account({
+      householdId,
+      owners: [alex],
+      name: 'Alex’s card',
+      type: 'credit',
+      visibility: 'private',
+    });
+    // Every 30 days: $15.49 five times, then $20.49 the last two.
+    await series(householdId, joint, alex, { name: 'Streamly', kind: 'subscription', day: 0 });
+    for (const [back, amount] of [
+      [210, 1_549],
+      [180, 1_549],
+      [150, 1_549],
+      [120, 1_549],
+      [90, 1_549],
+      [60, 2_049],
+      [30, 2_049],
+    ] as const) {
+      await txn(householdId, joint, -amount, addDays(TODAY, -back), 'Streamly');
+    }
+    // Alex's own card: a subscription first paid 30 days ago.
+    await series(householdId, alexs, alex, { name: 'Canvas Plus', kind: 'subscription', day: 0 });
+    await txn(householdId, alexs, -999, addDays(TODAY, -30), 'Canvas Plus');
+    const r = rules();
+    await r.runHousehold(householdId, AT(9), { daily: true });
+    await r.runHousehold(householdId, AT(10), { daily: true });
+    const titles = async (m: string) =>
+      (await sent(m, 'subscription_change')).map((n) => n.title).sort();
+    expect(await titles(alex)).toEqual([
+      'Canvas Plus looks like a new subscription',
+      'Streamly went up $5',
+    ]);
+    expect(await titles(sam)).toEqual(['Streamly went up $5']);
+    expect(JSON.stringify(await sent(sam))).not.toMatch(/Canvas|Alex’s card/);
+  });
+
   describe('the weekly recap (#128, D21)', () => {
     const MONDAY = { date: '2026-11-09', hour: 8, weekday: 'monday' };
     const recaps = async (memberId: string) =>

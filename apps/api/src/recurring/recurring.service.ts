@@ -12,6 +12,7 @@ import {
   accessLevels,
   cardStatements,
   type SeriesLike,
+  changesOf,
   seriesCandidates,
   seriesHistory,
   seriesOccurrences,
@@ -45,6 +46,7 @@ import {
   type RecurringSchedule,
   type RecurringSeries,
   type RecurringSuggestion,
+  type SeriesChanges,
   type updateRecurringSchema,
   whoLooksAfter,
 } from '@fiscus/shared';
@@ -108,8 +110,12 @@ export class RecurringService {
         .orderBy(asc(recurringSeries.name), asc(recurringSeries.id));
       return Promise.all(
         rows.map(async ({ series, currency }) => {
-          const paid = await this.#paid(tx, series, today);
-          return toSeries(series, currency, paid, today, await seriesWho(tx, series, people, paid));
+          const history = await seriesHistory(tx, series, today, today);
+          const paid = history.payments;
+          return toSeries(series, currency, paid, today, {
+            ...(await seriesWho(tx, series, people, paid)),
+            changes: changesOf(series, history, today),
+          });
         }),
       );
     });
@@ -615,9 +621,13 @@ export class RecurringService {
       .select({ currency: accounts.currency })
       .from(accounts)
       .where(eq(accounts.id, row.accountId));
-    const paid = await this.#paid(tx, row, today);
+    const history = await seriesHistory(tx, row, today, today);
+    const paid = history.payments;
     const who = await seriesWho(tx, row, await seriesPeople(tx), paid);
-    return toSeries(row, account!.currency, paid, today, who);
+    return toSeries(row, account!.currency, paid, today, {
+      ...who,
+      changes: changesOf(row, history, today),
+    });
   }
 
   /** Owner or full access to the account: the same as changing its transactions. */
@@ -655,7 +665,7 @@ function toSeries(
   currency: string,
   paid: RecurringPayment[],
   today: string,
-  who: SeriesWho,
+  who: SeriesWho & { changes: SeriesChanges },
 ): RecurringSeries {
   const schedule = row.schedule as RecurringSchedule;
   const paidDues = new Set(paid.map((p) => p.due));
@@ -676,6 +686,7 @@ function toSeries(
     estimateMinor: estimateNext(paid, estimateCount(schedule)),
     recent: paid.slice(-RECENT).reverse(),
     paidCount: paid.length,
+    lastPaid: paid.at(-1)?.date ?? null,
     ...who,
     version: row.version,
     updatedAt: row.updatedAt.toISOString(),

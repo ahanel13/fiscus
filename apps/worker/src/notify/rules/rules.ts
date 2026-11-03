@@ -395,4 +395,62 @@ export async function bigTransactions(m: MemberRun, since: Date): Promise<number
 }
 
 /** The daily rules, in the order they run. */
-export const DAILY_RULES = [billDue, late, statementDue, lowBalance, budgetNearlySpent] as const;
+/**
+ * A new subscription, or a price went up (D14, D18): once per change, to everyone who sees the
+ * series (row-level security: their own context). A price rise is keyed by the payment it started
+ * with, so a second rise later is news again; a new subscription, once.
+ */
+export async function subscriptionChange(m: MemberRun): Promise<number> {
+  if (!m.on('subscription_change')) return 0;
+  let sent = 0;
+  for (const { series: s, changes, currency, estimate } of await seriesOccurrences(m.tx, {
+    start: m.today,
+    end: m.today,
+    lateFrom: m.today,
+    today: m.today,
+  })) {
+    if (s.endedOn !== null && s.endedOn < m.today) continue;
+    if (changes.priceUp) {
+      const { changeMinor, since } = changes.priceUp;
+      if (
+        await m.notify({
+          kind: 'subscription_change',
+          dedupeKey: `subscription_change:price:${s.id}:${since}`,
+          title: `${s.name} went up ${money(changeMinor, currency)}`,
+          body: `Since ${longDate(since)}${estimate === null ? '' : `, it’s about ${money(Math.abs(estimate), currency)} now`}.`,
+          summary: 'A price went up.',
+          link: appLink(m.householdId, 'recurring'),
+        })
+      ) {
+        sent++;
+      }
+    }
+    if (changes.isNew) {
+      if (
+        await m.notify({
+          kind: 'subscription_change',
+          dedupeKey: `subscription_change:new:${s.id}`,
+          title: `${s.name} looks like a new subscription`,
+          body:
+            estimate === null
+              ? 'Fiscus will say when it’s next due.'
+              : `About ${money(Math.abs(estimate), currency)} each time.`,
+          summary: 'A new subscription.',
+          link: appLink(m.householdId, 'recurring'),
+        })
+      ) {
+        sent++;
+      }
+    }
+  }
+  return sent;
+}
+
+export const DAILY_RULES = [
+  billDue,
+  late,
+  statementDue,
+  lowBalance,
+  budgetNearlySpent,
+  subscriptionChange,
+] as const;
