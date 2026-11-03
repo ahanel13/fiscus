@@ -5,6 +5,7 @@ import type {
   AccountChoiceInput,
   AccountVisibility,
   BankAlreadyConnected,
+  Connection,
   ConnectionConfirmed,
   ConnectionSetup,
   Household,
@@ -743,6 +744,18 @@ function ChooseAccounts({
   const yours = (useQuery(accountsQuery(household.id, 'all', 'closed')).data ?? []).filter((a) =>
     a.owners.some((o) => o.memberId === me),
   );
+  // What syncs each of them now, but this connection and the one it moves to new keys (#83).
+  const connections = useQuery(connectionsQuery(household.id)).data ?? [];
+  const syncedBy = new Map(
+    connections
+      .filter(
+        (c) =>
+          c.status !== 'disconnected' &&
+          c.id !== setup.connectionId &&
+          c.id !== setup.replacesConnectionId,
+      )
+      .flatMap((c) => c.accountIds.map((id) => [id, c] as const)),
+  );
   const defaults: Choice = {
     providerAccountId: '',
     choice: 'new',
@@ -798,6 +811,7 @@ function ChooseAccounts({
             choice={choices.find((c) => c.providerAccountId === a.providerAccountId)!}
             choices={choices}
             yours={yours}
+            syncedBy={syncedBy}
             members={members}
             me={me}
             onChange={(patch) => update(a.providerAccountId, patch)}
@@ -859,6 +873,10 @@ function ownerOptions(members: HouseholdMember[], me: string) {
   return options;
 }
 
+/** "Chase on Plaid", or "SimpleFIN": where an account syncs from now. */
+const connectionLabel = (c: Connection) =>
+  c.provider === 'simplefin' ? 'SimpleFIN' : `${c.institutionName ?? 'a bank'} on Plaid`;
+
 const sameOwners = (a: string[], b: string[]) =>
   a.length === b.length && a.every((id) => b.includes(id));
 
@@ -867,6 +885,7 @@ function OfferedRow({
   choice: c,
   choices,
   yours,
+  syncedBy,
   members,
   me,
   onChange,
@@ -875,6 +894,8 @@ function OfferedRow({
   choice: Choice;
   choices: Choice[];
   yours: Account[];
+  /** Your accounts another connection syncs, to it: linking one of them moves it here. */
+  syncedBy: Map<string, Connection>;
   members: HouseholdMember[];
   me: string;
   onChange: (patch: Partial<Choice>) => void;
@@ -885,8 +906,14 @@ function OfferedRow({
       .filter((o) => o.providerAccountId !== c.providerAccountId && o.choice === 'link')
       .map((o) => o.accountId),
   );
-  // Linking needs the same currency (the api refuses others).
-  const targets = yours.filter((y) => y.currency === a.currency && !taken.has(y.id));
+  // Linking needs the same currency (the api refuses others), and an account someone else's
+  // connection syncs stays with it.
+  const targets = yours.filter(
+    (y) =>
+      y.currency === a.currency &&
+      !taken.has(y.id) &&
+      (syncedBy.get(y.id)?.owner.memberId ?? me) === me,
+  );
   const linked = yours.find((y) => y.id === c.accountId);
   // Searchable, as people have many accounts: the same kind first (a card beside your cards),
   // open before closed, then by name.
@@ -907,6 +934,9 @@ function OfferedRow({
       Link to {y.name}
       {y.mask ? <span className="text-muted"> ••{y.mask}</span> : null}
       {y.closedAt ? <span className="text-muted"> (closed)</span> : null}
+      {syncedBy.has(y.id) ? (
+        <span className="text-muted"> · from {connectionLabel(syncedBy.get(y.id)!)}</span>
+      ) : null}
     </SelectItem>
   );
   const owners = ownerOptions(members, me);
@@ -920,11 +950,24 @@ function OfferedRow({
     .filter(Boolean)
     .join(' · ');
 
+  const from = c.choice === 'link' && c.accountId ? syncedBy.get(c.accountId) : undefined;
   let reason: string | null = null;
-  if (c.choice === 'link' && s.choice === 'link' && s.accountId === c.accountId) {
+  if (from) {
+    // Its other accounts you see, all moving here too: it's left syncing nothing, and ends.
+    const emptied = from.accountIds.every((id) =>
+      choices.some((o) => o.choice === 'link' && o.accountId === id),
+    );
+    reason = `Moves it here from ${connectionLabel(from)}, keeping its history; sync fills in after it.${
+      emptied ? ` That leaves ${connectionLabel(from)} syncing nothing, so it’s disconnected.` : ''
+    }`;
+  } else if (c.choice === 'link' && s.choice === 'link' && s.accountId === c.accountId) {
     reason = `${s.by === 'mask' ? 'Same last 4 digits and type' : 'Same name'}. Keeps its history; sync fills in after it.`;
   } else if (c.choice === 'link') {
     reason = 'Keeps its history; sync fills in after it.';
+  } else if (c.choice === 'skip' && s.choice === 'skip' && s.reason === 'synced') {
+    const y = yours.find((x) => x.id === s.accountId);
+    const by = syncedBy.get(s.accountId);
+    reason = `${y?.name ?? 'This account'} syncs from ${by ? connectionLabel(by) : 'another connection'} already, so it isn’t tracked twice. To move it here, choose Link to ${y?.name ?? 'it'}.`;
   } else if (c.choice === 'skip' && s.choice === 'skip') {
     const closed = yours.find((y) => y.id === s.accountId);
     reason = `Matches ${closed?.name ?? 'an account'} you closed here, so it isn’t tracked.`;

@@ -108,6 +108,14 @@ before their history ends, so the overlap can be matched (§4). Plaid can return
 on request: an option on this step ("Bring in up to 2 years"), off by default, since the
 operator pays the same either way but the first sync takes longer.
 
+**D18. Moving an account between Plaid and SimpleFIN.** An account another of your connections
+syncs is offered too, marked with where it syncs from ("from Chase on Plaid"). When it's the
+match, the suggestion is **Don't track**, so connecting the same bank the other way never tracks
+it twice; choosing **Link to** it moves it here, keeping its history, and sync fills in after it
+as for any linked account (D6). The connection it leaves ends once it syncs nothing, so Plaid
+stops billing for an empty Item. One account can move on its own: the rest of that connection
+keeps syncing. An account someone else's connection syncs stays with it: they disconnect it first.
+
 **Phone.** One account per row, the choice under it.
 
 ![Choose accounts on a phone](bank-sync/12-phone-choose-accounts.png)
@@ -265,6 +273,7 @@ for one syncing real money.
 | D15 | Switching to your own Plaid keys means reconnecting, said up front | #83 |
 | D16 | The admin sees counts, never content | #22, #85 |
 | D17 | Sandbox and a stubbed SimpleFIN for tests | #79, #91 |
+| D18 | An account moves between Plaid and SimpleFIN by linking it; the connection it leaves ends once empty | #78, ACC-03 |
 
 ## Open questions
 

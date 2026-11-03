@@ -665,6 +665,34 @@ export class ConnectService {
         .where(eq(households.id, ctx.householdId));
       const today = todayIn(hh!.timezone);
       const levels = await accessLevels(tx);
+      // An account syncing from another of the caller's connections moves to this one (Plaid to
+      // SimpleFIN, or back); that one ends below once it syncs nothing. Locked before the
+      // accounts, as its sync locks it first. Someone else's connection keeps its accounts.
+      const fromIds = linkIds.length
+        ? (
+            await tx
+              .selectDistinct({ id: accounts.connectionId })
+              .from(accounts)
+              .where(and(inArray(accounts.id, linkIds), isNotNull(accounts.connectionId)))
+          ).flatMap((r) => (r.id && r.id !== replacing && r.id !== connectionId ? [r.id] : []))
+        : [];
+      const movable = new Map(
+        fromIds.length
+          ? (
+              await tx
+                .select({ id: connections.id, provider: connections.provider })
+                .from(connections)
+                .where(
+                  and(
+                    inArray(connections.id, fromIds),
+                    eq(connections.ownerMemberId, ctx.memberId),
+                    ne(connections.status, 'disconnected'),
+                  ),
+                )
+                .for('update')
+            ).map((r) => [r.id, r.provider])
+          : [],
+      );
       const linkRows = linkIds.length
         ? await tx.select().from(accounts).where(inArray(accounts.id, linkIds)).for('update')
         : [];
@@ -701,12 +729,16 @@ export class ConnectService {
           }
           const row = linkRows.find((r) => r.id === choice.accountId);
           if (!row) throw new Problem(422, 'invalid_account', 'That account doesn’t exist');
-          if (row.connectionId !== null && row.connectionId !== replacing) {
+          if (
+            row.connectionId !== null &&
+            row.connectionId !== replacing &&
+            !movable.has(row.connectionId)
+          ) {
             throw new Problem(
               409,
               'account_already_connected',
-              'That account already syncs from a bank',
-              'Disconnect that bank from it first, or choose another account.',
+              'That account already syncs from someone else’s bank connection',
+              'Its owner can disconnect it first, or choose another account.',
             );
           }
           if (row.currency !== currency) {
@@ -771,10 +803,9 @@ export class ConnectService {
           linked: choice.choice === 'link',
           syncFrom,
         });
+        const was = linkRows.find((r) => r.id === accountId)?.connectionId ?? null;
         const moved =
-          choice.choice === 'link' &&
-          replacing !== null &&
-          linkRows.find((r) => r.id === accountId)?.connectionId === replacing;
+          choice.choice === 'link' && was !== null && (was === replacing || movable.has(was));
         // One event per account, seen by exactly those who see it. No names or numbers.
         await activity.record({
           action: 'connection.added',
@@ -790,6 +821,13 @@ export class ConnectService {
       }
       // Its accounts are this one's now; any left go on without a connection, as on disconnect.
       if (replacing) await disconnectWithin(tx, activity, replacing, 'plaid');
+      // A connection left syncing nothing ends, so a Plaid Item isn't billed for nothing.
+      for (const [from, provider] of movable) {
+        const { rows } = await tx.execute<{ has: boolean | null }>(
+          sql`SELECT fiscus_connection_has_accounts(${from}) AS has`,
+        );
+        if (rows[0]?.has === false) await disconnectWithin(tx, activity, from, provider);
+      }
 
       // Due now: the runner (#81) claims it on its next pass, and the first sync starts.
       await tx
@@ -922,8 +960,24 @@ export class ConnectService {
       .where(eq(households.id, ctx.householdId));
     const levels = await accessLevels(tx);
     const ownedIds = [...levels].filter(([, level]) => level === 'owner').map(([id]) => id);
-    // Only the caller's accounts (nobody connects into someone else's), and only ones no other
-    // connection syncs, but the one this moves to new keys (#83).
+    // Only the caller's accounts (nobody connects into someone else's): ones no connection syncs,
+    // the one this moves to new keys syncs (#83), or another of the caller's own syncs. A match
+    // there isn't tracked twice: it's suggested to skip, and linking it moves it here.
+    const others = (
+      await tx
+        .select({ id: connections.id })
+        .from(connections)
+        .where(
+          and(
+            eq(connections.householdId, ctx.householdId),
+            eq(connections.ownerMemberId, ctx.memberId),
+            ne(connections.status, 'disconnected'),
+            ne(connections.status, 'setup'),
+          ),
+        )
+    )
+      .map((c) => c.id)
+      .filter((id) => id !== replaces);
     const candidates = ownedIds.length
       ? await tx
           .select({
@@ -933,18 +987,23 @@ export class ConnectService {
             mask: accounts.maskLast4,
             currency: accounts.currency,
             closedAt: accounts.closedAt,
+            connectionId: accounts.connectionId,
           })
           .from(accounts)
           .where(
             and(
               inArray(accounts.id, ownedIds),
-              replaces
-                ? or(isNull(accounts.connectionId), eq(accounts.connectionId, replaces))
-                : isNull(accounts.connectionId),
+              or(
+                isNull(accounts.connectionId),
+                inArray(accounts.connectionId, [...others, ...(replaces ? [replaces] : [])]),
+              ),
             ),
           )
       : [];
     const closed = new Set(candidates.filter((c) => c.closedAt).map((c) => c.id));
+    const synced = new Set(
+      candidates.filter((c) => c.connectionId && c.connectionId !== replaces).map((c) => c.id),
+    );
     const matches = matchAccounts(
       offered.map((a) => ({
         names: [a.name, a.officialName ?? ''],
@@ -963,7 +1022,9 @@ export class ConnectService {
         ? { choice: 'new', owners: [{ memberId: ctx.memberId }], visibility }
         : closed.has(match.accountId)
           ? { choice: 'skip', reason: 'closed', accountId: match.accountId }
-          : { choice: 'link', accountId: match.accountId, by: match.by };
+          : synced.has(match.accountId)
+            ? { choice: 'skip', reason: 'synced', accountId: match.accountId }
+            : { choice: 'link', accountId: match.accountId, by: match.by };
       return {
         providerAccountId: a.providerAccountId,
         name: a.name,
