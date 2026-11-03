@@ -1,3 +1,5 @@
+<img src="docs/brand/logo.svg" alt="" width="96" height="96" />
+
 # Fiscus
 
 > *fiscus* (Latin): the household money-basket; the root of "fiscal".
