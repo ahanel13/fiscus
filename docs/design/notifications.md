@@ -135,6 +135,12 @@ Set both mail settings or neither: one without the other stops the api and the w
 startup, naming what's missing. The worker logs only whether email is on, and for each delivery
 its id, channel and a code.
 
+**One mail server for everything Fiscus sends.** The server's mail settings aren't tied to
+notifications: the api reads them through `InstanceSettingsService.effectiveMail()`, the worker
+through `MailSource`, and `smtpTransport(config)` sends any message to any address. Invites,
+password resets and anything else that emails later use the same settings, so an admin sets up
+mail once.
+
 **Or set the mail server on Server → Email.** An instance admin enters the host, port, security
 (TLS, STARTTLS or none), username, password and From address, and can send a test, change or
 remove them (with a recent sign-in). They're kept in instance settings under `mail.smtp`, outside

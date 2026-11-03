@@ -18,8 +18,8 @@ import {
   toast,
 } from '../components/ui.js';
 
-// Server → Email (bills walkthrough D16, #125): the mail server notification email goes out
-// through. Set here, or by SMTP_URL and MAIL_FROM, which win and are shown read-only. The password
+// Server → Email (bills walkthrough D16, #125): the one mail server everything Fiscus emails goes
+// out through: notifications now, invites and password resets later. Set here, or by SMTP_URL and MAIL_FROM, which win and are shown read-only. The password
 // is write-only: never shown, and kept when left blank.
 
 type Data<T> = { data: T };
@@ -65,8 +65,8 @@ export function MailSection({ email }: { email: string }) {
       ) : editing ? null : s.configured ? (
         <>
           <p className="mb-3 text-sm text-muted">
-            Notification email goes out from {s.from}, to those who choose it in their notification
-            settings.
+            Everything Fiscus emails goes out from {s.from}. For now that’s notifications, to those
+            who choose email in their notification settings.
           </p>
           <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
             <dt className="text-muted">Mail server</dt>
@@ -236,7 +236,7 @@ export function MailForm({ status, onDone }: { status: MailStatus; onDone: () =>
         onChange={setFrom}
         isRequired
         placeholder="Fiscus <fiscus@example.com>"
-        description="Who notification emails are from."
+        description="Who emails from Fiscus are from."
       />
       <div className="flex flex-wrap gap-2">
         {saved ? (
