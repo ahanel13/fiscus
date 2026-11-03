@@ -22,10 +22,14 @@ import {
   flexibleFor,
   type FlexView,
   periodFor,
-  type MonthActivity,
   suggestAmounts,
 } from '@fiscus/domain';
-import { budgetActivity, householdRanges, loadBudgetDefinition } from '@fiscus/ledger';
+import {
+  budgetActivity,
+  type BudgetDefinitionRows,
+  householdRanges,
+  loadBudgetDefinition,
+} from '@fiscus/ledger';
 import type {
   BudgetCategoryHistory,
   BudgetMonth,
@@ -80,7 +84,7 @@ export class BudgetsService {
       const { today } = await householdRanges(tx, ctx.householdId);
       const thisMonth = monthOfDate(today);
       const months = [-3, -2, -1].map((n) => addMonths(thisMonth, n));
-      const activity = await this.#activity(tx, ctx, resolved, months[0]!, months[2]!);
+      const activity = await budgetActivity(tx, ctx, resolved, months[0]!, months[2]!);
       const spent = months.map((m) => activity.get(m)?.spentMinor ?? new Map<string, number>());
       const spending = await spendingCategories(tx);
       const keep = (m: ReadonlyMap<string, number>) =>
@@ -169,7 +173,7 @@ export class BudgetsService {
         );
       }
       const definition = await loadBudgetDefinition(tx, row);
-      const ledger = await this.#activity(tx, ctx, scope, startsMonth, month);
+      const ledger = await budgetActivity(tx, ctx, scope, startsMonth, month);
       const out = computeBudgetMonth(definition, month, ledger, STRATEGIES);
       const [h] = await tx
         .select({ currency: households.baseCurrency })
@@ -201,7 +205,7 @@ export class BudgetsService {
       await checkSwitchMonth(tx, ctx, row, fromMonth);
       const scope: BudgetScope = row.memberId ? 'mine' : 'household';
       const definition = await loadBudgetDefinition(tx, row);
-      const ledger = await this.#activity(tx, ctx, scope, monthOfDate(row.startsMonth), fromMonth);
+      const ledger = await budgetActivity(tx, ctx, scope, monthOfDate(row.startsMonth), fromMonth);
       const before = computeBudgetMonth(definition, fromMonth, ledger, STRATEGIES);
       const flexibleMinor = strategy === 'flex' ? flexibleStart(definition, fromMonth) : null;
       const switched = withPeriod(definition, fromMonth, strategy, flexibleMinor);
@@ -286,7 +290,7 @@ export class BudgetsService {
         const out = computeBudgetMonth(
           definition,
           month,
-          await this.#activity(tx, ctx, s, start, month),
+          await budgetActivity(tx, ctx, s, start, month),
           STRATEGIES,
         );
         return viewOf(out.kind, out.view);
@@ -464,7 +468,7 @@ export class BudgetsService {
       if (!(await spendingCategories(tx)).has(categoryId)) throw problems.notFound();
       const scope: BudgetScope = row.memberId ? 'mine' : 'household';
       const months = Array.from({ length: count }, (_, i) => addMonths(to, i - count + 1));
-      const ledger = await this.#activity(tx, ctx, scope, months[0]!, to);
+      const ledger = await budgetActivity(tx, ctx, scope, months[0]!, to);
       const definition = await loadBudgetDefinition(tx, row);
       const startsMonth = monthOfDate(row.startsMonth);
       const out = months.map((month) => ({
@@ -500,7 +504,7 @@ export class BudgetsService {
       const ranges = await householdRanges(tx, ctx.householdId);
       const first = `${year}-${String(ranges.settings.fiscalYearStartMonth).padStart(2, '0')}`;
       const months = Array.from({ length: 12 }, (_, i) => addMonths(first, i));
-      const ledger = await this.#activity(tx, ctx, scope, months[0]!, months[11]!);
+      const ledger = await budgetActivity(tx, ctx, scope, months[0]!, months[11]!);
       const definition = await loadBudgetDefinition(tx, row);
       const startsMonth = monthOfDate(row.startsMonth);
       const kinds = new Map(definition.categories.map((c) => [c.id, c]));
@@ -605,23 +609,6 @@ export class BudgetsService {
       .orderBy(sql`${budgetStrategies.fromMonth} DESC`)
       .limit(1);
     return summaryOf(row, current?.strategy ?? 'category');
-  }
-
-  /** What happened in a scope each month from `from` to `to` (D1): `budgetActivity`. */
-  #activity(
-    tx: Executor,
-    ctx: HouseholdContext,
-    scope: BudgetScope,
-    from: string,
-    to: string,
-  ): Promise<Map<string, MonthActivity>> {
-    return budgetActivity(tx, {
-      householdId: ctx.householdId,
-      memberId: ctx.memberId,
-      scope,
-      from,
-      to,
-    });
   }
 }
 
@@ -797,10 +784,7 @@ async function checkSwitchMonth(
 }
 
 /** Flex's first flexible number: the flexible categories' amounts in that month, added up. */
-function flexibleStart(
-  definition: Awaited<ReturnType<typeof loadBudgetDefinition>>,
-  month: string,
-) {
+function flexibleStart(definition: BudgetDefinitionRows, month: string) {
   const amounts = amountsFor(month, definition.amounts);
   return definition.categories
     .filter((c) => c.kind === 'flexible')
@@ -809,7 +793,7 @@ function flexibleStart(
 
 /** The definition as it would be with a switch from `fromMonth`, later switches dropped. */
 function withPeriod(
-  definition: Awaited<ReturnType<typeof loadBudgetDefinition>>,
+  definition: BudgetDefinitionRows,
   fromMonth: string,
   strategy: BudgetStrategyKind,
   flexibleMinor: number | null,

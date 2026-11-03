@@ -262,8 +262,9 @@ export class Notifier {
           body: notifications.body,
           summary: notifications.summary,
           link: notifications.link,
+          email: notifications.email,
           createdAt: notifications.createdAt,
-          email: users.email,
+          address: users.email,
         })
         .from(notificationDeliveries)
         .innerJoin(notifications, eq(notifications.id, notificationDeliveries.notificationId))
@@ -353,7 +354,7 @@ export class Notifier {
     householdId: string,
     kind: ExternalChannelKind,
     target: {
-      email: string | null;
+      address: string | null;
       config: typeof notificationChannels.$inferSelect | null;
     },
     message: Parameters<EmailChannel['send']>[0],
@@ -361,8 +362,8 @@ export class Notifier {
     const { channels, crypto } = this.#deps;
     if (kind === 'email') {
       if (!channels.email) throw new ChannelError('email_unavailable', true);
-      if (!target.email) throw new ChannelError('no_address', true);
-      return channels.email.send(message, { to: target.email });
+      if (!target.address) throw new ChannelError('no_address', true);
+      return channels.email.send(message, { to: target.address });
     }
     const config = target.config;
     if (!config?.secretEnc) throw new ChannelError('not_configured', true);

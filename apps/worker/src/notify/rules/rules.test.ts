@@ -385,4 +385,89 @@ describe('notification rules', { timeout: 120_000 }, () => {
     await r.pass();
     expect((await sent(alex, 'bill_due')).map((n) => n.title)).toEqual(['Rent is due tomorrow']);
   });
+
+  describe('the weekly recap (#128, D21)', () => {
+    const MONDAY = { date: '2026-11-09', hour: 8, weekday: 'monday' };
+    const recaps = async (memberId: string) =>
+      (
+        await h.owner.query(
+          `SELECT title, body, summary, link, dedupe_key, email FROM notifications
+           WHERE member_id = $1 AND kind = 'weekly_recap'`,
+          [memberId],
+        )
+      ).rows;
+
+    it('sends each member their recap once a week, at their day and hour there', async () => {
+      const { householdId, alex, sam } = await household();
+      const r = rules();
+      await r.runHousehold(householdId, { ...MONDAY, hour: 7 }, { daily: false });
+      await r.runHousehold(
+        householdId,
+        { ...MONDAY, date: '2026-11-10', weekday: 'tuesday' },
+        {
+          daily: false,
+        },
+      );
+      expect(await recaps(alex)).toEqual([]);
+      await r.runHousehold(householdId, MONDAY, { daily: false });
+      await r.runHousehold(householdId, { ...MONDAY, hour: 9 }, { daily: false });
+      await rules().runHousehold(householdId, { ...MONDAY, hour: 10 }, { daily: false });
+      for (const m of [alex, sam]) {
+        const [recap, ...more] = await recaps(m);
+        expect(more).toEqual([]);
+        // A quiet week still sends: it's clear nothing broke.
+        expect(recap).toMatchObject({
+          title: 'Your week, Nov 2–8',
+          summary: 'Your weekly recap is ready.',
+          link: `/h/${householdId}`,
+          dedupe_key: 'weekly_recap:2026-11-02',
+        });
+        expect(recap.body).toMatch(/^A quiet week/);
+        for (const detail of ['full', 'summary', 'minimal']) {
+          expect(recap.email[detail].subject).toBeTruthy();
+          expect(recap.email[detail].html).toContain('<html');
+        }
+      }
+    });
+
+    it('follows their day and hour', async () => {
+      const { householdId, alex } = await household();
+      await prefer(alex, householdId, 'weekly_recap', { day: 'friday', hour: 17 });
+      await rules().runHousehold(householdId, MONDAY, { daily: false });
+      expect(await recaps(alex)).toEqual([]);
+      await rules().runHousehold(
+        householdId,
+        { date: '2026-11-13', hour: 17, weekday: 'friday' },
+        { daily: false },
+      );
+      expect((await recaps(alex)).map((n) => n.dedupe_key)).toEqual(['weekly_recap:2026-11-02']);
+    });
+
+    it('builds each recap from what its reader sees [SYS-02]', async () => {
+      const { householdId, alex, sam } = await household();
+      const samsCard = await h.account({
+        householdId,
+        owners: [sam],
+        name: 'Sam’s card',
+        type: 'credit',
+        visibility: 'private',
+      });
+      await txn(householdId, samsCard, -61_200, '2026-11-04', 'Jeweler');
+      await rules().runHousehold(householdId, MONDAY, { daily: false });
+      const [alexs] = await recaps(alex);
+      const [sams] = await recaps(sam);
+      expect(JSON.stringify(sams.email.full)).toContain('Jeweler');
+      expect(JSON.stringify(alexs)).not.toMatch(/Jeweler|Sam’s card|612/);
+    });
+
+    it('is left out when turned off', async () => {
+      const { householdId, alex } = await household();
+      await rules().runHousehold(householdId, MONDAY, { daily: false });
+      const off = new NotificationRules(h.worker.db, { recap: false }, quiet);
+      const { householdId: other, memberId } = await h.household();
+      await off.runHousehold(other, MONDAY, { daily: false });
+      expect(await recaps(memberId)).toEqual([]);
+      expect(await recaps(alex)).toHaveLength(1);
+    });
+  });
 });

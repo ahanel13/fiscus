@@ -4,20 +4,15 @@ import {
   balanceSnapshots,
   budgets,
   categories,
-  recurringSeries,
   syncHolds,
   transactions,
 } from '@fiscus/db';
-import { computeBudgetMonth } from '@fiscus/domain';
+import { categoryLimits, computeBudgetMonth, flex } from '@fiscus/domain';
 import {
   accessLevels,
-  BUDGET_STRATEGIES,
   budgetActivity,
   cardStatementsDue,
   loadBudgetDefinition,
-  paymentForMembers,
-  seriesHistory,
-  seriesLookedAfterBy,
   seriesOccurrences,
 } from '@fiscus/ledger';
 import { addDays } from '@fiscus/shared';
@@ -27,7 +22,7 @@ import { appLink, longDate, type MemberRun, money, weekOf, when } from './member
 // The rules (#127; bills walkthrough D18–D20). Each looks at one member's own view of the
 // household (their database context: SYS-02) and writes what's due for them. Each notification's
 // key names the occurrence and the rule, so running a rule again, or after a restart, sends
-// nothing twice (D20). The weekly recap (#128) is a hook in the runner.
+// nothing twice (D20). The weekly recap (#128) is in recap.ts.
 
 /** How far back a late bill or paycheck is still worth saying. */
 export const LATE_LOOKBACK_DAYS = 30;
@@ -36,15 +31,7 @@ export const LOW_BALANCE_DAYS = 14;
 /** How old a big transaction can be and still be news: a big import of history isn't. */
 export const BIG_TRANSACTION_MAX_AGE_DAYS = 7;
 
-const seriesRows = (m: MemberRun, ids: string[]) =>
-  ids.length
-    ? m.tx
-        .select({ s: recurringSeries, account: accounts.name, currency: accounts.currency })
-        .from(recurringSeries)
-        .innerJoin(accounts, eq(accounts.id, recurringSeries.accountId))
-        .where(inArray(recurringSeries.id, ids))
-        .orderBy(asc(recurringSeries.name))
-    : Promise.resolve([]);
+const STRATEGIES = { category: categoryLimits, flex };
 
 /**
  * A bill is due (D13, D18): its date is within the days before they asked for, on a bill or
@@ -55,14 +42,19 @@ export async function billDue(m: MemberRun): Promise<number> {
   if (!m.on('bill_due')) return 0;
   const { daysBefore } = m.settings('bill_due');
   const until = addDays(m.today, daysBefore);
-  const ids = await seriesLookedAfterBy(m.tx, m.memberId, m.today);
+  const all = await seriesOccurrences(m.tx, {
+    start: m.today,
+    end: until,
+    lateFrom: m.today,
+    today: m.today,
+  });
   let sent = 0;
-  for (const { s, account, currency } of await seriesRows(m, ids)) {
+  for (const { series: s, occurrences } of all) {
     if (s.kind !== 'bill' && s.kind !== 'subscription') continue;
-    const h = await seriesHistory(m.tx, s, m.today, until, m.today);
-    for (const o of seriesOccurrences(s, h, { today: m.today, from: m.today, to: until })) {
-      if (o.status !== 'due') continue;
-      const about = o.expectedMinor === null ? '' : `About ${money(o.expectedMinor, currency)}, `;
+    const account = await accountName(m, s.accountId);
+    for (const o of occurrences) {
+      if (o.status !== 'due' || !o.memberIds.includes(m.memberId)) continue;
+      const about = o.expectedMinor === null ? '' : `About ${money(o.expectedMinor, o.currency)}, `;
       if (
         await m.notify({
           kind: 'bill_due',
@@ -80,6 +72,10 @@ export async function billDue(m: MemberRun): Promise<number> {
   return sent;
 }
 
+const accountName = async (m: MemberRun, id: string) =>
+  (await m.tx.select({ name: accounts.name }).from(accounts).where(eq(accounts.id, id)))[0]?.name ??
+  'an account';
+
 /**
  * A bill or paycheck is late (D12, D18): the days after they chose have gone by with nothing
  * paying it. A bill goes to whoever looks after it; a paycheck to whoever it's for.
@@ -88,31 +84,22 @@ export async function late(m: MemberRun): Promise<number> {
   if (!m.on('late')) return 0;
   const { daysAfter } = m.settings('late');
   const from = addDays(m.today, -LATE_LOOKBACK_DAYS);
-  const mine = new Set(await seriesLookedAfterBy(m.tx, m.memberId, m.today));
-  const income = await m.tx
-    .select({ id: recurringSeries.id })
-    .from(recurringSeries)
-    .where(
-      and(
-        eq(recurringSeries.kind, 'income'),
-        sql`${recurringSeries.endedOn} IS NULL OR ${recurringSeries.endedOn} >= ${from}`,
-      ),
-    );
-  const rows = await seriesRows(m, [...mine, ...income.map((r) => r.id)]);
+  const all = await seriesOccurrences(m.tx, {
+    start: from,
+    end: m.today,
+    lateFrom: from,
+    today: m.today,
+  });
   let sent = 0;
-  for (const { s, account, currency } of rows) {
+  for (const { series: s, occurrences } of all) {
     if (s.kind === 'transfer') continue;
-    const h = await seriesHistory(m.tx, s, m.today, m.today, from);
-    if (s.kind === 'income') {
-      const latest = [...h.payments].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
-      const forWhom = await paymentForMembers(m.tx, s.accountId, latest, m.today);
-      if (!forWhom.includes(m.memberId)) continue;
-    }
-    for (const o of seriesOccurrences(s, h, { today: m.today, from, to: m.today })) {
+    const account = await accountName(m, s.accountId);
+    for (const o of occurrences) {
       if (o.status === 'paid' || o.status === 'skipped') continue;
-      if (addDays(o.due, daysAfter) > m.today) continue;
+      if (!o.memberIds.includes(m.memberId) || addDays(o.due, daysAfter) > m.today) continue;
       const paycheck = s.kind === 'income';
-      const about = o.expectedMinor === null ? '' : ` (about ${money(o.expectedMinor, currency)})`;
+      const about =
+        o.expectedMinor === null ? '' : ` (about ${money(o.expectedMinor, o.currency)})`;
       if (
         await m.notify({
           kind: 'late',
@@ -179,6 +166,15 @@ export async function lowBalance(m: MemberRun): Promise<number> {
     .from(accounts)
     .where(inArray(accounts.id, seen));
   const until = addDays(m.today, LOW_BALANCE_DAYS);
+  // What's coming: the confirmed series they can see, as they're expected.
+  const coming = (
+    await seriesOccurrences(m.tx, {
+      start: addDays(m.today, 1),
+      end: until,
+      lateFrom: addDays(m.today, 1),
+      today: m.today,
+    })
+  ).flatMap((d) => d.occurrences);
   let sent = 0;
   for (const a of rows) {
     const [snap] = await m.tx
@@ -188,33 +184,13 @@ export async function lowBalance(m: MemberRun): Promise<number> {
       .orderBy(desc(balanceSnapshots.asOf))
       .limit(1);
     if (!snap) continue;
-    // What's coming: the account's confirmed series you can see, as they're expected.
-    const flows: { due: string; minor: number }[] = [];
-    const series = await m.tx
-      .select()
-      .from(recurringSeries)
-      .where(
-        and(
-          eq(recurringSeries.accountId, a.id),
-          sql`${recurringSeries.endedOn} IS NULL OR ${recurringSeries.endedOn} > ${m.today}`,
-        ),
-      );
-    for (const s of series) {
-      const h = await seriesHistory(m.tx, s, m.today, until, m.today);
-      for (const o of seriesOccurrences(s, h, {
-        today: m.today,
-        from: addDays(m.today, 1),
-        to: until,
-      })) {
-        if (o.status === 'due' && o.expectedMinor !== null) {
-          flows.push({ due: o.due, minor: o.expectedMinor });
-        }
-      }
-    }
+    const flows = coming
+      .filter((o) => o.accountId === a.id && o.status === 'due' && o.expectedMinor !== null)
+      .sort((x, y) => x.due.localeCompare(y.due));
     let balance = snap.balanceMinor;
     let lowest = { minor: balance, due: m.today };
-    for (const f of flows.sort((x, y) => x.due.localeCompare(y.due))) {
-      balance += f.minor;
+    for (const f of flows) {
+      balance += f.expectedMinor!;
       if (balance < lowest.minor) lowest = { minor: balance, due: f.due };
     }
     const now = snap.balanceMinor < underMinor;
@@ -260,14 +236,14 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
     if (month < startsMonth) continue;
     const scope = row.memberId ? 'mine' : 'household';
     const definition = await loadBudgetDefinition(m.tx, row);
-    const activity = await budgetActivity(m.tx, {
-      householdId: m.householdId,
-      memberId: m.memberId,
+    const activity = await budgetActivity(
+      m.tx,
+      { householdId: m.householdId, memberId: m.memberId },
       scope,
-      from: startsMonth,
-      to: month,
-    });
-    const out = computeBudgetMonth(definition, month, activity, BUDGET_STRATEGIES);
+      startsMonth,
+      month,
+    );
+    const out = computeBudgetMonth(definition, month, activity, STRATEGIES);
     const limits: { key: string; name: string; spent: number; has: number }[] = [];
     if (out.kind === 'flex') {
       const v = out.view as {

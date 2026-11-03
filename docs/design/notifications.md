@@ -18,7 +18,7 @@ are in the [bills walkthrough](walkthroughs/bills.md) §7 (D15–D20). The table
   it." and email can't be ticked.
 - **The rules** (#127, §4): a bill is due, a bill or paycheck is late, a card statement is due, a
   big transaction, low balance, a budget category nearly spent, transactions to review, and a bank
-  connection that needs you. The weekly recap (#128) is a hook (§4.3).
+  connection that needs you; and the weekly recap (#128, §4.3).
 
 ## 2. Channels
 
@@ -97,7 +97,7 @@ Sam's private card's purchases never reach Alex. It writes their notification th
 | A budget category is nearly spent | members of the household's budget, and the owner of their own | a category's spending reaches their percentage of what it has this month (limit plus rollover); Flex: its fixed categories, and flexible spending as one | `budget_nearly_spent:<budget>:<category>:<month>` |
 | Transactions to review | owners and members (not viewers) | once a day from their hour, if any wait in accounts they can review (and possible duplicates) | `review:<date>` |
 | A bank connection needs you | whoever linked it | when a sync leaves it needing a sign-in, or 3 days into failures (§1) | `connection_needs_you:<connection>:…` |
-| Weekly recap | each member | their day, from their hour (§4.3) | `weekly_recap:<week>` |
+| Weekly recap | each member | their day, from their hour (§4.3); a quiet week too | `weekly_recap:<week it covers>` |
 
 "A new subscription, or a price went up" isn't sent yet: detection (#119) doesn't record when a
 series first appeared or its amount moved and stayed (D14). It needs that first (#123, #129).
@@ -120,9 +120,17 @@ Joint checking."); summary says only what kind of thing ("A bill is due soon.").
 
 ### 4.3 The weekly recap
 
-`NotificationRules` takes a `recap` hook, called once a week for each member at their day and
-hour, in their own context, with the Monday that starts the week. What it returns is sent as
-`weekly_recap:<that Monday>`.
+At each member's day and hour there, the worker builds their recap of the last whole week (as the
+household counts weeks) with `buildWeeklyRecap()`, in their own context: it refuses system
+context, so it holds only what they can see (D21, SYS-02). One notification a week,
+`weekly_recap:<the week's first day>`:
+- in Fiscus and on push channels, a short entry ("Your week, Nov 2–8": what was spent, what's
+  waiting for review) linking to the dashboard, where the recap card is;
+- by email, the whole recap from `renderWeeklyRecapEmail()`, rendered at each detail level and
+  stored with the notification (`notifications.email`), so each channel sends the one its detail
+  level asks for.
+
+A quiet week still sends, so it's clear nothing broke.
 
 ## 5. What a webhook receives
 

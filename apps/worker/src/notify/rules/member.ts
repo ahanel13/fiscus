@@ -30,6 +30,8 @@ export interface MemberRun {
   today: string;
   hour: number;
   currency: string;
+  /** The household's first day of the week, 0 (Sunday) to 6. */
+  weekStartDay: number;
   /** A rule's settings: theirs over D18's defaults. */
   settings<K extends NotificationKind>(kind: K): NotificationSettings<K>;
   /** Whether a rule goes anywhere: off when they've unticked every channel. */
@@ -40,7 +42,10 @@ export interface MemberRun {
 
 export async function memberRun(
   tx: Executor,
-  m: Pick<MemberRun, 'householdId' | 'memberId' | 'role' | 'today' | 'hour' | 'currency'>,
+  m: Pick<
+    MemberRun,
+    'householdId' | 'memberId' | 'role' | 'today' | 'hour' | 'currency' | 'weekStartDay'
+  >,
 ): Promise<MemberRun> {
   const prefs = new Map(
     (

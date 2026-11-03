@@ -31,6 +31,17 @@ export const NOTIFICATION_DELIVERY_STATUSES = ['pending', 'sent', 'failed'] as c
 const RULE_CHANNELS = ['in_app', ...NOTIFICATION_CHANNEL_KINDS] as const;
 const KIND = '^[a-z][a-z_]{0,39}$';
 
+/** A notification's own email, rendered at each detail level (D17). */
+export interface NotificationEmail {
+  subject: string;
+  text: string;
+  html: string;
+}
+export type NotificationEmails = Record<
+  (typeof NOTIFICATION_DETAIL_LEVELS)[number],
+  NotificationEmail
+>;
+
 /**
  * Where a member's notifications go outside Fiscus, at most one of each kind (D16). Its secrets
  * (an ntfy topic and token, a Gotify token, a webhook's address and signing secret) are in
@@ -122,6 +133,11 @@ export const notifications = pgTable(
     summary: text().notNull(),
     /** Where it's about, as an app path. */
     link: text(),
+    /**
+     * An email of its own, at each detail level, in place of the one made from the title and body:
+     * the weekly recap's (#128).
+     */
+    email: jsonb().$type<NotificationEmails>(),
     testChannel: text(),
     inApp: boolean().notNull().default(false),
     routedAt: timestamp({ withTimezone: true }),
@@ -146,6 +162,10 @@ export const notifications = pgTable(
     check('notifications_body', sql`length(${t.body}) <= 2000`),
     check('notifications_summary', sql`length(${t.summary}) BETWEEN 1 AND 500`),
     check('notifications_link', sql`${t.link} IS NULL OR ${t.link} ~ '^/[^/]'`),
+    check(
+      'notifications_email',
+      sql`${t.email} IS NULL OR octet_length(${t.email}::text) <= 262144`,
+    ),
     check(
       'notifications_test_channel',
       sql`(${t.kind} = 'test') = (${t.testChannel} IS NOT NULL) AND (${t.testChannel} IS NULL OR ${t.testChannel} IN (${inList(NOTIFICATION_CHANNEL_KINDS)}))`,

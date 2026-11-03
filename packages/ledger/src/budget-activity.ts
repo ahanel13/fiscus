@@ -2,7 +2,7 @@
 import {
   budgetAmounts,
   budgetCategories,
-  budgets,
+  type budgets,
   budgetStrategies,
   categories,
   categoryGroups,
@@ -10,50 +10,39 @@ import {
   households,
   transactions,
 } from '@fiscus/db';
-import {
-  addMonths,
-  type BudgetCategory,
-  categoryLimits,
-  firstDayOf,
-  flex,
-  type MonthActivity,
-} from '@fiscus/domain';
+import { addMonths, type BudgetCategory, firstDayOf, type MonthActivity } from '@fiscus/domain';
 import type { BudgetScope } from '@fiscus/shared';
 import { and, asc, eq, gte, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import { ownersOnDates } from './owners.js';
 import { householdRanges, transactionDate } from './ranges.js';
 
-// A budget's month, as the api shows it and notifications (#127) read it: its definition, and
-// what happened in its scope (budgeting walkthrough D1, D2). Row-level security limits both to
-// what the caller sees; the worker reads them in a member's own context.
+// What a budget counts, month by month (budgeting walkthrough D1, D2, D13), for the api's budget
+// pages and the weekly recap (#128). Runs in the reader's context: row-level security limits it
+// to what they see, and a member's own budget to them.
 
 type BudgetRow = typeof budgets.$inferSelect;
 const monthOfDate = (d: string) => d.slice(0, 7);
 
-/** The strategies a budget can run under. */
-export const BUDGET_STRATEGIES = { category: categoryLimits, flex };
-
-export interface BudgetActivityScope {
+/** Who's reading: the household, and the member a budget of their own ("mine") belongs to. */
+export interface BudgetReader {
   householdId: string;
-  /** Whose view: "Mine" is theirs; contributions are counted from their side. */
   memberId: string;
-  scope: BudgetScope;
-  from: string;
-  to: string;
 }
 
-/**
- * Whose spending a budget counts: a member's own (Mine) is what's theirs alone, by attribution or
- * else the account's owners on its date; the household's (Ours) is what's two or more people's.
- */
-export function budgetLens(scope: BudgetScope, memberId: string): SQL {
-  const members = sql`coalesce(
+/** Who a transaction is for: its attribution, else its account's owners on its date (#447). */
+export const attributedMembers = sql`coalesce(
     (SELECT array_agg(ta.member_id) FROM transaction_attributions ta WHERE ta.transaction_id = ${transactions.id}),
     (SELECT array_agg(o.member_id)
      FROM fiscus_owners_on(${transactions.accountId}, ${transactions.effectiveDate}) o))`;
-  if (scope === 'household') return sql`coalesce(array_length(${members}, 1), 0) >= 2`;
-  return sql`${members} = ARRAY[${memberId}::uuid]`;
-}
+
+/** For one member alone. */
+export const attributedTo = (memberId: string): SQL =>
+  sql`${attributedMembers} = ARRAY[${memberId}::uuid]`;
+
+/** For two or more: shared. */
+export const attributedToTwoOrMore: SQL = sql`coalesce(array_length(${attributedMembers}, 1), 0) >= 2`;
+
+export type BudgetDefinitionRows = Awaited<ReturnType<typeof loadBudgetDefinition>>;
 
 /**
  * What happened in a scope each month from `from` to `to` (D1): spending per category, net of
@@ -62,19 +51,22 @@ export function budgetLens(scope: BudgetScope, memberId: string): SQL {
  */
 export async function budgetActivity(
   tx: Executor,
-  { householdId, memberId, scope, from, to }: BudgetActivityScope,
+  ctx: BudgetReader,
+  scope: BudgetScope,
+  from: string,
+  to: string,
 ): Promise<Map<string, MonthActivity>> {
-  const ranges = await householdRanges(tx, householdId);
+  const ranges = await householdRanges(tx, ctx.householdId);
   const date = transactionDate(ranges.dateBasis);
   const [h] = await tx
     .select({ currency: households.baseCurrency })
     .from(households)
-    .where(eq(households.id, householdId));
+    .where(eq(households.id, ctx.householdId));
   const [uncategorized] = await tx
     .select({ id: categories.id })
     .from(categories)
     .where(eq(categories.systemKey, 'uncategorized'));
-  const lens = budgetLens(scope, memberId);
+  const lens = scope === 'mine' ? attributedTo(ctx.memberId) : attributedToTwoOrMore;
   const end = firstDayOf(addMonths(to, 1));
   const rows = await tx
     .select({
@@ -125,7 +117,7 @@ export async function budgetActivity(
     }
     out.set(r.month, m);
   }
-  const contributed = await contributions(tx, memberId, scope, date, from, end, h!.currency);
+  const contributed = await contributions(tx, ctx, scope, date, from, end, h!.currency);
   const months = new Set([...out.keys(), ...contributed.keys()]);
   return new Map(
     [...months].map((k) => [
@@ -148,7 +140,7 @@ export async function budgetActivity(
  */
 async function contributions(
   tx: Executor,
-  memberId: string,
+  ctx: BudgetReader,
   scope: BudgetScope,
   date: ReturnType<typeof transactionDate>,
   from: string,
@@ -207,13 +199,13 @@ async function contributions(
     const counts =
       scope === 'household'
         ? joint(leg) && (!other || !joint(other))
-        : owners.length === 1 && owners[0]!.memberId === memberId && !!other && joint(other);
+        : owners.length === 1 && owners[0]!.memberId === ctx.memberId && !!other && joint(other);
     if (counts) out.set(leg.month, (out.get(leg.month) ?? 0) + Math.abs(leg.amountMinor));
   }
   return out;
 }
 
-/** A budget's categories, amounts and strategies over time: what computing a month needs. */
+/** A budget's categories, amounts and strategies, as computeBudgetMonth() reads them. */
 export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
   const cats = await tx
     .select({

@@ -21,7 +21,16 @@ export interface StoredNotification {
   summary: string;
   /** An app path, `/h/…/accounts`. */
   link: string | null;
+  /** Its own email at each detail level (the weekly recap's), in place of the usual one. */
+  email?: Partial<Record<DetailLevel, PreparedEmail>> | null;
   createdAt: Date;
+}
+
+/** An email already written: subject, plain text and HTML. */
+export interface PreparedEmail {
+  subject: string;
+  text: string;
+  html: string;
 }
 
 /** What a channel sends: the notification at one detail level, with absolute links. */
@@ -35,6 +44,8 @@ export interface OutgoingMessage {
   url: string | null;
   /** The recipient's notification settings, absolute (for email's footer). */
   settingsUrl: string | null;
+  /** Its own email at this detail level, when it has one. */
+  email: PreparedEmail | null;
   createdAt: Date;
 }
 
@@ -64,6 +75,7 @@ export function renderMessage(
     ...text,
     url: detail === 'minimal' ? absolute(publicUrl ? '/' : null) : absolute(n.link),
     settingsUrl: absolute(settingsPath),
+    email: n.email?.[detail] ?? null,
     createdAt: n.createdAt,
   };
 }

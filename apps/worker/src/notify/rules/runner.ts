@@ -3,16 +3,15 @@ import {
   type Database,
   householdMembers,
   households,
-  notifications,
   systemContext,
   users,
   withContext,
 } from '@fiscus/db';
 import { describeError } from '@fiscus/env';
-import { WEEKDAYS } from '@fiscus/shared';
 import { Logger } from '@nestjs/common';
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import { type MemberRun, memberRun, weekOf } from './member.js';
+import { type MemberRun, memberRun } from './member.js';
+import { weeklyRecap } from './recap.js';
 import { bigTransactions, DAILY_RULES, review } from './rules.js';
 
 // When the rules run (#127, D20): each household's on its own clock. Once each local hour, a
@@ -21,21 +20,6 @@ import { bigTransactions, DAILY_RULES, review } from './rules.js';
 // looked at every check, for big ones. What's been sent is in the notifications' keys, so a
 // restart repeats the work, never the notifications.
 
-/** What the weekly recap sends a member (#128), built for them from what they see (D21). */
-export interface WeeklyRecap {
-  title: string;
-  body: string;
-  summary: string;
-  link: string | null;
-}
-
-/**
- * The Monday recap's hook (#128): called once a week for each member whose recap is on, at their
- * day and hour, in their own database context, with the Monday that starts the week it's sent in.
- * Null sends nothing. Its notification's key is `weekly_recap:<weekOf>`, so it goes out once.
- */
-export type WeeklyRecapHook = (m: MemberRun, weekOf: string) => Promise<WeeklyRecap | null>;
-
 export interface RulesOptions {
   /** The local hour the daily rules run from: bills, statements, balances, budgets (D20). */
   dailyHour: number;
@@ -43,7 +27,10 @@ export interface RulesOptions {
   checkEveryMs: number;
   /** How far back the first look for big transactions goes, after a start. */
   firstLookBackMs: number;
-  recap?: WeeklyRecapHook | undefined;
+  /** Sends the weekly recap (#128); on unless turned off. */
+  recap: boolean;
+  /** The server's address, for the recap email's links. */
+  publicUrl: string | null;
   now?: () => Date;
 }
 
@@ -51,6 +38,8 @@ export const DEFAULT_RULES_OPTIONS: RulesOptions = {
   dailyHour: 8,
   checkEveryMs: 60_000,
   firstLookBackMs: 24 * 60 * 60_000,
+  recap: true,
+  publicUrl: null,
 };
 
 /** The household's date, hour and weekday at `now`. */
@@ -152,7 +141,7 @@ export class NotificationRules {
   async #members(householdId: string) {
     return withContext(this.#db, systemContext(householdId), async (tx) => {
       const [h] = await tx
-        .select({ currency: households.baseCurrency })
+        .select({ currency: households.baseCurrency, weekStart: households.weekStart })
         .from(households)
         .where(eq(households.id, householdId));
       const members = await tx
@@ -171,7 +160,7 @@ export class NotificationRules {
             isNull(users.disabledAt),
           ),
         );
-      return { currency: h?.currency ?? 'USD', members };
+      return { currency: h?.currency ?? 'USD', weekStartDay: h?.weekStart ?? 1, members };
     });
   }
 
@@ -181,7 +170,7 @@ export class NotificationRules {
     local: LocalTime,
     fn: (m: MemberRun) => Promise<number>,
   ): Promise<number> {
-    const { currency, members } = await this.#members(householdId);
+    const { currency, weekStartDay, members } = await this.#members(householdId);
     let sent = 0;
     for (const member of members) {
       try {
@@ -197,6 +186,7 @@ export class NotificationRules {
                 today: local.date,
                 hour: local.hour,
                 currency,
+                weekStartDay,
               }),
             ),
         );
@@ -217,7 +207,12 @@ export class NotificationRules {
       let n = 0;
       if (daily) for (const rule of DAILY_RULES) n += await rule(m);
       n += await review(m);
-      n += await this.#recap(m, local);
+      if (this.#options.recap) {
+        n += await weeklyRecap(m, {
+          weekday: local.weekday,
+          publicUrl: this.#options.publicUrl,
+        });
+      }
       return n;
     });
     if (sent) this.#logger.log(`${householdId}: ${sent} notification${sent === 1 ? '' : 's'}`);
@@ -227,29 +222,5 @@ export class NotificationRules {
   /** Big transactions written since `since`, for each member who sees them. */
   async runBigTransactions(householdId: string, local: LocalTime, since: Date): Promise<number> {
     return this.#eachMember(householdId, local, (m) => bigTransactions(m, since));
-  }
-
-  /** The weekly recap (#128), through its hook, on the member's day from their hour. */
-  async #recap(m: MemberRun, local: LocalTime): Promise<number> {
-    const hook = this.#options.recap;
-    if (!hook || !m.on('weekly_recap')) return 0;
-    const { day, hour } = m.settings('weekly_recap');
-    if (!WEEKDAYS.includes(day) || local.weekday !== day || local.hour < hour) return 0;
-    const week = weekOf(local.date);
-    const [already] = await m.tx
-      .select({ id: notifications.id })
-      .from(notifications)
-      .where(
-        and(
-          eq(notifications.memberId, m.memberId),
-          eq(notifications.dedupeKey, `weekly_recap:${week}`),
-        ),
-      );
-    if (already) return 0;
-    const recap = await hook(m, week);
-    if (!recap) return 0;
-    return (await m.notify({ kind: 'weekly_recap', dedupeKey: `weekly_recap:${week}`, ...recap }))
-      ? 1
-      : 0;
   }
 }
