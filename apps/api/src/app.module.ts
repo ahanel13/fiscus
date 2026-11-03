@@ -13,6 +13,7 @@ import { HouseholdsModule } from './households/households.module.js';
 import { ImportsModule } from './imports/imports.module.js';
 import { LedgerModule } from './ledger/ledger.module.js';
 import { BudgetsModule } from './budgets/budgets.module.js';
+import { RecapModule } from './recap/recap.module.js';
 import { RecurringModule } from './recurring/recurring.module.js';
 import { RulesModule } from './rules/rules.module.js';
 import { SharedCostsModule } from './shared-costs/shared-costs.module.js';
@@ -46,6 +47,7 @@ export class AppModule {
         LedgerModule,
         ImportsModule,
         BudgetsModule,
+        RecapModule,
         RecurringModule,
         RulesModule,
         SharedCostsModule,
