@@ -52,6 +52,8 @@ export function WeeklyRecapView({ recap: r, review }: { recap: WeeklyRecap; revi
   );
   const usual = r.spending.usualMinor;
   const diff = usual === null ? 0 : r.spending.spentMinor - usual;
+  // One column per figure shown, so a missing one leaves no empty cell.
+  const figures = 1 + (r.budgets ? 1 : 0) + (r.netWorth ? 1 : 0);
   return (
     <>
       <div>
@@ -67,7 +69,14 @@ export function WeeklyRecapView({ recap: r, review }: { recap: WeeklyRecap; revi
       {r.quiet ? (
         <p className="text-sm">A quiet week: nothing spent, and nothing coming up.</p>
       ) : (
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
+        <div
+          className={clsx(
+            'grid gap-px overflow-hidden rounded-xl border border-border bg-border',
+            figures === 1 ? 'grid-cols-1' : 'grid-cols-2',
+            figures === 3 &&
+              'sm:grid-cols-3 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1',
+          )}
+        >
           <Figure label="Spent">
             <span className="text-lg font-semibold">{money(r.spending.spentMinor)}</span>
             {usual !== null ? (
