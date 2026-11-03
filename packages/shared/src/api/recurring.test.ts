@@ -13,6 +13,9 @@ import {
   type RecurringSchedule,
   recurringMatches,
   recurringScheduleSchema,
+  showWho,
+  statementPaid,
+  whoLooksAfter,
 } from './recurring.js';
 
 const pay = (id: string, date: string, amountMinor = 241_236): RecurringCandidate => ({
@@ -364,5 +367,68 @@ describe('detectRecurring', () => {
     )!;
     expect(found.kind).toBe('income');
     expect(found.draft.schedule).toMatchObject({ unit: 'month', days: [1, 15], weekend: 'before' });
+  });
+});
+
+describe('whoLooksAfter (D13)', () => {
+  const [alex, sam, jo] = ['alex', 'sam', 'jo'];
+  const base = {
+    kind: 'bill' as const,
+    responsibleMemberId: null,
+    createdByMemberId: alex,
+    seenBy: [alex, sam],
+    accountOwners: [sam],
+    householdOwners: [alex],
+  };
+
+  it('is the account’s only owner, whoever confirmed it', () => {
+    expect(whoLooksAfter(base)).toBe(sam);
+  });
+
+  it('is whoever confirmed it, for a joint account', () => {
+    expect(whoLooksAfter({ ...base, accountOwners: [sam, alex] })).toBe(alex);
+    expect(whoLooksAfter({ ...base, accountOwners: [sam, alex], createdByMemberId: sam })).toBe(
+      sam,
+    );
+  });
+
+  it('is whoever was chosen, while they still see the account', () => {
+    expect(whoLooksAfter({ ...base, responsibleMemberId: alex })).toBe(alex);
+    // Jo can't see it (any more): back to the default.
+    expect(whoLooksAfter({ ...base, responsibleMemberId: jo })).toBe(sam);
+  });
+
+  it('falls back to an owner of the account, then of the household', () => {
+    // Made by someone who's gone, on a joint account.
+    expect(whoLooksAfter({ ...base, createdByMemberId: jo, accountOwners: [sam, alex] })).toBe(sam);
+    // No owner left who sees it.
+    expect(whoLooksAfter({ ...base, createdByMemberId: jo, accountOwners: [] })).toBe(alex);
+    expect(
+      whoLooksAfter({ ...base, createdByMemberId: jo, accountOwners: [], seenBy: [] }),
+    ).toBeNull();
+  });
+
+  it('is nobody for income, which has "for" instead', () => {
+    expect(whoLooksAfter({ ...base, kind: 'income', responsibleMemberId: alex })).toBeNull();
+  });
+});
+
+describe('showWho (D22)', () => {
+  it('shows a person only when more than one member sees it', () => {
+    expect(showWho([])).toBe(false);
+    expect(showWho(['alex'])).toBe(false);
+    expect(showWho(['alex', 'sam'])).toBe(true);
+  });
+});
+
+describe('statementPaid (D9)', () => {
+  it('is paid at the balance, minimum paid at the minimum, partly paid below it', () => {
+    expect(statementPaid(50_000, 3_500, 50_000)).toBe('paid');
+    expect(statementPaid(50_000, 3_500, 60_000)).toBe('paid');
+    expect(statementPaid(50_000, 3_500, 3_500)).toBe('minimum');
+    expect(statementPaid(50_000, 3_500, 1_000)).toBe('part');
+    expect(statementPaid(50_000, 3_500, 0)).toBeNull();
+    // No minimum reported: anything short of the balance is part of it.
+    expect(statementPaid(50_000, null, 10_000)).toBe('part');
   });
 });

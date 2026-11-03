@@ -533,6 +533,20 @@
       "when": 1793656130056,
       "tag": "0075_connection_tracked",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1793689699776,
+      "tag": "0076_recurring_responsible",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1793689701683,
+      "tag": "0077_recurring_responsible_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -102,7 +102,12 @@ export type RecurringDraft = z.infer<typeof recurringDraftSchema>;
 export const createRecurringSchema = recurringDraftSchema.extend({
   name: seriesName,
   kind: recurringKindSchema,
+  /** Who looks after it (D13): someone who sees its account. Left out: the default. */
+  responsibleMemberId: z.uuid().optional(),
 });
+
+/** Handing a series to someone else who sees its account (D13; REC-04). */
+export const handOverSchema = z.object({ memberId: z.uuid() }).strict();
 export const updateRecurringSchema = z
   .object({
     name: seriesName,
@@ -143,12 +148,21 @@ export interface RecurringSeries {
   recent: RecurringPayment[];
   /** How many payments it has had, in all of the history you can see. */
   paidCount: number;
+  /** Who looks after it and gets its reminders (D13); null for income, which has `forMemberIds`. */
+  responsibleMemberId: string | null;
+  /** Income: who it's for, from its latest payment's attribution. Empty for the rest. */
+  forMemberIds: string[];
+  /** The members who see its account: who it can be handed to. One: show no person (D22). */
+  seenBy: string[];
   version: number;
   updatedAt: string;
 }
 
 /** What a series would look like, before it's saved: for the Make recurring dialog. */
 export interface RecurringPreview {
+  /** Who would look after it if nobody's chosen (D13), and who could (D22). */
+  responsibleMemberId: string | null;
+  seenBy: string[];
   next: string[];
   paidCount: number;
   firstPaid: string | null;
@@ -189,7 +203,68 @@ export interface RecurringOccurrence {
   /** Card statements: the minimum, and what's gone into the card since the statement. */
   minimumMinor?: number | null;
   paidSoFarMinor?: number;
+  /** Card statements: how much of it is paid (D9). */
+  statementPaid?: StatementPaid;
+  /**
+   * Who: for a bill, who looks after it; for income, who it's for; for a card statement, whose
+   * card it is. Shown only when `shared` (D22).
+   */
+  memberIds: string[];
+  /** Seen by more than one member, so who it's for is worth saying (D22). */
+  shared: boolean;
 }
+
+/** How much of a card statement is paid (D9): all of it, the minimum, some, or nothing yet. */
+export type StatementPaid = 'paid' | 'minimum' | 'part' | null;
+
+/**
+ * Whether payments into a card since its statement date pay the statement: all of its balance,
+ * at least its minimum, or less. `owedMinor` and the rest are positive.
+ */
+export function statementPaid(
+  owedMinor: number,
+  minimumMinor: number | null,
+  paidSoFarMinor: number,
+): StatementPaid {
+  if (paidSoFarMinor >= owedMinor) return 'paid';
+  if (minimumMinor !== null && minimumMinor > 0 && paidSoFarMinor >= minimumMinor) return 'minimum';
+  return paidSoFarMinor > 0 ? 'part' : null;
+}
+
+// ── Who looks after it (#121; D13, D22) ─────────────────────────────────────────────────────
+
+export interface LookAfterInput {
+  kind: RecurringKind;
+  /** Who someone chose; null for the default. */
+  responsibleMemberId: string | null;
+  /** Whoever made it (confirmed the suggestion, or added it). */
+  createdByMemberId: string;
+  /** The household's current members who see its account, in the order they joined. */
+  seenBy: readonly string[];
+  /** Its account's current owners, largest share first. */
+  accountOwners: readonly string[];
+  /** The household's current owners, in the order they joined. */
+  householdOwners: readonly string[];
+}
+
+/**
+ * Who looks after a series and gets its reminders (D13): whoever was chosen, while they still see
+ * its account. Otherwise the account's only owner; for a joint account, whoever made it; then the
+ * account's first owner, then the household's first owner who sees it. Income has none: it has
+ * "for" instead, and no reminders.
+ */
+export function whoLooksAfter(x: LookAfterInput): string | null {
+  if (x.kind === 'income') return null;
+  const sees = (m: string | null): m is string => m !== null && x.seenBy.includes(m);
+  if (sees(x.responsibleMemberId)) return x.responsibleMemberId;
+  const owners = x.accountOwners.filter(sees);
+  if (owners.length === 1) return owners[0]!;
+  if (sees(x.createdByMemberId)) return x.createdByMemberId;
+  return owners[0] ?? x.householdOwners.find(sees) ?? null;
+}
+
+/** Whether to show a person, or ask for one: only where more than one member sees it (D22). */
+export const showWho = (seenBy: readonly string[]) => seenBy.length > 1;
 
 /** A month of what's due, for Upcoming and the calendar (§4). */
 export interface RecurringMonth {
@@ -497,6 +572,13 @@ export interface DetectedSeries {
   /** The last few amounts, oldest first, signed: for the little bars. */
   amounts: number[];
   next: string | null;
+  /**
+   * Filled in by the api: who would look after it (D13), who could (D22), and for income, who
+   * it's for. Shown on the suggestion, so it can be changed before confirming.
+   */
+  responsibleMemberId?: string | null;
+  seenBy?: string[];
+  forMemberIds?: string[];
 }
 
 /** The name a group of payments goes by: case and spacing don't matter. */
