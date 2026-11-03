@@ -1131,6 +1131,23 @@ export function useRuleSuggestionContext(householdId: string) {
  * "Make this a rule?" after you rename or recategorize: create it (and apply it to the others it
  * matches), edit it first, or stop suggesting it for that description.
  */
+const RULE_SUGGESTION_ID = 'rule-suggestion';
+
+/** A toast's "Make a rule": the suggestion may be scrolled away, so bring it into view. */
+export function ruleToastAction(s: SuggestedRule) {
+  return {
+    description: `Make it a rule for “${s.matchText}”?`,
+    action: {
+      label: 'Make a rule',
+      onAction: () => {
+        const el = document.getElementById(RULE_SUGGESTION_ID);
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+      },
+    },
+  };
+}
+
 export function RuleSuggestion({
   householdId,
   suggestion,
@@ -1199,9 +1216,10 @@ export function RuleSuggestion({
 
   return (
     <div
+      id={RULE_SUGGESTION_ID}
       role="region"
       aria-label="Rule suggestion"
-      className="space-y-3 rounded-lg border border-accent/40 bg-accent-soft p-3 text-sm"
+      className="scroll-mt-24 space-y-3 rounded-lg border border-accent/40 bg-accent-soft p-3 text-sm"
     >
       <p className="flex items-start gap-2">
         <Wand2 aria-hidden className="mt-0.5 size-4 shrink-0 text-accent-text" />
