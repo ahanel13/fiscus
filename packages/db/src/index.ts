@@ -23,6 +23,13 @@ export {
 } from './activity.js';
 export { readConnectionSecret, saveConnectionSecret } from './connection-secrets.js';
 export {
+  channelSecretContext,
+  decryptChannelSecret,
+  encryptChannelSecret,
+  enqueueNotification,
+  type NewNotification,
+} from './notifications.js';
+export {
   activePlaidKeySet,
   type PlaidKeySet,
   plaidKeySetUses,

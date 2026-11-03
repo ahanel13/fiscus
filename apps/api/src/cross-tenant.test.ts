@@ -191,6 +191,17 @@ describe('cross-tenant isolation (generated from routes)', () => {
             [x.householdId, x.connectionId, x.accountId, name],
           )
         ).rows[0].id;
+        // A notification for its owner, in the bell (#130): `:id` in the notification routes.
+        x.id = (
+          await db.query(
+            `INSERT INTO notifications (id, household_id, member_id, kind, dedupe_key, title, body,
+               summary, in_app, routed_at)
+             VALUES (gen_random_uuid(), $1, $2, 'connection_needs_you', 'k', $3, $3, 's', true,
+               now())
+             RETURNING id`,
+            [x.householdId, x.memberId, name],
+          )
+        ).rows[0].id;
       }
     } finally {
       await db.end();

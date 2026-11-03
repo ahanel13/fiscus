@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { PlaidInstanceConfig, SimpleFinInstanceConfig } from '@fiscus/aggregation';
+import type { MailConfig, MailTransport } from '@fiscus/notify';
 import type { SignupMode } from '@fiscus/shared';
 
 export interface AppConfig {
@@ -21,6 +22,13 @@ export interface AppConfig {
   plaid?: PlaidInstanceConfig | undefined;
   /** Where SimpleFIN setup tokens may point (#91). Defaults to the Bridge's hosts. */
   simplefin?: SimpleFinInstanceConfig | undefined;
+  /**
+   * The server's mail settings (SMTP_URL, MAIL_FROM; D16), or undefined without them. The worker
+   * sends notifications; the api only says whether it can, and sends the admin's test.
+   */
+  mail?: MailConfig | undefined;
+  /** Tests only: a stub in place of the SMTP transport. */
+  mailTransport?: MailTransport | undefined;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

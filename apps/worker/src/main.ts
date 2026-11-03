@@ -11,6 +11,14 @@ import {
 import { envKeyProvider, FieldCrypto, masterKeysOrExit } from '@fiscus/crypto';
 import { createDb, HouseholdKeyStore, pingDatabase } from '@fiscus/db';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
+import {
+  EmailChannel,
+  GotifyChannel,
+  mailConfigOrExit,
+  NtfyChannel,
+  smtpTransport,
+  WebhookChannel,
+} from '@fiscus/notify';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import workerEnv from './env.js';
@@ -46,12 +54,25 @@ const providers = new ProviderRegistry([
   new SimpleFinProvider(instanceSimpleFinConfig(env)),
 ]);
 
+// Notification email (#125, D16): only with the server's mail settings. One without the other
+// stops the worker, as Plaid's keys do.
+const mail = mailConfigOrExit(env, (message) => new Logger('Mail').fatal(message));
+
 const app = await NestFactory.createApplicationContext(
   WorkerModule.forRoot({
     db: db.db,
     crypto,
     providers,
     options: { pollMs: env.SYNC_POLL_SECONDS * 1000, intervalHours: env.SYNC_INTERVAL_HOURS },
+    notify: {
+      channels: {
+        email: mail ? new EmailChannel(smtpTransport(mail), mail.from) : null,
+        ntfy: new NtfyChannel(),
+        gotify: new GotifyChannel(),
+        webhook: new WebhookChannel(),
+      },
+      options: { publicUrl: env.PUBLIC_URL ?? null },
+    },
   }),
   { logger: toNestLogLevels(env.LOG_LEVEL) },
 );
@@ -65,6 +86,7 @@ const logger = new Logger('Worker');
 logger.log(`Worker ready (health on :${env.HEALTH_PORT})`);
 // Only whether, and which environment: never the keys.
 plaidLogger.log(plaidStatus(plaid));
+logger.log(mail ? 'Notification email: on' : 'Notification email: off (no SMTP_URL)');
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {

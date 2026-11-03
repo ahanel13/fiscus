@@ -7,6 +7,7 @@ import {
 } from '@fiscus/aggregation';
 import { masterKeysOrExit } from '@fiscus/crypto';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
+import { mailConfigOrExit } from '@fiscus/notify';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -38,6 +39,8 @@ const config: AppConfig = {
   valkeyUrl: env.VALKEY_URL,
   plaid,
   simplefin: instanceSimpleFinConfig(env),
+  // One of SMTP_URL and MAIL_FROM without the other stops the api, as it does the worker.
+  mail: mailConfigOrExit(env, (message) => new Logger('Mail').fatal(message)) ?? undefined,
 };
 // Fail closed, and say why: keys that can't work stop the api before it serves anything (#307).
 await masterKeysOrExit({ masterKeys: () => masterKeysFrom(config) }, (message) =>

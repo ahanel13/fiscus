@@ -341,6 +341,11 @@ household's occurrences daily, in its timezone, and records what it sent. A remi
 once per occurrence and rule, even if the worker restarts. A bill paid before its reminder isn't
 reminded about at all.
 
+**As built so far** (#125, #126, #130): Settings → Notifications, the bell, email (with Server →
+Email's test), ntfy, Gotify and webhooks with their tests, detail levels, and the delivery the
+worker does: [notifications](../notifications.md). The one notification sent so far is "A bank
+connection needs you"; the other rules (#127) and the recap (#128) come next.
+
 ---
 
 ## 8. The weekly recap
