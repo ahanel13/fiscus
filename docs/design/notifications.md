@@ -13,9 +13,10 @@ are in the [bills walkthrough](walkthroughs/bills.md) §7 (D15–D20). The table
   when it's sent and a tick for each channel. On a phone, each row opens its own settings.
 - **The bell**, at the top of every page, with the unread count: recent notifications, newest
   first. Opening one marks it read and goes to what it's about; "Mark all read" clears the count.
-- **Email**, set up once by whoever runs the server (`SMTP_URL`, `MAIL_FROM`), with a test on
-  Server → Email. Without them, Settings says "Your server can't send email yet; ask whoever runs
-  it." and email can't be ticked.
+- **Email**, set up once for the server: by an instance admin on Server → Email (mail server,
+  port, security, username, password, From), or by `SMTP_URL` and `MAIL_FROM`, which win and show
+  there read-only (§5). Server → Email has a test. With neither, Settings says "Your server can't
+  send email yet; ask whoever runs it." and email can't be ticked.
 - **One rule so far:** "A bank connection needs you", for whoever linked it: at once when it needs
   them to sign in again, and after 3 days of failures otherwise, as Accounts shows it (bank sync
   walkthrough D10). The others (#127) and the weekly recap (#128) use the same pipeline.
@@ -133,6 +134,17 @@ link as its click action.
 Set both mail settings or neither: one without the other stops the api and the worker at
 startup, naming what's missing. The worker logs only whether email is on, and for each delivery
 its id, channel and a code.
+
+**Or set the mail server on Server → Email.** An instance admin enters the host, port, security
+(TLS, STARTTLS or none), username, password and From address, and can send a test, change or
+remove them (with a recent sign-in). They're kept in instance settings under `mail.smtp`, outside
+the registry of plain settings: the password encrypted with the instance key and bound to that
+setting, never returned (the page says only that one is saved; leave it blank to keep it), and
+never in the activity, which says which fields changed. `SMTP_URL` and `MAIL_FROM` win when set:
+the page then shows their host, port and From read-only, and can't change them. The api and the
+worker read the settings in use every 30 and 60 seconds, so a change takes effect without a
+restart. After a master key rotation removes the key the password was saved under, the page asks
+for it again.
 
 **Addresses on your own network** (a Gotify server or Home Assistant on the LAN) are allowed,
 since that's what webhooks are for. This means any member can make the worker post to an address

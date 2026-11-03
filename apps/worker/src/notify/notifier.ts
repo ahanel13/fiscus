@@ -15,7 +15,7 @@ import {
 import { describeError } from '@fiscus/env';
 import {
   ChannelError,
-  type EmailChannel,
+  EmailChannel,
   type GotifyChannel,
   type NtfyChannel,
   renderMessage,
@@ -44,8 +44,11 @@ import { and, eq, sql } from 'drizzle-orm';
 // rule (its dedupe key), so a restart sends nothing twice, short of one cut off mid-send.
 
 export interface NotifierChannels {
-  /** Null when the server has no mail settings (SMTP_URL, MAIL_FROM). */
-  email: EmailChannel | null;
+  /**
+   * Email: a channel, null when the server has no mail settings, or a source that reads them as
+   * they change (SMTP_URL and MAIL_FROM, else the Server page's).
+   */
+  email: EmailChannel | null | { current(): Promise<EmailChannel | null> };
   ntfy: NtfyChannel;
   gotify: GotifyChannel;
   webhook: WebhookChannel;
@@ -173,7 +176,8 @@ export class Notifier {
    * the household gets nothing.
    */
   async route(householdId: string, notificationId: string): Promise<void> {
-    const { db, channels: available } = this.#deps;
+    const { db } = this.#deps;
+    const email = await this.#email();
     await withContext(db, systemContext(householdId), async (tx) => {
       const [n] = await tx
         .select({
@@ -219,8 +223,7 @@ export class Notifier {
           : (['in_app'] as NotificationChannelKind[]);
         chosen = ticked.filter(
           (c) =>
-            c === 'in_app' ||
-            (c === 'email' ? available.email !== null : (setUp as string[]).includes(c)),
+            c === 'in_app' || (c === 'email' ? email !== null : (setUp as string[]).includes(c)),
         );
       }
 
@@ -341,6 +344,13 @@ export class Notifier {
     return outcome;
   }
 
+  /** The email channel in use now, or null. */
+  async #email(): Promise<EmailChannel | null> {
+    const e = this.#deps.channels.email;
+    if (e === null || e instanceof EmailChannel) return e;
+    return e.current();
+  }
+
   async #send(
     householdId: string,
     kind: ExternalChannelKind,
@@ -352,9 +362,10 @@ export class Notifier {
   ): Promise<void> {
     const { channels, crypto } = this.#deps;
     if (kind === 'email') {
-      if (!channels.email) throw new ChannelError('email_unavailable', true);
+      const email = await this.#email();
+      if (!email) throw new ChannelError('email_unavailable', true);
       if (!target.email) throw new ChannelError('no_address', true);
-      return channels.email.send(message, { to: target.email });
+      return email.send(message, { to: target.email });
     }
     const config = target.config;
     if (!config?.secretEnc) throw new ChannelError('not_configured', true);

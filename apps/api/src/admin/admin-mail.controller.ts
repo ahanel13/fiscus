@@ -1,41 +1,76 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { ChannelError, EmailChannel, renderMessage, smtpTransport } from '@fiscus/notify';
-import type { MailStatus } from '@fiscus/shared';
-import { Controller, Get, HttpCode, Inject, Post } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { ChannelError, EmailChannel, renderMessage, smtpTransport } from '@fiscus/notify';
+import { type MailStatus, type SetMailSettings, setMailSettingsSchema } from '@fiscus/shared';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Post, Put, Req } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import type { AuthContext } from '../auth/auth-context.js';
-import { Auth, RequireInstanceAdmin } from '../auth/decorators.js';
-import { Problem } from '../common/problem.js';
+import { Auth, RequireInstanceAdmin, RequireRecentAuth } from '../auth/decorators.js';
+import { Problem, problems } from '../common/problem.js';
+import { ZodPipe } from '../common/zod-pipe.js';
 import { APP_CONFIG, type AppConfig } from '../config.js';
+import { InstanceSettingsService } from './instance-settings.service.js';
+
+const setByEnvironment = () =>
+  new Problem(
+    409,
+    'mail_set_by_environment',
+    'Your server’s environment sets the mail server',
+    'SMTP_URL and MAIL_FROM are set, and win over the Server page. Change them there.',
+  );
 
 /**
- * Server → Email (D16, #125; ADM-05): whether this server can send notification email, and a
- * test to the admin's own address. The settings are SMTP_URL and MAIL_FROM; the URL, which holds
- * the mail server's password, is never shown. Notifications themselves are sent by the worker;
- * the test is sent here, so the admin sees at once whether the settings work.
+ * Server → Email (D16, #125; ADM-05): the mail server notification email is sent through, and a
+ * test to the admin's own address. It's set by SMTP_URL and MAIL_FROM, which win, or here; its
+ * password is write-only and never shown. Notifications are sent by the worker, which reads the
+ * same settings; the test is sent here, so the admin sees at once whether they work.
  */
 @Controller('api/v1/admin/mail')
 @RequireInstanceAdmin()
 export class AdminMailController {
-  constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
+  constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly settings: InstanceSettingsService,
+  ) {}
 
   @Get()
-  status(): { data: MailStatus } {
-    return {
-      data: { configured: !!this.config.mail, from: this.config.mail?.from ?? null },
-    };
+  async status(): Promise<{ data: MailStatus }> {
+    return { data: await this.settings.mailStatus() };
+  }
+
+  @Put()
+  @RequireRecentAuth()
+  async set(
+    @Auth() auth: AuthContext,
+    @Body(new ZodPipe(setMailSettingsSchema)) body: SetMailSettings,
+    @Req() req: FastifyRequest,
+  ): Promise<{ data: MailStatus }> {
+    if (this.config.mail) throw setByEnvironment();
+    await this.settings.setMail(auth.user.id, body, req.ip);
+    return { data: await this.settings.mailStatus() };
+  }
+
+  @Delete()
+  @RequireRecentAuth()
+  async remove(
+    @Auth() auth: AuthContext,
+    @Req() req: FastifyRequest,
+  ): Promise<{ data: MailStatus }> {
+    if (this.config.mail) throw setByEnvironment();
+    if (!(await this.settings.removeMail(auth.user.id, req.ip))) throw problems.notFound();
+    return { data: await this.settings.mailStatus() };
   }
 
   @Post('test')
   @HttpCode(204)
   async test(@Auth() auth: AuthContext): Promise<void> {
-    const mail = this.config.mail;
+    const mail = (await this.settings.effectiveMail()).config;
     if (!mail) {
       throw new Problem(
         409,
         'mail_not_configured',
         'This server can’t send email yet',
-        'Set SMTP_URL and MAIL_FROM, then restart Fiscus.',
+        'Set the mail server here, or SMTP_URL and MAIL_FROM.',
       );
     }
     const channel = new EmailChannel(this.config.mailTransport ?? smtpTransport(mail), mail.from);
@@ -65,9 +100,7 @@ export class AdminMailController {
         code,
         undefined,
         {},
-        {
-          reason: code,
-        },
+        { reason: code },
       );
     }
   }

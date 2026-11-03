@@ -11,7 +11,12 @@ export {
 export {
   EmailChannel,
   type EmailConfig,
+  MAIL_SECURITY,
   type MailConfig,
+  type MailSecurity,
+  type MailSummary,
+  type SmtpServer,
+  summarizeMail,
   mailConfigOrExit,
   type MailEnv,
   mailEnvVars,

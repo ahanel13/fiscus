@@ -303,8 +303,8 @@ the bill.
 
 **D16. The channels.**
 - **In Fiscus:** the bell, with a list of recent notifications (#130).
-- **Email:** sent by the server. The instance admin sets it up once, with new settings
-  (`SMTP_URL`, `MAIL_FROM`) and a test on the Server page. Without them, the email row says
+- **Email:** sent by the server. The instance admin sets it up once, on the Server page (or
+  with `SMTP_URL` and `MAIL_FROM`, which win), with a test there. Without it, the email row says
   "Your server can't send email yet; ask whoever runs it." (#125)
 - **ntfy, Gotify and webhooks:** set up by each person, with their own server address and topic
   or token, stored encrypted (#126). ntfy is the easiest way to get phone push without an app
