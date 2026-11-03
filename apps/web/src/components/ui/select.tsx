@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { clsx } from 'clsx';
 import { Check, ChevronDown } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import {
   Autocomplete,
   Button as AriaButton,
@@ -166,11 +166,25 @@ export function ComboBox<T extends object>({
   className,
   ...props
 }: ComboBoxProps<T>) {
+  const focused = useRef(false);
   return (
     <AriaComboBox {...props} items={items} className={cx('flex flex-col gap-1.5', className)}>
       {label ? <Label>{label}</Label> : null}
       <div className="relative">
-        <AriaInput placeholder={placeholder} className={clsx(controlStyles, 'pr-10')} />
+        {/* Clicking in selects what's shown (“New account”), so typing replaces it rather than
+            landing mid-word: after the click, which would otherwise place the caret. Only when
+            focus arrives: the list opening focuses the input again, mid-typing. */}
+        <AriaInput
+          placeholder={placeholder}
+          className={clsx(controlStyles, 'pr-10')}
+          onFocus={(e) => {
+            if (focused.current) return;
+            focused.current = true;
+            const input = e.currentTarget;
+            requestAnimationFrame(() => input.select());
+          }}
+          onBlur={() => (focused.current = false)}
+        />
         <AriaButton className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted">
           <ChevronDown aria-hidden className="size-4" />
         </AriaButton>
