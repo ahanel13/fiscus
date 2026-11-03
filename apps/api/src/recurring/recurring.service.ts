@@ -6,14 +6,17 @@ import {
   recurringDismissals,
   recurringMarks,
   recurringSeries,
-  transactionAttributions,
   transactions,
 } from '@fiscus/db';
 import {
   accessLevels,
   cardStatements,
-  ownersOnDates,
+  paymentForMembers,
+  type SeriesHistory,
+  type SeriesLike,
   type SeriesPeople,
+  seriesCandidates,
+  seriesHistory,
   seriesPeople,
 } from '@fiscus/ledger';
 import {
@@ -29,7 +32,6 @@ import {
   type MarkOccurrence,
   nextOccurrences,
   occurrences,
-  payOccurrences,
   RECURRING_DEFAULT_WINDOW,
   type RecurringCandidate,
   type RecurringDraft,
@@ -48,7 +50,7 @@ import {
   whoLooksAfter,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { todayIn } from '../common/dates.js';
 import { Problem, problems } from '../common/problem.js';
@@ -58,18 +60,7 @@ import { HouseholdScope } from '../households/household-scope.js';
 type CreateInput = z.infer<typeof createRecurringSchema>;
 type UpdateInput = z.infer<typeof updateRecurringSchema>;
 type Row = typeof recurringSeries.$inferSelect;
-type MarkRow = typeof recurringMarks.$inferSelect;
 type Who = Pick<RecurringSeries, 'responsibleMemberId' | 'forMemberIds' | 'seenBy'>;
-
-/** A series, or a draft of one: what working out its payments needs. */
-interface SeriesLike {
-  id?: string;
-  accountId: string;
-  match: unknown;
-  schedule: unknown;
-  windowDays: number;
-  endedOn?: string | null;
-}
 
 /** The most suggestions shown at once: the most-paid first. */
 const MAX_SUGGESTIONS = 50;
@@ -702,22 +693,13 @@ export class RecurringService {
     };
   }
 
-  /** Who a payment is for: its own attribution, else its account's owners on its date. */
+  /** Who a payment is for: `paymentForMembers`. */
   async #forMembers(
     tx: Executor,
     accountId: string,
     payment: { transactionId: string; date: string } | undefined,
   ): Promise<string[]> {
-    if (payment) {
-      const explicit = await tx
-        .select({ memberId: transactionAttributions.memberId })
-        .from(transactionAttributions)
-        .where(eq(transactionAttributions.transactionId, payment.transactionId))
-        .orderBy(desc(transactionAttributions.shareBps), asc(transactionAttributions.memberId));
-      if (explicit.length) return explicit.map((a) => a.memberId);
-    }
-    const owners = await ownersOnDates(tx, [accountId]);
-    return owners(accountId, payment?.date ?? (await this.#todayOf(tx))).map((o) => o.memberId);
+    return paymentForMembers(tx, accountId, payment, await this.#todayOf(tx));
   }
 
   /** Owner or full access to the account: the same as changing its transactions. */
@@ -732,104 +714,26 @@ export class RecurringService {
     return (await this.#history(tx, s, today, today)).payments;
   }
 
-  /**
-   * Its dates from its first payment (or `from`, if earlier) to `until`, and the payments that
-   * paid them: the closest match, a late one, or the one someone linked. Also what people marked.
-   */
-  async #history(
+  /** Its dates, and the payments that paid them: `seriesHistory`. */
+  #history(
     tx: Executor,
     s: SeriesLike,
     today: string,
     until: string,
     from?: string,
-  ): Promise<{ dates: string[]; payments: RecurringPayment[]; marks: Map<string, MarkRow> }> {
-    const match = s.match as RecurringMatch;
-    const marks = new Map<string, MarkRow>();
-    if (s.id) {
-      for (const m of await tx
-        .select()
-        .from(recurringMarks)
-        .where(eq(recurringMarks.seriesId, s.id))) {
-        marks.set(m.due, m);
-      }
-    }
-    const linkedIds = [...marks.values()].flatMap((m) =>
-      m.transactionId ? [m.transactionId] : [],
-    );
-    const linkedRows = linkedIds.length
-      ? await tx
-          .select({
-            id: transactions.id,
-            date: transactions.effectiveDate,
-            amountMinor: transactions.amountMinor,
-            displayName: transactions.displayName,
-            originalDescription: transactions.originalDescription,
-          })
-          .from(transactions)
-          .where(and(inArray(transactions.id, linkedIds), isNull(transactions.deletedAt)))
-      : [];
-    const byId = new Map(linkedRows.map((r) => [r.id, { ...r, date: r.date! }]));
-    const linked = new Map<string, RecurringCandidate>();
-    for (const m of marks.values()) {
-      const t = m.transactionId ? byId.get(m.transactionId) : undefined;
-      if (t) linked.set(m.due, t);
-    }
-    const candidates = (
-      await this.#candidates(tx, s.accountId, match.direction, null, match)
-    ).filter((c) => recurringMatches(match, c) && !byId.has(c.id));
-    const first = [candidates[0]?.date, from, ...marks.keys()]
-      .filter((d) => d !== undefined)
-      .sort()[0];
-    if (!first) return { dates: [], payments: [], marks };
-    const end = s.endedOn && s.endedOn < until ? s.endedOn : until;
-    const dates = occurrences(
-      s.schedule as RecurringSchedule,
-      addDays(first, -s.windowDays),
-      addDays(end > today ? end : today, s.windowDays),
-    ).filter((d) => d <= end);
-    const payments = payOccurrences(
-      dates.filter((d) => marks.get(d)?.mark !== 'skipped'),
-      candidates,
-      s.windowDays,
-      linked,
-    );
-    return { dates, payments, marks };
+  ): Promise<SeriesHistory> {
+    return seriesHistory(tx, s, today, until, from);
   }
 
-  /**
-   * The account's transactions in one direction, oldest first: whole transactions, not their
-   * split parts, and not deleted. The amount condition narrows it in the database.
-   */
-  async #candidates(
+  /** The account's transactions in one direction, oldest first: `seriesCandidates`. */
+  #candidates(
     tx: Executor,
     accountId: string,
     direction: 'in' | 'out',
     from: string | null,
     match?: RecurringMatch,
   ): Promise<RecurringCandidate[]> {
-    const size = sql`abs(${transactions.amountMinor})`;
-    const rows = await tx
-      .select({
-        id: transactions.id,
-        date: transactions.effectiveDate,
-        amountMinor: transactions.amountMinor,
-        displayName: transactions.displayName,
-        originalDescription: transactions.originalDescription,
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.accountId, accountId),
-          isNull(transactions.parentId),
-          isNull(transactions.deletedAt),
-          direction === 'in' ? gt(transactions.amountMinor, 0) : lt(transactions.amountMinor, 0),
-          from ? gte(transactions.effectiveDate, from) : undefined,
-          match?.amount?.min !== undefined ? sql`${size} >= ${match.amount.min}` : undefined,
-          match?.amount?.max !== undefined ? sql`${size} <= ${match.amount.max}` : undefined,
-        ),
-      )
-      .orderBy(asc(transactions.effectiveDate), asc(transactions.id));
-    return rows.map((r) => ({ ...r, date: r.date! }));
+    return seriesCandidates(tx, accountId, direction, from, match);
   }
 
   async #todayOf(tx: Executor): Promise<string> {

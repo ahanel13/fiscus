@@ -72,6 +72,8 @@ const app = await NestFactory.createApplicationContext(
         webhook: new WebhookChannel(),
       },
       options: { publicUrl: env.PUBLIC_URL ?? null },
+      // The rules (#127). The weekly recap's hook (#128) goes in `recap`.
+      rules: {},
     },
   }),
   { logger: toNestLogLevels(env.LOG_LEVEL) },

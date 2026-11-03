@@ -10,12 +10,15 @@ import {
   type OnApplicationBootstrap,
 } from '@nestjs/common';
 import { Notifier, type NotifierChannels, type NotifierOptions } from './notifier.js';
+import { NotificationRules, type RulesOptions } from './rules/runner.js';
 
 export interface NotifyModuleConfig {
   db: Database;
   crypto: FieldCrypto;
   channels: NotifierChannels;
   options?: Partial<NotifierOptions>;
+  /** The rules (#127); left out, only what's written by others is delivered. */
+  rules?: Partial<RulesOptions>;
 }
 
 /** Starts delivering with the app, and stops before it shuts down. */
@@ -43,7 +46,12 @@ export class NotifyModule {
           provide: Notifier,
           useFactory: () =>
             new Notifier(
-              { db: config.db, crypto: config.crypto, channels: config.channels },
+              {
+                db: config.db,
+                crypto: config.crypto,
+                channels: config.channels,
+                ...(config.rules ? { rules: new NotificationRules(config.db, config.rules) } : {}),
+              },
               config.options,
             ),
         },

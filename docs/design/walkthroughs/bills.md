@@ -343,8 +343,9 @@ reminded about at all.
 
 **As built so far** (#125, #126, #130): Settings → Notifications, the bell, email (with Server →
 Email's test), ntfy, Gotify and webhooks with their tests, detail levels, and the delivery the
-worker does: [notifications](../notifications.md). The one notification sent so far is "A bank
-connection needs you"; the other rules (#127) and the recap (#128) come next.
+worker does: [notifications](../notifications.md). The rules (#127) are built, each run in the
+member's own view of the household; "A new subscription, or a price went up" waits for D14's
+detection.
 
 ---
 

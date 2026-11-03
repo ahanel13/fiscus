@@ -32,6 +32,7 @@ import {
 } from '@fiscus/shared';
 import { Logger } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
+import type { NotificationRules } from './rules/runner.js';
 
 // Delivering notifications (#125, #126, #130). Whatever writes a notification (the api, or a
 // worker job such as a connection needing its owner) only writes it into the outbox. Each pass
@@ -79,6 +80,8 @@ export interface NotifierDeps {
   db: Database;
   crypto: FieldCrypto;
   channels: NotifierChannels;
+  /** The rules that decide what to send (#127), looked at before each pass routes and sends. */
+  rules?: NotificationRules;
   logger?: Pick<Logger, 'log' | 'warn' | 'error'>;
 }
 
@@ -136,9 +139,14 @@ export class Notifier {
     await this.#loop;
   }
 
-  /** Routes what's new, then sends what's due. One failing never stops the others. */
+  /** Runs the rules, routes what's new, then sends what's due. One failing never stops the others. */
   async pass(): Promise<void> {
     const { db } = this.#deps;
+    try {
+      await this.#deps.rules?.maybePass();
+    } catch (error) {
+      this.#logger.error(`Notification rules failed: ${describeError(error)}`);
+    }
     const { rows: unrouted } = await db.execute<{ notification_id: string; household_id: string }>(
       sql`SELECT notification_id, household_id FROM fiscus_unrouted_notifications(${this.#options.batch})`,
     );

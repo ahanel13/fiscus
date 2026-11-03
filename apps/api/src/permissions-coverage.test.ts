@@ -29,7 +29,6 @@ const NOT_BUILT: Record<string, string> = {
   'PAT-02': 'Personal access tokens (M10)',
   'PAT-03': 'Personal access tokens (M10)',
   'SYS-01': 'Worker jobs (M2)',
-  'SYS-02': 'Notifications and digests (M4)',
   'AI-01': 'AI assistant (M10)',
   'AI-02': 'AI assistant (M10)',
   'AI-03': 'AI assistant (M10)',
