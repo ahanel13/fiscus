@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { HouseholdMember, RecurringKind } from '@fiscus/shared';
+import type { HouseholdMember, RecurringKind, StatementPaid } from '@fiscus/shared';
 
-// Bills & recurring (#121): who looks after what.
+// Bills & recurring (#121, #122): who looks after what, and how far a card statement is paid.
 
 /** Their names, in words: "Alex", "Alex and Sam". Members who've left are left out. */
 export const namesOf = (ids: readonly string[], members: readonly HouseholdMember[]) =>
@@ -15,4 +15,12 @@ export function whoLabel(kind: RecurringKind | 'statement', names: string): stri
   if (kind === 'income') return `For ${names}`;
   if (kind === 'statement') return `${names}’s card`;
   return `${names} looks after it`;
+}
+
+/** A card statement's badge (D9): paid, minimum paid, or partly paid. */
+export function statementBadge(paid: StatementPaid | undefined): string | null {
+  if (paid === 'paid') return 'Paid';
+  if (paid === 'minimum') return 'Minimum paid';
+  if (paid === 'part') return 'Partly paid';
+  return null;
 }

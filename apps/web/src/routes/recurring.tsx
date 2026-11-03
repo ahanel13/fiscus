@@ -42,7 +42,7 @@ import {
   useToday,
 } from '../components/ui.js';
 import { SMALL, useMediaQuery } from '../lib/media.js';
-import { namesOf, whoLabel } from '../lib/recurring.js';
+import { namesOf, statementBadge, whoLabel } from '../lib/recurring.js';
 
 // Bills & recurring (#118, #120; bills walkthrough §4, §5): what's coming up this month, late
 // first, as a list or a calendar, and every series under All. Paid and late are worked out from
@@ -294,7 +294,35 @@ function Upcoming({
   if (now.isPending) return <Skeleton className="h-64" />;
   if (now.isError) return <Alert>Couldn’t work out this month. Try again in a moment.</Alert>;
   const all = [...now.data.occurrences, ...(next.data?.occurrences ?? [])];
-  if (empty && all.length === 0) return <NothingYet />;
+  if (empty) {
+    // Nothing recurring yet, but card statements come from the bank from the first sync (D9).
+    const fromBank = now.data.occurrences.filter((o) => o.kind === 'statement');
+    return (
+      <>
+        <NothingYet />
+        {fromBank.length ? (
+          <section className="space-y-2">
+            <h2 className="px-1 text-sm font-semibold">From your bank</h2>
+            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+              {fromBank.map((o) => (
+                <OccurrenceRow
+                  key={`${o.accountId}:${o.due}`}
+                  householdId={householdId}
+                  o={o}
+                  today={today}
+                  accountName={accountName}
+                  onOpen={onOpen}
+                />
+              ))}
+            </ul>
+            <p className="px-1 text-xs text-muted">
+              Card due dates come from the bank, so they show from the first sync.
+            </p>
+          </section>
+        ) : null}
+      </>
+    );
+  }
   const weekEnd = addDays(today, 6);
   // The start of next month shows once this month's end is near.
   const horizon = addDays(today, 14);
@@ -510,13 +538,18 @@ export function OccurrenceRow({
             <Badge tone="danger">
               {lateBy} {lateBy === 1 ? 'day' : 'days'} late
             </Badge>
-          ) : o.status === 'paid' ? (
+          ) : o.status === 'paid' && o.kind !== 'statement' ? (
             <Badge tone="positive">
               {income ? 'Received' : 'Paid'}
               {o.payment?.date ? ` ${fmt(o.payment.date, { month: 'short', day: 'numeric' })}` : ''}
             </Badge>
           ) : o.status === 'skipped' ? (
             <Badge>Skipped</Badge>
+          ) : null}
+          {o.kind === 'statement' && statementBadge(o.statementPaid) ? (
+            <Badge tone={o.statementPaid === 'part' ? 'warning' : 'positive'}>
+              {statementBadge(o.statementPaid)}
+            </Badge>
           ) : null}
           {o.kind === 'statement' ? <Badge>From the bank</Badge> : null}
           {o.kind === 'subscription' ? <Badge>Subscription</Badge> : null}
@@ -555,7 +588,8 @@ export function OccurrenceRow({
               minor={Math.abs(amount)}
               currency={o.currency}
               kind="balance"
-              whole={o.status !== 'paid' && Math.abs(amount) >= 1_000}
+              // A statement's balance is exact, from the bank: to the cent.
+              whole={o.status !== 'paid' && o.kind !== 'statement' && Math.abs(amount) >= 1_000}
             />
           </>
         )}

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
-  accountLiabilities,
   accounts,
   type Executor,
   households,
@@ -10,7 +9,13 @@ import {
   transactionAttributions,
   transactions,
 } from '@fiscus/db';
-import { accessLevels, ownersOnDates, type SeriesPeople, seriesPeople } from '@fiscus/ledger';
+import {
+  accessLevels,
+  cardStatements,
+  ownersOnDates,
+  type SeriesPeople,
+  seriesPeople,
+} from '@fiscus/ledger';
 import {
   addDays,
   type createRecurringSchema,
@@ -43,7 +48,7 @@ import {
   whoLooksAfter,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { todayIn } from '../common/dates.js';
 import { Problem, problems } from '../common/problem.js';
@@ -446,7 +451,9 @@ export class RecurringService {
 
   /**
    * Card statements due from `from` to `to`, from the bank (D9): paid once what's gone into the
-   * card since the statement reaches its balance.
+   * card since the statement reaches its balance; minimum paid, or partly paid, with less. Seen by
+   * those who see the card's statement details (owner and full access); whose card it is shows
+   * where more than one of them does (D22).
    */
   async #statements(
     tx: Executor,
@@ -455,53 +462,22 @@ export class RecurringService {
     today: string,
     people: SeriesPeople,
   ): Promise<RecurringOccurrence[]> {
-    const rows = await tx
-      .select({ l: accountLiabilities, name: accounts.name, currency: accounts.currency })
-      .from(accountLiabilities)
-      .innerJoin(accounts, eq(accounts.id, accountLiabilities.accountId))
-      .where(
-        and(gte(accountLiabilities.nextDueDate, from), lte(accountLiabilities.nextDueDate, to)),
-      );
-    const out: RecurringOccurrence[] = [];
-    for (const { l, name, currency } of rows) {
-      const owed = -(l.lastStatementBalanceMinor ?? 0);
-      if (owed <= 0 || !l.nextDueDate) continue;
-      const [paid] = await tx
-        .select({ total: sql<string>`coalesce(sum(${transactions.amountMinor}), 0)` })
-        .from(transactions)
-        .where(
-          and(
-            eq(transactions.accountId, l.accountId),
-            isNull(transactions.parentId),
-            isNull(transactions.deletedAt),
-            gt(transactions.amountMinor, 0),
-            l.lastStatementDate ? gt(transactions.effectiveDate, l.lastStatementDate) : undefined,
-          ),
-        );
-      const paidSoFar = Number(paid?.total ?? 0);
-      const status: RecurringOccurrence['status'] =
-        paidSoFar >= owed
-          ? 'paid'
-          : addDays(l.nextDueDate, LATE_AFTER_DAYS) < today
-            ? 'late'
-            : 'due';
-      out.push({
-        seriesId: null,
-        name: `${name} statement`,
-        kind: 'statement',
-        accountId: l.accountId,
-        currency,
-        due: l.nextDueDate,
-        status,
-        expectedMinor: -owed,
-        payment: null,
-        minimumMinor: l.minimumPaymentMinor,
-        paidSoFarMinor: paidSoFar,
-        memberIds: people.owners(l.accountId),
-        shared: people.seenBy(l.accountId).length > 1,
-      });
-    }
-    return out;
+    return (await cardStatements(tx, { from, to, today })).map((st) => ({
+      seriesId: null,
+      name: `${st.accountName} statement`,
+      kind: 'statement',
+      accountId: st.accountId,
+      currency: st.currency,
+      due: st.due,
+      status: st.status,
+      expectedMinor: -st.owedMinor,
+      payment: null,
+      minimumMinor: st.minimumMinor,
+      paidSoFarMinor: st.paidSoFarMinor,
+      statementPaid: st.paid,
+      memberIds: people.owners(st.accountId),
+      shared: people.seeStatement(st.accountId).length > 1,
+    }));
   }
 
   /** Says a date was paid (by a transaction, or another way) or skipped (D12). */

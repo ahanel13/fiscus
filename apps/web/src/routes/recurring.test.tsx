@@ -135,3 +135,43 @@ describe('who looks after a suggestion, on the review', () => {
     expect(screen.queryByRole('button', { name: /Who looks after/ })).toBeNull();
   });
 });
+
+describe('card statements, on Upcoming (#122)', () => {
+  const statement = (fields: Partial<RecurringOccurrence> = {}) =>
+    occurrence({
+      seriesId: null,
+      name: 'Joint card statement',
+      kind: 'statement',
+      expectedMinor: -180_722,
+      minimumMinor: 4_000,
+      paidSoFarMinor: 0,
+      statementPaid: null,
+      memberIds: [ALEX],
+      ...fields,
+    });
+
+  it('says it’s from the bank, with its minimum, and whose card it is', async () => {
+    row(statement());
+    const item = (await screen.findByText('Joint card statement')).closest('li')!;
+    expect(within(item).getByText('From the bank')).toBeInTheDocument();
+    expect(item).toHaveTextContent('minimum $40.00');
+    expect(item).toHaveTextContent('$1,807.22');
+    expect(await within(item).findByRole('img', { name: 'Alex’s card' })).toBeInTheDocument();
+    // Nothing to mark: the bank says when it's paid.
+    expect(within(item).queryByRole('button', { name: /more/ })).toBeNull();
+  });
+
+  it('is partly paid, minimum paid, or paid', async () => {
+    const first = row(statement({ statementPaid: 'part', paidSoFarMinor: 2_000 }));
+    expect(await screen.findByText('Partly paid')).toBeInTheDocument();
+    expect(screen.getByText(/paid so far/)).toBeInTheDocument();
+    first.unmount();
+    const second = row(
+      statement({ status: 'paid', statementPaid: 'minimum', paidSoFarMinor: 4_000 }),
+    );
+    expect(await screen.findByText('Minimum paid')).toBeInTheDocument();
+    second.unmount();
+    row(statement({ status: 'paid', statementPaid: 'paid', paidSoFarMinor: 180_722 }));
+    expect(await screen.findByText('Paid')).toBeInTheDocument();
+  });
+});
