@@ -13,8 +13,12 @@ const textMatchSchema = z.object({
 
 export const ruleConditionsSchema = z
   .object({
+    /** Whether every condition must hold (and), or any one of them (or). Every, by default. */
+    match: z.enum(['all', 'any']).optional(),
     /** Matches the bank's description or the transaction's name, ignoring case and spacing. */
     description: textMatchSchema.optional(),
+    /** Several description checks, each one condition. Rules saved before these have `description`. */
+    descriptions: z.array(textMatchSchema).min(1).max(20).optional(),
     /** Size of the amount, either direction, in minor units: equals is min = max. */
     amount: z
       .object({ min: minorUnitsSchema.min(0).optional(), max: minorUnitsSchema.min(0).optional() })
@@ -30,8 +34,14 @@ export const ruleConditionsSchema = z
     categoryId: z.uuid().nullable().optional(),
   })
   .strict()
-  .refine((c) => Object.keys(c).length > 0, 'Add at least one condition');
+  .refine((c) => Object.keys(c).some((k) => k !== 'match'), 'Add at least one condition')
+  .refine((c) => !(c.description && c.descriptions), 'Give description or descriptions, not both');
 export type RuleConditions = z.infer<typeof ruleConditionsSchema>;
+export type RuleTextMatch = z.infer<typeof textMatchSchema>;
+
+/** A rule's description checks, whichever way it was saved. */
+export const descriptionChecks = (c: RuleConditions): RuleTextMatch[] =>
+  c.descriptions ?? (c.description ? [c.description] : []);
 
 /** How far apart the two sides of a rule's transfer may be, unless the rule says otherwise. */
 export const TRANSFER_RULE_DEFAULT_DAYS = 5;
@@ -155,29 +165,34 @@ const textMatches = (m: z.infer<typeof textMatchSchema>, text: string) => {
 };
 
 /**
- * Whether every condition holds. `uncategorizedId` is the system "Uncategorized" category, which
- * counts as no category.
+ * Whether the conditions hold: every one, or any one with `match: 'any'`. Each description check
+ * is a condition. `uncategorizedId` is the system "Uncategorized" category, which counts as no
+ * category.
  */
 export function ruleMatches(
   c: RuleConditions,
   t: RuleSubject,
   uncategorizedId: string | null = null,
 ): boolean {
-  if (c.description) {
-    const hit =
-      textMatches(c.description, t.originalDescription) ||
-      textMatches(c.description, t.displayName);
-    if (!hit) return false;
-  }
+  const checks: (() => boolean)[] = descriptionChecks(c).map(
+    (d) => () => textMatches(d, t.originalDescription) || textMatches(d, t.displayName),
+  );
   const size = Math.abs(t.amountMinor);
-  if (c.amount?.min !== undefined && size < c.amount.min) return false;
-  if (c.amount?.max !== undefined && size > c.amount.max) return false;
-  if (c.direction === 'in' && t.amountMinor <= 0) return false;
-  if (c.direction === 'out' && t.amountMinor >= 0) return false;
-  if (c.accountIds && !c.accountIds.includes(t.accountId)) return false;
-  if (c.categoryId !== undefined) {
-    const current = t.categoryId === uncategorizedId ? null : t.categoryId;
-    if (current !== c.categoryId) return false;
+  if (c.amount) {
+    const { min, max } = c.amount;
+    checks.push(() => (min === undefined || size >= min) && (max === undefined || size <= max));
   }
-  return true;
+  if (c.direction) {
+    const direction = c.direction;
+    checks.push(() => (direction === 'in' ? t.amountMinor > 0 : t.amountMinor < 0));
+  }
+  if (c.accountIds) {
+    const ids = c.accountIds;
+    checks.push(() => ids.includes(t.accountId));
+  }
+  if (c.categoryId !== undefined) {
+    const want = c.categoryId;
+    checks.push(() => (t.categoryId === uncategorizedId ? null : t.categoryId) === want);
+  }
+  return c.match === 'any' ? checks.some((f) => f()) : checks.every((f) => f());
 }

@@ -19,6 +19,67 @@ describe('ruleMatches', () => {
     expect(ruleMatches({ description: { op: 'contains', value: 'costco' } }, t())).toBe(false);
   });
 
+  it('needs every condition by default, or any one with match: any', () => {
+    const walmart = t({ displayName: 'Wal-Mart', originalDescription: 'WAL-MART #1182' });
+    const wm = t({ displayName: 'WM Supercenter', originalDescription: 'WM SUPERCENTER #1182' });
+    const either = {
+      match: 'any' as const,
+      descriptions: [
+        { op: 'contains' as const, value: 'wal-mart' },
+        { op: 'starts_with' as const, value: 'wm super' },
+      ],
+    };
+    expect(ruleMatches(either, walmart)).toBe(true);
+    expect(ruleMatches(either, wm)).toBe(true);
+    expect(ruleMatches(either, t())).toBe(false);
+    // Every description check must hold without match: any.
+    expect(ruleMatches({ descriptions: either.descriptions }, walmart)).toBe(false);
+    expect(
+      ruleMatches(
+        {
+          descriptions: [
+            { op: 'contains', value: 'trader' },
+            { op: 'contains', value: 'salt lake' },
+          ],
+        },
+        t(),
+      ),
+    ).toBe(true);
+    // Any one condition of any kind: here the amount, though the name doesn't match.
+    expect(
+      ruleMatches(
+        {
+          match: 'any',
+          descriptions: [{ op: 'contains', value: 'costco' }],
+          amount: { min: 4512, max: 4512 },
+        },
+        t(),
+      ),
+    ).toBe(true);
+    expect(
+      ruleMatches(
+        { match: 'all', description: { op: 'contains', value: 'trader' }, direction: 'in' },
+        t(),
+      ),
+    ).toBe(false);
+  });
+
+  it('needs a real condition, and one way of giving descriptions', () => {
+    expect(ruleConditionsSchema.safeParse({ match: 'any' }).success).toBe(false);
+    expect(
+      ruleConditionsSchema.safeParse({
+        description: { op: 'contains', value: 'a' },
+        descriptions: [{ op: 'contains', value: 'b' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      ruleConditionsSchema.safeParse({
+        match: 'any',
+        descriptions: [{ op: 'contains', value: 'b' }],
+      }).success,
+    ).toBe(true);
+  });
+
   it('checks the amount’s size and direction, accounts, and category', () => {
     expect(ruleMatches({ amount: { min: 4000, max: 5000 } }, t())).toBe(true);
     expect(ruleMatches({ amount: { max: 4000 } }, t())).toBe(false);

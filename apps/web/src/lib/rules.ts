@@ -1,19 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { CategoryGroup, Rule, RuleActions, RuleConditions } from '@fiscus/shared';
-import { formatMoney, PROCESSOR_PREFIX, ruleMatches, US_STATES } from '@fiscus/shared';
+import {
+  descriptionChecks,
+  formatMoney,
+  PROCESSOR_PREFIX,
+  ruleMatches,
+  US_STATES,
+} from '@fiscus/shared';
 
 // Rules in words, for the list and the editor (docs/design/imports.md §3).
 
 const OPS = { contains: 'contains', equals: 'is', starts_with: 'starts with' } as const;
 
-/** "Description contains “trader joe” · money out · over $40.00" */
+/**
+ * "Description contains “trader joe” · money out · over $40.00", or with match: any, "Any of:
+ * description contains “wal-mart” or starts with “wm super”".
+ */
 export function describeConditions(
   c: RuleConditions,
   names: { accounts: Map<string, string>; categories: Map<string, string> },
   currency: string,
 ): string {
   const parts: string[] = [];
-  if (c.description) parts.push(`Description ${OPS[c.description.op]} “${c.description.value}”`);
+  descriptionChecks(c).forEach((d, i) =>
+    parts.push(`${i ? '' : 'Description '}${OPS[d.op]} “${d.value}”`),
+  );
   if (c.direction) parts.push(c.direction === 'in' ? 'money in' : 'money out');
   const money = (m: number) => formatMoney(m, currency);
   if (c.amount) {
@@ -40,7 +51,8 @@ export function describeConditions(
         : `in ${names.categories.get(c.categoryId) ?? 'a category'}`,
     );
   }
-  return parts.join(' · ');
+  if (c.match === 'any' && parts.length > 1) return `Any of: ${parts.join(' or ')}`;
+  return parts.join(c.match === 'any' ? ' or ' : ' · ');
 }
 
 /** "Rename to “Trader Joe’s” · Groceries · tag Food · mark reviewed" */

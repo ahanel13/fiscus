@@ -185,14 +185,18 @@ transactions in the export).
 
 A rule is **conditions → actions**, run on transactions as they arrive (import now, bank sync in M2).
 
-| Conditions (all must match) | Actions |
+| Conditions (all, or any one) | Actions |
 |---|---|
-| Description or name: contains, equals, starts with | Rename |
+| Description or name: contains, equals, starts with (several checks allowed) | Rename |
 | Amount: equals, between, money in or out | Set category |
 | Account: one of | Add tags |
 | Category: is (e.g. "Uncategorized") | Set who it's for (attribution) |
 | | Mark reviewed · Exclude from reports and budgets |
 
+- **All or any:** a rule needs every condition to hold (and), or with "Matches any of these", one
+  of them (or): `match: 'any'`. Each description check is one condition, so "contains WAL-MART"
+  or "starts with WM SUPERCENTER" is one rule. Older rules have a single `description`; rules with
+  several checks have `descriptions`.
 - **Household rules and your own (#58):** a rule is the household's, which everyone sees, or
   yours ("Just me", chosen when you create it), which only you see (RULE-02/04). Yours run only on
   the accounts you own, joint ones included. In a household of one, every rule is the household's.

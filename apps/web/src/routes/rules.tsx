@@ -10,7 +10,7 @@ import type {
   RuleScope,
   Tag,
 } from '@fiscus/shared';
-import { MEMBER_COLORS, TRANSFER_RULE_DEFAULT_DAYS } from '@fiscus/shared';
+import { descriptionChecks, MEMBER_COLORS, TRANSFER_RULE_DEFAULT_DAYS } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { ArrowDown, ArrowUp, Plus, Wand2, X } from 'lucide-react';
@@ -316,10 +316,14 @@ function RuleCard({
 
 // ── Editor ─────────────────────────────────────────────────────────────────────────────────
 
+type TextOp = 'contains' | 'equals' | 'starts_with';
+
 interface Draft {
   name: string;
-  op: 'contains' | 'equals' | 'starts_with';
-  text: string;
+  /** Every condition (and), or any one (or). */
+  match: 'all' | 'any';
+  /** Description checks: the first is always shown; more are added. */
+  checks: { op: TextOp; text: string }[];
   direction: 'any' | 'in' | 'out';
   /** Equals is the same min and max, with one field for both. */
   amountOp: 'between' | 'equals';
@@ -350,8 +354,10 @@ function toDraft(r: {
   const a = r.actions;
   return {
     name: r.name ?? '',
-    op: c.description?.op ?? 'contains',
-    text: c.description?.value ?? '',
+    match: c.match ?? 'all',
+    checks: descriptionChecks(c).length
+      ? descriptionChecks(c).map((x) => ({ op: x.op, text: x.value }))
+      : [{ op: 'contains', text: '' }],
     direction: c.direction ?? 'any',
     amountOp: c.amount?.min !== undefined && c.amount.min === c.amount.max ? 'equals' : 'between',
     min: c.amount?.min ?? null,
@@ -372,7 +378,12 @@ function toDraft(r: {
 
 function fromDraft(d: Draft): { conditions: RuleConditions; actions: RuleActions } {
   const conditions: RuleConditions = {};
-  if (d.text.trim()) conditions.description = { op: d.op, value: d.text.trim() };
+  const checks = d.checks
+    .filter((x) => x.text.trim())
+    .map((x) => ({ op: x.op, value: x.text.trim() }));
+  // One check is saved as before; several as a list.
+  if (checks.length === 1) conditions.description = checks[0];
+  if (checks.length > 1) conditions.descriptions = checks;
   if (d.direction !== 'any') conditions.direction = d.direction;
   if (d.min !== null || d.max !== null) {
     conditions.amount = {
@@ -382,6 +393,7 @@ function fromDraft(d: Draft): { conditions: RuleConditions; actions: RuleActions
   }
   if (d.accountId !== ANY) conditions.accountIds = [d.accountId];
   if (d.category !== ANY) conditions.categoryId = d.category === 'none' ? null : d.category;
+  if (d.match === 'any' && conditionCount(conditions) > 1) conditions.match = 'any';
   const actions: RuleActions = {};
   if (d.rename.trim()) actions.rename = d.rename.trim();
   if (d.setCategory) actions.categoryId = d.setCategory;
@@ -399,8 +411,15 @@ function fromDraft(d: Draft): { conditions: RuleConditions; actions: RuleActions
   return { conditions, actions };
 }
 
+/** How many conditions a rule has: each description check counts as one. */
+const conditionCount = (c: RuleConditions) =>
+  descriptionChecks(c).length +
+  (['amount', 'direction', 'accountIds', 'categoryId'] as const).filter((k) => c[k] !== undefined)
+    .length;
+
 /** The conditions and actions beyond the two every rule starts with. */
 type Part =
+  | 'description'
   | 'direction'
   | 'amount'
   | 'account'
@@ -413,6 +432,7 @@ type Part =
   | 'exclude';
 
 const CONDITIONS: { key: Part; label: string }[] = [
+  { key: 'description', label: 'Another description check' },
   { key: 'direction', label: 'Money in or out' },
   { key: 'amount', label: 'Amount' },
   { key: 'account', label: 'Account' },
@@ -429,6 +449,7 @@ const ACTIONS: { key: Part; label: string }[] = [
 
 /** What a part goes back to when it's removed, so the rule no longer uses it. */
 const CLEARED: Record<Part, Partial<Draft>> = {
+  description: {},
   direction: { direction: 'any' },
   amount: { amountOp: 'between', min: null, max: null },
   account: { accountId: ANY },
@@ -545,10 +566,16 @@ export function RuleEditor({
     toDraft(rule ?? { name: null, ...(initial ?? { conditions: {}, actions: {} }) }),
   );
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
+  const setCheck = (i: number, patch: Partial<Draft['checks'][number]>) =>
+    setD((x) => ({ ...x, checks: x.checks.map((c, j) => (j === i ? { ...c, ...patch } : c)) }));
   // Starts with a description and a category (F19); the rest is added as needed, and an existing
   // rule shows every part it uses.
   const [shown, setShown] = useState(() => partsInUse(d));
   const add = (part: Part) => {
+    if (part === 'description') {
+      setD((x) => ({ ...x, checks: [...x.checks, { op: 'contains', text: '' }] }));
+      return;
+    }
     setShown((x) => new Set(x).add(part));
     if (part === 'reviewed') set({ markReviewed: true });
     if (part === 'exclude') set({ exclude: true });
@@ -674,24 +701,60 @@ export function RuleEditor({
 
         <fieldset className="space-y-3">
           <legend className="mb-1 text-sm font-semibold">When a transaction…</legend>
-          <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
-            <Select
-              label="Description"
-              value={d.op}
-              onChange={(v) => set({ op: v as Draft['op'] })}
-            >
-              <SelectItem id="contains">contains</SelectItem>
-              <SelectItem id="starts_with">starts with</SelectItem>
-              <SelectItem id="equals">is exactly</SelectItem>
-            </Select>
-            <TextField
-              label="Text"
-              value={d.text}
-              onChange={(text) => set({ text })}
-              placeholder="TRADER JOE"
-              description="Matches the bank’s description or the name, ignoring case."
-            />
-          </div>
+          {conditionCount(fromDraft({ ...d, match: 'all' }).conditions) > 1 ? (
+            <div>
+              <SegmentedControl
+                aria-label="Which conditions"
+                options={[
+                  { value: 'all', label: 'Matches all of these' },
+                  { value: 'any', label: 'Matches any of these' },
+                ]}
+                value={d.match}
+                onChange={(match) => set({ match })}
+              />
+              <p className="mt-1 text-xs text-muted">
+                {d.match === 'all'
+                  ? 'Every condition below has to hold (and).'
+                  : 'One condition below is enough (or).'}
+              </p>
+            </div>
+          ) : null}
+          {d.checks.map((check, i) => {
+            const fields = (
+              <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+                <Select
+                  label="Description"
+                  value={check.op}
+                  onChange={(v) => setCheck(i, { op: v as TextOp })}
+                >
+                  <SelectItem id="contains">contains</SelectItem>
+                  <SelectItem id="starts_with">starts with</SelectItem>
+                  <SelectItem id="equals">is exactly</SelectItem>
+                </Select>
+                <TextField
+                  label="Text"
+                  value={check.text}
+                  onChange={(text) => setCheck(i, { text })}
+                  placeholder={i ? 'WM SUPERCENTER' : 'TRADER JOE'}
+                  {...(i === d.checks.length - 1
+                    ? { description: 'Matches the bank’s description or the name, ignoring case.' }
+                    : {})}
+                />
+              </div>
+            );
+            return i === 0 ? (
+              <div key={i}>{fields}</div>
+            ) : (
+              <RemovablePart
+                key={i}
+                label={`Description check ${i + 1}`}
+                labelled
+                onRemove={() => set({ checks: d.checks.filter((_, j) => j !== i) })}
+              >
+                {fields}
+              </RemovablePart>
+            );
+          })}
           {shown.has('direction') ? (
             <RemovablePart label="Money in or out" onRemove={() => remove('direction')}>
               <SegmentedControl
@@ -785,7 +848,9 @@ export function RuleEditor({
           ) : null}
           <AddPart
             label="Add condition"
-            parts={CONDITIONS.filter((c) => !shown.has(c.key))}
+            parts={CONDITIONS.filter(
+              (c) => !shown.has(c.key) && (c.key !== 'description' || d.checks.length < 20),
+            )}
             onAdd={add}
           />
         </fieldset>
