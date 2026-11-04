@@ -231,6 +231,7 @@ The provider interface these tables serve, and the conformance suite every adapt
 | include_in_net_worth | bool | |
 | is_business | bool default false | Default business flag for the account's transactions |
 | sort_order | int | The household's default order. Each member's own order is in `account_placements` (#48) |
+| reviewer_member_id | uuid null → household_members | Who reviews its transactions (#45); null = everyone who can categorize them. Not a viewer, and an owner unless it's shared in full (trigger, migration 0083); cleared when that stops being true or they leave |
 | notes_enc | bytea null | |
 | closed_at | timestamptz null | |
 | version | int | |

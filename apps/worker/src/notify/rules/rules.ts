@@ -16,7 +16,7 @@ import {
   seriesOccurrences,
 } from '@fiscus/ledger';
 import { addDays } from '@fiscus/shared';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { appLink, longDate, type MemberRun, money, weekOf, when } from './member.js';
 
 // The rules (#127; bills walkthrough D18–D20). Each looks at one member's own view of the
@@ -306,7 +306,8 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
 
 /**
  * Transactions to review (D18): once a day at the hour they chose, if any are waiting in
- * accounts they can review (owner or full access, as the review queue counts them).
+ * accounts they can review (owner or full access, as the review queue counts them), and that
+ * nobody else reviews (#45).
  */
 export async function review(m: MemberRun): Promise<number> {
   if (!m.on('review') || m.role === 'viewer') return 0;
@@ -324,6 +325,15 @@ export async function review(m: MemberRun): Promise<number> {
         isNull(transactions.deletedAt),
         eq(transactions.hasSplits, false),
         inArray(transactions.accountId, reviewable),
+        inArray(
+          transactions.accountId,
+          m.tx
+            .select({ id: accounts.id })
+            .from(accounts)
+            .where(
+              or(isNull(accounts.reviewerMemberId), eq(accounts.reviewerMemberId, m.memberId)),
+            ),
+        ),
       ),
     );
   // Possible duplicates from a bank (#80): row-level security shows only yours.

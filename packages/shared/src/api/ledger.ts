@@ -181,6 +181,8 @@ export const transactionsQuerySchema = z.object({
   minAmount: z.coerce.number().int().optional(),
   maxAmount: z.coerce.number().int().optional(),
   review: z.enum(['needs_review', 'reviewed']).optional(),
+  /** Only accounts you review (#45): those with you as reviewer, or no reviewer. */
+  reviewer: z.enum(['me']).optional(),
   includeExcluded: z.enum(['true', 'false']).default('true'),
   /** Newest first, or oldest first (the review queue). With `sort`, `direction` overrides it. */
   order: z.enum(['newest', 'oldest']).default('newest'),
