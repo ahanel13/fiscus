@@ -100,7 +100,13 @@ import { historyLine } from '../lib/transaction-history.js';
 import { lensVisible, parseLens } from '../lib/lens.js';
 import { RangeSelect } from '../components/RangeControls.js';
 import { rangeParams, selectionLabel } from '../lib/ranges.js';
-import { RuleEditor, RuleSuggestion, suggestMatchText, useRuleSuggestionContext } from './rules.js';
+import {
+  RuleEditor,
+  RuleSuggestion,
+  ruleToastAction,
+  suggestMatchText,
+  useRuleSuggestionContext,
+} from './rules.js';
 import { type SuggestedRule, suggestRule } from '../lib/rules.js';
 import { andList, likelyOtherSide, lookAlikes } from '../lib/transfers.js';
 import { applyDensity, type Density, storedDensity } from '../lib/density.js';
@@ -191,7 +197,7 @@ export function CategorySelect({
 function useRowCategory(
   householdId: string,
   groups: CategoryGroup[],
-  onCategorized?: (t: Transaction, categoryId: string) => void,
+  onCategorized?: (t: Transaction, categoryId: string) => SuggestedRule | null | void,
 ) {
   const invalidate = useInvalidateLedger(householdId);
   const { names } = categoryIndex(groups);
@@ -211,12 +217,14 @@ function useRowCategory(
     void patch(t.id, t.version, { categoryId })
       .then(async (r) => {
         await invalidate();
-        onCategorized?.(t, categoryId);
+        const suggested = onCategorized?.(t, categoryId);
+        const rule = suggested ? ruleToastAction(suggested) : null;
         const before = {
           categoryId: t.categoryId,
           ...(r.data.reviewStatus !== t.reviewStatus ? { reviewStatus: t.reviewStatus } : {}),
         };
         toast(`${t.displayName}: ${names.get(categoryId) ?? 'Uncategorized'}.`, {
+          ...(rule ? { description: rule.description } : {}),
           actions: [
             {
               label: 'Undo',
@@ -225,6 +233,7 @@ function useRowCategory(
                   .then(() => invalidate())
                   .catch(fail),
             },
+            ...(rule ? [rule.action] : []),
           ],
         });
       })
@@ -279,7 +288,7 @@ export function TransactionList({
   /** While selecting on a phone, a tap checks or unchecks a row rather than opening it. */
   selectOnTap?: boolean;
   /** After a row's category changes, e.g. to suggest a rule. */
-  onCategorized?: (t: Transaction, categoryId: string) => void;
+  onCategorized?: (t: Transaction, categoryId: string) => SuggestedRule | null | void;
   /** The table's Account column; an account's own page leaves it out. */
   showAccount?: boolean;
   /** The "Review" badge; the review queue, where every row needs it, leaves it out. */
@@ -602,9 +611,8 @@ export function TransactionsPage() {
       setSelected(new Set());
       await invalidate();
       const { updated, refused } = r.data;
-      toast(`${updated.length} updated.`, {
-        ...(refused.length ? { description: `${refused.length} couldn’t be changed by you.` } : {}),
-      });
+      const couldnt = refused.length ? `${refused.length} couldn’t be changed by you.` : null;
+      let suggested: SuggestedRule | null = null;
       // Categorized several from one merchant: offer a rule for the rest and for next time.
       if (typeof changes.categoryId === 'string' && updated.length) {
         const rows = await Promise.all(
@@ -620,21 +628,26 @@ export function TransactionsPage() {
           rows.map((t) => suggestMatchText(t.originalDescription).toLowerCase()),
         );
         if (texts.size === 1 && rows[0]?.can.categorize) {
-          setSuggestion(
-            suggestRule(
-              {
-                originalDescription: rows[0].originalDescription,
-                accountId: rows[0].account?.id ?? null,
-                amountMinor: rows[0].amountMinor,
-              },
-              { categoryId: changes.categoryId },
-              ruleContext.rules,
-              ruleContext.muted,
-              categoryIndex(groups).uncategorized ?? null,
-            ),
+          suggested = suggestRule(
+            {
+              originalDescription: rows[0].originalDescription,
+              accountId: rows[0].account?.id ?? null,
+              amountMinor: rows[0].amountMinor,
+            },
+            { categoryId: changes.categoryId },
+            ruleContext.rules,
+            ruleContext.muted,
+            categoryIndex(groups).uncategorized ?? null,
           );
+          setSuggestion(suggested);
         }
       }
+      const rule = suggested ? ruleToastAction(suggested) : null;
+      const description = [couldnt, rule?.description].filter(Boolean).join(' ');
+      toast(`${updated.length} updated.`, {
+        ...(description ? { description } : {}),
+        ...(rule ? { actions: [rule.action] } : {}),
+      });
     },
   });
   const ruleContext = useRuleSuggestionContext(householdId);
@@ -877,21 +890,21 @@ export function TransactionsPage() {
                     selectOnTap: selecting,
                   }
                 : {})}
-              onCategorized={(t, categoryId) =>
-                setSuggestion(
-                  suggestRule(
-                    {
-                      originalDescription: t.originalDescription,
-                      accountId: t.account?.id ?? null,
-                      amountMinor: t.amountMinor,
-                    },
-                    { categoryId },
-                    ruleContext.rules,
-                    ruleContext.muted,
-                    categoryIndex(groups).uncategorized ?? null,
-                  ),
-                )
-              }
+              onCategorized={(t, categoryId) => {
+                const s = suggestRule(
+                  {
+                    originalDescription: t.originalDescription,
+                    accountId: t.account?.id ?? null,
+                    amountMinor: t.amountMinor,
+                  },
+                  { categoryId },
+                  ruleContext.rules,
+                  ruleContext.muted,
+                  categoryIndex(groups).uncategorized ?? null,
+                );
+                setSuggestion(s);
+                return s;
+              }}
             />
           </>
         )}
