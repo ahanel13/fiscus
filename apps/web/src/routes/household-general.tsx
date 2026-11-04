@@ -54,6 +54,7 @@ export function HouseholdGeneral({
     dateBasis: household.dateBasis,
     financeStyle: household.financeStyle,
     categorizeMarksReviewed: household.categorizeMarksReviewed,
+    reviewScope: household.reviewScope,
     cleanMerchantNames: household.cleanMerchantNames,
   };
   const [form, setForm] = useState(initial);
@@ -168,6 +169,16 @@ export function HouseholdGeneral({
             ))}
           </Select>
         ) : null}
+        <RadioGroup
+          label="What needs review"
+          value={form.reviewScope}
+          onChange={(v) => set({ reviewScope: v as Household['reviewScope'] })}
+          isDisabled={!owner}
+          description="What the review queue, its badge, and the daily reminder ask about. Only uncategorized skips ones a rule or the bank already gave a category."
+        >
+          <Radio value="all">Every new transaction</Radio>
+          <Radio value="uncategorized">Only uncategorized transactions</Radio>
+        </RadioGroup>
         <div className="space-y-1">
           <Switch
             isSelected={form.categorizeMarksReviewed}

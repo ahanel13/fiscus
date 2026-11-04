@@ -28,6 +28,7 @@ import { accessLevels } from './access.js';
 import { budgetActivity, loadBudgetDefinition } from './budget-activity.js';
 import { householdRanges, transactionDate } from './ranges.js';
 import { cardStatements, seriesOccurrences } from './recurring.js';
+import { waitingForReview } from './review.js';
 
 // The weekly recap (#128; bills walkthrough §8, D21): one person's week, built in their own
 // context, so row-level security keeps it to what they can see (SYS-02). Sam's private card's
@@ -275,7 +276,7 @@ export async function buildWeeklyRecap(
           .from(transactions)
           .where(
             and(
-              eq(transactions.reviewStatus, 'needs_review'),
+              waitingForReview(),
               isNull(transactions.deletedAt),
               eq(transactions.hasSplits, false),
               inArray(transactions.accountId, reviewable),
