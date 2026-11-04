@@ -23,6 +23,7 @@ import {
   DialogActions,
   Select,
   SelectItem,
+  SelectSection,
   TextField,
   toast,
   useToday,
@@ -60,8 +61,8 @@ const WEEKEND: Record<WeekendRule, string> = {
 type AmountMode = 'any' | 'min' | 'max' | 'between';
 
 /**
- * A monthly date reads "On the [15th]" or "On the [first] [Friday]": the first select is a day of
- * the month or which one of a weekday, the second the weekday (or, after "last", the day).
+ * A monthly date reads "On the [first] [Friday]" or "On the [15th]": the first select is which
+ * one of a weekday, or a day of the month (or its last day); the second, for a weekday, which.
  */
 const ORDINALS: [string, string][] = [
   ['n1', 'first'],
@@ -79,8 +80,8 @@ const WEEKDAY_NAMES = [
   'Friday',
   'Saturday',
 ];
-/** The weekday select's "day", after "last": the last day of the month. */
-const THE_DAY = -1;
+/** No weekday chosen yet: a day of the month. */
+const NO_WEEKDAY = -1;
 const ordinalDay = (n: number) =>
   n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 
@@ -102,7 +103,7 @@ interface Form {
   days: [number, number];
   /** "1"–"31", "n1"–"n4" (first–fourth), or "last". */
   onThe: string;
-  /** 0–6, or THE_DAY. */
+  /** 0–6, or NO_WEEKDAY. */
   weekday: number;
   weekend: WeekendRule;
   windowDays: number;
@@ -149,9 +150,9 @@ function toForm(name: string, kind: RecurringKind, d: RecurringDraft): Form {
           ? 'last'
           : `n${s.weekday.nth}`
         : s.unit === 'month' && s.days?.[0] === LAST_DAY
-          ? 'last'
+          ? 'lastday'
           : String(s.unit === 'month' && s.days ? s.days[0] : day),
-    weekday: s.unit === 'month' && s.weekday ? s.weekday.day : THE_DAY,
+    weekday: s.unit === 'month' && s.weekday ? s.weekday.day : NO_WEEKDAY,
     weekend: s.weekend,
     windowDays: d.windowDays,
   };
@@ -168,7 +169,7 @@ function toSchedule(f: Form): RecurringSchedule {
     return { unit: 'month', every: 1, days: a === b ? [a] : [a, b], anchor, weekend };
   }
   const every = Number(f.repeat.slice(5));
-  if (f.onThe === 'last' && f.weekday === THE_DAY) {
+  if (f.onThe === 'lastday') {
     return { unit: 'month', every, days: [LAST_DAY], anchor, weekend };
   }
   if (f.onThe === 'last' || f.onThe.startsWith('n')) {
@@ -401,8 +402,9 @@ export function RecurringDialog({
                 value={form.onThe}
                 onChange={(v) => {
                   const onThe = String(v);
-                  // A weekday for "first"–"fourth"; after "last", the day stays a choice.
-                  const needsWeekday = onThe.startsWith('n') && form.weekday === THE_DAY;
+                  // "first"–"last" need a weekday: start from the one its date falls on.
+                  const needsWeekday =
+                    (onThe === 'last' || onThe.startsWith('n')) && form.weekday === NO_WEEKDAY;
                   set({
                     onThe,
                     ...(needsWeekday
@@ -411,18 +413,23 @@ export function RecurringDialog({
                   });
                 }}
               >
-                {[
-                  ...Array.from({ length: 31 }, (_, i) => (
-                    <SelectItem key={i + 1} id={String(i + 1)}>
-                      {ordinalDay(i + 1)}
-                    </SelectItem>
-                  )),
-                  ...ORDINALS.map(([id, label]) => (
+                <SelectSection key="weekday" title="A weekday">
+                  {ORDINALS.map(([id, label]) => (
                     <SelectItem key={id} id={id}>
                       {label}
                     </SelectItem>
-                  )),
-                ]}
+                  ))}
+                </SelectSection>
+                <SelectSection key="date" title="A day of the month">
+                  {Array.from({ length: 31 }, (_, i) => (
+                    <SelectItem key={i + 1} id={String(i + 1)}>
+                      {ordinalDay(i + 1)}
+                    </SelectItem>
+                  ))}
+                  <SelectItem key="lastday" id="lastday">
+                    last day
+                  </SelectItem>
+                </SelectSection>
               </Select>
               {form.onThe === 'last' || form.onThe.startsWith('n') ? (
                 <Select
@@ -430,20 +437,11 @@ export function RecurringDialog({
                   value={String(form.weekday)}
                   onChange={(v) => set({ weekday: Number(v) })}
                 >
-                  {[
-                    ...(form.onThe === 'last'
-                      ? [
-                          <SelectItem key="day" id={String(THE_DAY)}>
-                            day of the month
-                          </SelectItem>,
-                        ]
-                      : []),
-                    ...[1, 2, 3, 4, 5, 6, 0].map((d) => (
-                      <SelectItem key={d} id={String(d)}>
-                        {WEEKDAY_NAMES[d]}
-                      </SelectItem>
-                    )),
-                  ]}
+                  {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                    <SelectItem key={d} id={String(d)}>
+                      {WEEKDAY_NAMES[d]}
+                    </SelectItem>
+                  ))}
                 </Select>
               ) : null}
             </div>
