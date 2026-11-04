@@ -30,11 +30,11 @@ import {
 } from '../components/ui.js';
 import { MEDIUM, useMediaQuery } from '../lib/media.js';
 import { useRangeSelect } from '../lib/range-select.js';
-import { type SuggestedRule, suggestRule } from '../lib/rules.js';
+import { type SuggestedRule, suggestMatchText, suggestRule } from '../lib/rules.js';
 import { typing } from '../lib/shortcuts.js';
 import { categoryIndex } from '../lib/transactions.js';
 import { PossibleDuplicatesList } from './possible-duplicates.js';
-import { RuleSuggestion, useRuleSuggestionContext } from './rules.js';
+import { RuleSuggestion, ruleToastAction, useRuleSuggestionContext } from './rules.js';
 import { TransferReviewList } from './transfer-review.js';
 import {
   CategorySelect,
@@ -102,6 +102,23 @@ export function ReviewPage() {
   const [selecting, setSelecting] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const ruleContext = useRuleSuggestionContext(householdId);
+  // After a category change, offer a rule for it, as Transactions does: below the category, and
+  // in the toast.
+  const offerRule = (t: Transaction, categoryId: string) => {
+    const s = suggestRule(
+      {
+        originalDescription: t.originalDescription,
+        accountId: t.account?.id ?? null,
+        amountMinor: t.amountMinor,
+      },
+      { categoryId },
+      ruleContext.rules,
+      ruleContext.muted,
+      categoryIndex(groups).uncategorized ?? null,
+    );
+    setSuggestion(s);
+    return s;
+  };
 
   const patch = useMutation({
     mutationFn: ({ t, body }: { t: Transaction; body: Record<string, unknown> }) =>
@@ -139,8 +156,20 @@ export function ReviewPage() {
         toast(`${n} marked reviewed.`);
       } else {
         const message = `Category set to ${names.get(changes.categoryId)} on ${n} ${n === 1 ? 'transaction' : 'transactions'}.`;
+        const done = new Set(r.data.updated);
+        const rows = checked.filter((t) => done.has(t.id));
+        const oneMerchant =
+          rows[0] &&
+          rows.every(
+            (t) =>
+              suggestMatchText(t.originalDescription).toLowerCase() ===
+              suggestMatchText(rows[0]!.originalDescription).toLowerCase(),
+          );
+        const suggested = oneMerchant ? offerRule(rows[0]!, changes.categoryId) : null;
+        const rule = !refused && suggested ? ruleToastAction(suggested) : null;
         toast(refused ? `${message} ${refused} couldn’t be changed.` : message, {
           ...(refused ? { tone: 'error' as const } : {}),
+          ...(rule ? { description: rule.description, actions: [rule.action] } : {}),
         });
         setAnnounce(message);
       }
@@ -325,7 +354,20 @@ export function ReviewPage() {
                     categoryId !== current.categoryId &&
                     patch.mutate(
                       { t: current, body: { categoryId } },
-                      { onSuccess: () => setAnnounce(`Category set to ${names.get(categoryId)}.`) },
+                      {
+                        onSuccess: () => {
+                          const message = `Category set to ${names.get(categoryId)}.`;
+                          setAnnounce(message);
+                          const suggested = offerRule(current, categoryId);
+                          if (suggested) {
+                            const rule = ruleToastAction(suggested);
+                            toast(message, {
+                              description: rule.description,
+                              actions: [rule.action],
+                            });
+                          }
+                        },
+                      },
                     )
                   }
                   isDisabled={Boolean(current.transfer) || current.hasSplits}
@@ -414,21 +456,7 @@ export function ReviewPage() {
           setSelected(new Set(selected).add(id));
         }}
         selectOnTap={selecting}
-        onCategorized={(t, categoryId) =>
-          setSuggestion(
-            suggestRule(
-              {
-                originalDescription: t.originalDescription,
-                accountId: t.account?.id ?? null,
-                amountMinor: t.amountMinor,
-              },
-              { categoryId },
-              ruleContext.rules,
-              ruleContext.muted,
-              categoryIndex(groups).uncategorized ?? null,
-            ),
-          )
-        }
+        onCategorized={offerRule}
       />
       {/* Kept in reach at the bottom while scrolling, as the next thing to do. */}
       <div className="sticky bottom-3 z-10 flex justify-center">
