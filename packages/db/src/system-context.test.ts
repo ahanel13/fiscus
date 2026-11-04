@@ -614,6 +614,10 @@ describe('system context belongs to the worker', () => {
       'instance_settings.value',
       'invites.accepted_at',
       'invites.accepted_by_user_id',
+      // Who looks after a bill: handed over, or passed on when someone leaves (0077).
+      'recurring_series.responsible_member_id',
+      'recurring_series.updated_at',
+      'recurring_series.version',
       'rules.actions',
       'rules.conditions',
       'rules.updated_at',

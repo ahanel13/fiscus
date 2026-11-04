@@ -2,6 +2,7 @@
 import {
   createRecurringSchema,
   type DetectedSeries,
+  handOverSchema,
   markOccurrenceSchema,
   recurringDraftSchema,
   type RecurringMonth,
@@ -44,8 +45,9 @@ const dismissSchema = z.object({
 });
 
 /**
- * Recurring series (REC-01–03): everyone reads the series on accounts whose transactions they
- * see; owners and members with owner or full access to its account make and change them.
+ * Recurring series (REC-01–04): everyone reads the series on accounts whose transactions they
+ * see; owners and members with owner or full access to its account make and change them, and
+ * owners and members who see it hand it to someone else.
  */
 @Controller('api/v1/households/:householdId/recurring')
 @UseGuards(HouseholdGuard)
@@ -122,6 +124,20 @@ export class RecurringController {
     @Body(new ZodPipe(updateRecurringSchema)) body: z.infer<typeof updateRecurringSchema>,
   ): Promise<{ data: RecurringSeries }> {
     return { data: await this.recurring.update(ctx, id, body) };
+  }
+
+  /**
+   * Hands it to someone else who sees its account (D13; REC-04): anyone who sees it can, not
+   * only those who can change it.
+   */
+  @Put(':seriesId/responsible')
+  @HouseholdRoles('owner', 'member')
+  async handOver(
+    @Household() ctx: HouseholdContext,
+    @Param('seriesId', UuidPipe) id: string,
+    @Body(new ZodPipe(handOverSchema)) body: z.infer<typeof handOverSchema>,
+  ): Promise<{ data: RecurringSeries }> {
+    return { data: await this.recurring.handOver(ctx, id, body.memberId) };
   }
 
   /** Paid (by a transaction, or another way) or skipped, for one date it was due (D12). */

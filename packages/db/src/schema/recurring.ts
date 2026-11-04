@@ -52,6 +52,12 @@ export const recurringSeries = pgTable(
     /** No more are expected after this day (D12). */
     endedOn: date({ mode: 'string' }),
     createdByMemberId: uuid().notNull(),
+    /**
+     * Who looks after it and gets its reminders (D13, #121): someone who can see its account.
+     * Null: worked out when read (the account's only owner, else whoever made it). Income has
+     * "for" instead, from its payments' attribution. Row-level security and hand-over: 0077.
+     */
+    responsibleMemberId: uuid(),
     ...versioning(),
     ...timestamps(),
   },
@@ -65,7 +71,12 @@ export const recurringSeries = pgTable(
       columns: [t.householdId, t.createdByMemberId],
       foreignColumns: [householdMembers.householdId, householdMembers.id],
     }),
+    foreignKey({
+      columns: [t.householdId, t.responsibleMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
     index().on(t.accountId),
+    index().on(t.responsibleMemberId),
     check('recurring_series_name', sql`length(btrim(${t.name})) BETWEEN 1 AND 80`),
     check('recurring_series_window', sql`${t.windowDays} BETWEEN 0 AND 15`),
   ],

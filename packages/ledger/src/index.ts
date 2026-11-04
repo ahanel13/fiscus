@@ -10,4 +10,5 @@ export * from './overlaps.js';
 export * from './owners.js';
 export * from './provider-balances.js';
 export * from './ranges.js';
+export * from './recurring.js';
 export * from './transfers.js';

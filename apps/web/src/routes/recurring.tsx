@@ -2,10 +2,12 @@
 import {
   type DetectedSeries,
   describeSchedule,
+  type HouseholdMember,
   type RecurringKind,
   type RecurringMonth,
   type RecurringOccurrence,
   type RecurringSeries,
+  showWho,
   type Transaction,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
@@ -21,6 +23,7 @@ import { PageHeader } from '../components/PageHeader.js';
 import { RecurringDialog } from '../components/RecurringDialog.js';
 import {
   Alert,
+  Avatar,
   Badge,
   Button,
   Dialog,
@@ -39,6 +42,7 @@ import {
   useToday,
 } from '../components/ui.js';
 import { SMALL, useMediaQuery } from '../lib/media.js';
+import { namesOf, statementBadge, whoLabel } from '../lib/recurring.js';
 
 // Bills & recurring (#118, #120; bills walkthrough §4, §5): what's coming up this month, late
 // first, as a list or a calendar, and every series under All. Paid and late are worked out from
@@ -179,7 +183,12 @@ export function RecurringPage() {
         ) : series.isError ? (
           <Alert>Couldn’t load your recurring payments. Try again in a moment.</Alert>
         ) : tab === 'all' ? (
-          <AllSeries series={series.data} accountName={accountName} onOpen={setEditing} />
+          <AllSeries
+            series={series.data}
+            members={members}
+            accountName={accountName}
+            onOpen={setEditing}
+          />
         ) : tab === 'calendar' ? (
           <CalendarView
             householdId={householdId}
@@ -285,7 +294,35 @@ function Upcoming({
   if (now.isPending) return <Skeleton className="h-64" />;
   if (now.isError) return <Alert>Couldn’t work out this month. Try again in a moment.</Alert>;
   const all = [...now.data.occurrences, ...(next.data?.occurrences ?? [])];
-  if (empty && all.length === 0) return <NothingYet />;
+  if (empty) {
+    // Nothing recurring yet, but card statements come from the bank from the first sync (D9).
+    const fromBank = now.data.occurrences.filter((o) => o.kind === 'statement');
+    return (
+      <>
+        <NothingYet />
+        {fromBank.length ? (
+          <section className="space-y-2">
+            <h2 className="px-1 text-sm font-semibold">From your bank</h2>
+            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+              {fromBank.map((o) => (
+                <OccurrenceRow
+                  key={`${o.accountId}:${o.due}`}
+                  householdId={householdId}
+                  o={o}
+                  today={today}
+                  accountName={accountName}
+                  onOpen={onOpen}
+                />
+              ))}
+            </ul>
+            <p className="px-1 text-xs text-muted">
+              Card due dates come from the bank, so they show from the first sync.
+            </p>
+          </section>
+        ) : null}
+      </>
+    );
+  }
   const weekEnd = addDays(today, 6);
   // The start of next month shows once this month's end is near.
   const horizon = addDays(today, 14);
@@ -394,8 +431,41 @@ function Tile({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+/**
+ * Who looks after it (a bill), who it's for (income), or whose card it is: their avatars, only
+ * where more than one member sees it (D22). Nothing for someone on their own.
+ */
+export function Who({
+  memberIds,
+  shared,
+  members,
+  kind,
+}: {
+  memberIds: readonly string[];
+  shared: boolean;
+  members: readonly HouseholdMember[];
+  kind: RecurringKind | 'statement';
+}) {
+  const who = memberIds.flatMap((id) => members.filter((m) => m.id === id));
+  if (!shared || who.length === 0) return null;
+  const label = whoLabel(kind, namesOf(memberIds, members));
+  return (
+    <span role="img" aria-label={label} title={label} className="flex shrink-0 -space-x-1.5">
+      {who.map((m) => (
+        <Avatar
+          key={m.id}
+          name={m.displayName}
+          color={m.color}
+          size="sm"
+          className="ring-2 ring-surface"
+        />
+      ))}
+    </span>
+  );
+}
+
 /** One date something's due: when, what, how much, and what's to be done if it's late. */
-function OccurrenceRow({
+export function OccurrenceRow({
   householdId,
   o,
   today,
@@ -409,6 +479,7 @@ function OccurrenceRow({
   onOpen: (seriesId: string | null) => void;
 }) {
   const queryClient = useQueryClient();
+  const members = useQuery(membersQuery(householdId)).data ?? [];
   const [picking, setPicking] = useState(false);
   const refresh = () =>
     void queryClient.invalidateQueries({ queryKey: ['households', householdId, 'recurring'] });
@@ -467,13 +538,18 @@ function OccurrenceRow({
             <Badge tone="danger">
               {lateBy} {lateBy === 1 ? 'day' : 'days'} late
             </Badge>
-          ) : o.status === 'paid' ? (
+          ) : o.status === 'paid' && o.kind !== 'statement' ? (
             <Badge tone="positive">
               {income ? 'Received' : 'Paid'}
               {o.payment?.date ? ` ${fmt(o.payment.date, { month: 'short', day: 'numeric' })}` : ''}
             </Badge>
           ) : o.status === 'skipped' ? (
             <Badge>Skipped</Badge>
+          ) : null}
+          {o.kind === 'statement' && statementBadge(o.statementPaid) ? (
+            <Badge tone={o.statementPaid === 'part' ? 'warning' : 'positive'}>
+              {statementBadge(o.statementPaid)}
+            </Badge>
           ) : null}
           {o.kind === 'statement' ? <Badge>From the bank</Badge> : null}
           {o.kind === 'subscription' ? <Badge>Subscription</Badge> : null}
@@ -494,6 +570,7 @@ function OccurrenceRow({
             : ''}
         </span>
       </button>
+      <Who memberIds={o.memberIds} shared={o.shared} members={members} kind={o.kind} />
       <span
         className={clsx(
           'shrink-0 text-right text-sm font-medium',
@@ -511,7 +588,8 @@ function OccurrenceRow({
               minor={Math.abs(amount)}
               currency={o.currency}
               kind="balance"
-              whole={o.status !== 'paid' && Math.abs(amount) >= 1_000}
+              // A statement's balance is exact, from the bank: to the cent.
+              whole={o.status !== 'paid' && o.kind !== 'statement' && Math.abs(amount) >= 1_000}
             />
           </>
         )}
@@ -816,10 +894,12 @@ function CalendarView({
 /** Every series, by kind, with when it's next due and about how much; ended ones last. */
 function AllSeries({
   series,
+  members,
   accountName,
   onOpen,
 }: {
   series: RecurringSeries[];
+  members: readonly HouseholdMember[];
   accountName: (id: string) => string;
   onOpen: (s: RecurringSeries) => void;
 }) {
@@ -839,6 +919,18 @@ function AllSeries({
             {describeSchedule(s.schedule)} · {accountName(s.accountId)}
           </span>
         </span>
+        <Who
+          memberIds={
+            s.kind === 'income'
+              ? s.forMemberIds
+              : s.responsibleMemberId
+                ? [s.responsibleMemberId]
+                : []
+          }
+          shared={showWho(s.seenBy)}
+          members={members}
+          kind={s.kind}
+        />
         <span className="shrink-0 text-right">
           <span className="block text-sm font-medium">
             {s.estimateMinor !== null ? (
@@ -897,7 +989,7 @@ function AllSeries({
  * What Fiscus found in your history (§2, D5): each with its schedule, how often it's been seen and
  * its amounts, to confirm (as a bill, a subscription, income or a transfer) or put away.
  */
-function Review({
+export function Review({
   householdId,
   suggestions,
   loading,
@@ -913,10 +1005,15 @@ function Review({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
+  const members = useQuery(membersQuery(householdId)).data ?? [];
   const [kinds, setKinds] = useState<Record<string, RecurringKind>>({});
+  const [chosen, setChosen] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<DetectedSeries | null>(null);
   const id = (x: DetectedSeries) => `${x.draft.accountId}|${x.draft.match.direction}|${x.key}`;
   const kindOf = (x: DetectedSeries) => kinds[id(x)] ?? x.kind;
+  /** Who looks after it, when there's a choice (D13, D22): asked here, before confirming. */
+  const askWho = (x: DetectedSeries) => kindOf(x) !== 'income' && showWho(x.seenBy ?? []);
+  const whoOf = (x: DetectedSeries) => chosen[id(x)] ?? x.responsibleMemberId ?? null;
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ['households', householdId, 'recurring'] });
   const fail = (e: unknown) =>
@@ -924,8 +1021,14 @@ function Review({
   const confirm = useMutation({
     mutationFn: async (list: DetectedSeries[]) => {
       for (const x of list) {
+        const who = askWho(x) ? whoOf(x) : null;
         await api('POST', `${base(householdId)}/recurring`, {
-          body: { ...x.draft, name: x.name, kind: kindOf(x) },
+          body: {
+            ...x.draft,
+            name: x.name,
+            kind: kindOf(x),
+            ...(who ? { responsibleMemberId: who } : {}),
+          },
         });
       }
       return list.length;
@@ -1044,6 +1147,26 @@ function Review({
                     </SelectItem>
                   ))}
                 </Select>
+                {askWho(x) ? (
+                  <Select
+                    aria-label={`Who looks after ${x.name}`}
+                    className="col-span-2 min-w-0 sm:col-span-1 sm:w-36"
+                    value={whoOf(x)}
+                    onChange={(v) => setChosen({ ...chosen, [id(x)]: String(v) })}
+                  >
+                    {(x.seenBy ?? []).map((m) => (
+                      <SelectItem key={m} id={m}>
+                        {namesOf([m], members) || 'Someone'}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                ) : kindOf(x) === 'income' &&
+                  showWho(x.seenBy ?? []) &&
+                  namesOf(x.forMemberIds ?? [], members) ? (
+                  <span className="col-span-2 text-xs text-muted sm:col-span-1">
+                    For {namesOf(x.forMemberIds ?? [], members)}
+                  </span>
+                ) : null}
                 <Button
                   size="sm"
                   variant="secondary"
@@ -1078,7 +1201,12 @@ function Review({
         // The same dialog as Make recurring: change anything, and saving confirms it.
         <RecurringDialog
           householdId={householdId}
-          initial={{ name: editing.name, kind: kindOf(editing), draft: editing.draft }}
+          initial={{
+            name: editing.name,
+            kind: kindOf(editing),
+            draft: editing.draft,
+            responsibleMemberId: whoOf(editing),
+          }}
           accountName={accountName(editing.draft.accountId)}
           currency={currency}
           onClose={() => setEditing(null)}
