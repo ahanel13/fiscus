@@ -2,6 +2,7 @@
 import {
   budgetAmounts,
   budgetCategories,
+  budgetMoves,
   type budgets,
   budgetStrategies,
   categories,
@@ -233,7 +234,16 @@ export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
     .select()
     .from(budgetStrategies)
     .where(eq(budgetStrategies.budgetId, row.id));
+  // Move money and Cover (zero-based, D9), net per category per month.
+  const moves = new Map<string, Map<string, number>>();
+  for (const m of await tx.select().from(budgetMoves).where(eq(budgetMoves.budgetId, row.id))) {
+    const net = moves.get(monthOfDate(m.month)) ?? new Map<string, number>();
+    net.set(m.fromCategoryId, (net.get(m.fromCategoryId) ?? 0) - m.amountMinor);
+    net.set(m.toCategoryId, (net.get(m.toCategoryId) ?? 0) + m.amountMinor);
+    moves.set(monthOfDate(m.month), net);
+  }
   return {
+    scope: (row.memberId ? 'mine' : 'household') as BudgetScope,
     startsMonth: monthOfDate(row.startsMonth),
     periods: periods.map((p) => ({
       fromMonth: monthOfDate(p.fromMonth),
@@ -252,5 +262,6 @@ export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
         yearlyMinor: c.yearlyMinor ?? null,
       })),
     amounts,
+    moves,
   };
 }

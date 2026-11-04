@@ -7,7 +7,7 @@ import {
   syncHolds,
   transactions,
 } from '@fiscus/db';
-import { categoryLimits, computeBudgetMonth, flex } from '@fiscus/domain';
+import { computeBudgetMonth, STRATEGY_REGISTRY } from '@fiscus/domain';
 import {
   accessLevels,
   budgetActivity,
@@ -30,8 +30,6 @@ export const LATE_LOOKBACK_DAYS = 30;
 export const LOW_BALANCE_DAYS = 14;
 /** How old a big transaction can be and still be news: a big import of history isn't. */
 export const BIG_TRANSACTION_MAX_AGE_DAYS = 7;
-
-const STRATEGIES = { category: categoryLimits, flex };
 
 /**
  * A bill is due (D13, D18): its date is within the days before they asked for, on a bill or
@@ -243,7 +241,7 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
       startsMonth,
       month,
     );
-    const out = computeBudgetMonth(definition, month, activity, STRATEGIES);
+    const out = computeBudgetMonth(definition, month, activity, STRATEGY_REGISTRY);
     const limits: { key: string; name: string; spent: number; has: number }[] = [];
     if (out.kind === 'flex') {
       const v = out.view as {
@@ -270,15 +268,17 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
           categoryId: string;
           budgetedMinor: number;
           rolledInMinor: number;
+          movedMinor?: number;
           spentMinor: number;
         }[];
       };
+      // Category limits and zero-based alike: what the category had to spend this month.
       for (const r of v.rows) {
         limits.push({
           key: r.categoryId,
           name: names.get(r.categoryId) ?? 'A category',
           spent: r.spentMinor,
-          has: r.budgetedMinor + r.rolledInMinor,
+          has: r.budgetedMinor + r.rolledInMinor + (r.movedMinor ?? 0),
         });
       }
     }

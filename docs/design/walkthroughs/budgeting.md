@@ -190,6 +190,13 @@ you have, the banner turns red and says by how much.
   silently, and the banner says this before it happens.
 - In zero-based, every category keeps what's left: **all envelopes roll over**.
 
+**D27. A zero-based month assigns afresh.** Amounts don't repeat into a new month, as limits do:
+a repeated plan would assign money that hasn't arrived yet, and turn the banner red on the 1st
+(D8). A month with nothing assigned offers **Assign like October ($4,472.00)**, which copies the
+last month's amounts in one click. Switching to zero-based keeps the month it starts in as it was,
+with its limits as what's assigned (D14). Each move is kept, so the household's activity says who
+moved what; merging a category carries its moves to the other one.
+
 ### 3.3 50/30/20 (percentage buckets)
 
 ![50/30/20](budgeting/05-percentage.png)
@@ -579,6 +586,7 @@ real.
 | D24 | M3 ships the simple path first: category limits, flex, and shared costs with equal and fixed splits | #97, #108 |
 | D25 | Share my budget, Make it mine and Combine budgets change scope and keep history | #107 |
 | D26 | Ownership changes count from the day they're made, unless you include the history | #447 |
+| D27 | A zero-based month assigns afresh; Assign like last month copies the last one's amounts | #100 |
 
 ## Open questions
 

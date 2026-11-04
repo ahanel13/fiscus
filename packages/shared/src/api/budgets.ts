@@ -85,9 +85,21 @@ export const setFlexibleSchema = z.object({
  * the strategy they had, and every amount is kept.
  */
 export const switchStrategySchema = z.object({
-  strategy: z.enum(['category', 'flex']),
+  strategy: z.enum(['category', 'flex', 'zero_based']),
   fromMonth: budgetMonthSchema,
 });
+
+/**
+ * Move money, or Cover (zero-based, D9): from one category's available money to another's, this
+ * month. Ready to assign doesn't change.
+ */
+export const moveMoneySchema = z
+  .object({
+    fromCategoryId: z.uuid(),
+    toCategoryId: z.uuid(),
+    amountMinor: z.number().int().min(1).max(1_000_000_000_00),
+  })
+  .refine((m) => m.fromCategoryId !== m.toCategoryId, 'Move money between two categories');
 
 export interface CategoryLimitRow {
   categoryId: string;
@@ -150,6 +162,45 @@ export interface FlexMonth {
   };
 }
 
+/** A month of a zero-based budget (walkthrough §3.2). */
+export interface ZeroBasedMonth {
+  strategy: 'zero_based';
+  /** Rows are envelopes: `budgetedMinor` is assigned, `leftMinor` available; all roll over. */
+  rows: (CategoryLimitRow & { movedMinor: number })[];
+  /** Goal lines (goals and budgets G5); none until goals exist. */
+  goals: {
+    goalId: string;
+    budgetedMinor: number;
+    movedMinor: number;
+    rolledInMinor: number;
+    sentMinor: number;
+    leftMinor: number;
+  }[];
+  income: { categoryId: string; receivedMinor: number }[];
+  incomeMinor: number;
+  contributionsMinor: number;
+  ready: {
+    carriedMinor: number;
+    cameInMinor: number;
+    overspentMinor: number;
+    assignedMinor: number;
+    readyMinor: number;
+  };
+  /** Whether anything's been assigned this month: amounts don't repeat in zero-based. */
+  assigned: boolean;
+  /** What the last month with amounts assigned, for "Assign like last month"; null without one. */
+  lastAssigned: { month: string; assignedMinor: number } | null;
+  totals: {
+    assignedMinor: number;
+    spentMinor: number;
+    availableMinor: number;
+    overCount: number;
+    overspentMinor: number;
+  };
+}
+
+export type BudgetMonthView = CategoryLimitsMonth | FlexMonth | ZeroBasedMonth;
+
 export interface BudgetMonth {
   budget: BudgetSummary;
   month: string;
@@ -158,14 +209,14 @@ export interface BudgetMonth {
   canEdit: boolean;
   /** Spending categories left out of this budget ("Don't budget"): in no row or total. */
   excluded: string[];
-  view: CategoryLimitsMonth | FlexMonth;
+  view: BudgetMonthView;
 }
 
 /** What a switch would show in its first month (#104): now, and under the new strategy. */
 export interface StrategyPreview {
   fromMonth: string;
-  before: CategoryLimitsMonth | FlexMonth;
-  after: CategoryLimitsMonth | FlexMonth;
+  before: BudgetMonthView;
+  after: BudgetMonthView;
   /** Flex's starting number: the flexible categories' limits added up, so nothing is lost. */
   flexibleMinor: number | null;
 }
@@ -179,8 +230,8 @@ export const setBudgetScopeSchema = z.object({ scope: budgetScopeSchema });
 /** What a scope change would show this month: the month as it counts now, and as it would. */
 export interface ScopePreview {
   month: string;
-  before: CategoryLimitsMonth | FlexMonth;
-  after: CategoryLimitsMonth | FlexMonth;
+  before: BudgetMonthView;
+  after: BudgetMonthView;
 }
 
 /** A category's last months in a budget (§4): its limit (null before the budget) and spending. */

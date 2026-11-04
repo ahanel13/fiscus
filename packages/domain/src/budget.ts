@@ -43,6 +43,11 @@ export interface MonthActivity {
    * a member's own, what they moved into joint accounts, which leaves their budget for Ours.
    */
   contributionsMinor: number;
+  /**
+   * What reached each goal this month (goals and budgets G4): transfers into the accounts it
+   * draws on. Empty until goals exist (M5).
+   */
+  goalMovedMinor?: ReadonlyMap<string, number>;
 }
 
 export const NO_ACTIVITY: MonthActivity = {
@@ -60,13 +65,30 @@ export interface Carry {
 
 export const NOTHING_CARRIED: Carry = { balances: new Map(), unassignedMinor: 0 };
 
+/** Whose budget: the household's (Ours) or a member's own (Mine). Contributions differ (D2). */
+export type BudgetScopeKind = 'household' | 'mine';
+
+/**
+ * A goal as a budget line (goals and budgets G4): its monthly contribution is an amount keyed by
+ * the goal's id, and what moved is in the month's activity. No goals exist yet (M5).
+ */
+export interface BudgetGoalLine {
+  id: string;
+}
+
 /** Everything a strategy is given for one month. */
 export interface StrategyMonth<S> {
   month: Month;
   settings: S;
+  scope: BudgetScopeKind;
   categories: readonly BudgetCategory[];
+  goals: readonly BudgetGoalLine[];
   /** This month's amounts by category id (see `amountsFor`). */
   amounts: ReadonlyMap<string, number>;
+  /** Whether the month has amounts of its own, rather than repeating an earlier month's. */
+  ownAmounts: boolean;
+  /** Money moved between lines this month (zero-based, D9): net per line, in is positive. */
+  moves: ReadonlyMap<string, number>;
   activity: MonthActivity;
   /** From the month before, under whichever strategy it ran (D14). */
   carry: Carry;
@@ -92,6 +114,8 @@ export interface BudgetPeriod {
 }
 
 export interface BudgetDefinition {
+  /** The household's when left out. */
+  scope?: BudgetScopeKind;
   /** The first month it covers. */
   startsMonth: Month;
   /** The first starts on or before `startsMonth`; switching adds one (D14). */
@@ -99,6 +123,10 @@ export interface BudgetDefinition {
   categories: readonly BudgetCategory[];
   /** Amounts by month, for the months that have their own. */
   amounts: ReadonlyMap<Month, ReadonlyMap<string, number>>;
+  /** Money moved between lines, net per line, for the months that have some. */
+  moves?: ReadonlyMap<Month, ReadonlyMap<string, number>>;
+  /** Goals with a line in this budget (G4). None until goals exist. */
+  goals?: readonly BudgetGoalLine[];
 }
 
 export type StrategyRegistry = Partial<Record<BudgetStrategyKind, BudgetStrategy>>;
@@ -190,8 +218,12 @@ export function computeBudgetMonth(
     const out = strategy.month({
       month,
       settings: settings.get(period),
+      scope: budget.scope ?? 'household',
       categories: budget.categories,
+      goals: budget.goals ?? [],
       amounts: amountsFor(month, budget.amounts),
+      ownAmounts: budget.amounts.has(month),
+      moves: budget.moves?.get(month) ?? new Map(),
       activity: activity.get(month) ?? NO_ACTIVITY,
       carry,
     });

@@ -11,11 +11,11 @@ import {
   transactions,
 } from '@fiscus/db';
 import {
-  categoryLimits,
   type CategoryLimitsView,
   computeBudgetMonth,
-  flex,
   type FlexView,
+  STRATEGY_REGISTRY,
+  type ZeroBasedView,
 } from '@fiscus/domain';
 import {
   addDays,
@@ -34,7 +34,6 @@ import { cardStatements, seriesOccurrences } from './recurring.js';
 // purchases never reach Alex's recap. The api shows it on the dashboard; notifications (#125,
 // #130) render it with renderWeeklyRecapEmail() and send it on Mondays.
 
-const STRATEGIES = { category: categoryLimits, flex };
 /** How many things worth a look, at most. */
 const WORTH_A_LOOK = 5;
 /** How far back a late bill is still worth a look. */
@@ -141,7 +140,7 @@ export async function buildWeeklyRecap(
     const scope = row.memberId ? 'mine' : 'household';
     const definition = await loadBudgetDefinition(tx, row);
     const activity = await budgetActivity(tx, { householdId, memberId }, scope, starts, month);
-    const out = computeBudgetMonth(definition, month, activity, STRATEGIES);
+    const out = computeBudgetMonth(definition, month, activity, STRATEGY_REGISTRY);
     const overs: [string, number][] = [];
     if (out.kind === 'flex') {
       const v = out.view as FlexView;
@@ -150,6 +149,10 @@ export async function buildWeeklyRecap(
         v.flexible.leftMinor +
         v.fixed.reduce((s, f) => s + Math.max(0, f.leftMinor), 0);
       for (const f of v.fixed) if (f.leftMinor < 0) overs.push([f.categoryId, -f.leftMinor]);
+    } else if (out.kind === 'zero_based') {
+      const v = out.view as ZeroBasedView;
+      left = (left ?? 0) + v.totals.availableMinor;
+      for (const r of v.rows) if (r.leftMinor < 0) overs.push([r.categoryId, -r.leftMinor]);
     } else {
       const v = out.view as CategoryLimitsView;
       left = (left ?? 0) + v.totals.leftMinor;

@@ -582,6 +582,20 @@
       "when": 1793725227771,
       "tag": "0082_notification_email",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1793774037140,
+      "tag": "0083_budget_moves",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1793774061367,
+      "tag": "0084_budget_moves_rls",
+      "breakpoints": true
     }
   ]
 }
