@@ -413,4 +413,81 @@ describe('account visibility (RLS)', () => {
       expect(leave?.constraint).toBe('household_members_owns_accounts');
     });
   });
+
+  describe('who reviews an account (#45)', () => {
+    const find = (owners: string, visibility: string) =>
+      fixtures.find((f) => f.owners.join('') === owners && f.visibility === visibility)!.id;
+    /** Runs `fn` on the owner connection in a transaction that's rolled back. */
+    async function rolledBack<T>(fn: () => Promise<T>): Promise<T> {
+      await owner.query('BEGIN');
+      try {
+        return await fn();
+      } finally {
+        await owner.query('ROLLBACK');
+      }
+    }
+    const setReviewer = (account: string, member: string) =>
+      owner.query('UPDATE accounts SET reviewer_member_id = $2 WHERE id = $1', [account, member]);
+    const reviewer = async (account: string) =>
+      (await owner.query('SELECT reviewer_member_id AS r FROM accounts WHERE id = $1', [account]))
+        .rows[0].r as string | null;
+
+    it('is an owner, or anyone while it is shared in full', async () => {
+      await rolledBack(async () => {
+        await setReviewer(find('AB', 'private'), people.B.member);
+        await setReviewer(find('A', 'full'), people.C.member);
+        expect(await reviewer(find('AB', 'private'))).toBe(people.B.member);
+      });
+      // A viewer can't categorize, so can't review either.
+      await rolledBack(async () =>
+        expect(setReviewer(find('A', 'full'), people.V.member)).rejects.toMatchObject({
+          constraint: 'accounts_reviewer',
+        }),
+      );
+      for (const visibility of ['private', 'view_only', 'balance_only']) {
+        await rolledBack(async () =>
+          expect(setReviewer(find('A', visibility), people.B.member)).rejects.toMatchObject({
+            constraint: 'accounts_reviewer',
+          }),
+        );
+      }
+    });
+
+    it('stops when the account stops being shared in full, or they stop owning it', async () => {
+      await rolledBack(async () => {
+        const shared = find('A', 'full');
+        await setReviewer(shared, people.B.member);
+        await owner.query(`UPDATE accounts SET visibility = 'private' WHERE id = $1`, [shared]);
+        expect(await reviewer(shared)).toBeNull();
+        const joint = find('AB', 'private');
+        await setReviewer(joint, people.B.member);
+        await owner.query(`DELETE FROM account_owners WHERE account_id = $1 AND member_id = $2`, [
+          joint,
+          people.B.member,
+        ]);
+        expect(await reviewer(joint)).toBeNull();
+      });
+    });
+
+    it('stops when they leave the household', async () => {
+      await rolledBack(async () => {
+        // Someone who owns nothing: owners can't leave until their accounts are passed on.
+        const user = randomUUID();
+        const member = randomUUID();
+        await owner.query(`INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'D')`, [
+          user,
+          `d-${user}@accounts.test`,
+        ]);
+        await owner.query(
+          `INSERT INTO household_members (id, household_id, user_id, role, display_name, color)
+           VALUES ($1, $2, $3, 'member', 'D', '#000')`,
+          [member, H, user],
+        );
+        const shared = find('ABC', 'full');
+        await setReviewer(shared, member);
+        await owner.query('UPDATE household_members SET left_at = now() WHERE id = $1', [member]);
+        expect(await reviewer(shared)).toBeNull();
+      });
+    });
+  });
 });

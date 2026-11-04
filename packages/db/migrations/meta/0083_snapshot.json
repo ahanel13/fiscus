@@ -1,5 +1,5 @@
 {
-  "id": "828f7a3f-438e-4892-b782-424a79a38208",
+  "id": "b5f064cc-b04a-4780-a4b2-4aaceb8f5632",
   "prevId": "cc40fca0-95af-4aaf-829a-607b566d7998",
   "version": "7",
   "dialect": "postgresql",
@@ -648,6 +648,12 @@
           "notNull": true,
           "default": 0
         },
+        "reviewer_member_id": {
+          "name": "reviewer_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "notes_enc": {
           "name": "notes_enc",
           "type": "bytea",
@@ -746,6 +752,21 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "accounts_household_id_reviewer_member_id_household_members_household_id_id_fk": {
+          "name": "accounts_household_id_reviewer_member_id_household_members_household_id_id_fk",
+          "tableFrom": "accounts",
+          "tableTo": "household_members",
+          "columnsFrom": [
+            "household_id",
+            "reviewer_member_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -2248,14 +2269,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
-        },
-        "review_scope": {
-          "name": "review_scope",
-          "type": "review_scope",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'all'"
         },
         "clean_merchant_names": {
           "name": "clean_merchant_names",
@@ -7101,14 +7114,6 @@
         "owner",
         "member",
         "viewer"
-      ]
-    },
-    "public.review_scope": {
-      "name": "review_scope",
-      "schema": "public",
-      "values": [
-        "all",
-        "uncategorized"
       ]
     },
     "public.audit_actor_kind": {

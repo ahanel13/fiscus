@@ -7,6 +7,7 @@ import { CheckCheck, ClipboardCheck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
+  accountsQuery,
   categoriesQuery,
   householdQuery,
   membersQuery,
@@ -76,7 +77,14 @@ export function ReviewPage() {
     startOn ?? 'transactions',
   );
   const invalidate = useInvalidateLedger(householdId);
-  const query = useInfiniteQuery(transactionsQuery(householdId, QUEUE));
+  // With a reviewer on some account (#45), the queue is yours: accounts you review, or that
+  // nobody in particular does. Everyone's is a switch away.
+  const accounts = useQuery(accountsQuery(householdId, 'all')).data ?? [];
+  const someoneReviews = accounts.some((a) => a.reviewerMemberId);
+  const [whose, setWhose] = useState<'yours' | 'everyone'>('yours');
+  const filters =
+    someoneReviews && whose === 'yours' ? { ...QUEUE, reviewer: 'me' as const } : QUEUE;
+  const query = useInfiniteQuery(transactionsQuery(householdId, filters));
   const items = useMemo(
     () => (query.data?.pages.flatMap((p) => p.data) ?? []).filter((t) => t.can.categorize),
     [query.data],
@@ -443,7 +451,7 @@ export function ReviewPage() {
       ) : null}
       <TransactionList
         householdId={householdId}
-        filters={QUEUE}
+        filters={filters}
         showReview={false}
         members={members}
         groups={groups}
@@ -546,8 +554,20 @@ export function ReviewPage() {
             ) : null}
             {view === 'transactions' && items.length ? (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
+                {someoneReviews ? (
+                  <SegmentedControl
+                    aria-label="Whose to review"
+                    options={[
+                      { value: 'yours', label: 'Yours' },
+                      { value: 'everyone', label: 'Everyone’s' },
+                    ]}
+                    value={whose}
+                    onChange={setWhose}
+                  />
+                ) : null}
                 <span className="mr-auto">
-                  {counts?.transactions ?? items.length} to review, oldest first.
+                  {whose === 'yours' ? (counts?.transactions ?? items.length) : items.length} to
+                  review, oldest first.
                 </span>
                 {wide ? (
                   <span aria-hidden className="flex flex-wrap gap-x-3">

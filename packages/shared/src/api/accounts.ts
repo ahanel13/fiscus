@@ -102,6 +102,8 @@ export const updateAccountSchema = z
     includeInNetWorth: z.boolean(),
     isBusiness: z.boolean(),
     sortOrder: z.number().int().min(0).max(1_000_000),
+    /** Who reviews its transactions (#45); null = everyone who can categorize them. */
+    reviewerMemberId: z.uuid().nullable(),
     mask: mask.nullable(),
     notes: notes.nullable(),
   })
@@ -218,6 +220,8 @@ export interface Account {
   includeInNetWorth: boolean;
   isBusiness: boolean;
   sortOrder: number;
+  /** Who reviews its transactions (#45); null = everyone who can categorize them. */
+  reviewerMemberId: string | null;
   closedAt: string | null;
   owners: AccountOwner[];
   /** What you may do with it. Owners see everything; see permissions §3 for the rest. */

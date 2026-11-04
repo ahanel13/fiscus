@@ -1372,6 +1372,9 @@ function AccountDetails({ account, members }: { account: Account; members: House
   );
 }
 
+/** The reviewer select's "anyone who can": no reviewer. */
+const ANYONE = 'anyone';
+
 function AccountSettings({
   account,
   household,
@@ -1391,12 +1394,24 @@ function AccountSettings({
     visibility: account.visibility,
     includeInNetWorth: account.includeInNetWorth,
     isBusiness: account.isBusiness,
+    reviewerMemberId: account.reviewerMemberId,
   });
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
+  // Who can review it (#45): whoever can categorize its transactions, so not a viewer, and an
+  // owner unless it's shared in full. Asked only when there's a choice.
+  const reviewers = members.filter(
+    (m) =>
+      m.role !== 'viewer' &&
+      (form.visibility === 'full' || account.owners.some((o) => o.memberId === m.id)),
+  );
+  // Made private, a reviewer who isn't an owner stops reviewing it, as the server does.
+  const reviewer = reviewers.some((m) => m.id === form.reviewerMemberId)
+    ? form.reviewerMemberId
+    : null;
   const allowPrivate = privateAllowed(account.owners.length, members.length);
 
   const changes = Object.fromEntries(
-    Object.entries(form).filter(([k, v]) => {
+    Object.entries({ ...form, reviewerMemberId: reviewer }).filter(([k, v]) => {
       const current = k === 'notes' ? (account.notes ?? '') : account[k as keyof Account];
       return v !== current;
     }),
@@ -1491,6 +1506,29 @@ function AccountSettings({
               Business account
             </Switch>
           </div>
+          {reviewers.length > 1 ? (
+            <Select
+              label="Who reviews its transactions"
+              value={reviewer ?? ANYONE}
+              onChange={(v) => set({ reviewerMemberId: v === ANYONE ? null : String(v) })}
+              description={
+                reviewer
+                  ? `They go to ${members.find((m) => m.id === reviewer)?.displayName ?? 'them'}’s review queue and reminders. Everyone else can still review them under Everyone’s.`
+                  : 'Everyone who can categorize them sees them in their review queue.'
+              }
+            >
+              {[
+                <SelectItem key={ANYONE} id={ANYONE}>
+                  Anyone who can
+                </SelectItem>,
+                ...reviewers.map((m) => (
+                  <SelectItem key={m.id} id={m.id}>
+                    {m.isYou ? `${m.displayName} (you)` : m.displayName}
+                  </SelectItem>
+                )),
+              ]}
+            </Select>
+          ) : null}
           <TextField
             label="Notes"
             name="notes"

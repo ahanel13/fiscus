@@ -50,6 +50,7 @@ import {
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { addDays, daysBetween, todayIn } from '../common/dates.js';
+import { violatedConstraint } from '../common/db-errors.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { type HouseholdActivity, HouseholdScope } from '../households/household-scope.js';
@@ -107,6 +108,14 @@ const privateJointDisallowed = () =>
     'private_joint_disallowed',
     'A joint account can’t be private in a two-person household',
     'Both of you own it, so there is no one to hide it from. Choose who else can see it instead.',
+  );
+
+const reviewerCannotReview = () =>
+  new Problem(
+    422,
+    'reviewer_cannot_review',
+    'They can’t review this account',
+    'A reviewer categorizes its transactions: one of its owners, or anyone but a viewer while it’s shared in full.',
   );
 
 const futureDate = () => new Problem(422, 'future_date', 'Balances can’t be set for a future date');
@@ -343,6 +352,7 @@ export class AccountsService {
         includeInNetWorth: row.includeInNetWorth,
         isBusiness: row.isBusiness,
         sortOrder: row.sortOrder,
+        reviewerMemberId: row.reviewerMemberId,
         mask: row.maskLast4,
         notes: row.notesEnc ? await this.#decryptNotes(ctx, row.id, row.notesEnc) : null,
       };
@@ -386,7 +396,12 @@ export class AccountsService {
           version: plan.next.version,
           fieldVersions: plan.next.fieldVersions,
         })
-        .where(and(eq(accounts.id, accountId), eq(accounts.version, row.version)));
+        .where(and(eq(accounts.id, accountId), eq(accounts.version, row.version)))
+        .catch((err: unknown) => {
+          // Only someone who can categorize its transactions can review them (0083).
+          if (violatedConstraint(err) === 'accounts_reviewer') throw reviewerCannotReview();
+          throw err;
+        });
       if (changes.balanceMode !== undefined) await recomputeBalances(tx, accountId);
       await activity.record({
         action: 'account.updated',
@@ -928,6 +943,7 @@ export class AccountsService {
           includeInNetWorth: r.includeInNetWorth,
           isBusiness: r.isBusiness,
           sortOrder: r.sortOrder,
+          reviewerMemberId: r.reviewerMemberId,
           closedAt: r.closedAt?.toISOString() ?? null,
           owners: owners.get(r.id) ?? [],
           yourAccess: level,

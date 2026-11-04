@@ -111,6 +111,7 @@ caller can't see ("Transfer to Anthony").
 | ACC-10 | Read account number | acct-own | acct-own | ❌ | |
 | ACC-11 | Mark account as business | acct-own | acct-own | ❌ | |
 | ACC-12 | Arrange your own accounts list (groups, order) | own | own | own | Private to you, like preferences (HH-10). Only accounts you can see; an arrangement never changes anyone's access (#48) |
+| ACC-13 | Choose who reviews an account's transactions | acct-own | acct-own | ❌ | The reviewer must be able to categorize them: not a viewer, and an owner unless it's shared in full. Their review queue, badge and reminders have it; everyone else's don't, though Everyone's on Review still shows it (#45) |
 
 ### 4.3 Transactions
 | ID | Action | OWN | MEM | VIEW | Notes |
