@@ -607,7 +607,7 @@ describe('system context belongs to the worker', () => {
       'budget_amounts.amount_minor',
       'budget_amounts.updated_at',
       'budget_amounts.version',
-      // A merged category's moves follow it (0084).
+      // A merged category's moves follow it (0086).
       'budget_moves.from_category_id',
       'budget_moves.to_category_id',
       'connections.consecutive_failures',
