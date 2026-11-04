@@ -62,8 +62,8 @@ aren't, and mixing them up is how the same dollars get counted twice.
 - A goal with a target date suggests a monthly amount ("$450.00 a month to make May"). Putting it
   in a budget adds a **goal line**: "Japan trip · $450.00 planned".
 - The line's **moved** figure is what reached the goal this month: transfers into the accounts it
-  draws on, and raises of its fixed claims. A transfer that lands in an account backing two goals
-  counts toward the one you choose, or is split by their claims.
+  draws on, and raises of its fixed claims that follow them (G11). A transfer that lands in an
+  account backing two goals is split by their claims, or put toward one (G13).
 - Transfers are otherwise never counted in a budget (D1). This is the one exception, and only on
   the goal line, so nothing is counted twice.
 - A goal can be in the Ours budget or in a Mine budget, following its scope (G7), and is never in
@@ -147,17 +147,22 @@ Nothing on goals' screens. Just enough that M5 adds goals without changing the b
   #139 nothing is marked, but the rule lives in one place.
 - **#102's non-monthly categories** stay as they are (G1).
 
-## Open questions
+## 8. The finer points
 
-- **Raising a claim on money already there.** Earmarking $5,000 already in savings isn't saving
-  this month. Proposal: it counts toward progress, but not toward this month's moved figure or a
-  member's contributions. Raises that follow a transfer in the same month do. Decide with #132.
-- **Investment goals and market falls.** A percentage claim on a brokerage account can fall below
-  where it was. Show the fall as the market's, not as a missed contribution? Decide with #140.
-- **One transfer, two goals.** G4 lets you choose, or splits by claims. Is a default of "by
-  claims" right, or should it always ask? Decide with #138.
-- **Spending from a payoff goal.** It doesn't mean anything (there's no money in a debt), so
-  only savings goals take purchases (G6). Revisit if a case comes up.
+**G11. Earmarking money already there is progress, not saving.** Claiming $5,000 already in
+savings counts toward the goal's progress, but not toward this month's moved figure or anyone's
+contributions: it isn't new money. A raise that follows a transfer into the account in the same
+month does count, up to the transfer.
+
+**G12. A market fall is the market's.** A percentage claim on a brokerage account can fall below
+where it was. The goal shows the change as **market**, apart from contributions, and a fall never
+reads as a missed month. "On track" projects with the expected growth rate (#140).
+
+**G13. One transfer into an account backing two goals is split by their claims.** The default
+needs no question; the transfer's drawer shows the split and lets you put it all toward one goal.
+
+**G14. Only savings goals take purchases.** There's no money in a debt to spend, so payoff goals
+(G9) can't be linked to purchases (G6).
 
 ---
 
@@ -175,3 +180,7 @@ Nothing on goals' screens. Just enough that M5 adds goals without changing the b
 | G8 | Claims end when a member leaves or an account closes, and the shortfall shows | #257, ADR 0012 |
 | G9 | Payoff goals' extra payments are their budget line; required payments are bills | #134 |
 | G10 | A goal's months are its budget's months | #71 |
+| G11 | Earmarking money already in an account is progress, not this month's saving or a contribution | #132, #133, #135 |
+| G12 | A market fall shows as the market's, never as a missed contribution | #137, #140 |
+| G13 | A transfer into an account backing two goals is split by their claims, and can be put toward one | #138 |
+| G14 | Only savings goals take purchases | #134, #139 |
