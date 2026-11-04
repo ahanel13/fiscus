@@ -1,0 +1,123 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Budget: goal lines · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="on">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row">
+            <h1>Budget</h1>
+            <span class="seg"><span class="on">Ours</span><span>Mine</span></span
+            ><span class="badge">Zero-based</span>
+          </div>
+          <div class="row">
+            <span class="stepper">‹ <b>November 2026</b> ›</span
+            ><span class="btn secondary">Annual view</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="alert info">
+            <span class="big">$118.00</span> ready to assign
+            <span class="small muted">· $4,600.00 came in · $4,482.00 assigned</span>
+          </div>
+          <table class="tbl" style="margin-top: 12px">
+            <tr>
+              <th>Category</th>
+              <th class="amount">Assigned</th>
+              <th class="amount">Spent</th>
+              <th class="amount">Available</th>
+            </tr>
+            <tr>
+              <td><b>Home</b></td>
+              <td class="amount"><b>$2,245.00</b></td>
+              <td class="amount"><b>$2,150.00</b></td>
+              <td class="amount"><b>$95.00</b></td>
+            </tr>
+            <tr>
+              <td>Rent or mortgage</td>
+              <td class="amount">$2,150.00</td>
+              <td class="amount">$2,150.00</td>
+              <td class="amount muted">$0.00</td>
+            </tr>
+            <tr>
+              <td>Internet and phone</td>
+              <td class="amount">$95.00</td>
+              <td class="amount">$0.00</td>
+              <td class="amount">$95.00</td>
+            </tr>
+            <tr>
+              <td><b>Food</b></td>
+              <td class="amount"><b>$750.00</b></td>
+              <td class="amount"><b>$402.15</b></td>
+              <td class="amount"><b>$347.85</b></td>
+            </tr>
+            <tr>
+              <td>Groceries</td>
+              <td class="amount">$700.00</td>
+              <td class="amount">$382.40</td>
+              <td class="amount">$317.60</td>
+            </tr>
+            <tr>
+              <td>Coffee</td>
+              <td class="amount">$50.00</td>
+              <td class="amount">$19.75</td>
+              <td class="amount">$30.25</td>
+            </tr>
+            <tr>
+              <td>
+                <b>Goals</b>
+                <span class="small muted">· planned against what moved to their accounts</span>
+              </td>
+              <td class="amount"><b>$1,650.00</b></td>
+              <td class="amount"><b>$1,500.00 moved</b></td>
+              <td class="amount"><b>$150.00 to move</b></td>
+            </tr>
+            <tr>
+              <td>
+                House down payment
+                <span class="small muted">· to Harbor Savings and Brokerage</span>
+              </td>
+              <td class="amount">$1,300.00</td>
+              <td class="amount">$1,300.00</td>
+              <td class="amount muted">$0.00</td>
+            </tr>
+            <tr>
+              <td>Japan trip <span class="small muted">· to Harbor Savings</span></td>
+              <td class="amount">$350.00</td>
+              <td class="amount">$200.00</td>
+              <td class="amount">$150.00 <span class="link small">Move it</span></td>
+            </tr>
+          </table>
+          <div class="small muted" style="margin-top: 8px">
+            A transfer into Harbor Savings counts toward its goals, split by their claims unless you
+            choose one. Transfers count nowhere else in a budget.
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div class="proto">Prototype (#341), not the built app</div>
+  </body>
+</html>

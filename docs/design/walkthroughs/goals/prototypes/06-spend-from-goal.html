@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spend from a goal · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="on">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row">
+            <h1>Transactions</h1>
+          </div>
+          <div class="row"><span class="btn secondary">Filters</span></div>
+        </div>
+        <div class="content">
+          <div class="list">
+            <div class="item sel">
+              <span class="grow">Japan Airlines <span class="pill">from Japan trip</span></span
+              ><span class="muted small">Flights</span><span class="amount">−$1,840.00</span>
+            </div>
+            <div class="item">
+              <span class="grow">Green Grocer</span><span class="muted small">Groceries</span
+              ><span class="amount">−$62.30</span>
+            </div>
+            <div class="item">
+              <span class="grow">Transfer to Harbor Savings</span
+              ><span class="muted small">Transfer · Japan trip</span
+              ><span class="amount">−$200.00</span>
+            </div>
+            <div class="item">
+              <span class="grow">Blue Bottle</span><span class="muted small">Coffee</span
+              ><span class="amount">−$6.25</span>
+            </div>
+            <div class="item">
+              <span class="grow">Payroll</span><span class="muted small">Paychecks</span
+              ><span class="amount">$2,300.00</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <aside class="drawer">
+      <div class="row spread">
+        <h2 style="font-size: 18px; margin: 0">Japan Airlines</h2>
+        <span class="muted">✕</span>
+      </div>
+      <div class="small muted">Visa card · Nov 3, 2026 · Ours</div>
+      <div class="big" style="margin: 12px 0">−$1,840.00</div>
+      <label class="field"><span>Category</span><span class="select">Flights</span></label>
+      <label class="field" style="margin-top: 10px"
+        ><span>Paid from a goal</span><span class="select">Japan trip</span></label
+      >
+      <div class="alert info small" style="margin-top: 10px">
+        Japan trip’s claim on Harbor Savings goes from $3,200.00 to $1,360.00. In the budget it
+        shows in Flights, marked <b>from Japan trip</b>, and doesn’t count against it.
+      </div>
+      <div class="small muted" style="margin-top: 10px">
+        Move the money from Harbor Savings to the card when you pay it: the goal has already let go
+        of it.
+      </div>
+      <div class="card" style="margin-top: 14px">
+        <div class="muted small">Counts in</div>
+        <div>Ours · Flights · <b>from Japan trip</b></div>
+        <div class="small muted">Flights has $300.00 left this month, untouched.</div>
+      </div>
+    </aside>
+    <div class="proto">Prototype (#341), not the built app</div>
+  </body>
+</html>
