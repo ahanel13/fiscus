@@ -25,6 +25,8 @@ import {
   type RecurringPayment,
   type RecurringSchedule,
   type RecurringSeries,
+  type SeriesChanges,
+  seriesChanges,
   type StatementPaid,
   statementPaid,
   whoLooksAfter,
@@ -339,6 +341,32 @@ export interface SeriesDates {
   inRange: string[];
   /** Its occurrences: from `start`, and late ones from `lateFrom`. */
   occurrences: RecurringOccurrence[];
+  /** What's changed worth noticing (D14). */
+  changes: SeriesChanges;
+}
+
+/** A series' changes worth noticing (D14), from its history as `seriesHistory()` gives it. */
+export function changesOf(
+  series: Pick<Row, 'kind' | 'createdAt' | 'endedOn'>,
+  h: { dates: string[]; payments: RecurringPayment[]; marks: Map<string, MarkRow> },
+  today: string,
+): SeriesChanges {
+  const createdOn = series.createdAt.toISOString().slice(0, 10);
+  const since = [h.payments[0]?.due, addDays(createdOn, -31)]
+    .filter((d) => d !== undefined)
+    .sort()[0]!;
+  const marked = [...h.marks.values()];
+  return seriesChanges({
+    kind: series.kind,
+    payments: h.payments.filter((p) => p.date <= today),
+    dates: h.dates.filter((d) => d <= today),
+    skipped: new Set(marked.filter((m) => m.mark === 'skipped').map((m) => m.due)),
+    markedPaid: new Set(marked.filter((m) => m.mark === 'paid').map((m) => m.due)),
+    since,
+    createdOn,
+    endedOn: series.endedOn,
+    today,
+  });
 }
 
 /**
@@ -359,7 +387,9 @@ export async function seriesOccurrences(
   const out: SeriesDates[] = [];
   for (const { series, currency } of rows) {
     const schedule = series.schedule as RecurringSchedule;
-    const { dates, payments, marks } = await seriesHistory(tx, series, today, end, lateFrom);
+    const history = await seriesHistory(tx, series, today, end, lateFrom);
+    const { dates, payments, marks } = history;
+    const changes = changesOf(series, history, today);
     const paidBy = new Map(payments.map((p) => [p.due, p]));
     const estimate = estimateNext(payments, estimateCount(schedule));
     const since = [payments[0]?.due, addDays(series.createdAt.toISOString().slice(0, 10), -31)]
@@ -406,12 +436,14 @@ export async function seriesOccurrences(
             : null,
         memberIds,
         shared: who.seenBy.length > 1,
+        changes,
       });
     }
     out.push({
       series,
       currency,
       estimate,
+      changes,
       inRange: dates.filter((d) => d >= start && d <= end),
       occurrences: list,
     });

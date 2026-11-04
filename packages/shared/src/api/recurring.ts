@@ -154,6 +154,10 @@ export interface RecurringSeries {
   forMemberIds: string[];
   /** The members who see its account: who it can be handed to. One: show no person (D22). */
   seenBy: string[];
+  /** What's changed worth noticing (D14): a price rise, new, or looks ended. */
+  changes: SeriesChanges;
+  /** The day its latest payment was made; null with none. */
+  lastPaid: string | null;
   version: number;
   updatedAt: string;
 }
@@ -212,6 +216,8 @@ export interface RecurringOccurrence {
   memberIds: string[];
   /** Seen by more than one member, so who it's for is worth saying (D22). */
   shared: boolean;
+  /** A series' changes worth noticing (D14); none on a card statement. */
+  changes?: SeriesChanges;
 }
 
 /** How much of a card statement is paid (D9): all of it, the minimum, some, or nothing yet. */
@@ -661,4 +667,91 @@ export function detectRecurring(g: DetectGroup, today: string): DetectedSeries |
     amounts: paid.slice(-10).map((p) => p.amountMinor),
     next: nextOccurrences(schedule, today, 1)[0] ?? null,
   };
+}
+
+// ── Changes worth noticing (#129, #123; bills walkthrough D14) ──────────────────────────────
+
+/** A price rise counts once the last this many payments are all up. */
+export const PRICE_RISE_PAYMENTS = 2;
+/** By at least this much over what came before (5%: what "about" allows, D4). */
+export const PRICE_RISE_RATIO = 1.05;
+/** A price rise is news while its first raised payment is this recent. */
+export const PRICE_RISE_NEWS_DAYS = 120;
+/** A subscription is new while its first payment, or its confirming, is this recent. */
+export const NEW_SUBSCRIPTION_DAYS = 45;
+
+/** What's changed about a series (D14): its price went up, it's new, or it looks ended. */
+export interface SeriesChanges {
+  /** Up by `changeMinor` (positive) since `since`, the first raised payment. */
+  priceUp: { changeMinor: number; since: string } | null;
+  /** A subscription first paid, or confirmed, in the last few weeks. */
+  isNew: boolean;
+  /** Its last two dates went by unpaid: it may have ended (D12). */
+  looksEnded: boolean;
+}
+
+export const NO_CHANGES: SeriesChanges = { priceUp: null, isNew: false, looksEnded: false };
+
+/**
+ * What's worth noticing about a series (D14), from its payments (oldest first) and its dates up
+ * to today:
+ * - **Price went up**: its last 2 payments are both at least 5% over the average of the 3 before
+ *   them (so one odd bill doesn't count, and a rise that's reversed stops counting), and the first
+ *   of them is from the last 120 days. Income and transfers don't count.
+ * - **New**: a subscription first paid, or confirmed with no payments yet, in the last 45 days.
+ * - **Looks ended**: its last two dates more than 2 days ago (D12) are both unpaid, and it hasn't
+ *   been marked ended. Skipped dates don't count either way.
+ */
+export function seriesChanges(x: {
+  kind: RecurringKind;
+  payments: readonly RecurringPayment[];
+  /** Its dates up to today, oldest first, and which of them were skipped. */
+  dates: readonly string[];
+  skipped: ReadonlySet<string>;
+  /** Dates someone marked paid another way, with no transaction. */
+  markedPaid?: ReadonlySet<string>;
+  /** Dates before this were never expected (before it was made, or first paid). */
+  since: string;
+  createdOn: string;
+  endedOn: string | null;
+  today: string;
+}): SeriesChanges {
+  const paid = [...x.payments].sort((a, b) => a.date.localeCompare(b.date));
+  let priceUp: SeriesChanges['priceUp'] = null;
+  if ((x.kind === 'bill' || x.kind === 'subscription') && paid.length >= PRICE_RISE_PAYMENTS + 3) {
+    const recent = paid.slice(-PRICE_RISE_PAYMENTS);
+    const before = paid.slice(-PRICE_RISE_PAYMENTS - 3, -PRICE_RISE_PAYMENTS);
+    const prior = before.reduce((s, p) => s + Math.abs(p.amountMinor), 0) / before.length;
+    const up = recent.every((p) => Math.abs(p.amountMinor) >= prior * PRICE_RISE_RATIO);
+    const first = recent[0]!;
+    if (up && prior > 0 && daysBetween(first.date, x.today) <= PRICE_RISE_NEWS_DAYS) {
+      const now = recent.reduce((s, p) => s + Math.abs(p.amountMinor), 0) / recent.length;
+      priceUp = { changeMinor: Math.round(now - prior), since: first.date };
+    }
+  }
+  const firstPaid = paid[0]?.date;
+  const isNew =
+    x.kind === 'subscription' &&
+    daysBetween(firstPaid ?? x.createdOn, x.today) <= NEW_SUBSCRIPTION_DAYS;
+  const paidDues = new Set([...paid.map((p) => p.due), ...(x.markedPaid ?? [])]);
+  const past = x.dates.filter(
+    (d) =>
+      d >= x.since &&
+      !x.skipped.has(d) &&
+      addDays(d, LATE_AFTER_DAYS) < x.today &&
+      (x.endedOn === null || d <= x.endedOn),
+  );
+  const lastTwo = past.slice(-2);
+  const looksEnded =
+    x.endedOn === null && lastTwo.length === 2 && lastTwo.every((d) => !paidDues.has(d));
+  return { priceUp, isNew, looksEnded };
+}
+
+/** How many times a year it comes: for a subscription's yearly cost (#123). */
+export function paymentsPerYear(s: RecurringSchedule): number {
+  if (s.unit === 'week') return 52 / s.every;
+  if (s.unit === 'day') return 365 / s.every;
+  // A weekday in the month (#506) has no `days`: once a month.
+  const days = (s as { days?: readonly number[] }).days;
+  return (12 / s.every) * (days?.length ?? 1);
 }

@@ -18,6 +18,7 @@ import { api, type ApiError } from '../api/client.js';
 import { membersQuery } from '../api/queries.js';
 import { namesOf } from '../lib/recurring.js';
 import { Amount } from './Amount.js';
+import { ChangeBadges } from './ChangeBadges.js';
 import {
   AmountInput,
   Button,
@@ -308,6 +309,11 @@ export function RecurringDialog({
       onOpenChange={(open) => (open ? null : onClose())}
     >
       <div className="space-y-4">
+        {series && (series.changes.priceUp || series.changes.isNew || series.changes.looksEnded) ? (
+          <p className="flex flex-wrap gap-2">
+            <ChangeBadges changes={series.changes} currency={series.currency} />
+          </p>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField
             label="Name"
