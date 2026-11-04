@@ -7,16 +7,17 @@ import {
   syncHolds,
   transactions,
 } from '@fiscus/db';
-import { categoryLimits, computeBudgetMonth, flex } from '@fiscus/domain';
+import { computeBudgetMonth, STRATEGY_REGISTRY } from '@fiscus/domain';
 import {
   accessLevels,
   budgetActivity,
   cardStatementsDue,
   loadBudgetDefinition,
   seriesOccurrences,
+  waitingForReview,
 } from '@fiscus/ledger';
 import { addDays } from '@fiscus/shared';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { appLink, longDate, type MemberRun, money, weekOf, when } from './member.js';
 
 // The rules (#127; bills walkthrough D18–D20). Each looks at one member's own view of the
@@ -30,8 +31,6 @@ export const LATE_LOOKBACK_DAYS = 30;
 export const LOW_BALANCE_DAYS = 14;
 /** How old a big transaction can be and still be news: a big import of history isn't. */
 export const BIG_TRANSACTION_MAX_AGE_DAYS = 7;
-
-const STRATEGIES = { category: categoryLimits, flex };
 
 /**
  * A bill is due (D13, D18): its date is within the days before they asked for, on a bill or
@@ -243,7 +242,7 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
       startsMonth,
       month,
     );
-    const out = computeBudgetMonth(definition, month, activity, STRATEGIES);
+    const out = computeBudgetMonth(definition, month, activity, STRATEGY_REGISTRY);
     const limits: { key: string; name: string; spent: number; has: number }[] = [];
     if (out.kind === 'flex') {
       const v = out.view as {
@@ -264,21 +263,43 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
         spent: v.flexible.spentMinor,
         has: v.flexible.budgetedMinor,
       });
+    } else if (out.kind === 'percentage') {
+      // A bucket nearing its share; Savings is the exception, where over is good (D10).
+      const v = out.view as {
+        buckets: {
+          key: string;
+          name: string;
+          spentMinor: number;
+          targetMinor: number;
+          saving: boolean;
+        }[];
+      };
+      for (const b of v.buckets) {
+        if (b.saving) continue;
+        limits.push({
+          key: `bucket:${b.key}`,
+          name: b.name,
+          spent: b.spentMinor,
+          has: b.targetMinor,
+        });
+      }
     } else {
       const v = out.view as {
         rows: {
           categoryId: string;
           budgetedMinor: number;
           rolledInMinor: number;
+          movedMinor?: number;
           spentMinor: number;
         }[];
       };
+      // Category limits and zero-based alike: what the category had to spend this month.
       for (const r of v.rows) {
         limits.push({
           key: r.categoryId,
           name: names.get(r.categoryId) ?? 'A category',
           spent: r.spentMinor,
-          has: r.budgetedMinor + r.rolledInMinor,
+          has: r.budgetedMinor + r.rolledInMinor + (r.movedMinor ?? 0),
         });
       }
     }
@@ -306,7 +327,8 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
 
 /**
  * Transactions to review (D18): once a day at the hour they chose, if any are waiting in
- * accounts they can review (owner or full access, as the review queue counts them).
+ * accounts they can review (owner or full access, as the review queue counts them), and that
+ * nobody else reviews (#45).
  */
 export async function review(m: MemberRun): Promise<number> {
   if (!m.on('review') || m.role === 'viewer') return 0;
@@ -320,10 +342,19 @@ export async function review(m: MemberRun): Promise<number> {
     .from(transactions)
     .where(
       and(
-        eq(transactions.reviewStatus, 'needs_review'),
+        waitingForReview(),
         isNull(transactions.deletedAt),
         eq(transactions.hasSplits, false),
         inArray(transactions.accountId, reviewable),
+        inArray(
+          transactions.accountId,
+          m.tx
+            .select({ id: accounts.id })
+            .from(accounts)
+            .where(
+              or(isNull(accounts.reviewerMemberId), eq(accounts.reviewerMemberId, m.memberId)),
+            ),
+        ),
       ),
     );
   // Possible duplicates from a bank (#80): row-level security shows only yours.

@@ -575,9 +575,10 @@ describe('system context belongs to the worker', () => {
                           'fiscus_disconnect_connection', 'fiscus_finish_connection_job',
                           'fiscus_unrouted_notifications', 'fiscus_claim_notification_deliveries',
                           'fiscus_notification_households',
-                          'fiscus_households_with_new_transactions')
+                          'fiscus_households_with_new_transactions',
+                          'fiscus_clear_owner_reviewer', 'fiscus_clear_member_reviewer')
       ORDER BY 1`);
-    expect(owners.map((o) => o.rolname)).toEqual(Array(11).fill('fiscus_steward'));
+    expect(owners.map((o) => o.rolname)).toEqual(Array(13).fill('fiscus_steward'));
     const { rows } = await owner.query(`
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
                                     'categories', 'household_keys', 'audit_events', 'users',
@@ -600,10 +601,15 @@ describe('system context belongs to the worker', () => {
       WHERE grantee = 'fiscus_steward' AND privilege_type = 'UPDATE' ORDER BY 1`);
     expect(columns.map((r) => r.c)).toEqual([
       'accounts.connection_id',
+      // A reviewer who loses the account, or leaves, stops reviewing it (0083).
+      'accounts.reviewer_member_id',
       'accounts.updated_at',
       'budget_amounts.amount_minor',
       'budget_amounts.updated_at',
       'budget_amounts.version',
+      // A merged category's moves follow it (0086).
+      'budget_moves.from_category_id',
+      'budget_moves.to_category_id',
       'connections.consecutive_failures',
       'connections.disconnect_requested',
       'connections.first_failed_at',

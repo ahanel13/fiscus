@@ -285,6 +285,8 @@ export interface TransactionFilters {
   categories?: string[];
   q?: string;
   review?: 'needs_review' | 'reviewed';
+  /** Only accounts you review (#45). */
+  reviewer?: 'me';
   /** Newest first unless `oldest` (the review queue). */
   order?: 'newest' | 'oldest';
   /** The table's sort (#351); `direction` overrides `order`. */
@@ -305,6 +307,7 @@ export const transactionsQuery = (id: string, filters: TransactionFilters) =>
       if (filters.categories?.length) params.set('categories', filters.categories.join(','));
       if (filters.q) params.set('q', filters.q);
       if (filters.review) params.set('review', filters.review);
+      if (filters.reviewer) params.set('reviewer', filters.reviewer);
       if (filters.order) params.set('order', filters.order);
       if (filters.sort) params.set('sort', filters.sort);
       if (filters.direction) params.set('direction', filters.direction);

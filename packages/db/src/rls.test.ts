@@ -31,6 +31,7 @@ describe('row-level security', () => {
     'balance_snapshots',
     'budget_amounts',
     'budget_categories',
+    'budget_moves',
     'budget_strategies',
     'budgets',
     'categories',

@@ -33,7 +33,7 @@ type GoalRow = typeof goals.$inferSelect;
 type ClaimRow = typeof goalClaims.$inferSelect;
 type ClaimInput = { amountMinor?: number | undefined; percentBps?: number | undefined };
 
-/** A claim's worth, from fiscus_goal_claim_values() (0084): balances stay in the database. */
+/** A claim's worth, from fiscus_goal_claim_values() (0088): balances stay in the database. */
 interface ClaimValue {
   claim_id: string;
   goal_id: string;
@@ -46,7 +46,7 @@ interface ClaimValue {
 
 /**
  * Goals (GOAL-01–07; goals walkthrough): savings goals that draw on accounts by claims (G2). The
- * household's are everyone's, your own are yours alone (row-level security, 0084); claims are set
+ * household's are everyone's, your own are yours alone (row-level security, 0088); claims are set
  * by the account's owners (G7), never beyond what's free (G3). Each claim change is kept (G17).
  */
 @Injectable()

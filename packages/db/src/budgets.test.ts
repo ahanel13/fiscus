@@ -18,6 +18,7 @@ const people = Object.fromEntries(
 ) as Record<Actor, { user: string; member: string }>;
 const budget = { ours: randomUUID(), a: randomUUID(), b: randomUUID(), c: randomUUID() };
 const groceries = randomUUID();
+const dining = randomUUID();
 const MONTH = '2026-10-01';
 
 describe('budgets (RLS)', () => {
@@ -88,6 +89,10 @@ describe('budgets (RLS)', () => {
       `INSERT INTO categories (id, household_id, group_id, name) VALUES ($1, $2, $3, 'Groceries')`,
       [groceries, H, group],
     );
+    await owner.query(
+      `INSERT INTO categories (id, household_id, group_id, name) VALUES ($1, $2, $3, 'Dining')`,
+      [dining, H, group],
+    );
     const budgets: [string, Actor | null][] = [
       [budget.ours, null],
       [budget.a, 'A'],
@@ -113,6 +118,11 @@ describe('budgets (RLS)', () => {
         `INSERT INTO budget_categories (household_id, budget_id, category_id, rollover)
          VALUES ($1, $2, $3, true)`,
         [H, id, groceries],
+      );
+      await owner.query(
+        `INSERT INTO budget_moves (id, household_id, budget_id, month, from_category_id,
+           to_category_id, amount_minor) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 4130)`,
+        [H, id, MONTH, groceries, dining],
       );
     }
   }, 120_000);
@@ -142,7 +152,12 @@ describe('budgets (RLS)', () => {
     (a) =>
       asMember(a, async (q) => {
         expect(await ids(q, 'SELECT id FROM budgets'), CELL[a]).toEqual(new Set(VISIBLE[a]));
-        for (const table of ['budget_strategies', 'budget_amounts', 'budget_categories']) {
+        for (const table of [
+          'budget_strategies',
+          'budget_amounts',
+          'budget_categories',
+          'budget_moves',
+        ]) {
           expect(await ids(q, `SELECT budget_id AS id FROM ${table}`), table).toEqual(
             new Set(VISIBLE[a]),
           );

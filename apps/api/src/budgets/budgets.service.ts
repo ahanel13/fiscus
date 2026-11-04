@@ -2,6 +2,7 @@
 import {
   budgetAmounts,
   budgetCategories,
+  budgetMoves,
   budgets,
   budgetStrategies,
   categories,
@@ -14,15 +15,18 @@ import {
   addMonths,
   amountsFor,
   type BudgetStrategyKind,
-  categoryLimits,
   type CategoryLimitsView,
   computeBudgetMonth,
   firstDayOf,
   flex,
   flexibleFor,
   type FlexView,
+  percentage,
+  type PercentageView,
   periodFor,
+  STRATEGY_REGISTRY,
   suggestAmounts,
+  type ZeroBasedView,
 } from '@fiscus/domain';
 import {
   budgetActivity,
@@ -40,6 +44,7 @@ import type {
   BudgetYearRow,
   createBudgetSchema,
   ScopePreview,
+  setPercentageSchema,
   StrategyPreview,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
@@ -53,7 +58,6 @@ import { HouseholdScope } from '../households/household-scope.js';
 type CreateInput = z.infer<typeof createBudgetSchema>;
 type BudgetRow = typeof budgets.$inferSelect;
 
-const STRATEGIES = { category: categoryLimits, flex };
 const monthOfDate = (d: string) => d.slice(0, 7);
 
 /**
@@ -174,7 +178,7 @@ export class BudgetsService {
       }
       const definition = await loadBudgetDefinition(tx, row);
       const ledger = await budgetActivity(tx, ctx, scope, startsMonth, month);
-      const out = computeBudgetMonth(definition, month, ledger, STRATEGIES);
+      const out = computeBudgetMonth(definition, month, ledger, STRATEGY_REGISTRY);
       const [h] = await tx
         .select({ currency: households.baseCurrency })
         .from(households)
@@ -185,7 +189,7 @@ export class BudgetsService {
         currency: h!.currency,
         canEdit: canEdit(ctx, scope),
         excluded: definition.excluded,
-        view: viewOf(out.kind, out.view),
+        view: viewOf(out.kind, out.view, definition, month),
       };
     });
   }
@@ -197,7 +201,7 @@ export class BudgetsService {
   async preview(
     ctx: HouseholdContext,
     budgetId: string,
-    strategy: 'category' | 'flex',
+    strategy: SwitchableStrategy,
     fromMonth: string,
   ): Promise<StrategyPreview> {
     return this.scope.run(ctx, async (tx) => {
@@ -206,14 +210,20 @@ export class BudgetsService {
       const scope: BudgetScope = row.memberId ? 'mine' : 'household';
       const definition = await loadBudgetDefinition(tx, row);
       const ledger = await budgetActivity(tx, ctx, scope, monthOfDate(row.startsMonth), fromMonth);
-      const before = computeBudgetMonth(definition, fromMonth, ledger, STRATEGIES);
+      const before = computeBudgetMonth(definition, fromMonth, ledger, STRATEGY_REGISTRY);
       const flexibleMinor = strategy === 'flex' ? flexibleStart(definition, fromMonth) : null;
       const switched = withPeriod(definition, fromMonth, strategy, flexibleMinor);
-      const after = computeBudgetMonth(switched, fromMonth, ledger, STRATEGIES);
+      if (strategy === 'zero_based' && !definition.amounts.has(fromMonth)) {
+        switched.amounts = new Map([
+          ...definition.amounts,
+          [fromMonth, new Map(amountsFor(fromMonth, definition.amounts))],
+        ]);
+      }
+      const after = computeBudgetMonth(switched, fromMonth, ledger, STRATEGY_REGISTRY);
       return {
         fromMonth,
-        before: viewOf(before.kind, before.view),
-        after: viewOf(after.kind, after.view),
+        before: viewOf(before.kind, before.view, definition, fromMonth),
+        after: viewOf(after.kind, after.view, switched, fromMonth),
         flexibleMinor,
       };
     });
@@ -223,7 +233,7 @@ export class BudgetsService {
   async switchStrategy(
     ctx: HouseholdContext,
     budgetId: string,
-    strategy: 'category' | 'flex',
+    strategy: SwitchableStrategy,
     fromMonth: string,
   ): Promise<BudgetSummary> {
     return this.scope.run(ctx, async (tx, activity) => {
@@ -254,6 +264,11 @@ export class BudgetsService {
           target: [budgetStrategies.budgetId, budgetStrategies.fromMonth],
           set: { strategy, settings },
         });
+      // Zero-based assigns afresh each month (D8): the month it starts keeps the amounts it had,
+      // as what's assigned, so switching loses nothing (D14).
+      if (strategy === 'zero_based' && !definition.amounts.has(fromMonth)) {
+        await copyAmountsInto(tx, row, fromMonth);
+      }
       // A later switch already scheduled would hide this one: it goes.
       await tx
         .delete(budgetStrategies)
@@ -291,9 +306,9 @@ export class BudgetsService {
           definition,
           month,
           await budgetActivity(tx, ctx, s, start, month),
-          STRATEGIES,
+          STRATEGY_REGISTRY,
         );
-        return viewOf(out.kind, out.view);
+        return viewOf(out.kind, out.view, definition, month);
       };
       return {
         month,
@@ -369,6 +384,49 @@ export class BudgetsService {
   }
 
   /**
+   * 50/30/20's split (§3.3): its buckets and what's split, for the period running in `month`, so
+   * every month it runs in counts the same way (D13).
+   */
+  async setPercentage(
+    ctx: HouseholdContext,
+    budgetId: string,
+    month: string,
+    settings: z.infer<typeof setPercentageSchema>,
+  ): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      const [period] = await tx
+        .select()
+        .from(budgetStrategies)
+        .where(
+          and(
+            eq(budgetStrategies.budgetId, budgetId),
+            lte(budgetStrategies.fromMonth, firstDayOf(month)),
+          ),
+        )
+        .orderBy(sql`${budgetStrategies.fromMonth} DESC`)
+        .limit(1);
+      if (!period || period.strategy !== 'percentage') {
+        throw new Problem(409, 'not_percentage', 'The budget doesn’t split by percentage then');
+      }
+      await tx
+        .update(budgetStrategies)
+        .set({ settings })
+        .where(
+          and(
+            eq(budgetStrategies.budgetId, budgetId),
+            eq(budgetStrategies.fromMonth, period.fromMonth),
+          ),
+        );
+      await record(activity, row, 'budget.split_changed', {
+        month,
+        buckets: settings.buckets.map((b) => `${b.name} ${b.percent}%`).join(', '),
+      });
+    });
+  }
+
+  /**
    * Sets a category's amount for a month. A month without amounts of its own repeats the last
    * one that had some, so those are copied into it first, and only this one changes.
    */
@@ -387,12 +445,15 @@ export class BudgetsService {
       if (!(await budgetedCategories(tx)).has(categoryId)) throw problems.notFound();
       const day = firstDayOf(month);
       const next = firstDayOf(addMonths(month, 1));
+      // Zero-based assigns each month afresh (D8): nothing's copied in, or on to later months.
+      const zeroBased = await runsZeroBased(tx, budgetId, month);
+      if (zeroBased) applyTo = 'month';
       const own = await tx
         .select({ c: budgetAmounts.categoryId })
         .from(budgetAmounts)
         .where(and(eq(budgetAmounts.budgetId, budgetId), eq(budgetAmounts.month, day)))
         .limit(1);
-      if (own.length === 0) {
+      if (own.length === 0 && !zeroBased) {
         const [last] = await tx
           .select({ month: sql<string>`max(${budgetAmounts.month})::text` })
           .from(budgetAmounts)
@@ -406,7 +467,7 @@ export class BudgetsService {
       }
       // This month only: the next one keeps what it showed, by having its own amounts (copied
       // from this month's, before the change) unless it already has them.
-      if (applyTo === 'month') {
+      if (applyTo === 'month' && !zeroBased) {
         await tx.execute(sql`
           INSERT INTO budget_amounts (household_id, budget_id, month, category_id, amount_minor)
           SELECT household_id, budget_id, ${next}::date, category_id, amount_minor
@@ -453,6 +514,79 @@ export class BudgetsService {
   }
 
   /**
+   * Move money, or Cover (zero-based, D9): from one category's available money to another's, in
+   * a month that runs zero-based. Ready to assign doesn't change. A category can't give more than
+   * it has available.
+   */
+  async moveMoney(
+    ctx: HouseholdContext,
+    budgetId: string,
+    month: string,
+    move: { fromCategoryId: string; toCategoryId: string; amountMinor: number },
+  ): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      const scope: BudgetScope = row.memberId ? 'mine' : 'household';
+      checkCanEdit(ctx, scope);
+      if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
+      const spending = await spendingCategories(tx);
+      if (!spending.has(move.fromCategoryId) || !spending.has(move.toCategoryId)) {
+        throw problems.notFound();
+      }
+      if (!(await runsZeroBased(tx, budgetId, month))) {
+        throw new Problem(
+          409,
+          'not_zero_based',
+          'Money moves between categories in a zero-based budget',
+          'The budget doesn’t run zero-based in that month.',
+        );
+      }
+      const definition = await loadBudgetDefinition(tx, row);
+      const ledger = await budgetActivity(tx, ctx, scope, monthOfDate(row.startsMonth), month);
+      const view = computeBudgetMonth(definition, month, ledger, STRATEGY_REGISTRY)
+        .view as ZeroBasedView;
+      const available = view.rows.find((r) => r.categoryId === move.fromCategoryId)?.leftMinor ?? 0;
+      if (available < move.amountMinor) {
+        throw new Problem(
+          422,
+          'not_enough_available',
+          'That category doesn’t have that much',
+          available > 0
+            ? 'Move what it has available, or less.'
+            : 'It has nothing available to move.',
+        );
+      }
+      await tx.insert(budgetMoves).values({
+        householdId: ctx.householdId,
+        budgetId,
+        month: firstDayOf(month),
+        ...move,
+      });
+      await record(activity, row, 'budget.money_moved', { month, ...move });
+    });
+  }
+
+  /**
+   * Assign like last month (zero-based): a month assigns afresh (D8), so this copies what the
+   * last month with amounts assigned, into one that has none yet.
+   */
+  async assignLikeLastMonth(ctx: HouseholdContext, budgetId: string, month: string): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
+      const definition = await loadBudgetDefinition(tx, row);
+      if (definition.amounts.has(month)) {
+        throw new Problem(409, 'already_assigned', 'This month has amounts assigned already');
+      }
+      const last = lastAssigned(definition, month);
+      if (!last) throw new Problem(409, 'nothing_to_copy', 'No earlier month has amounts assigned');
+      await copyAmountsInto(tx, row, month);
+      await record(activity, row, 'budget.assigned_like_last_month', { month, from: last.month });
+    });
+  }
+
+  /**
    * A category's last `count` months up to `to` (§4): its limit in each month the budget covers,
    * and what was spent in each, before the budget started too.
    */
@@ -474,9 +608,7 @@ export class BudgetsService {
       const out = months.map((month) => ({
         month,
         budgetedMinor:
-          month < startsMonth
-            ? null
-            : (amountsFor(month, definition.amounts).get(categoryId) ?? null),
+          month < startsMonth ? null : (budgetedFor(definition, month).get(categoryId) ?? null),
         spentMinor: ledger.get(month)?.spentMinor.get(categoryId) ?? 0,
       }));
       // The average of the full months shown with any spending (as setup's suggestion counts).
@@ -512,12 +644,14 @@ export class BudgetsService {
         if (month < startsMonth) return null;
         const c = kinds.get(categoryId);
         if (!c) return null;
+        // 50/30/20 has no per-category limits (D10).
+        if (periodFor(month, definition.periods).kind === 'percentage') return null;
         if (periodFor(month, definition.periods).kind === 'flex') {
           if (c.kind === 'flexible') return null;
           if (c.kind === 'non_monthly')
             return c.yearlyMinor === null ? null : Math.round(c.yearlyMinor / 12);
         }
-        return amountsFor(month, definition.amounts).get(categoryId) ?? null;
+        return budgetedFor(definition, month).get(categoryId) ?? null;
       };
       const spending = await spendingCategories(tx);
       const rows: BudgetYearRow[] = definition.categories
@@ -560,6 +694,7 @@ export class BudgetsService {
       rollover?: boolean | undefined;
       yearlyMinor?: number | null | undefined;
       excluded?: boolean | undefined;
+      bucket?: string | null | undefined;
     },
   ): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
@@ -575,6 +710,7 @@ export class BudgetsService {
           rollover: change.rollover ?? false,
           yearlyMinor: change.yearlyMinor ?? null,
           excluded: change.excluded ?? false,
+          bucket: change.bucket ?? null,
         })
         .onConflictDoUpdate({
           target: [budgetCategories.budgetId, budgetCategories.categoryId],
@@ -582,6 +718,7 @@ export class BudgetsService {
             ...(change.rollover !== undefined ? { rollover: change.rollover } : {}),
             ...(change.yearlyMinor !== undefined ? { yearlyMinor: change.yearlyMinor } : {}),
             ...(change.excluded !== undefined ? { excluded: change.excluded } : {}),
+            ...(change.bucket !== undefined ? { bucket: change.bucket } : {}),
           },
         });
       await record(activity, row, 'budget.category_changed', { categoryId, ...change });
@@ -758,10 +895,89 @@ async function record(
   });
 }
 
+/** The strategies a budget can switch to: the ones that are built. */
+type SwitchableStrategy = 'category' | 'flex' | 'zero_based' | 'percentage';
+
 /** The api's shape of a strategy's month. */
-function viewOf(kind: BudgetStrategyKind, view: unknown): BudgetMonth['view'] {
+function viewOf(
+  kind: BudgetStrategyKind,
+  view: unknown,
+  definition: BudgetDefinitionRows,
+  month: string,
+): BudgetMonth['view'] {
   if (kind === 'flex') return { strategy: 'flex', ...(view as FlexView) };
+  if (kind === 'percentage') {
+    const { buckets, base, income, expectedMinor } = percentage.settings(
+      periodFor(month, definition.periods).settings,
+    );
+    return {
+      strategy: 'percentage',
+      ...(view as PercentageView),
+      settings: { buckets, base, income, expectedMinor },
+    };
+  }
+  if (kind === 'zero_based') {
+    return {
+      strategy: 'zero_based',
+      ...(view as ZeroBasedView),
+      lastAssigned: lastAssigned(definition, month),
+    };
+  }
   return { strategy: 'category', ...(view as CategoryLimitsView) };
+}
+
+/** A month's amounts as its strategy reads them: zero-based only has what's assigned in it. */
+function budgetedFor(definition: BudgetDefinitionRows, month: string): ReadonlyMap<string, number> {
+  return periodFor(month, definition.periods).kind === 'zero_based'
+    ? (definition.amounts.get(month) ?? new Map<string, number>())
+    : amountsFor(month, definition.amounts);
+}
+
+/** The last month before `month` with amounts of its own, and what it assigned to spending. */
+function lastAssigned(
+  definition: BudgetDefinitionRows,
+  month: string,
+): { month: string; assignedMinor: number } | null {
+  const earlier = [...definition.amounts.keys()].filter((m) => m < month).sort();
+  const last = earlier.at(-1);
+  if (!last) return null;
+  const spending = new Set(
+    definition.categories
+      .filter((c) => c.kind !== 'income' && c.kind !== 'transfer')
+      .map((c) => c.id),
+  );
+  let assignedMinor = 0;
+  for (const [id, v] of definition.amounts.get(last)!) if (spending.has(id)) assignedMinor += v;
+  return { month: last, assignedMinor };
+}
+
+/** Whether the budget runs zero-based in `month`. */
+async function runsZeroBased(tx: Executor, budgetId: string, month: string): Promise<boolean> {
+  const [period] = await tx
+    .select({ strategy: budgetStrategies.strategy })
+    .from(budgetStrategies)
+    .where(
+      and(
+        eq(budgetStrategies.budgetId, budgetId),
+        lte(budgetStrategies.fromMonth, firstDayOf(month)),
+      ),
+    )
+    .orderBy(sql`${budgetStrategies.fromMonth} DESC`)
+    .limit(1);
+  return period?.strategy === 'zero_based';
+}
+
+/** Gives `month` its own amounts: those of the last month before it that had some. */
+async function copyAmountsInto(tx: Executor, row: BudgetRow, month: string): Promise<void> {
+  const day = firstDayOf(month);
+  await tx.execute(sql`
+    INSERT INTO budget_amounts (household_id, budget_id, month, category_id, amount_minor)
+    SELECT household_id, budget_id, ${day}::date, category_id, amount_minor
+    FROM budget_amounts
+    WHERE budget_id = ${row.id}
+      AND month = (SELECT max(month) FROM budget_amounts
+                   WHERE budget_id = ${row.id} AND month < ${day}::date)
+    ON CONFLICT DO NOTHING`);
 }
 
 /** A switch starts this month or later (D14): months that have started keep their strategy. */

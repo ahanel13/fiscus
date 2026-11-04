@@ -65,15 +65,51 @@ export const setBudgetAmountSchema = z.object({
  */
 export const setBudgetCategorySchema = z
   .object({
+    /** 50/30/20: the bucket it counts in, or null for the one its group's kind gives (D10). */
+    bucket: z
+      .string()
+      .regex(/^[a-z0-9_-]{1,40}$/)
+      .nullable(),
     rollover: z.boolean(),
     yearlyMinor: z.number().int().min(0).max(1_000_000_000_00).nullable(),
     excluded: z.boolean(),
   })
   .partial()
   .refine(
-    (v) => v.rollover !== undefined || v.yearlyMinor !== undefined || v.excluded !== undefined,
+    (v) =>
+      v.rollover !== undefined ||
+      v.yearlyMinor !== undefined ||
+      v.excluded !== undefined ||
+      v.bucket !== undefined,
     'Nothing to change',
   );
+
+/**
+ * 50/30/20's split (§3.3): its buckets, adding up to 100%, and what's split (D11). Applies to
+ * every month the strategy runs in that period.
+ */
+export const setPercentageSchema = z
+  .object({
+    buckets: z
+      .array(
+        z.object({
+          key: z.string().regex(/^[a-z0-9_-]{1,40}$/),
+          name: z.string().trim().min(1).max(40),
+          percent: z.number().int().min(1).max(100),
+        }),
+      )
+      .min(1)
+      .max(10)
+      .refine((b) => b.reduce((s, x) => s + x.percent, 0) === 100, 'Buckets add up to 100%')
+      .refine((b) => new Set(b.map((x) => x.key)).size === b.length, 'Each bucket once'),
+    base: z.enum(['after_contributions', 'whole']),
+    income: z.enum(['actual', 'expected']),
+    expectedMinor: z.number().int().min(0).max(1_000_000_000_00).nullable(),
+  })
+  .refine((s) => s.income === 'actual' || s.expectedMinor !== null, {
+    message: 'Say what you expect to come in',
+    path: ['expectedMinor'],
+  });
 
 /** The flexible number from a month on (flex, §3.4). */
 export const setFlexibleSchema = z.object({
@@ -85,9 +121,21 @@ export const setFlexibleSchema = z.object({
  * the strategy they had, and every amount is kept.
  */
 export const switchStrategySchema = z.object({
-  strategy: z.enum(['category', 'flex']),
+  strategy: z.enum(['category', 'flex', 'zero_based', 'percentage']),
   fromMonth: budgetMonthSchema,
 });
+
+/**
+ * Move money, or Cover (zero-based, D9): from one category's available money to another's, this
+ * month. Ready to assign doesn't change.
+ */
+export const moveMoneySchema = z
+  .object({
+    fromCategoryId: z.uuid(),
+    toCategoryId: z.uuid(),
+    amountMinor: z.number().int().min(1).max(1_000_000_000_00),
+  })
+  .refine((m) => m.fromCategoryId !== m.toCategoryId, 'Move money between two categories');
 
 export interface CategoryLimitRow {
   categoryId: string;
@@ -150,6 +198,77 @@ export interface FlexMonth {
   };
 }
 
+/** A month of a zero-based budget (walkthrough §3.2). */
+export interface ZeroBasedMonth {
+  strategy: 'zero_based';
+  /** Rows are envelopes: `budgetedMinor` is assigned, `leftMinor` available; all roll over. */
+  rows: (CategoryLimitRow & { movedMinor: number })[];
+  /** Goal lines (goals and budgets G5); none until goals exist. */
+  goals: {
+    goalId: string;
+    budgetedMinor: number;
+    movedMinor: number;
+    rolledInMinor: number;
+    sentMinor: number;
+    leftMinor: number;
+  }[];
+  income: { categoryId: string; receivedMinor: number }[];
+  incomeMinor: number;
+  contributionsMinor: number;
+  ready: {
+    carriedMinor: number;
+    cameInMinor: number;
+    overspentMinor: number;
+    assignedMinor: number;
+    readyMinor: number;
+  };
+  /** Whether anything's been assigned this month: amounts don't repeat in zero-based. */
+  assigned: boolean;
+  /** What the last month with amounts assigned, for "Assign like last month"; null without one. */
+  lastAssigned: { month: string; assignedMinor: number } | null;
+  totals: {
+    assignedMinor: number;
+    spentMinor: number;
+    availableMinor: number;
+    overCount: number;
+    overspentMinor: number;
+  };
+}
+
+/** A month of a 50/30/20 budget, or any split (walkthrough §3.3). */
+export interface PercentageMonth {
+  strategy: 'percentage';
+  buckets: {
+    key: string;
+    name: string;
+    percent: number;
+    targetMinor: number;
+    spentMinor: number;
+    categories: { categoryId: string; spentMinor: number }[];
+    movedToSavingsMinor: number;
+    /** Savings: over is good. */
+    saving: boolean;
+  }[];
+  notInBucket: { categoryId: string; spentMinor: number }[];
+  incomeMinor: number;
+  contributionsMinor: number;
+  base: {
+    kind: 'after_contributions' | 'whole';
+    income: 'actual' | 'expected';
+    amountMinor: number;
+  };
+  /** The split as set, for changing it. */
+  settings: {
+    buckets: { key: string; name: string; percent: number }[];
+    base: 'after_contributions' | 'whole';
+    income: 'actual' | 'expected';
+    expectedMinor: number | null;
+  };
+  totals: { spentMinor: number; notSpentMinor: number };
+}
+
+export type BudgetMonthView = CategoryLimitsMonth | FlexMonth | ZeroBasedMonth | PercentageMonth;
+
 export interface BudgetMonth {
   budget: BudgetSummary;
   month: string;
@@ -158,14 +277,14 @@ export interface BudgetMonth {
   canEdit: boolean;
   /** Spending categories left out of this budget ("Don't budget"): in no row or total. */
   excluded: string[];
-  view: CategoryLimitsMonth | FlexMonth;
+  view: BudgetMonthView;
 }
 
 /** What a switch would show in its first month (#104): now, and under the new strategy. */
 export interface StrategyPreview {
   fromMonth: string;
-  before: CategoryLimitsMonth | FlexMonth;
-  after: CategoryLimitsMonth | FlexMonth;
+  before: BudgetMonthView;
+  after: BudgetMonthView;
   /** Flex's starting number: the flexible categories' limits added up, so nothing is lost. */
   flexibleMinor: number | null;
 }
@@ -179,8 +298,8 @@ export const setBudgetScopeSchema = z.object({ scope: budgetScopeSchema });
 /** What a scope change would show this month: the month as it counts now, and as it would. */
 export interface ScopePreview {
   month: string;
-  before: CategoryLimitsMonth | FlexMonth;
-  after: CategoryLimitsMonth | FlexMonth;
+  before: BudgetMonthView;
+  after: BudgetMonthView;
 }
 
 /** A category's last months in a budget (§4): its limit (null before the budget) and spending. */

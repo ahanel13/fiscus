@@ -31,6 +31,7 @@ import {
   transferReview,
   type TransferReviewIds,
   unlinkTransfers,
+  waitingForReview,
 } from '@fiscus/ledger';
 import { planVersionedPatch } from '@fiscus/domain';
 import type {
@@ -218,6 +219,13 @@ function decodeSortedCursor(cursor: string, sort: TransactionSort): SortedCursor
 /** Escapes LIKE wildcards in search text. */
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+/** Accounts whose transactions are yours to review (#45): yours to review, or nobody's in particular. */
+const yoursToReview = (tx: Executor, ctx: HouseholdContext) =>
+  tx
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(or(isNull(accounts.reviewerMemberId), eq(accounts.reviewerMemberId, ctx.memberId)));
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -259,7 +267,12 @@ export class TransactionsService {
           : undefined,
         q.minAmount !== undefined ? gte(transactions.amountMinor, q.minAmount) : undefined,
         q.maxAmount !== undefined ? lte(transactions.amountMinor, q.maxAmount) : undefined,
-        q.review ? eq(transactions.reviewStatus, q.review) : undefined,
+        q.review === 'needs_review'
+          ? waitingForReview()
+          : q.review
+            ? eq(transactions.reviewStatus, q.review)
+            : undefined,
+        q.reviewer === 'me' ? inArray(transactions.accountId, yoursToReview(tx, ctx)) : undefined,
         q.includeExcluded === 'false' ? eq(transactions.excluded, false) : undefined,
         await spendingLensFilter(tx, ctx, q.lens),
       ];
@@ -322,10 +335,12 @@ export class TransactionsService {
         .from(transactions)
         .where(
           and(
-            eq(transactions.reviewStatus, 'needs_review'),
+            waitingForReview(),
             isNull(transactions.deletedAt),
             eq(transactions.hasSplits, false),
             inArray(transactions.accountId, accountIds),
+            // Accounts someone else reviews wait in their queue, not yours (#45).
+            inArray(transactions.accountId, yoursToReview(tx, ctx)),
           ),
         );
       const review = await this.#transferReview(tx, access);

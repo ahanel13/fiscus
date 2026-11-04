@@ -21,7 +21,7 @@ import { householdMembers, households } from './households.js';
 // Goals (#131; goals walkthrough, goals and budgets G1–G22). A savings goal draws on accounts by
 // claims: part of a balance, as a fixed amount or a percentage (G2). Progress is the claims added
 // up, never stored. Every change to a claim is kept with its reason (G17). Row-level security:
-// migration 0084.
+// migration 0088.
 
 export const goalKind = pgEnum('goal_kind', ['save', 'pay_down']);
 
@@ -63,7 +63,7 @@ export const goals = pgTable(
 /**
  * Part of an account's balance earmarked for a goal (G2): a fixed amount, or a percentage in basis
  * points. One per goal and account. Fixed claims are filled first; percentages share what's left
- * (G3). Only the account's owners set them (G7): the policy in 0084.
+ * (G3). Only the account's owners set them (G7): the policy in 0088.
  */
 export const goalClaims = pgTable(
   'goal_claims',

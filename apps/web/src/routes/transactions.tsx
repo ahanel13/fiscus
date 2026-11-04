@@ -304,7 +304,12 @@ export function TransactionList({
     // Re-sorting keeps the rows in place until the new order arrives.
     ...(wide ? { placeholderData: keepPreviousData } : {}),
   });
-  const { names } = categoryIndex(groups);
+  const { names, uncategorized } = categoryIndex(groups);
+  const reviewScope = useQuery(householdQuery(householdId)).data?.reviewScope;
+  // As the queue counts it: reviewing only what's uncategorized leaves the rest alone (#508).
+  const waiting = (t: Transaction) =>
+    t.reviewStatus === 'needs_review' &&
+    (reviewScope !== 'uncategorized' || !t.categoryId || t.categoryId === uncategorized);
   const categorize = useRowCategory(householdId, groups, onCategorized);
   const items = useMemo(() => query.data?.pages.flatMap((p) => p.data) ?? [], [query.data]);
   const shared = members.length > 1;
@@ -350,7 +355,7 @@ export function TransactionList({
     );
   const badges = (t: Transaction) => (
     <>
-      {showReview && t.reviewStatus === 'needs_review' ? <Badge tone="accent">Review</Badge> : null}
+      {showReview && waiting(t) ? <Badge tone="accent">Review</Badge> : null}
       {t.transfer ? (
         // Long account names ("MyLowe's® Rewards Credit Card (...4444)") truncate.
         <Badge className="max-w-full min-w-0">
