@@ -110,6 +110,45 @@ describe('occurrences', () => {
   });
 });
 
+describe('a weekday in the month', () => {
+  const firstFriday = {
+    unit: 'month' as const,
+    every: 1,
+    weekday: { nth: 1 as const, day: 5 },
+    anchor: '2026-11-06',
+    weekend: 'as_is' as const,
+  };
+
+  it('comes on the first Friday, or the last Monday, of each month', () => {
+    expect(occurrences(firstFriday, '2026-11-01', '2027-02-28')).toEqual([
+      '2026-11-06',
+      '2026-12-04',
+      '2027-01-01',
+      '2027-02-05',
+    ]);
+    const lastMonday = { ...firstFriday, weekday: { nth: -1 as const, day: 1 } };
+    expect(occurrences(lastMonday, '2026-11-01', '2027-01-31')).toEqual([
+      '2026-11-30',
+      '2026-12-28',
+      '2027-01-25',
+    ]);
+    // The third Wednesday, every 3 months from November.
+    const quarterly = { ...firstFriday, every: 3, weekday: { nth: 3 as const, day: 3 } };
+    expect(nextOccurrences(quarterly, '2026-11-01', 2)).toEqual(['2026-11-18', '2027-02-17']);
+  });
+
+  it('says it in words, and takes days or a weekday, not both', () => {
+    expect(describeSchedule(firstFriday)).toBe('Every month, on the first Friday');
+    expect(describeSchedule({ ...firstFriday, every: 12 })).toBe(
+      'Every year, the first Friday of November',
+    );
+    expect(recurringScheduleSchema.safeParse(firstFriday).success).toBe(true);
+    expect(recurringScheduleSchema.safeParse({ ...firstFriday, days: [1] }).success).toBe(false);
+    const { weekday: _, ...neither } = firstFriday;
+    expect(recurringScheduleSchema.safeParse(neither).success).toBe(false);
+  });
+});
+
 describe('describeSchedule', () => {
   it('says it in words', () => {
     expect(

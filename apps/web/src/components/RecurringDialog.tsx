@@ -59,6 +59,31 @@ const WEEKEND: Record<WeekendRule, string> = {
 
 type AmountMode = 'any' | 'min' | 'max' | 'between';
 
+/**
+ * A monthly date reads "On the [15th]" or "On the [first] [Friday]": the first select is a day of
+ * the month or which one of a weekday, the second the weekday (or, after "last", the day).
+ */
+const ORDINALS: [string, string][] = [
+  ['n1', 'first'],
+  ['n2', 'second'],
+  ['n3', 'third'],
+  ['n4', 'fourth'],
+  ['last', 'last'],
+];
+const WEEKDAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
+/** The weekday select's "day", after "last": the last day of the month. */
+const THE_DAY = -1;
+const ordinalDay = (n: number) =>
+  n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+
 interface Form {
   name: string;
   kind: RecurringKind;
@@ -75,6 +100,10 @@ interface Form {
   everyDays: number;
   anchor: string;
   days: [number, number];
+  /** "1"–"31", "n1"–"n4" (first–fourth), or "last". */
+  onThe: string;
+  /** 0–6, or THE_DAY. */
+  weekday: number;
   weekend: WeekendRule;
   windowDays: number;
 }
@@ -106,14 +135,23 @@ function toForm(name: string, kind: RecurringKind, d: RecurringDraft): Form {
           : 'week2'
         : s.unit === 'day'
           ? 'days'
-          : s.days.length === 2
+          : s.days?.length === 2
             ? 'twice'
             : (`month${s.every}` as Repeat) in REPEATS
               ? (`month${s.every}` as Repeat)
               : 'month1',
     everyDays: s.unit === 'day' ? s.every : 30,
     anchor: s.anchor,
-    days: s.unit === 'month' ? [s.days[0]!, s.days[1] ?? 15] : [day, day === 1 ? 15 : 1],
+    days: s.unit === 'month' && s.days ? [s.days[0]!, s.days[1] ?? 15] : [day, day === 1 ? 15 : 1],
+    onThe:
+      s.unit === 'month' && s.weekday
+        ? s.weekday.nth === -1
+          ? 'last'
+          : `n${s.weekday.nth}`
+        : s.unit === 'month' && s.days?.[0] === LAST_DAY
+          ? 'last'
+          : String(s.unit === 'month' && s.days ? s.days[0] : day),
+    weekday: s.unit === 'month' && s.weekday ? s.weekday.day : THE_DAY,
     weekend: s.weekend,
     windowDays: d.windowDays,
   };
@@ -129,7 +167,15 @@ function toSchedule(f: Form): RecurringSchedule {
     const [a, b] = f.days;
     return { unit: 'month', every: 1, days: a === b ? [a] : [a, b], anchor, weekend };
   }
-  return { unit: 'month', every: Number(f.repeat.slice(5)), days: [f.days[0]], anchor, weekend };
+  const every = Number(f.repeat.slice(5));
+  if (f.onThe === 'last' && f.weekday === THE_DAY) {
+    return { unit: 'month', every, days: [LAST_DAY], anchor, weekend };
+  }
+  if (f.onThe === 'last' || f.onThe.startsWith('n')) {
+    const nth = f.onThe === 'last' ? -1 : (Number(f.onThe.slice(1)) as 1 | 2 | 3 | 4);
+    return { unit: 'month', every, weekday: { nth, day: f.weekday }, anchor, weekend };
+  }
+  return { unit: 'month', every, days: [Number(f.onThe)], anchor, weekend };
 }
 
 function toMatch(f: Form): RecurringMatch {
@@ -266,6 +312,9 @@ export function RecurringDialog({
   const p = preview.data;
   const schedule = toSchedule(form);
   const monthly = schedule.unit === 'month';
+  // The first Friday is never on a weekend: no weekend rule to choose.
+  const onWeekday =
+    monthly && !!schedule.weekday && schedule.weekday.day >= 1 && schedule.weekday.day <= 5;
 
   return (
     <Dialog
@@ -332,21 +381,77 @@ export function RecurringDialog({
                 : []),
             ]}
           </Select>
-          <Select
-            label="On a weekend"
-            value={form.weekend}
-            onChange={(v) => set({ weekend: v as WeekendRule })}
-          >
-            {Object.entries(WEEKEND).map(([id, label]) => (
-              <SelectItem key={id} id={id}>
-                {label}
-              </SelectItem>
-            ))}
-          </Select>
-          {monthly ? (
+          {onWeekday ? null : (
+            <Select
+              label="On a weekend"
+              value={form.weekend}
+              onChange={(v) => set({ weekend: v as WeekendRule })}
+            >
+              {Object.entries(WEEKEND).map(([id, label]) => (
+                <SelectItem key={id} id={id}>
+                  {label}
+                </SelectItem>
+              ))}
+            </Select>
+          )}
+          {monthly && form.repeat !== 'twice' ? (
             <div className="grid grid-cols-2 gap-3 sm:col-span-2">
               <Select
-                label={form.repeat === 'twice' ? 'First day' : 'Day of the month'}
+                label="On the"
+                value={form.onThe}
+                onChange={(v) => {
+                  const onThe = String(v);
+                  // A weekday for "first"–"fourth"; after "last", the day stays a choice.
+                  const needsWeekday = onThe.startsWith('n') && form.weekday === THE_DAY;
+                  set({
+                    onThe,
+                    ...(needsWeekday
+                      ? { weekday: new Date(`${form.anchor}T00:00:00Z`).getUTCDay() }
+                      : {}),
+                  });
+                }}
+              >
+                {[
+                  ...Array.from({ length: 31 }, (_, i) => (
+                    <SelectItem key={i + 1} id={String(i + 1)}>
+                      {ordinalDay(i + 1)}
+                    </SelectItem>
+                  )),
+                  ...ORDINALS.map(([id, label]) => (
+                    <SelectItem key={id} id={id}>
+                      {label}
+                    </SelectItem>
+                  )),
+                ]}
+              </Select>
+              {form.onThe === 'last' || form.onThe.startsWith('n') ? (
+                <Select
+                  label="Weekday"
+                  value={String(form.weekday)}
+                  onChange={(v) => set({ weekday: Number(v) })}
+                >
+                  {[
+                    ...(form.onThe === 'last'
+                      ? [
+                          <SelectItem key="day" id={String(THE_DAY)}>
+                            day of the month
+                          </SelectItem>,
+                        ]
+                      : []),
+                    ...[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                      <SelectItem key={d} id={String(d)}>
+                        {WEEKDAY_NAMES[d]}
+                      </SelectItem>
+                    )),
+                  ]}
+                </Select>
+              ) : null}
+            </div>
+          ) : null}
+          {monthly && form.repeat === 'twice' ? (
+            <div className="grid grid-cols-2 gap-3 sm:col-span-2">
+              <Select
+                label="First day"
                 value={form.days[0]}
                 onChange={(v) => set({ days: [Number(v), form.days[1]] })}
               >
