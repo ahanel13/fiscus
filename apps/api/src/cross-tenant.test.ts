@@ -130,6 +130,7 @@ describe('cross-tenant isolation (generated from routes)', () => {
         })
       ).body.data;
       const budget = (await c.post(`${base}/budgets`, { amounts: [] })).body.data;
+      const goal = (await c.post(`${base}/goals`, { name: tag, targetMinor: 100000 })).body.data;
       const series = (
         await c.post(`${base}/recurring`, {
           accountId,
@@ -144,6 +145,7 @@ describe('cross-tenant isolation (generated from routes)', () => {
         seriesId: series.id,
         splitRuleId: splitRule.id,
         budgetId: budget.id,
+        goalId: goal.id,
         transactionId: txn.id,
         categoryId: custom.id,
         groupId: groups[0].id,

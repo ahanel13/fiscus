@@ -610,6 +610,20 @@
       "when": 1793810152945,
       "tag": "0086_budget_moves_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1793810924526,
+      "tag": "0087_goals",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1793810934404,
+      "tag": "0088_goals_rls",
+      "breakpoints": true
     }
   ]
 }

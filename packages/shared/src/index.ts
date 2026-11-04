@@ -5,6 +5,7 @@ export * from './api/accounts.js';
 export * from './api/admin.js';
 export * from './api/auth.js';
 export * from './api/budgets.js';
+export * from './api/goals.js';
 export * from './api/connections.js';
 export * from './api/households.js';
 export * from './api/ledger.js';

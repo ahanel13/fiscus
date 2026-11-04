@@ -394,6 +394,14 @@ All three tables under `budgets` have composite FKs to it and to `categories`, c
 
 **`settlements`** (#112, migrations `0060`, `0061`; walkthrough §10, D20): money one member paid another to square up. `household_id`, `from_member_id`, `to_member_id` (different; composite FKs to members), `amount_minor` (> 0), `date`, `kind` (`transfer`, `paid` another way, or `adjustment`), `transaction_id` null (the transfer that paid it, required exactly when `kind` is `transfer`, UNIQUE; set null if the transaction is purged), `note` (≤ 500), `created_by_member_id`, `created_at`. Each lowers what `from` owes `to` (`settlementEffect`). Recording a transfer marks it `is_settlement` and moves it to the Settlement category; removing the settle-up puts it back as a transfer. Visible to, and recorded or removed by, only the two members it's between (SHR-04).
 
+### 3.7a Goals
+
+**`goals`** (#132, migrations `0087`, `0088`; [goals walkthrough](walkthroughs/goals.md), [goals and budgets](goals-and-budgets.md)): something to save up for. `household_id`, `member_id` null (null: the household's, Ours; else that member's own, which nobody else sees: G15), `kind` enum `save`/`pay_down` (`pay_down` waits for #134), `name` (1–80), `target_minor` (> 0), `target_date` null, `plan_minor` null (the monthly plan, G16), `position` (priority, G19: lower first; positions are per viewer, so the list's order breaks ties by `created_at`), versioning, timestamps. A member's own goals are deleted when they leave (`fiscus_delete_member_goals()`, GOAL-07). Visible with the same rule as budgets; owners and members change the household's, you change yours (the api checks, GOAL-03/04).
+
+**`goal_claims`**: part of an account's balance earmarked for a goal (G2). `household_id`, `goal_id`, `account_id` (both cascade), exactly one of `amount_minor` (> 0) or `percent_bps` (1–10000), timestamps; UNIQUE `(goal_id, account_id)`. Progress is the claims added up, worked out when read: never stored. Fixed amounts are filled first and percentages share what's left (G3); an account below its fixed claims is **short** by the difference, and nothing changes until its owners choose which goal gives way. Visible with its goal; set, changed and taken off only by the account's owners (a restrictive policy, GOAL-05). What a claim is worth needs a balance that someone else's private account hides, so `fiscus_goal_claim_values()` (definer) gives each visible claim's value, its account's shortfall, its name only to those who see the account, and its owners; `fiscus_account_claimed()` gives an account's owners every goal's claims on it, hidden goals' included, so nobody claims more than is free.
+
+**`goal_claim_events`**: every change to a claim, with its reason (G17): `earmarked`, `changed`, `released`, `gave_way`, `ended`. `household_id`, `goal_id` (cascade), `account_id` (kept after the account goes), `member_id` null, the amount and percentage before and after, `at`. Added to, never changed. Progress over time, contributions and pace (#133, #135, #137) read it.
+
 ### 3.8 Notifications
 
 Notifications (#125, #126, #130, migrations `0078`, `0079`; [bills walkthrough](walkthroughs/bills.md) §7, D15–D20; [notifications](notifications.md)). All four tables are one member's own: only they read or change theirs, household owners included, and the worker reads them in system context to deliver (HH-10). Each has a composite FK to `household_members`, cascading.
@@ -558,6 +566,7 @@ search, if wanted, decrypts within an already-filtered result set.
 ## 9. Forward references (not designed here)
 - **M3:** `funding_targets`. Who owes whom (#111) is computed when read from the transactions, their attribution, the owners on each date and `split_policies` (`expenseEffects`, `pairBalances` in `@fiscus/domain`), as budgets are, so there is no `settlement_entries` table. They reference `household_members`, `categories`, `transactions` (`is_settlement`). Budgets are in §3.6, split rules in §3.7.
 - **M4:** `recurring_series` (§3.7) and the notification tables (§3.8) are built; what decides when to notify (#127) adds no table of its own beyond them.
+- **M5:** goals are in §3.7a. Payoff goals (#134) use `goals.kind = 'pay_down'` and a liability account; goal lines in budgets (G4) key `budget_amounts` by goal as well as category.
 - **M6:** `securities`, `holdings`, `lots`, `investment_transactions`, `prices`. They reference `accounts` and use `numeric(28,10)`.
 - **M10:** `change_sets` will reference `audit_events`, and undo replays the inverse operations.
 

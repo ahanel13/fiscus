@@ -40,6 +40,7 @@ import { SectionPage } from './routes/section.js';
 import { ImportPage } from './routes/import.js';
 import { ReviewPage } from './routes/review.js';
 import { BudgetPage } from './routes/budget.js';
+import { GoalsPage } from './routes/goals.js';
 import { RecurringPage } from './routes/recurring.js';
 import { RulesSettings } from './routes/rules.js';
 import { SharedCostsPage } from './routes/shared-costs.js';
@@ -238,6 +239,7 @@ const SECTION_PAGES: Partial<Record<SectionId, () => React.JSX.Element>> = {
   accounts: AccountsPage,
   transactions: TransactionsPage,
   budget: BudgetPage,
+  goals: GoalsPage,
   recurring: RecurringPage,
   shared: SharedCostsPage,
 };

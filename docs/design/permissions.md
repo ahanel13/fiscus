@@ -192,6 +192,17 @@ caller can't see ("Transfer to Anthony").
 | REC-03 | A series on an account you can't see | — | — | — | Not listed, not readable, and not changeable: it doesn't exist for you (404), as the account doesn't |
 | REC-04 | Hand a bill to someone else to look after (#121, D13) | ✅ | ✅ | ❌ | Anyone who sees the series can, view-only access included: it changes who gets its reminders, nothing else. Only to a current member who sees its account too (422 otherwise). Income has "for" instead, from its payments' attribution. When someone leaves or is removed, their bills pass to the account's other owner, else the household's first owner who sees it |
 
+### 4.10a Goals (goals walkthrough, goals and budgets G1–G22)
+| ID | Action | OWN | MEM | VIEW | Notes |
+|---|---|---|---|---|---|
+| GOAL-01 | Read the household's goals (Ours), with each claim and what it's worth | ✅ | ✅ | ✅ | A claim on an account you can't see shows only the claim and whose account it is, never its name or balance (G7) |
+| GOAL-02 | Read a member's own goal (Mine) | own | own | own | Only their member, and system context. Nobody else sees it, or that it exists (G15). Its claims still count against an account's unclaimed money, as a total |
+| GOAL-03 | Create, change, reorder or delete the household's goals | ✅ | ✅ | ❌ | Name, target, date, monthly plan and priority. Each change goes into the household's activity |
+| GOAL-04 | Create, change or delete your own goal | own | own | ❌ | Viewers own no accounts, so have no goals of their own |
+| GOAL-05 | Claim an account for a goal, change a claim, or take it off | ✅ | ✅ | ❌ | Only the account's owners, on a goal they see (G7): the database refuses anyone else. Never beyond the balance less every other goal's claims (G3) |
+| GOAL-06 | Choose which goal gives way when an account falls short | ✅ | ✅ | ❌ | The account's owners, from its fixed claims on goals they see (G3, G19) |
+| GOAL-07 | A member's own goals when they leave | — | — | — | Deleted, with their claims and history, as their budget is (BUD-05) |
+
 ### 4.11 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
