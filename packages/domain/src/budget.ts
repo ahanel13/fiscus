@@ -48,6 +48,11 @@ export interface MonthActivity {
    * draws on. Empty until goals exist (M5).
    */
   goalMovedMinor?: ReadonlyMap<string, number>;
+  /**
+   * Money moved into savings and investment accounts in the scope (50/30/20's Savings, D10):
+   * transfers from accounts that aren't either. A goal's contributions are among these (G5).
+   */
+  savingsMovedMinor?: number;
 }
 
 export const NO_ACTIVITY: MonthActivity = {

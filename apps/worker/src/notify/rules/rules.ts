@@ -262,6 +262,26 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
         spent: v.flexible.spentMinor,
         has: v.flexible.budgetedMinor,
       });
+    } else if (out.kind === 'percentage') {
+      // A bucket nearing its share; Savings is the exception, where over is good (D10).
+      const v = out.view as {
+        buckets: {
+          key: string;
+          name: string;
+          spentMinor: number;
+          targetMinor: number;
+          saving: boolean;
+        }[];
+      };
+      for (const b of v.buckets) {
+        if (b.saving) continue;
+        limits.push({
+          key: `bucket:${b.key}`,
+          name: b.name,
+          spent: b.spentMinor,
+          has: b.targetMinor,
+        });
+      }
     } else {
       const v = out.view as {
         rows: {

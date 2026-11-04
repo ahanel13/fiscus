@@ -76,6 +76,15 @@ export {
 } from './budget.js';
 export { STRATEGY_REGISTRY } from './strategies.js';
 export {
+  bucketOfKind,
+  FIFTY_THIRTY_TWENTY,
+  percentage,
+  type PercentageBucket,
+  type PercentageBucketView,
+  type PercentageSettings,
+  type PercentageView,
+} from './percentage.js';
+export {
   zeroBased,
   type ZeroBasedGoalRow,
   type ZeroBasedRow,

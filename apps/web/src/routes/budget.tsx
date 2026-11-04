@@ -11,6 +11,7 @@ import {
   type FlexMonth,
   type HouseholdMember,
   type IncomeRow,
+  type PercentageMonth,
   type ScopePreview,
   type StrategyPreview,
   type Household,
@@ -49,6 +50,7 @@ import {
   Menu,
   MenuItem,
   MenuTrigger,
+  Radio,
   RadioCard,
   RadioGroup,
   SegmentedControl,
@@ -56,6 +58,7 @@ import {
   SelectItem,
   Skeleton,
   Switch,
+  TextField,
   toast,
 } from '../components/ui.js';
 
@@ -665,6 +668,7 @@ function MonthView({
   const [flexible, setFlexible] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [moving, setMoving] = useState<MoveStart | null>(null);
+  const [splitting, setSplitting] = useState(false);
   const [showAll, setShowAll] = useShowUnbudgeted();
   const goTo = useGoToView();
   const strategy = data.data?.view.strategy ?? budget.strategy;
@@ -714,6 +718,14 @@ function MonthView({
           onYearly={data.data.canEdit ? setYearly : undefined}
           onFlexible={data.data.canEdit ? () => setFlexible(true) : undefined}
         />
+      ) : data.data.view.strategy === 'percentage' ? (
+        <PercentageBody
+          data={data.data as BudgetMonth & { view: PercentageMonth }}
+          groups={groups}
+          householdId={household.id}
+          onOpen={setOpen}
+          onSplit={data.data.canEdit ? () => setSplitting(true) : undefined}
+        />
       ) : data.data.view.strategy === 'zero_based' ? (
         <ZeroBasedBody
           data={data.data as BudgetMonth & { view: ZeroBasedMonth }}
@@ -750,6 +762,13 @@ function MonthView({
           month={data.data}
           amountMinor={data.data.view.flexible.budgetedMinor}
           onClose={() => setFlexible(false)}
+        />
+      ) : null}
+      {splitting && data.data?.view.strategy === 'percentage' ? (
+        <SplitDialog
+          householdId={household.id}
+          data={data.data as BudgetMonth & { view: PercentageMonth }}
+          onClose={() => setSplitting(false)}
         />
       ) : null}
       {moving && data.data?.view.strategy === 'zero_based' ? (
@@ -2199,15 +2218,18 @@ const STRATEGY_NAMES = {
   category: 'Category limits',
   flex: 'Flex',
   zero_based: 'Zero-based',
+  percentage: '50/30/20',
 } as const;
 type StrategyName = keyof typeof STRATEGY_NAMES;
 /** What "Change how you budget" offers, in this order. */
-const SWITCHABLE: StrategyName[] = ['category', 'flex', 'zero_based'];
+const SWITCHABLE: StrategyName[] = ['category', 'flex', 'zero_based', 'percentage'];
 const STRATEGY_DESCRIPTIONS: Record<StrategyName, string> = {
   category: 'Each category gets a limit of its own.',
   flex: 'Fixed costs one by one, saving up for non-monthly ones, and one number for the rest.',
   zero_based:
     'Every dollar that comes in gets a job. What a category doesn’t spend stays in it, and overspending is covered from another.',
+  percentage:
+    'Income split into buckets by percentage: needs, wants and savings, or your own. No limits per category.',
 };
 
 function FlexBody({
@@ -2766,6 +2788,383 @@ function MoveDialog({
   );
 }
 
+// ── 50/30/20 (§3.3, #101) ────────────────────────────────────────────────────────────────────
+
+/** What fills each bucket, for the preset's keys; a bucket you add holds what you move into it. */
+const BUCKET_NOTES: Record<string, string> = {
+  needs: 'Fixed groups, and categories you’ve moved here',
+  wants: 'Flexible and non-monthly groups',
+  savings: 'The savings group, and money moved to savings and investment accounts',
+};
+
+/** The bucket a category's group kind puts it in (D10), as the engine reads it. */
+const kindBucket = (kind: CategoryGroup['kind']): string | null =>
+  kind === 'fixed'
+    ? 'needs'
+    : kind === 'flexible' || kind === 'non_monthly'
+      ? 'wants'
+      : kind === 'savings'
+        ? 'savings'
+        : null;
+
+/**
+ * A month split by percentage: what's split, then a card per bucket with its share, what it's
+ * spent, and its biggest categories, each of which can move to another bucket (D10). No limits.
+ */
+function PercentageBody({
+  data,
+  groups,
+  householdId,
+  onOpen,
+  onSplit,
+}: {
+  data: BudgetMonth & { view: PercentageMonth };
+  groups: CategoryGroup[];
+  householdId: string;
+  onOpen: (e: { categoryId: string }) => void;
+  onSplit?: (() => void) | undefined;
+}) {
+  const { view, currency } = data;
+  const queryClient = useQueryClient();
+  const progress = monthProgress(data.month);
+  const shared = data.budget.scope === 'household';
+  const money = (minor: number) => (
+    <Amount minor={minor} currency={currency} kind="balance" whole />
+  );
+  const kindOf = new Map(groups.flatMap((g) => g.categories.map((c) => [c.id, g.kind] as const)));
+  const move = useMutation({
+    mutationFn: ({ categoryId, bucket }: { categoryId: string; bucket: string | null }) =>
+      api('PUT', `${base(householdId)}/budgets/${data.budget.id}/categories/${categoryId}`, {
+        body: { bucket },
+      }),
+    onSuccess: (_, { categoryId, bucket }) => {
+      const to = view.buckets.find(
+        (b) => b.key === (bucket ?? kindBucket(kindOf.get(categoryId)!)),
+      );
+      toast(`${categoryName(groups, categoryId)} counts in ${to?.name ?? 'its own bucket'} now.`);
+      return queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', data.budget.id],
+      });
+    },
+    onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
+  });
+  const splitName = view.settings.buckets.map((b) => b.percent).join('/');
+  const baseNote =
+    view.base.income === 'expected'
+      ? 'income you expect'
+      : !shared && view.base.kind === 'after_contributions' && view.contributionsMinor
+        ? 'income after contributions'
+        : 'income this month';
+  const moveMenu = (categoryId: string, current: string) =>
+    data.canEdit && view.buckets.length > 1 ? (
+      <MenuTrigger>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Move ${categoryName(groups, categoryId)} to another bucket`}
+        >
+          <MoreHorizontal aria-hidden className="size-4" />
+        </Button>
+        <Menu placement="bottom end">
+          {view.buckets
+            .filter((b) => b.key !== current)
+            .map((b) => (
+              <MenuItem
+                key={b.key}
+                onAction={() =>
+                  move.mutate({
+                    categoryId,
+                    // Back where its group's kind puts it: no setting of its own.
+                    bucket: kindBucket(kindOf.get(categoryId)!) === b.key ? null : b.key,
+                  })
+                }
+              >
+                Count in {b.name}
+              </MenuItem>
+            ))}
+        </Menu>
+      </MenuTrigger>
+    ) : null;
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4">
+        <Stat label={shared ? 'Money in' : 'Your income'}>
+          {money(view.incomeMinor + (shared ? view.contributionsMinor : 0))}
+        </Stat>
+        {!shared && view.contributionsMinor ? (
+          <Stat label="To Ours" note="your contribution this month">
+            {money(-view.contributionsMinor)}
+          </Stat>
+        ) : (
+          <Stat label="Spent">{money(view.totals.spentMinor)}</Stat>
+        )}
+        <Stat label={`Split by ${splitName}`} note={baseNote}>
+          {money(view.base.amountMinor)}
+        </Stat>
+        <Stat
+          label={view.totals.notSpentMinor < 0 ? 'Spent beyond it' : 'Not spent yet'}
+          noteTone={view.totals.notSpentMinor < 0 ? 'danger' : undefined}
+        >
+          {money(Math.abs(view.totals.notSpentMinor))}
+        </Stat>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {view.buckets.map((b) => {
+          const share = view.base.amountMinor > 0 ? b.spentMinor / view.base.amountMinor : 0;
+          const used = b.targetMinor > 0 ? Math.min(1, b.spentMinor / b.targetMinor) : 0;
+          const over = b.spentMinor > b.targetMinor;
+          return (
+            <section
+              key={b.key}
+              aria-label={`${b.name}, ${b.percent}%`}
+              className="space-y-3 rounded-xl border border-border bg-surface p-4"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="font-semibold">
+                  {b.name} · {b.percent}%
+                </h3>
+                <span
+                  className={clsx(
+                    'text-sm',
+                    over ? (b.saving ? 'text-accent-text' : 'text-danger') : 'text-muted',
+                  )}
+                >
+                  {Math.round(share * 100)}% so far
+                </span>
+              </div>
+              <p className="text-xs text-muted">
+                {BUCKET_NOTES[b.key] ?? 'Categories you’ve moved here'}
+              </p>
+              <div
+                className="relative h-2 rounded-full bg-surface-2"
+                role="meter"
+                aria-label={`${b.name}: ${Math.round(used * 100)}% of its share`}
+                aria-valuenow={Math.round(used * 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={clsx(
+                    'h-full rounded-full',
+                    over && !b.saving ? 'bg-danger' : 'bg-accent',
+                  )}
+                  style={{ width: `${used * 100}%` }}
+                />
+                {progress !== null && !b.saving ? (
+                  <span
+                    aria-hidden
+                    className="absolute -top-1 -bottom-1 w-0.5 bg-fg/40"
+                    style={{ left: `${progress * 100}%` }}
+                  />
+                ) : null}
+              </div>
+              <p className="text-sm">
+                <span className="font-semibold">{money(b.spentMinor)}</span>{' '}
+                <span className="text-muted">of {money(b.targetMinor)}</span>
+              </p>
+              {b.categories.length || b.movedToSavingsMinor ? (
+                <ul className="divide-y divide-border text-sm">
+                  {b.categories.map((c) => (
+                    <li key={c.categoryId} className="flex items-center gap-2 py-1">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 truncate text-left hover:underline"
+                        onClick={() => onOpen({ categoryId: c.categoryId })}
+                      >
+                        {categoryName(groups, c.categoryId)}
+                      </button>
+                      {money(c.spentMinor)}
+                      {moveMenu(c.categoryId, b.key)}
+                    </li>
+                  ))}
+                  {b.movedToSavingsMinor ? (
+                    <li className="flex items-center gap-2 py-1">
+                      <span className="min-w-0 flex-1 truncate">
+                        Moved to savings and investment accounts
+                      </span>
+                      {money(b.movedToSavingsMinor)}
+                    </li>
+                  ) : null}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted">Nothing yet this month.</p>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      {view.notInBucket.length ? (
+        <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+          <p className="font-medium">Not in a bucket</p>
+          <ul className="divide-y divide-border">
+            {view.notInBucket.map((c) => (
+              <li key={c.categoryId} className="flex items-center gap-2 py-1">
+                <span className="min-w-0 flex-1 truncate">
+                  {categoryName(groups, c.categoryId)}
+                </span>
+                {money(c.spentMinor)}
+                {moveMenu(c.categoryId, '')}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm text-muted">
+        Buckets follow each category group’s kind. Move a category between buckets from its menu.
+        {onSplit ? (
+          <Button variant="ghost" size="sm" onPress={onSplit}>
+            Change the split
+          </Button>
+        ) : null}
+      </p>
+    </>
+  );
+}
+
+/** 50/30/20's split (§3.3): bucket names and shares adding up to 100%, and what's split (D11). */
+function SplitDialog({
+  householdId,
+  data,
+  onClose,
+}: {
+  householdId: string;
+  data: BudgetMonth & { view: PercentageMonth };
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const s = data.view.settings;
+  const shared = data.budget.scope === 'household';
+  const [buckets, setBuckets] = useState(s.buckets.map((b) => ({ ...b, text: String(b.percent) })));
+  const [baseKind, setBaseKind] = useState(s.base);
+  const [income, setIncome] = useState(s.income);
+  const [expected, setExpected] = useState<number | null>(s.expectedMinor);
+  const total = buckets.reduce((sum, b) => sum + (Number(b.text) || 0), 0);
+  const set = (i: number, patch: Partial<(typeof buckets)[number]>) =>
+    setBuckets(buckets.map((b, j) => (j === i ? { ...b, ...patch } : b)));
+  const save = useMutation({
+    mutationFn: () =>
+      api('PUT', `${base(householdId)}/budgets/${data.budget.id}/months/${data.month}/percentage`, {
+        body: {
+          buckets: buckets.map(({ key, name, text }) => ({
+            key,
+            name: name.trim(),
+            percent: Number(text),
+          })),
+          base: baseKind,
+          income,
+          expectedMinor: income === 'expected' ? expected : null,
+        },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', data.budget.id],
+      });
+      toast('Split saved.');
+      onClose();
+    },
+  });
+  const err = save.error as ApiError | null;
+  const valid =
+    total === 100 &&
+    buckets.every((b) => b.name.trim() && Number.isInteger(Number(b.text)) && Number(b.text) > 0) &&
+    (income === 'actual' || expected !== null);
+  return (
+    <Dialog
+      title="Change the split"
+      size="lg"
+      isOpen
+      onOpenChange={(open) => (open ? null : onClose())}
+    >
+      <div className="space-y-4">
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <div className="space-y-2">
+          {buckets.map((b, i) => (
+            <div key={b.key} className="flex items-end gap-2">
+              <TextField
+                label={i === 0 ? 'Bucket' : undefined}
+                aria-label={i === 0 ? undefined : `Bucket ${i + 1}`}
+                value={b.name}
+                onChange={(name) => set(i, { name })}
+                className="min-w-0 flex-1"
+              />
+              <TextField
+                label={i === 0 ? 'Share (%)' : undefined}
+                aria-label={i === 0 ? undefined : `${b.name || `Bucket ${i + 1}`} share`}
+                value={b.text}
+                inputMode="numeric"
+                onChange={(text) => set(i, { text: text.replace(/[^0-9]/g, '') })}
+                className="w-24"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                isDisabled={buckets.length === 1}
+                onPress={() => setBuckets(buckets.filter((_, j) => j !== i))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+          <div className="flex items-center justify-between gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              isDisabled={buckets.length >= 10}
+              onPress={() =>
+                setBuckets([
+                  ...buckets,
+                  { key: `bucket-${Date.now().toString(36)}`, name: '', percent: 0, text: '' },
+                ])
+              }
+            >
+              Add a bucket
+            </Button>
+            <span className={clsx('text-sm', total === 100 ? 'text-muted' : 'text-danger')}>
+              {total}% of 100%
+            </span>
+          </div>
+        </div>
+        {shared ? null : (
+          <RadioGroup
+            label="Split"
+            value={baseKind}
+            onChange={(v) => setBaseKind(v as typeof baseKind)}
+          >
+            <Radio value="after_contributions">
+              Income after contributions (what you send to Ours is budgeted there)
+            </Radio>
+            <Radio value="whole">The whole income, with contributions as a need</Radio>
+          </RadioGroup>
+        )}
+        <RadioGroup label="Income" value={income} onChange={(v) => setIncome(v as typeof income)}>
+          <Radio value="actual">What actually comes in each month</Radio>
+          <Radio value="expected">A monthly figure I expect (for irregular pay)</Radio>
+        </RadioGroup>
+        {income === 'expected' ? (
+          <AmountInput
+            label="Expected each month"
+            currency={data.currency}
+            value={expected}
+            onChange={setExpected}
+          />
+        ) : null}
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button isDisabled={!valid} isPending={save.isPending} onPress={() => save.mutate()}>
+            Save
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
+  );
+}
+
 function moneyIn(data: BudgetMonth) {
   const { incomeMinor, contributionsMinor } = data.view;
   return incomeMinor + (data.budget.scope === 'household' ? contributionsMinor : 0);
@@ -3010,6 +3409,26 @@ function StrategyDialog({
                 </p>
                 <p className="text-muted">
                   Non-monthly categories save up once you give them a yearly amount.
+                </p>
+              </>
+            ) : p.after.strategy === 'percentage' ? (
+              <>
+                <p>
+                  Split by 50/30/20:{' '}
+                  <Amount
+                    minor={p.after.base.amountMinor}
+                    currency={month.currency}
+                    kind="balance"
+                  />{' '}
+                  this month.{' '}
+                  {p.after.buckets
+                    .map((b) => `${b.name} ${formatMinor(b.targetMinor, month.currency)}`)
+                    .join(', ')}
+                  .
+                </p>
+                <p className="text-muted">
+                  Categories count in a bucket by their group’s kind; no limits per category. Your
+                  limits stay saved, for switching back.
                 </p>
               </>
             ) : p.after.strategy === 'zero_based' ? (

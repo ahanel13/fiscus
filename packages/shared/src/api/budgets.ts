@@ -65,15 +65,51 @@ export const setBudgetAmountSchema = z.object({
  */
 export const setBudgetCategorySchema = z
   .object({
+    /** 50/30/20: the bucket it counts in, or null for the one its group's kind gives (D10). */
+    bucket: z
+      .string()
+      .regex(/^[a-z0-9_-]{1,40}$/)
+      .nullable(),
     rollover: z.boolean(),
     yearlyMinor: z.number().int().min(0).max(1_000_000_000_00).nullable(),
     excluded: z.boolean(),
   })
   .partial()
   .refine(
-    (v) => v.rollover !== undefined || v.yearlyMinor !== undefined || v.excluded !== undefined,
+    (v) =>
+      v.rollover !== undefined ||
+      v.yearlyMinor !== undefined ||
+      v.excluded !== undefined ||
+      v.bucket !== undefined,
     'Nothing to change',
   );
+
+/**
+ * 50/30/20's split (§3.3): its buckets, adding up to 100%, and what's split (D11). Applies to
+ * every month the strategy runs in that period.
+ */
+export const setPercentageSchema = z
+  .object({
+    buckets: z
+      .array(
+        z.object({
+          key: z.string().regex(/^[a-z0-9_-]{1,40}$/),
+          name: z.string().trim().min(1).max(40),
+          percent: z.number().int().min(1).max(100),
+        }),
+      )
+      .min(1)
+      .max(10)
+      .refine((b) => b.reduce((s, x) => s + x.percent, 0) === 100, 'Buckets add up to 100%')
+      .refine((b) => new Set(b.map((x) => x.key)).size === b.length, 'Each bucket once'),
+    base: z.enum(['after_contributions', 'whole']),
+    income: z.enum(['actual', 'expected']),
+    expectedMinor: z.number().int().min(0).max(1_000_000_000_00).nullable(),
+  })
+  .refine((s) => s.income === 'actual' || s.expectedMinor !== null, {
+    message: 'Say what you expect to come in',
+    path: ['expectedMinor'],
+  });
 
 /** The flexible number from a month on (flex, §3.4). */
 export const setFlexibleSchema = z.object({
@@ -85,7 +121,7 @@ export const setFlexibleSchema = z.object({
  * the strategy they had, and every amount is kept.
  */
 export const switchStrategySchema = z.object({
-  strategy: z.enum(['category', 'flex', 'zero_based']),
+  strategy: z.enum(['category', 'flex', 'zero_based', 'percentage']),
   fromMonth: budgetMonthSchema,
 });
 
@@ -199,7 +235,39 @@ export interface ZeroBasedMonth {
   };
 }
 
-export type BudgetMonthView = CategoryLimitsMonth | FlexMonth | ZeroBasedMonth;
+/** A month of a 50/30/20 budget, or any split (walkthrough §3.3). */
+export interface PercentageMonth {
+  strategy: 'percentage';
+  buckets: {
+    key: string;
+    name: string;
+    percent: number;
+    targetMinor: number;
+    spentMinor: number;
+    categories: { categoryId: string; spentMinor: number }[];
+    movedToSavingsMinor: number;
+    /** Savings: over is good. */
+    saving: boolean;
+  }[];
+  notInBucket: { categoryId: string; spentMinor: number }[];
+  incomeMinor: number;
+  contributionsMinor: number;
+  base: {
+    kind: 'after_contributions' | 'whole';
+    income: 'actual' | 'expected';
+    amountMinor: number;
+  };
+  /** The split as set, for changing it. */
+  settings: {
+    buckets: { key: string; name: string; percent: number }[];
+    base: 'after_contributions' | 'whole';
+    income: 'actual' | 'expected';
+    expectedMinor: number | null;
+  };
+  totals: { spentMinor: number; notSpentMinor: number };
+}
+
+export type BudgetMonthView = CategoryLimitsMonth | FlexMonth | ZeroBasedMonth | PercentageMonth;
 
 export interface BudgetMonth {
   budget: BudgetSummary;

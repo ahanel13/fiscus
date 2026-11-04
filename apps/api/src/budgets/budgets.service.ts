@@ -21,6 +21,8 @@ import {
   flex,
   flexibleFor,
   type FlexView,
+  percentage,
+  type PercentageView,
   periodFor,
   STRATEGY_REGISTRY,
   suggestAmounts,
@@ -42,6 +44,7 @@ import type {
   BudgetYearRow,
   createBudgetSchema,
   ScopePreview,
+  setPercentageSchema,
   StrategyPreview,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
@@ -381,6 +384,49 @@ export class BudgetsService {
   }
 
   /**
+   * 50/30/20's split (§3.3): its buckets and what's split, for the period running in `month`, so
+   * every month it runs in counts the same way (D13).
+   */
+  async setPercentage(
+    ctx: HouseholdContext,
+    budgetId: string,
+    month: string,
+    settings: z.infer<typeof setPercentageSchema>,
+  ): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      const [period] = await tx
+        .select()
+        .from(budgetStrategies)
+        .where(
+          and(
+            eq(budgetStrategies.budgetId, budgetId),
+            lte(budgetStrategies.fromMonth, firstDayOf(month)),
+          ),
+        )
+        .orderBy(sql`${budgetStrategies.fromMonth} DESC`)
+        .limit(1);
+      if (!period || period.strategy !== 'percentage') {
+        throw new Problem(409, 'not_percentage', 'The budget doesn’t split by percentage then');
+      }
+      await tx
+        .update(budgetStrategies)
+        .set({ settings })
+        .where(
+          and(
+            eq(budgetStrategies.budgetId, budgetId),
+            eq(budgetStrategies.fromMonth, period.fromMonth),
+          ),
+        );
+      await record(activity, row, 'budget.split_changed', {
+        month,
+        buckets: settings.buckets.map((b) => `${b.name} ${b.percent}%`).join(', '),
+      });
+    });
+  }
+
+  /**
    * Sets a category's amount for a month. A month without amounts of its own repeats the last
    * one that had some, so those are copied into it first, and only this one changes.
    */
@@ -598,6 +644,8 @@ export class BudgetsService {
         if (month < startsMonth) return null;
         const c = kinds.get(categoryId);
         if (!c) return null;
+        // 50/30/20 has no per-category limits (D10).
+        if (periodFor(month, definition.periods).kind === 'percentage') return null;
         if (periodFor(month, definition.periods).kind === 'flex') {
           if (c.kind === 'flexible') return null;
           if (c.kind === 'non_monthly')
@@ -646,6 +694,7 @@ export class BudgetsService {
       rollover?: boolean | undefined;
       yearlyMinor?: number | null | undefined;
       excluded?: boolean | undefined;
+      bucket?: string | null | undefined;
     },
   ): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
@@ -661,6 +710,7 @@ export class BudgetsService {
           rollover: change.rollover ?? false,
           yearlyMinor: change.yearlyMinor ?? null,
           excluded: change.excluded ?? false,
+          bucket: change.bucket ?? null,
         })
         .onConflictDoUpdate({
           target: [budgetCategories.budgetId, budgetCategories.categoryId],
@@ -668,6 +718,7 @@ export class BudgetsService {
             ...(change.rollover !== undefined ? { rollover: change.rollover } : {}),
             ...(change.yearlyMinor !== undefined ? { yearlyMinor: change.yearlyMinor } : {}),
             ...(change.excluded !== undefined ? { excluded: change.excluded } : {}),
+            ...(change.bucket !== undefined ? { bucket: change.bucket } : {}),
           },
         });
       await record(activity, row, 'budget.category_changed', { categoryId, ...change });
@@ -845,7 +896,7 @@ async function record(
 }
 
 /** The strategies a budget can switch to: the ones that are built. */
-type SwitchableStrategy = 'category' | 'flex' | 'zero_based';
+type SwitchableStrategy = 'category' | 'flex' | 'zero_based' | 'percentage';
 
 /** The api's shape of a strategy's month. */
 function viewOf(
@@ -855,6 +906,16 @@ function viewOf(
   month: string,
 ): BudgetMonth['view'] {
   if (kind === 'flex') return { strategy: 'flex', ...(view as FlexView) };
+  if (kind === 'percentage') {
+    const { buckets, base, income, expectedMinor } = percentage.settings(
+      periodFor(month, definition.periods).settings,
+    );
+    return {
+      strategy: 'percentage',
+      ...(view as PercentageView),
+      settings: { buckets, base, income, expectedMinor },
+    };
+  }
   if (kind === 'zero_based') {
     return {
       strategy: 'zero_based',

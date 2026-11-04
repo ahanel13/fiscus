@@ -14,6 +14,7 @@ import {
   type CategoryLimitsView,
   computeBudgetMonth,
   type FlexView,
+  type PercentageView,
   STRATEGY_REGISTRY,
   type ZeroBasedView,
 } from '@fiscus/domain';
@@ -149,6 +150,12 @@ export async function buildWeeklyRecap(
         v.flexible.leftMinor +
         v.fixed.reduce((s, f) => s + Math.max(0, f.leftMinor), 0);
       for (const f of v.fixed) if (f.leftMinor < 0) overs.push([f.categoryId, -f.leftMinor]);
+    } else if (out.kind === 'percentage') {
+      // Buckets have no per-category limits (D10): what's left is the spending buckets' room.
+      const v = out.view as PercentageView;
+      left =
+        (left ?? 0) +
+        v.buckets.filter((b) => !b.saving).reduce((s, b) => s + b.targetMinor - b.spentMinor, 0);
     } else if (out.kind === 'zero_based') {
       const v = out.view as ZeroBasedView;
       left = (left ?? 0) + v.totals.availableMinor;

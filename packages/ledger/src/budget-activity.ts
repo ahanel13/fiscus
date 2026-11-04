@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  accounts,
   budgetAmounts,
   budgetCategories,
   budgetMoves,
@@ -119,7 +120,8 @@ export async function budgetActivity(
     out.set(r.month, m);
   }
   const contributed = await contributions(tx, ctx, scope, date, from, end, h!.currency);
-  const months = new Set([...out.keys(), ...contributed.keys()]);
+  const saved = await savingsMoved(tx, ctx, scope, date, from, end, h!.currency);
+  const months = new Set([...out.keys(), ...contributed.keys(), ...saved.keys()]);
   return new Map(
     [...months].map((k) => [
       k,
@@ -128,6 +130,7 @@ export async function budgetActivity(
         incomeMinor: out.get(k)?.incomeMinor ?? 0,
         incomeByCategory: out.get(k)?.incomeByCategory ?? new Map<string, number>(),
         contributionsMinor: contributed.get(k) ?? 0,
+        savingsMovedMinor: saved.get(k) ?? 0,
       },
     ]),
   );
@@ -202,6 +205,79 @@ async function contributions(
         ? joint(leg) && (!other || !joint(other))
         : owners.length === 1 && owners[0]!.memberId === ctx.memberId && !!other && joint(other);
     if (counts) out.set(leg.month, (out.get(leg.month) ?? 0) + Math.abs(leg.amountMinor));
+  }
+  return out;
+}
+
+/** Savings and investment accounts: investment ones, and bank accounts for saving. */
+const savingsAccount = sql`(${accounts.type} = 'investment' OR (${accounts.type} = 'depository'
+  AND lower(coalesce(${accounts.subtype}, '')) ~ '(saving|money market|cd|certificate|hysa|high yield)'))`;
+
+/**
+ * Money moved into savings (50/30/20's Savings bucket, D10), per month: transfers into savings
+ * and investment accounts in the scope (joint ones for the household's budget, yours alone for
+ * your own) from accounts that aren't for saving. Moving between savings accounts isn't saving.
+ */
+async function savingsMoved(
+  tx: Executor,
+  ctx: BudgetReader,
+  scope: BudgetScope,
+  date: ReturnType<typeof transactionDate>,
+  from: string,
+  end: string,
+  currency: string,
+): Promise<Map<string, number>> {
+  const legs = await tx
+    .select({
+      id: transactions.id,
+      accountId: transactions.accountId,
+      amountMinor: transactions.amountMinor,
+      group: transactions.transferGroupId,
+      effectiveDate: transactions.effectiveDate,
+      month: sql<string>`to_char(${date}, 'YYYY-MM')`,
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .leftJoin(categoryGroups, eq(categoryGroups.id, categories.groupId))
+    .where(
+      and(
+        isNotNull(transactions.transferGroupId),
+        isNull(transactions.deletedAt),
+        eq(transactions.excluded, false),
+        eq(transactions.isSettlement, false),
+        eq(transactions.currency, currency),
+        sql`${transactions.amountMinor} > 0`,
+        // Counted already when filed under a spending category (a savings one, say).
+        sql`coalesce(${categoryGroups.kind}::text, 'transfer') = 'transfer'`,
+        savingsAccount,
+        gte(date, firstDayOf(from)),
+        sql`${date} < ${end}::date`,
+      ),
+    );
+  if (legs.length === 0) return new Map();
+  // Where each came from, if you can see it: from another savings account, it isn't saving.
+  const sources = await tx
+    .select({ group: transactions.transferGroupId, id: transactions.id })
+    .from(transactions)
+    .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+    .where(
+      and(
+        inArray(transactions.transferGroupId, [...new Set(legs.map((l) => l.group!))]),
+        isNull(transactions.deletedAt),
+        savingsAccount,
+      ),
+    );
+  const ownersOn = await ownersOnDates(tx, [...new Set(legs.map((l) => l.accountId))]);
+  const out = new Map<string, number>();
+  for (const leg of legs) {
+    if (sources.some((s) => s.group === leg.group && s.id !== leg.id)) continue;
+    const owners = ownersOn(leg.accountId, leg.effectiveDate);
+    const inScope =
+      scope === 'household'
+        ? owners.length >= 2
+        : owners.length === 1 && owners[0]!.memberId === ctx.memberId;
+    if (inScope) out.set(leg.month, (out.get(leg.month) ?? 0) + leg.amountMinor);
   }
   return out;
 }

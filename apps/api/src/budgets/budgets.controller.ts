@@ -14,6 +14,7 @@ import {
   setBudgetAmountSchema,
   setBudgetCategorySchema,
   setFlexibleSchema,
+  setPercentageSchema,
   type StrategyPreview,
   switchStrategySchema,
 } from '@fiscus/shared';
@@ -194,5 +195,17 @@ export class BudgetsController {
     @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
   ): Promise<void> {
     await this.budgets.assignLikeLastMonth(ctx, budgetId, month);
+  }
+
+  /** 50/30/20's split, for the period running in that month (§3.3). */
+  @Put(':budgetId/months/:month/percentage')
+  @HttpCode(204)
+  async setPercentage(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
+    @Body(new ZodPipe(setPercentageSchema)) body: z.infer<typeof setPercentageSchema>,
+  ): Promise<void> {
+    await this.budgets.setPercentage(ctx, budgetId, month, body);
   }
 }
