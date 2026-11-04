@@ -321,6 +321,8 @@ interface Draft {
   op: 'contains' | 'equals' | 'starts_with';
   text: string;
   direction: 'any' | 'in' | 'out';
+  /** Equals is the same min and max, with one field for both. */
+  amountOp: 'between' | 'equals';
   min: number | null;
   max: number | null;
   accountId: string;
@@ -351,6 +353,7 @@ function toDraft(r: {
     op: c.description?.op ?? 'contains',
     text: c.description?.value ?? '',
     direction: c.direction ?? 'any',
+    amountOp: c.amount?.min !== undefined && c.amount.min === c.amount.max ? 'equals' : 'between',
     min: c.amount?.min ?? null,
     max: c.amount?.max ?? null,
     accountId: c.accountIds?.[0] ?? ANY,
@@ -427,7 +430,7 @@ const ACTIONS: { key: Part; label: string }[] = [
 /** What a part goes back to when it's removed, so the rule no longer uses it. */
 const CLEARED: Record<Part, Partial<Draft>> = {
   direction: { direction: 'any' },
-  amount: { min: null, max: null },
+  amount: { amountOp: 'between', min: null, max: null },
   account: { accountId: ANY },
   category: { category: ANY },
   rename: { rename: '' },
@@ -705,19 +708,45 @@ export function RuleEditor({
           ) : null}
           {shown.has('amount') ? (
             <RemovablePart label="Amount" labelled onRemove={() => remove('amount')}>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <AmountInput
-                  label="Amount at least"
-                  currency={currency}
-                  value={d.min}
-                  onChange={(min) => set({ min })}
-                />
-                <AmountInput
-                  label="Amount at most"
-                  currency={currency}
-                  value={d.max}
-                  onChange={(max) => set({ max })}
-                />
+              <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+                <Select
+                  label="Amount"
+                  value={d.amountOp}
+                  onChange={(v) =>
+                    set(
+                      v === 'equals'
+                        ? { amountOp: 'equals', min: d.min ?? d.max, max: d.min ?? d.max }
+                        : { amountOp: 'between' },
+                    )
+                  }
+                >
+                  <SelectItem id="between">is between</SelectItem>
+                  <SelectItem id="equals">is equal to</SelectItem>
+                </Select>
+                {d.amountOp === 'equals' ? (
+                  <AmountInput
+                    label="Equal to"
+                    currency={currency}
+                    value={d.min}
+                    onChange={(v) => set({ min: v, max: v })}
+                    description="Either direction: $12.00 matches −$12.00 too."
+                  />
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <AmountInput
+                      label="At least"
+                      currency={currency}
+                      value={d.min}
+                      onChange={(min) => set({ min })}
+                    />
+                    <AmountInput
+                      label="At most"
+                      currency={currency}
+                      value={d.max}
+                      onChange={(max) => set({ max })}
+                    />
+                  </div>
+                )}
               </div>
             </RemovablePart>
           ) : null}
