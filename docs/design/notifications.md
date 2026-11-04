@@ -15,11 +15,11 @@ are in the [bills walkthrough](walkthroughs/bills.md) §7 (D15–D20). The table
   first. Opening one marks it read and goes to what it's about; "Mark all read" clears the count.
 - **Email**, set up once for the server: by an instance admin on Server → Email (mail server,
   port, security, username, password, From), or by `SMTP_URL` and `MAIL_FROM`, which win and show
-  there read-only (§5). Server → Email has a test. With neither, Settings says "Your server can't
+  there read-only (§6). Server → Email has a test. With neither, Settings says "Your server can't
   send email yet; ask whoever runs it." and email can't be ticked.
-- **One rule so far:** "A bank connection needs you", for whoever linked it: at once when it needs
-  them to sign in again, and after 3 days of failures otherwise, as Accounts shows it (bank sync
-  walkthrough D10). The others (#127) and the weekly recap (#128) use the same pipeline.
+- **The rules** (#127, §4): a bill is due, a bill or paycheck is late, a card statement is due, a
+  big transaction, low balance, a budget category nearly spent, transactions to review, and a bank
+  connection that needs you; and the weekly recap (#128, §4.3).
 
 ## 2. Channels
 
@@ -81,7 +81,59 @@ about what in the household's timezone, and call `enqueueNotification` with a de
 the occurrence: `bill_due:<series>:<date>`. Routing, channels, retries and the bell need nothing
 more.
 
-## 4. What a webhook receives
+## 4. The rules
+
+The worker decides what to send (`apps/worker/src/notify/rules/`). Each rule runs for one member
+in **their own database context** (`app.member_id`, `app.user_id`, no system context), so
+row-level security limits what it can read, and so mention, to what they can see (D15, SYS-02):
+Sam's private card's purchases never reach Alex. It writes their notification there too.
+
+| Rule | Who | When | Once per (dedupe key) |
+|---|---|---|---|
+| A bill is due | whoever looks after it (`seriesLookedAfterBy`, D13) | an unpaid date of a bill or subscription within their days before; a bill paid before its reminder isn't reminded | `bill_due:<series>:<date>` |
+| A bill or paycheck is late | a bill: whoever looks after it; a paycheck: whoever it's for (its latest payment's attribution, else the account's owners) | their days after a date with nothing paying it, up to 30 days back | `late:<series>:<date>` |
+| A card statement is due | the card's owners (`cardStatementsDue`) | due within their days before, not paid in full | `statement_due:<card>:<due>` |
+| A big transaction | everyone who sees the account's transactions | money out over their amount, in the household's currency, written since the last look; not pending, transfers or settle-ups, nor more than a week old | `big_transaction:<transaction>` |
+| Low balance | whoever picked the account (and still sees it) | today's balance under their amount, or the lowest it gets in the next 2 weeks with the account's confirmed series due before then (D19) | `low_balance:<account>:<week>` |
+| A budget category is nearly spent | members of the household's budget, and the owner of their own | a category's spending reaches their percentage of what it has this month (limit plus rollover); Flex: its fixed categories, and flexible spending as one | `budget_nearly_spent:<budget>:<category>:<month>` |
+| Transactions to review | owners and members (not viewers) | once a day from their hour, if any wait in accounts they can review (and possible duplicates) | `review:<date>` |
+| A bank connection needs you | whoever linked it | when a sync leaves it needing a sign-in, or 3 days into failures (§1) | `connection_needs_you:<connection>:…` |
+| Weekly recap | each member | their day, from their hour (§4.3); a quiet week too | `weekly_recap:<week it covers>` |
+
+"A new subscription, or a price went up" isn't sent yet: detection (#119) doesn't record when a
+series first appeared or its amount moved and stayed (D14). It needs that first (#123, #129).
+
+### 4.1 When they run (D20)
+
+Each household runs on its own time zone (`fiscus_notification_households()`). The worker looks
+every minute; each household is looked at once per local hour. The daily rules (bills, late,
+statements, low balance, budgets) run once a day from 8 in the morning there; transactions to
+review from each member's hour; the recap at theirs. Every minute it also asks which households
+have new transactions (`fiscus_households_with_new_transactions()`, on the new
+`transactions_created` index) and looks for big ones there, so one added by hand or by a sync is
+told within a minute or so. After a restart it repeats what it may have done; the keys make
+that send nothing twice.
+
+### 4.2 Wording
+
+Full detail names the thing and the amount ("Lakeside Power is due tomorrow", "About $142, from
+Joint checking."); summary says only what kind of thing ("A bill is due soon.").
+
+### 4.3 The weekly recap
+
+At each member's day and hour there, the worker builds their recap of the last whole week (as the
+household counts weeks) with `buildWeeklyRecap()`, in their own context: it refuses system
+context, so it holds only what they can see (D21, SYS-02). One notification a week,
+`weekly_recap:<the week's first day>`:
+- in Fiscus and on push channels, a short entry ("Your week, Nov 2–8": what was spent, what's
+  waiting for review) linking to the dashboard, where the recap card is;
+- by email, the whole recap from `renderWeeklyRecapEmail()`, rendered at each detail level and
+  stored with the notification (`notifications.email`), so each channel sends the one its detail
+  level asks for.
+
+A quiet week still sends, so it's clear nothing broke.
+
+## 5. What a webhook receives
 
 A `POST` with `Content-Type: application/json`:
 
@@ -123,7 +175,7 @@ ntfy gets a JSON publish to its server (`topic`, `title`, `message`, `click`), w
 token as a bearer token. Gotify gets `POST /message` with the token in `X-Gotify-Key`, and the
 link as its click action.
 
-## 5. Running it
+## 6. Running it
 
 | Variable | Service | |
 |---|---|---|
@@ -157,8 +209,8 @@ since that's what webhooks are for. This means any member can make the worker po
 it can reach (threat model T31). An instance that must not allow that needs egress rules on the
 worker for now.
 
-## 6. Not yet
+## 7. Not yet
 
-- The rules that decide when to notify (#127) and the weekly recap (#128).
+- "A new subscription, or a price went up" (needs D14's detection first).
 - Quiet hours for push (an open question in the walkthrough).
 - Old notifications aren't cleaned up yet; the bell shows the latest 50.

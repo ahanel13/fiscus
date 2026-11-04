@@ -5,6 +5,7 @@ export {
   ChannelError,
   type NotificationChannel,
   type OutgoingMessage,
+  type PreparedEmail,
   renderMessage,
   type StoredNotification,
 } from './channel.js';

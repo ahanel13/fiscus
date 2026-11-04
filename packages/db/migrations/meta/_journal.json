@@ -561,6 +561,27 @@
       "when": 1793723778660,
       "tag": "0079_notifications_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1793724474911,
+      "tag": "0080_transactions_created",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793724476524,
+      "tag": "0081_notification_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1793725227771,
+      "tag": "0082_notification_email",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { FieldCrypto, HouseholdFieldContext } from '@fiscus/crypto';
 import type { Executor } from './client.js';
-import { notifications } from './schema/notifications.js';
+import { type NotificationEmails, notifications } from './schema/notifications.js';
 
 // Writing a notification into the outbox, and a channel's secrets. The worker routes what's
 // written to the recipient's channels and delivers it (#125, #126, #130).
@@ -26,6 +26,8 @@ export interface NewNotification {
   link?: string | null;
   /** A test: sent through this channel only, and not shown in the bell. */
   testChannel?: string | null;
+  /** Its own email at each detail level, in place of one made from the title and body. */
+  email?: NotificationEmails | null;
 }
 
 /**
@@ -49,6 +51,7 @@ export async function enqueueNotification(
       summary: n.summary.slice(0, 500),
       link: n.link ?? null,
       testChannel: n.testChannel ?? null,
+      email: n.email ?? null,
     })
     .onConflictDoNothing({ target: [notifications.memberId, notifications.dedupeKey] })
     .returning({ id: notifications.id });

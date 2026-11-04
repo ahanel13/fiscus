@@ -1,0 +1,2 @@
+ALTER TABLE "notifications" ADD COLUMN "email" jsonb;--> statement-breakpoint
+ALTER TABLE "notifications" ADD CONSTRAINT "notifications_email" CHECK ("notifications"."email" IS NULL OR octet_length("notifications"."email"::text) <= 262144);

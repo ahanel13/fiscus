@@ -92,6 +92,22 @@ describe('email (#125)', () => {
     expect(mail.headers['Auto-Submitted']).toBe('auto-generated');
   });
 
+  it('sends a notification’s own email, at the channel’s detail level (the weekly recap)', async () => {
+    let got: { subject: string; text: string; html: string } | undefined;
+    const channel = new EmailChannel(
+      { sendMail: async (m) => void (got = m) },
+      'fiscus@example.test',
+    );
+    const email = {
+      full: { subject: 'Your week, Nov 2–8', text: 'Spent $412.18', html: '<p>Spent</p>' },
+      summary: { subject: 'Your week', text: 'Spent', html: '<p>s</p>' },
+      minimal: { subject: 'Fiscus', text: 'Ready', html: '<p>m</p>' },
+    };
+    const summary = renderMessage({ ...stored, email }, 'summary', 'https://fiscus.test', null);
+    await channel.send(summary, { to: 'a@b.test' });
+    expect(got).toMatchObject({ subject: 'Your week', text: 'Spent', html: '<p>s</p>' });
+  });
+
   it('escapes what goes into the HTML', async () => {
     let html = '';
     const channel = new EmailChannel(

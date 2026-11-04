@@ -32,6 +32,7 @@ import {
 } from '@fiscus/shared';
 import { Logger } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
+import type { NotificationRules } from './rules/runner.js';
 
 // Delivering notifications (#125, #126, #130). Whatever writes a notification (the api, or a
 // worker job such as a connection needing its owner) only writes it into the outbox. Each pass
@@ -82,6 +83,8 @@ export interface NotifierDeps {
   db: Database;
   crypto: FieldCrypto;
   channels: NotifierChannels;
+  /** The rules that decide what to send (#127), looked at before each pass routes and sends. */
+  rules?: NotificationRules;
   logger?: Pick<Logger, 'log' | 'warn' | 'error'>;
 }
 
@@ -139,9 +142,14 @@ export class Notifier {
     await this.#loop;
   }
 
-  /** Routes what's new, then sends what's due. One failing never stops the others. */
+  /** Runs the rules, routes what's new, then sends what's due. One failing never stops the others. */
   async pass(): Promise<void> {
     const { db } = this.#deps;
+    try {
+      await this.#deps.rules?.maybePass();
+    } catch (error) {
+      this.#logger.error(`Notification rules failed: ${describeError(error)}`);
+    }
     const { rows: unrouted } = await db.execute<{ notification_id: string; household_id: string }>(
       sql`SELECT notification_id, household_id FROM fiscus_unrouted_notifications(${this.#options.batch})`,
     );
@@ -257,8 +265,9 @@ export class Notifier {
           body: notifications.body,
           summary: notifications.summary,
           link: notifications.link,
+          email: notifications.email,
           createdAt: notifications.createdAt,
-          email: users.email,
+          address: users.email,
         })
         .from(notificationDeliveries)
         .innerJoin(notifications, eq(notifications.id, notificationDeliveries.notificationId))
@@ -355,7 +364,7 @@ export class Notifier {
     householdId: string,
     kind: ExternalChannelKind,
     target: {
-      email: string | null;
+      address: string | null;
       config: typeof notificationChannels.$inferSelect | null;
     },
     message: Parameters<EmailChannel['send']>[0],
@@ -364,8 +373,8 @@ export class Notifier {
     if (kind === 'email') {
       const email = await this.#email();
       if (!email) throw new ChannelError('email_unavailable', true);
-      if (!target.email) throw new ChannelError('no_address', true);
-      return email.send(message, { to: target.email });
+      if (!target.address) throw new ChannelError('no_address', true);
+      return email.send(message, { to: target.address });
     }
     const config = target.config;
     if (!config?.secretEnc) throw new ChannelError('not_configured', true);

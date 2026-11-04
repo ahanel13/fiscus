@@ -215,6 +215,8 @@ export const transactions = pgTable(
     index().on(t.accountId, t.effectiveDate.desc()),
     index().on(t.householdId, t.categoryId, t.effectiveDate),
     index().on(t.parentId),
+    // What's new since the worker last looked, for notifications (#127).
+    index('transactions_created').on(t.createdAt),
     // Finding the other leg of a transfer: the opposite amount, a few days either side.
     index('transactions_transfer_match')
       .on(t.householdId, t.amountMinor, t.effectiveDate)

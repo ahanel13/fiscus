@@ -166,7 +166,7 @@ export class EmailChannel implements NotificationChannel<EmailConfig> {
 
   async send(message: OutgoingMessage, config: EmailConfig): Promise<void> {
     if (!config.to) throw new ChannelError('no_address', true);
-    const { subject, text, html } = renderEmail(message);
+    const { subject, text, html } = message.email ?? renderEmail(message);
     try {
       await this.transport.sendMail({
         from: this.from,
