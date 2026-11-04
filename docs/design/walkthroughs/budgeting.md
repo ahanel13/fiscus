@@ -598,7 +598,8 @@ real.
 - **Budget month start day** (#71, P2). A month from the 15th to the 14th changes every
   boundary here. The model takes a start day from the beginning, and the setting comes later.
 - **Over-budget alerts** belong to notifications in M4 (#127), not here.
-- **Goals as budget lines** (M5). A goal's monthly contribution should appear as a budget line,
-  like an allowance. Designed with goals.
+- **Goals as budget lines** (M5). Settled in [Goals and budgets](../goals-and-budgets.md): a
+  goal's monthly contribution is its own kind of line in every strategy (G4, G5), and purchases
+  paid from a goal show but don't count (G6). M3 builds the line kind before goals exist.
 - **Rounding a split's cents.** An equal split of $0.01 can't be even. The proposal is to give
   the odd cent to the payer, so totals always match: decide with #111.

@@ -80,6 +80,11 @@ export const accounts = pgTable(
     includeInNetWorth: boolean().notNull().default(true),
     isBusiness: boolean().notNull().default(false),
     sortOrder: integer().notNull().default(0),
+    /**
+     * Who reviews its transactions (#45); null = everyone who can categorize them. Owners or, when
+     * it's shared in full, anyone in the household (checked in migration 0083).
+     */
+    reviewerMemberId: uuid(),
     notesEnc: bytea('notes_enc'),
     closedAt: timestamp({ withTimezone: true }),
     ...versioning(),
@@ -92,6 +97,10 @@ export const accounts = pgTable(
       .on(t.connectionId, t.providerAccountId)
       .where(sql`${t.connectionId} IS NOT NULL AND ${t.providerAccountId} IS NOT NULL`),
     index().on(t.householdId, t.sortOrder),
+    foreignKey({
+      columns: [t.householdId, t.reviewerMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
     check('accounts_currency', sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check('accounts_name', sql`length(btrim(${t.name})) BETWEEN 1 AND 120`),
   ],

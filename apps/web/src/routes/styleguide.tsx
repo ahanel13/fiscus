@@ -639,6 +639,7 @@ const SAMPLE_CARD: Account = {
   includeInNetWorth: true,
   isBusiness: false,
   sortOrder: 0,
+  reviewerMemberId: null,
   closedAt: null,
   owners: [],
   yourAccess: 'owner',

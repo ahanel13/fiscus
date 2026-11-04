@@ -23,6 +23,7 @@ const SETTINGS = [
   'dateBasis',
   'financeStyle',
   'categorizeMarksReviewed',
+  'reviewScope',
   'cleanMerchantNames',
 ] as const;
 
@@ -40,6 +41,7 @@ export function toHousehold(
     dateBasis: row.dateBasis,
     financeStyle: row.financeStyle,
     categorizeMarksReviewed: row.categorizeMarksReviewed,
+    reviewScope: row.reviewScope,
     cleanMerchantNames: row.cleanMerchantNames,
     status: row.status,
     version: row.version,
@@ -57,6 +59,7 @@ type HouseholdInput = Pick<
   | 'dateBasis'
   | 'financeStyle'
   | 'categorizeMarksReviewed'
+  | 'reviewScope'
   | 'cleanMerchantNames'
 > & { displayName?: string | undefined };
 

@@ -1,0 +1,137 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A goal · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a class="">Dashboard</a>
+        <div class="label">MONEY</div>
+        <a class="">Accounts</a><a class="">Transactions</a><a class="">Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a class="">Budget</a><a class="on">Goals</a><a class="">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a class="">Reports</a><a class="">Investments</a>
+        <div class="label">TOGETHER</div>
+        <a class="">Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row">
+            <h1>House down payment</h1>
+          </div>
+          <div class="row">
+            <span class="badge">Ours</span><span class="badge ok">On track</span
+            ><span class="btn secondary">Edit</span><span class="btn secondary">⋯</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="summary">
+            <div>
+              <div class="muted small">Saved</div>
+              <div class="big">$26,600.00</div>
+              <div class="small muted">44% of $60,000.00</div>
+            </div>
+            <div>
+              <div class="muted small">This month</div>
+              <div class="big">$1,300.00</div>
+              <div class="small muted">of $1,300.00 planned · moved</div>
+            </div>
+            <div>
+              <div class="muted small">Market, this month</div>
+              <div class="big">+$310.00</div>
+              <div class="small muted">Brokerage’s 40%, not a contribution</div>
+            </div>
+            <div>
+              <div class="muted small">At this pace</div>
+              <div class="big">Oct 2028</div>
+              <div class="small muted">two months early</div>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 14px">
+            <svg
+              viewBox="0 0 640 180"
+              width="100%"
+              height="180"
+              role="img"
+              aria-label="Saved and projected"
+            >
+              <line
+                x1="0"
+                y1="20"
+                x2="640"
+                y2="20"
+                stroke="var(--border-strong)"
+                stroke-dasharray="4 4"
+              />
+              <text x="4" y="14" fill="var(--muted)" font-size="11">$60,000 target · Dec 2028</text>
+              <polyline
+                fill="none"
+                stroke="var(--accent)"
+                stroke-width="3"
+                points="0,170 60,160 120,150 180,138 240,124 300,108"
+              />
+              <polyline
+                fill="none"
+                stroke="var(--accent)"
+                stroke-width="2"
+                stroke-dasharray="6 5"
+                points="300,108 400,82 500,55 600,28 618,22"
+              />
+              <line x1="300" y1="0" x2="300" y2="180" stroke="var(--border)" />
+              <text x="306" y="176" fill="var(--muted)" font-size="11">Today</text>
+              <text x="520" y="70" fill="var(--muted)" font-size="11">At $1,300/mo: Oct 2028</text>
+            </svg>
+          </div>
+          <div class="grid2" style="margin-top: 14px">
+            <div class="card">
+              <h2 style="margin: 0 0 8px">Funded by</h2>
+              <div class="list">
+                <div class="item">
+                  <span class="grow"
+                    >Harbor Savings
+                    <span class="small muted">· joint · $14,000.00 of $20,000.00</span></span
+                  ><span class="amount">$14,000.00</span>
+                </div>
+                <div class="item">
+                  <span class="grow"
+                    >Brokerage <span class="small muted">· joint · 40% of $31,500.00</span></span
+                  ><span class="amount">$12,600.00</span>
+                </div>
+                <div class="item"><span class="link">Add an account</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <h2 style="margin: 0 0 8px">Who’s put in</h2>
+              <div class="list">
+                <div class="item">
+                  <span class="grow">Alex</span><span class="amount">$15,100.00</span>
+                </div>
+                <div class="item">
+                  <span class="grow">Sam</span><span class="amount">$11,500.00</span>
+                </div>
+              </div>
+              <div class="small muted" style="margin-top: 8px">
+                Each person’s share of what went into joint accounts, by ownership, and their own
+                accounts’ claims. Money that was already there when the goal began isn’t anyone’s
+                contribution.
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div class="proto">Prototype (#341), not the built app</div>
+  </body>
+</html>

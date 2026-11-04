@@ -345,6 +345,24 @@ describe('notification rules', { timeout: 120_000 }, () => {
     ]);
   });
 
+  it('counts only the uncategorized ones when that’s all the household reviews (#508)', async () => {
+    const { householdId, alex } = await household();
+    const card = await h.account({ householdId, owners: [alex], name: 'Card' });
+    await txn(householdId, card, -1_200, TODAY, 'Coffee', { reviewStatus: 'needs_review' });
+    await txn(householdId, card, -1_300, TODAY, 'Lunch', { reviewStatus: 'needs_review' });
+    await h.owner.query(
+      `UPDATE transactions SET category_id = (SELECT id FROM categories
+         WHERE household_id = $1 AND system_key IS NULL LIMIT 1)
+       WHERE household_id = $1 AND display_name = 'Lunch'`,
+      [householdId],
+    );
+    await h.owner.query(`UPDATE households SET review_scope = 'uncategorized' WHERE id = $1`, [
+      householdId,
+    ]);
+    await rules().runHousehold(householdId, AT(9), { daily: false });
+    expect(await sent(alex, 'review')).toMatchObject([{ title: '1 transaction to review' }]);
+  });
+
   it('sends nothing for a rule unticked everywhere', async () => {
     const { householdId, alex } = await household();
     const mine = await h.account({ householdId, owners: [alex], name: 'Checking' });

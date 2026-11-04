@@ -1,5 +1,5 @@
 {
-  "id": "62b54c06-8647-478d-b114-5892fe06f221",
+  "id": "b5f064cc-b04a-4780-a4b2-4aaceb8f5632",
   "prevId": "cc40fca0-95af-4aaf-829a-607b566d7998",
   "version": "7",
   "dialect": "postgresql",
@@ -648,6 +648,12 @@
           "notNull": true,
           "default": 0
         },
+        "reviewer_member_id": {
+          "name": "reviewer_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "notes_enc": {
           "name": "notes_enc",
           "type": "bytea",
@@ -746,6 +752,21 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "accounts_household_id_reviewer_member_id_household_members_household_id_id_fk": {
+          "name": "accounts_household_id_reviewer_member_id_household_members_household_id_id_fk",
+          "tableFrom": "accounts",
+          "tableTo": "household_members",
+          "columnsFrom": [
+            "household_id",
+            "reviewer_member_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -1163,179 +1184,6 @@
         "budget_categories_yearly": {
           "name": "budget_categories_yearly",
           "value": "\"budget_categories\".\"yearly_minor\" IS NULL OR \"budget_categories\".\"yearly_minor\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.budget_moves": {
-      "name": "budget_moves",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "household_id": {
-          "name": "household_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "budget_id": {
-          "name": "budget_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "month": {
-          "name": "month",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "from_category_id": {
-          "name": "from_category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "to_category_id": {
-          "name": "to_category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_minor": {
-          "name": "amount_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "budget_moves_budget_id_month_index": {
-          "name": "budget_moves_budget_id_month_index",
-          "columns": [
-            {
-              "expression": "budget_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "month",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "budget_moves_from_category_id_index": {
-          "name": "budget_moves_from_category_id_index",
-          "columns": [
-            {
-              "expression": "from_category_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "budget_moves_to_category_id_index": {
-          "name": "budget_moves_to_category_id_index",
-          "columns": [
-            {
-              "expression": "to_category_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "budget_moves_household_id_budget_id_budgets_household_id_id_fk": {
-          "name": "budget_moves_household_id_budget_id_budgets_household_id_id_fk",
-          "tableFrom": "budget_moves",
-          "tableTo": "budgets",
-          "columnsFrom": [
-            "household_id",
-            "budget_id"
-          ],
-          "columnsTo": [
-            "household_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "budget_moves_household_id_from_category_id_categories_household_id_id_fk": {
-          "name": "budget_moves_household_id_from_category_id_categories_household_id_id_fk",
-          "tableFrom": "budget_moves",
-          "tableTo": "categories",
-          "columnsFrom": [
-            "household_id",
-            "from_category_id"
-          ],
-          "columnsTo": [
-            "household_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "budget_moves_household_id_to_category_id_categories_household_id_id_fk": {
-          "name": "budget_moves_household_id_to_category_id_categories_household_id_id_fk",
-          "tableFrom": "budget_moves",
-          "tableTo": "categories",
-          "columnsFrom": [
-            "household_id",
-            "to_category_id"
-          ],
-          "columnsTo": [
-            "household_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "budget_moves_month": {
-          "name": "budget_moves_month",
-          "value": "extract(day from \"budget_moves\".\"month\") = 1"
-        },
-        "budget_moves_positive": {
-          "name": "budget_moves_positive",
-          "value": "\"budget_moves\".\"amount_minor\" > 0"
-        },
-        "budget_moves_two_categories": {
-          "name": "budget_moves_two_categories",
-          "value": "\"budget_moves\".\"from_category_id\" <> \"budget_moves\".\"to_category_id\""
         }
       },
       "isRLSEnabled": false

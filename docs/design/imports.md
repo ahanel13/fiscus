@@ -232,6 +232,11 @@ A rule is **conditions → actions**, run on transactions as they arrive (import
 - Keyboard: `j`/`k` next and previous, `c` category, `r` mark reviewed and go to the next,
   `e` exclude. Keys work while the page has focus, not while typing or in a menu or dialog.
 - A **count badge** on Transactions in the navigation when something needs review.
+- **What it asks about** is a household setting (#508): every new transaction (the default), or
+  only the **uncategorized** ones. With the second, a transaction that has a category, from a
+  rule, the file, or a person, doesn't wait in the queue, the badge, the reminder or the recap,
+  though it keeps its "needs review" state. Worked out when asked, so switching the setting takes
+  effect at once and clearing a category puts it back.
 - Reviewer assignment and reminders are #45 (M1.5).
 
 ## 5. Transfers (#40)

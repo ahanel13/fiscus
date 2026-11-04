@@ -13,4 +13,5 @@ export * from './provider-balances.js';
 export * from './ranges.js';
 export * from './recap.js';
 export * from './recurring.js';
+export * from './review.js';
 export * from './transfers.js';

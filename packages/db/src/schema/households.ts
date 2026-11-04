@@ -27,6 +27,7 @@ export const financeStyle = pgEnum('finance_style', [
   'separate',
   'roommates',
 ]);
+export const reviewScope = pgEnum('review_scope', ['all', 'uncategorized']);
 export const memberRole = pgEnum('member_role', ['owner', 'member', 'viewer']);
 
 export const households = pgTable(
@@ -42,6 +43,8 @@ export const households = pgTable(
     financeStyle: financeStyle().notNull().default('hybrid'),
     /** Setting a transaction's category marks it reviewed (the walkthrough's F14, #349). */
     categorizeMarksReviewed: boolean().notNull().default(true),
+    /** What the review queue asks about: everything new, or only what has no category (#508). */
+    reviewScope: reviewScope().notNull().default('all'),
     /** Name transactions from a cleaned-up bank description (#42). The original stays as is. */
     cleanMerchantNames: boolean().notNull().default(true),
     status: householdStatus().notNull().default('active'),
