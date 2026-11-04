@@ -27,6 +27,7 @@ import { applyTheme } from '../lib/theme.js';
 import { CommandPalette } from './CommandPalette.js';
 import { ShellTitleContext } from './shell-title.js';
 import { HistoryBanner } from './HistoryCheck.js';
+import { NotificationBell } from './NotificationBell.js';
 import {
   Avatar,
   Badge,
@@ -125,16 +126,20 @@ export function AppShell() {
           memberships={me.memberships}
           isOwner={household.you.role === 'owner'}
         />
-        <Button
-          variant="secondary"
-          onPress={() => setPaletteOpen(true)}
-          className="mx-3 mb-2 justify-start font-normal text-muted"
-        >
-          <Search aria-hidden className="size-4" /> Search
-          <kbd aria-hidden className="ml-auto flex items-center text-xs">
-            <CommandIcon className="size-3" />K
-          </kbd>
-        </Button>
+        <div className="mx-3 mb-2 flex items-center gap-1">
+          <Button
+            variant="secondary"
+            onPress={() => setPaletteOpen(true)}
+            className="min-w-0 flex-1 justify-start font-normal text-muted"
+          >
+            <Search aria-hidden className="size-4" /> Search
+            <kbd aria-hidden className="ml-auto flex items-center text-xs">
+              <CommandIcon className="size-3" />K
+            </kbd>
+          </Button>
+          {/* The bell (#130), at the top of every page. */}
+          <NotificationBell householdId={householdId} onNavigate={actions.go} />
+        </div>
         <div className="flex-1 space-y-4 overflow-y-auto px-3 py-2">
           {groups.map((g) => (
             <div key={g}>
@@ -186,12 +191,13 @@ export function AppShell() {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Phone top bar: the page's name and Search. Switching households is a rare thing, so
+        {/* Phone top bar: the page's name, the bell and Search. Switching households is a rare thing, so
             it's in Household settings rather than taking this space. */}
         <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
           <p aria-hidden className="min-w-0 flex-1 truncate text-lg font-semibold">
             {pageTitle ?? sections.find(isActive)?.label ?? household.name}
           </p>
+          <NotificationBell householdId={householdId} onNavigate={actions.go} />
           <Button
             variant="ghost"
             size="icon"

@@ -7,6 +7,7 @@ import {
   previousEncryptionKeyVersionEnv,
 } from '@fiscus/crypto';
 import { booleanFlag, databaseUrl, defineEnv, host, logLevel, nodeEnv, port } from '@fiscus/env';
+import { mailEnvVars } from '@fiscus/notify';
 import { signupModeSchema } from '@fiscus/shared';
 import { z } from 'zod';
 
@@ -22,7 +23,8 @@ export default defineEnv('api', {
   APP_ENCRYPTION_KEY_PREVIOUS_VERSION: previousEncryptionKeyVersionEnv,
   PUBLIC_URL: {
     schema: z.url().default('http://localhost:8080'),
-    description: 'Base URL people use to reach Fiscus. Used in links (invites, password resets).',
+    description:
+      'Base URL people use to reach Fiscus. Used in links (invites, password resets, notifications).',
     example: 'http://localhost:8080',
   },
   SIGNUP_MODE: {
@@ -54,4 +56,6 @@ export default defineEnv('api', {
   ...plaidEnvVars,
   // Where SimpleFIN setup tokens may point (#91, threat model T28).
   ...simpleFinEnvVars,
+  // Notification email (#125, D16): the worker sends it; the api says whether it can.
+  ...mailEnvVars,
 });

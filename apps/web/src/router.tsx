@@ -54,6 +54,7 @@ import {
 } from './routes/settings.js';
 import { WelcomePage } from './routes/welcome.js';
 import { ConnectionsSettings } from './routes/connections-settings.js';
+import { NotificationsSettingsPage } from './routes/notifications-settings.js';
 
 interface Context {
   queryClient: QueryClient;
@@ -293,6 +294,7 @@ const settingsRoutes = [
   settingsSection('/rules', RulesSettings),
   settingsSection('/shared-costs', SharedCostsSettings),
   settingsSection('/connections', ConnectionsSettings),
+  settingsSection('/notifications', NotificationsSettingsPage),
 ];
 
 const routeTree = rootRoute.addChildren([

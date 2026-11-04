@@ -19,6 +19,7 @@ import {
 } from '../components/ui.js';
 import { InviteLink } from './invites.js';
 import { BankConnectionsSection } from './server-banks.js';
+import { MailSection } from './server-mail.js';
 
 type Data<T> = { data: T };
 
@@ -176,7 +177,10 @@ function PendingServerInvites() {
   );
 }
 
-/** The server (instance admins): who may make an account here, and how it reaches banks. */
+/**
+ * The server (instance admins): who may make an account here, how it reaches banks, and its
+ * email.
+ */
 export function ServerPage() {
   const me = useSuspenseQuery(meQuery).data;
   const status = useQuery(authStatusQuery);
@@ -197,7 +201,8 @@ export function ServerPage() {
         <BackHome />
         <h1 className="mt-2 text-2xl font-semibold">Server</h1>
         <p className="text-sm text-muted">
-          Who can make an account on this Fiscus server, and how it connects to banks.
+          Who can make an account on this Fiscus server, how it connects to banks, and whether it
+          sends email.
         </p>
       </div>
       <Card>
@@ -218,6 +223,7 @@ export function ServerPage() {
       </Card>
       <ServerInviteDialog isOpen={open} onOpenChange={setOpen} />
       <BankConnectionsSection />
+      <MailSection email={me.email} />
     </div>
   );
 }

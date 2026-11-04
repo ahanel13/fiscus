@@ -133,6 +133,8 @@ const SETTINGS_SECTIONS = [
   { to: '/h/$householdId/settings/members', label: 'Members' },
   { to: '/h/$householdId/settings/categories', label: 'Categories' },
   { to: '/h/$householdId/settings/rules', label: 'Rules' },
+  // Yours only, whatever your role (bills walkthrough §7, D15).
+  { to: '/h/$householdId/settings/notifications', label: 'Notifications' },
   { to: '/h/$householdId/settings/shared-costs', label: 'Shared costs' },
   { to: '/h/$householdId/settings/connections', label: 'Connections' },
 ] as const;

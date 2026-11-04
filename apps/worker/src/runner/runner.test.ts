@@ -2,10 +2,12 @@
 import { ProviderRegistry } from '@fiscus/aggregation';
 import { FakeAggregationProvider, FakeClock, riveraAccounts } from '@fiscus/aggregation/testing';
 import { ProviderError, type SyncPage } from '@fiscus/domain';
+import { GotifyChannel, NtfyChannel, WebhookChannel } from '@fiscus/notify';
 import { NestFactory } from '@nestjs/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startWorkerHarness, until, type WorkerHarness } from '../testing/harness.js';
 import { WorkerModule } from '../worker.module.js';
+import { Notifier } from '../notify/notifier.js';
 import { DEFAULT_JOB_HANDLERS } from './handlers.js';
 import { JobHandlers } from './jobs.js';
 import { Runner, type RunnerOptions } from './runner.js';
@@ -228,6 +230,30 @@ describe('the runner (#81)', { timeout: 30_000 }, () => {
       status: 'login_required',
       lastErrorCode: 'ITEM_LOGIN_REQUIRED',
     });
+    // Whoever linked it is told (D18), and the notifier puts it in their bell.
+    const notifier = new Notifier(
+      {
+        db: h.worker.db,
+        crypto: h.crypto,
+        channels: {
+          email: null,
+          ntfy: new NtfyChannel(),
+          gotify: new GotifyChannel(),
+          webhook: new WebhookChannel(),
+        },
+        logger: quiet,
+      },
+      { publicUrl: null },
+    );
+    await notifier.pass();
+    const { rows } = await h.owner.query(
+      `SELECT member_id, kind, in_app, routed_at IS NOT NULL AS routed FROM notifications
+       WHERE dedupe_key LIKE $1`,
+      [`connection_needs_you:${id}:%`],
+    );
+    expect(rows).toEqual([
+      { member_id: h.memberId, kind: 'connection_needs_you', in_app: true, routed: true },
+    ]);
   });
 
   it("keeps going when one connection's job fails", async () => {

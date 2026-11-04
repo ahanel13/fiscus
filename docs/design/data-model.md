@@ -393,6 +393,18 @@ All three tables under `budgets` have composite FKs to it and to `categories`, c
 
 **`settlements`** (#112, migrations `0060`, `0061`; walkthrough §10, D20): money one member paid another to square up. `household_id`, `from_member_id`, `to_member_id` (different; composite FKs to members), `amount_minor` (> 0), `date`, `kind` (`transfer`, `paid` another way, or `adjustment`), `transaction_id` null (the transfer that paid it, required exactly when `kind` is `transfer`, UNIQUE; set null if the transaction is purged), `note` (≤ 500), `created_by_member_id`, `created_at`. Each lowers what `from` owes `to` (`settlementEffect`). Recording a transfer marks it `is_settlement` and moves it to the Settlement category; removing the settle-up puts it back as a transfer. Visible to, and recorded or removed by, only the two members it's between (SHR-04).
 
+### 3.8 Notifications
+
+Notifications (#125, #126, #130, migrations `0078`, `0079`; [bills walkthrough](walkthroughs/bills.md) §7, D15–D20; [notifications](notifications.md)). All four tables are one member's own: only they read or change theirs, household owners included, and the worker reads them in system context to deliver (HH-10). Each has a composite FK to `household_members`, cascading.
+
+**`notification_channels`**: where a member's notifications go outside Fiscus. `household_id`, `member_id`, `kind` (`email`, `ntfy`, `gotify`, `webhook`; UNIQUE per member), `detail` (`full`, `summary`, `minimal`, D17), `settings jsonb` (what Settings shows: a server's address, a hint such as `topic rivera-alex-…`, whether a webhook is signed), `secret_enc` (the topic and token, the Gotify token, the webhook's address and signing secret, as JSON encrypted with the household key and bound to the row). Email needs no row until its detail changes: it goes to the member's sign-in address.
+
+**`notification_preferences`**: `(member_id, kind)` PK, `household_id`, `channels text[]` null (the channels ticked; null for D18's defaults, with any push channel set up), `settings jsonb` (the rule's timing: days before, an amount, the recap's day and hour; schemas in `@fiscus/shared`). No row: D18's defaults.
+
+**`notifications`**: the outbox, and the bell's list. `household_id`, `member_id` (the recipient), `kind`, `dedupe_key` (UNIQUE per member: once per occurrence and rule, D20), `title`, `body` (full detail), `summary` (summary detail: no amounts or names), `link` (an app path), `test_channel` (only for a channel's test), `in_app` (shown in the bell), `routed_at` (set when the worker has routed it to channels), `read_at`, `created_at`.
+
+**`notification_deliveries`**: one notification through one channel. `household_id`, `notification_id` (cascade), `channel`, `status` (`pending`, `sent`, `failed`), `attempts`, `next_attempt_at`, `lease_until`, `last_error_code` (a code, never a message), `sent_at`. UNIQUE `(notification_id, channel)`. Written only by the worker; the recipient reads theirs (a test's result).
+
 ## 4. Row-level security
 
 ### 4.1 Database roles
@@ -536,7 +548,7 @@ otherwise, the function can be backed by a table without changing any policy.
 
 `users.totp_secret_enc` (instance KEK) · `aggregation_credentials.secret_enc` ·
 `connection_secrets.secret_enc` · `accounts.account_number_enc` · `accounts.notes_enc` ·
-`transaction_notes.body_enc`. Receipt files and conversation history are encrypted the same way when
+`transaction_notes.body_enc` · `notification_channels.secret_enc` · the mail server's password in `instance_settings` (`mail.smtp`, instance key). Receipt files and conversation history are encrypted the same way when
 they arrive in M9/M10.
 
 **Consequence:** notes are **not searchable in SQL**. Search covers names and descriptions. Note
@@ -544,7 +556,7 @@ search, if wanted, decrypts within an already-filtered result set.
 
 ## 9. Forward references (not designed here)
 - **M3:** `funding_targets`. Who owes whom (#111) is computed when read from the transactions, their attribution, the owners on each date and `split_policies` (`expenseEffects`, `pairBalances` in `@fiscus/domain`), as budgets are, so there is no `settlement_entries` table. They reference `household_members`, `categories`, `transactions` (`is_settlement`). Budgets are in §3.6, split rules in §3.7.
-- **M4:** `recurring_series`, `notification_channels`, `notification_rules`. They reference `merchants`, `accounts`, members.
+- **M4:** `recurring_series` (§3.7) and the notification tables (§3.8) are built; what decides when to notify (#127) adds no table of its own beyond them.
 - **M6:** `securities`, `holdings`, `lots`, `investment_transactions`, `prices`. They reference `accounts` and use `numeric(28,10)`.
 - **M10:** `change_sets` will reference `audit_events`, and undo replays the inverse operations.
 
