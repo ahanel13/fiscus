@@ -45,9 +45,23 @@ describe('when a connection is next due', () => {
 
 describe('windowStart (#91)', () => {
   it('asks from a fortnight before the latest transaction, never before sync_from', () => {
-    expect(windowStart({ since: '2026-07-22', lastProviderDate: null })).toBe('2026-07-22');
-    expect(windowStart({ since: '2026-07-22', lastProviderDate: '2026-10-20' })).toBe('2026-10-06');
-    expect(windowStart({ since: '2026-10-15', lastProviderDate: '2026-10-20' })).toBe('2026-10-15');
-    expect(windowStart({ since: null, lastProviderDate: '2026-03-10' })).toBe('2026-02-24');
+    expect(
+      windowStart({ since: '2026-07-22', lastProviderDate: null, historyComplete: true }),
+    ).toBe('2026-07-22');
+    expect(
+      windowStart({ since: '2026-07-22', lastProviderDate: '2026-10-20', historyComplete: true }),
+    ).toBe('2026-10-06');
+    expect(
+      windowStart({ since: '2026-10-15', lastProviderDate: '2026-10-20', historyComplete: true }),
+    ).toBe('2026-10-15');
+    expect(
+      windowStart({ since: null, lastProviderDate: '2026-03-10', historyComplete: true }),
+    ).toBe('2026-02-24');
+  });
+
+  it('asks from sync_from until that history has come: new accounts bring theirs', () => {
+    expect(
+      windowStart({ since: '2026-07-22', lastProviderDate: '2026-10-20', historyComplete: false }),
+    ).toBe('2026-07-22');
   });
 });

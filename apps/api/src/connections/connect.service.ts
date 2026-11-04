@@ -127,6 +127,17 @@ const differentBank = () =>
     'To move a bank to new keys, sign in to the same bank it’s connected to now.',
   );
 
+/**
+ * The provider's ids of the accounts a connection tracks, those its owner can't see too
+ * (migration 0075). Only for its owner, which callers have checked.
+ */
+async function trackedBy(tx: Executor, connectionId: string): Promise<Set<string>> {
+  const { rows } = await tx.execute<{ id: string }>(
+    sql`SELECT fiscus_connection_tracked(${connectionId}) AS id`,
+  );
+  return new Set(rows.map((r) => r.id));
+}
+
 const notInSetup = () =>
   new Problem(
     409,
@@ -247,6 +258,7 @@ export class ConnectService {
       institutionName: 'SimpleFIN Bridge',
       accounts: await this.#offer(tx, ctx, offered, null),
       replacesConnectionId: null,
+      chosen: false,
     }));
   }
 
@@ -406,6 +418,7 @@ export class ConnectService {
           institutionName: institution?.name ?? null,
           accounts: await this.#offer(tx, ctx, offered, replaced?.id ?? null),
           replacesConnectionId: replaced?.id ?? null,
+          chosen: false,
         };
       });
     } catch (err) {
@@ -566,29 +579,39 @@ export class ConnectService {
     );
   }
 
-  /** The accounts offered again, for a setup still in progress (the page was reloaded). */
+  /**
+   * The accounts offered again: for a setup still in progress (the page was reloaded), or to
+   * choose a live connection's accounts again ("Choose accounts"): to track ones it doesn't, move
+   * some here from another connection, or stop tracking some. Its owner only.
+   */
   async setup(ctx: HouseholdContext, connectionId: string): Promise<ConnectionSetup> {
-    const own = await this.#ownConnection(ctx, connectionId, { setup: true });
+    const own = await this.#ownConnection(ctx, connectionId, { choose: true });
     const offered = await this.#offered(own);
     return this.scope.run(ctx, async (tx) => {
       const [c] = await tx
-        .select({ replaces: connections.replacesConnectionId })
+        .select({ replaces: connections.replacesConnectionId, status: connections.status })
         .from(connections)
         .where(eq(connections.id, connectionId));
       const replaces = c?.replaces ?? null;
+      const chosen = c?.status !== 'setup';
       return {
         connectionId,
         institutionName: own.institutionName,
-        accounts: await this.#offer(tx, ctx, offered, replaces),
+        accounts: await this.#offer(tx, ctx, offered, replaces, chosen ? connectionId : null),
         replacesConnectionId: replaces,
+        chosen,
       };
     });
   }
 
   /**
    * Confirms what each offered account becomes (D4, D5): linked to one of the caller's accounts,
-   * a new account with its owners and visibility, or not tracked. Only the connection's owner,
-   * only while it's in `setup`. Then it's `ok` and due now, so the worker syncs it right away.
+   * a new account with its owners and visibility, or not tracked. Only the connection's owner.
+   * In `setup`, it's then `ok` and due now, so the worker syncs it right away.
+   *
+   * Choosing a live connection's accounts again, what it tracks is kept, or stops being tracked
+   * (it keeps its history, as on disconnect); the rest are chosen as at setup. Accounts it adds
+   * bring their history: it's due now, from the start (Plaid's cursor is cleared).
    *
    * A connection that moves another to new keys (#83) may link that one's accounts, and ends it
    * once they're its own: the worker then ends the old Item at Plaid, with its old keys.
@@ -598,7 +621,7 @@ export class ConnectService {
     connectionId: string,
     input: ConfirmInput,
   ): Promise<ConnectionConfirmed> {
-    const own = await this.#ownConnection(ctx, connectionId, { setup: true });
+    const own = await this.#ownConnection(ctx, connectionId, { choose: true });
     const offered = await this.#offered(own);
 
     return this.scope.run(ctx, async (tx, activity) => {
@@ -607,7 +630,11 @@ export class ConnectService {
         .from(connections)
         .where(eq(connections.id, connectionId))
         .for('update');
-      if (c?.status !== 'setup') throw notInSetup();
+      if (!c || c.status === 'disconnected') {
+        throw new Problem(409, 'connection_disconnected', 'This connection is disconnected');
+      }
+      const live = c.status !== 'setup';
+      const tracking = live ? await trackedBy(tx, connectionId) : new Set<string>();
       // Locked before its accounts, as its sync locks it first: a sync running now writes nothing
       // once it's ended. One disconnected since has let go of its accounts already.
       const [old] = c.replaces
@@ -635,6 +662,22 @@ export class ConnectService {
             path: 'accounts',
             code: 'not_offered',
             message: `The bank doesn't offer ${a.providerAccountId}`,
+          })),
+        // What it tracks stays or stops; nothing else is kept.
+        ...input.accounts
+          .filter(
+            (a) =>
+              offeredIds.has(a.providerAccountId) &&
+              (tracking.has(a.providerAccountId)
+                ? a.choice !== 'keep' && a.choice !== 'skip'
+                : a.choice === 'keep'),
+          )
+          .map((a) => ({
+            path: 'accounts',
+            code: tracking.has(a.providerAccountId) ? 'tracked_already' : 'not_tracked',
+            message: tracking.has(a.providerAccountId)
+              ? `${a.providerAccountId} is tracked already: keep it, or stop tracking it`
+              : `${a.providerAccountId} isn't tracked, so it can't be kept`,
           })),
       ];
       if (errors.length) {
@@ -714,9 +757,14 @@ export class ConnectService {
       );
 
       const tracked: ConnectionConfirmed['accounts'] = [];
+      const stopping: string[] = [];
       for (const bank of offered) {
         const choice = choices.get(bank.providerAccountId)!;
-        if (choice.choice === 'skip') continue;
+        if (choice.choice === 'keep') continue;
+        if (choice.choice === 'skip') {
+          if (tracking.has(bank.providerAccountId)) stopping.push(bank.providerAccountId);
+          continue;
+        }
         const mask = bank.mask;
         const currency = bank.currency ?? hh!.baseCurrency;
         let accountId: string;
@@ -829,10 +877,62 @@ export class ConnectService {
         if (rows[0]?.has === false) await disconnectWithin(tx, activity, from, provider);
       }
 
-      // Due now: the runner (#81) claims it on its next pass, and the first sync starts.
+      // Stops tracking these: they keep their history, as on disconnect (D14), and only someone
+      // who may change the account does it, so one you can't see stays.
+      if (stopping.length) {
+        const rows = await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(
+            and(
+              eq(accounts.connectionId, connectionId),
+              inArray(accounts.providerAccountId, stopping),
+            ),
+          );
+        const level = (id: string) => levels.get(id);
+        if (
+          rows.length !== stopping.length ||
+          rows.some((r) => level(r.id) !== 'owner' && level(r.id) !== 'full')
+        ) {
+          throw problems.forbidden('Only its owners can stop tracking that account.');
+        }
+        await tx
+          .update(accounts)
+          .set({ connectionId: null, updatedAt: new Date() })
+          .where(
+            inArray(
+              accounts.id,
+              rows.map((r) => r.id),
+            ),
+          );
+        for (const r of rows) {
+          await activity.record({
+            action: 'connection.disconnected',
+            targetType: 'connection',
+            targetId: connectionId,
+            accountId: r.id,
+            metadata: { provider: own.provider, stopped: true },
+          });
+        }
+      }
+
       await tx
         .update(connections)
-        .set({ status: 'ok', nextSyncAt: sql`now()`, updatedAt: new Date() })
+        .set({
+          // Every account it offers has been chosen about: none is new now.
+          knownAccountIds: offered.map((a) => a.providerAccountId),
+          newAccountsAvailable: false,
+          // Due now: the runner (#81) claims it on its next pass, and the first sync starts. One
+          // chosen again that adds accounts syncs from the start, so they bring their history.
+          ...(!live && { status: 'ok', nextSyncAt: sql`now()` }),
+          ...(live &&
+            tracked.length > 0 && {
+              nextSyncAt: sql`now()`,
+              syncCursor: null,
+              historicalComplete: false,
+            }),
+          updatedAt: new Date(),
+        })
         .where(eq(connections.id, connectionId));
       return { connectionId, accounts: tracked };
     });
@@ -862,7 +962,7 @@ export class ConnectService {
   async #ownConnection(
     ctx: HouseholdContext,
     id: string,
-    want: { setup?: boolean; update?: boolean },
+    want: { setup?: boolean; update?: boolean; choose?: boolean },
   ): Promise<OwnConnection> {
     const found = await this.scope.run(ctx, async (tx) => {
       const [c] = await tx
@@ -883,6 +983,9 @@ export class ConnectService {
         throw problems.forbidden('Only the person who connected it can do this.');
       }
       if (want.setup && c.status !== 'setup') throw notInSetup();
+      if (want.choose && c.status === 'disconnected') {
+        throw new Problem(409, 'connection_disconnected', 'This connection is disconnected');
+      }
       if (want.update && (c.status === 'setup' || c.status === 'disconnected')) {
         throw new Problem(
           409,
@@ -953,6 +1056,8 @@ export class ConnectService {
     ctx: HouseholdContext,
     offered: BankAccount[],
     replaces: string | null,
+    /** Choosing a live connection's accounts again: it, else null. */
+    live: string | null = null,
   ): Promise<OfferedAccount[]> {
     const [hh] = await tx
       .select({ financeStyle: households.financeStyle, baseCurrency: households.baseCurrency })
@@ -977,7 +1082,28 @@ export class ConnectService {
         )
     )
       .map((c) => c.id)
-      .filter((id) => id !== replaces);
+      .filter((id) => id !== replaces && id !== live);
+    // Choosing again: what it tracks stays (as your account, or one you can't see), and what you
+    // chose not to track before is suggested so again.
+    const tracked = live ? await trackedBy(tx, live) : new Set<string>();
+    const yoursTracked = new Map(
+      live
+        ? (
+            await tx
+              .select({ id: accounts.id, providerAccountId: accounts.providerAccountId })
+              .from(accounts)
+              .where(eq(accounts.connectionId, live))
+          ).map((a) => [a.providerAccountId!, a.id])
+        : [],
+    );
+    const [known] = live
+      ? await tx
+          .select({ ids: connections.knownAccountIds })
+          .from(connections)
+          .where(eq(connections.id, live))
+      : [];
+    const declined = new Set(known?.ids ?? []);
+    const untracked = offered.filter((a) => !tracked.has(a.providerAccountId));
     const candidates = ownedIds.length
       ? await tx
           .select({
@@ -1004,8 +1130,8 @@ export class ConnectService {
     const synced = new Set(
       candidates.filter((c) => c.connectionId && c.connectionId !== replaces).map((c) => c.id),
     );
-    const matches = matchAccounts(
-      offered.map((a) => ({
+    const matched = matchAccounts(
+      untracked.map((a) => ({
         names: [a.name, a.officialName ?? ''],
         type: a.type,
         mask: a.mask,
@@ -1013,18 +1139,23 @@ export class ConnectService {
       })),
       candidates.map((c) => ({ ...c, closedAt: c.closedAt?.toISOString() ?? null })),
     );
+    const matches = new Map(untracked.map((a, i) => [a.providerAccountId, matched[i]]));
     // A bank's accounts start private to the person who connected them, whatever the household's
     // finance style: they choose who else sees each before anything syncs (D4).
     const visibility = 'private';
-    return offered.map((a, i): OfferedAccount => {
-      const match = matches[i];
-      const suggestion: ConnectSuggestion = !match
-        ? { choice: 'new', owners: [{ memberId: ctx.memberId }], visibility }
-        : closed.has(match.accountId)
-          ? { choice: 'skip', reason: 'closed', accountId: match.accountId }
-          : synced.has(match.accountId)
-            ? { choice: 'skip', reason: 'synced', accountId: match.accountId }
-            : { choice: 'link', accountId: match.accountId, by: match.by };
+    return offered.map((a): OfferedAccount => {
+      const match = matches.get(a.providerAccountId);
+      const suggestion: ConnectSuggestion = tracked.has(a.providerAccountId)
+        ? { choice: 'keep' }
+        : declined.has(a.providerAccountId) && !match
+          ? { choice: 'skip', reason: 'declined' }
+          : !match
+            ? { choice: 'new', owners: [{ memberId: ctx.memberId }], visibility }
+            : closed.has(match.accountId)
+              ? { choice: 'skip', reason: 'closed', accountId: match.accountId }
+              : synced.has(match.accountId)
+                ? { choice: 'skip', reason: 'synced', accountId: match.accountId }
+                : { choice: 'link', accountId: match.accountId, by: match.by };
       return {
         providerAccountId: a.providerAccountId,
         name: a.name,
@@ -1035,6 +1166,9 @@ export class ConnectService {
         currency: a.currency ?? hh!.baseCurrency,
         balance: a.balance,
         suggestion,
+        tracked: tracked.has(a.providerAccountId)
+          ? { accountId: yoursTracked.get(a.providerAccountId) ?? null }
+          : null,
       };
     });
   }

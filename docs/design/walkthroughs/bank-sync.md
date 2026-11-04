@@ -95,7 +95,7 @@ Each account the bank offers gets one choice:
   stays, and sync takes over from where that history ends.
 - **New account**, with owners and who sees it.
 - **Don't track.** Offered for accounts closed at the bank, and anything you'd rather leave out.
-  You can track it later from the connection's settings.
+  You can track it later: **Choose accounts** on the connection (D19).
 
 **D5. Linking keeps imported history; sync fills in after it.** Most people arrive with history
 from a Monarch export or bank files. Linking a connected account to that account, instead of
@@ -213,6 +213,16 @@ with notifications in M4 (#127's "sync failure" rule), and are wired to the same
 Household settings → **Connections** lists every connection behind accounts you can see: the
 bank, the provider, who linked it, how many accounts, its status, and what you can do.
 
+**D19. Choosing accounts again.** Each live connection has **Choose accounts** for whoever linked
+it. It reopens the choose step (§3) without signing in or a new SimpleFIN token: what it tracks
+says **Keep tracking**, or **Stop tracking** (the account and its history stay, as on disconnect);
+what you chose not to track before is suggested so again; the rest can be new, linked, or moved
+here (D18). Accounts it adds bring their history: the next sync starts from the beginning. Fiscus
+remembers every account the bank offered and you chose about, so when a sync finds one it hasn't
+(an account added at the SimpleFIN Bridge later), the connection says so and the button turns
+primary. An account someone else owns privately shows as tracked, and only they can stop it.
+Plaid only offers the accounts picked in Link; adding others there is Plaid's update mode (#82).
+
 **D14. Disconnecting keeps everything.** Disconnecting stops syncing and deletes the stored
 access, but the accounts and all their history stay, as accounts you update by hand or with
 files. Reconnecting later offers to link them back (§3). There is no "delete the accounts too"
@@ -274,6 +284,7 @@ for one syncing real money.
 | D16 | The admin sees counts, never content | #22, #85 |
 | D17 | Sandbox and a stubbed SimpleFIN for tests | #79, #91 |
 | D18 | An account moves between Plaid and SimpleFIN by linking it; the connection it leaves ends once empty | #78, ACC-03 |
+| D19 | "Choose accounts" on a live connection: keep, stop, add, or move; a sync notices accounts nobody chose about | #78, #91, ACC-03 |
 
 ## Open questions
 

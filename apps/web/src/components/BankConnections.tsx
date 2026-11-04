@@ -228,6 +228,16 @@ function ConnectionLine({
     </p>
   ) : null;
 
+  // The bank offers accounts nobody chose about yet (a SimpleFIN account added at the Bridge).
+  const unchosen = c.newAccountsAvailable ? (
+    <p className="text-xs text-fg">
+      {bank} has accounts you haven’t chosen about yet.{' '}
+      {yours ? 'Choose accounts to track them.' : `${c.owner.name} can add them.`}
+    </p>
+  ) : null;
+  // Choosing again: track more, move some here, or stop tracking some (D18).
+  const choosable = c.status === 'ok' || c.status === 'error';
+
   const trouble = connectionTrouble(c);
   const linked = manage ? (
     <p className="text-xs text-muted">
@@ -270,6 +280,7 @@ function ConnectionLine({
           {status}
         </p>
         {importing}
+        {unchosen}
         {oldKeys}
         {stale}
       </div>
@@ -280,6 +291,17 @@ function ConnectionLine({
               to="/h/$householdId/connect/setup/$connectionId"
               params={{ householdId, connectionId: c.id }}
               className={buttonStyles({ size: 'sm' })}
+            >
+              Choose accounts
+            </Link>
+          ) : choosable ? (
+            <Link
+              to="/h/$householdId/connect/setup/$connectionId"
+              params={{ householdId, connectionId: c.id }}
+              className={buttonStyles({
+                size: 'sm',
+                variant: c.newAccountsAvailable ? 'primary' : 'secondary',
+              })}
             >
               Choose accounts
             </Link>
