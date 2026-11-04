@@ -9,6 +9,7 @@ import type {
   BudgetScope,
   BudgetSuggestion,
   BudgetSummary,
+  GoalsOverview,
   CashFlow,
   CategoryGroup,
   Connection,
@@ -221,6 +222,13 @@ export const categoriesQuery = (id: string) =>
   });
 
 /** The budgets you can see: the household's, and your own (#99). */
+/** Goals you see, the accounts you can claim, and any shortfall (goals walkthrough §1). */
+export const goalsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'goals'],
+    queryFn: async () => (await api<Data<GoalsOverview>>('GET', `${hh(id)}/goals`)).data,
+  });
+
 export const budgetsQuery = (id: string) =>
   queryOptions({
     queryKey: ['households', id, 'budgets'],

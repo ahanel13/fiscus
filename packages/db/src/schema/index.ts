@@ -4,6 +4,7 @@ export * from './account-layout.js';
 export * from './accounts.js';
 export * from './budgets.js';
 export * from './connections.js';
+export * from './goals.js';
 export * from './household-keys.js';
 export * from './households.js';
 export * from './identity.js';
