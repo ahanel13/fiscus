@@ -76,6 +76,10 @@ Each schedule says what happens when its day falls on a weekend: **the Friday be
 paychecks), **the Monday after** (many bills), or **that day**. Fiscus doesn't keep a holiday
 calendar. A payment a day early, before a bank holiday, is still matched (§5).
 
+Built: the weekend rule isn't asked. Money in is expected the Friday before, money out the Monday
+after; matching looks 3 days either side, so a payment on the other side of the weekend still
+counts. Schedules can also be a weekday in the month ("the first Friday", #506).
+
 ---
 
 ## 2. Finding them in your history

@@ -52,12 +52,6 @@ const REPEATS = {
 } as const;
 type Repeat = keyof typeof REPEATS | 'days';
 
-const WEEKEND: Record<WeekendRule, string> = {
-  before: 'The Friday before',
-  after: 'The Monday after',
-  as_is: 'That day',
-};
-
 type AmountMode = 'any' | 'min' | 'max' | 'between';
 
 /**
@@ -105,7 +99,6 @@ interface Form {
   onThe: string;
   /** 0–6, or NO_WEEKDAY. */
   weekday: number;
-  weekend: WeekendRule;
   windowDays: number;
 }
 
@@ -153,13 +146,15 @@ function toForm(name: string, kind: RecurringKind, d: RecurringDraft): Form {
           ? 'lastday'
           : String(s.unit === 'month' && s.days ? s.days[0] : day),
     weekday: s.unit === 'month' && s.weekday ? s.weekday.day : NO_WEEKDAY,
-    weekend: s.weekend,
     windowDays: d.windowDays,
   };
 }
 
 function toSchedule(f: Form): RecurringSchedule {
-  const { anchor, weekend } = f;
+  const { anchor } = f;
+  // A date on a weekend: money in usually comes the Friday before, bills go out the Monday after.
+  // Matching looks 3 days either side anyway, so this isn't asked.
+  const weekend: WeekendRule = f.direction === 'in' ? 'before' : 'after';
   if (f.repeat === 'week1' || f.repeat === 'week2') {
     return { unit: 'week', every: f.repeat === 'week1' ? 1 : 2, anchor, weekend };
   }
@@ -313,9 +308,6 @@ export function RecurringDialog({
   const p = preview.data;
   const schedule = toSchedule(form);
   const monthly = schedule.unit === 'month';
-  // The first Friday is never on a weekend: no weekend rule to choose.
-  const onWeekday =
-    monthly && !!schedule.weekday && schedule.weekday.day >= 1 && schedule.weekday.day <= 5;
 
   return (
     <Dialog
@@ -382,19 +374,6 @@ export function RecurringDialog({
                 : []),
             ]}
           </Select>
-          {onWeekday ? null : (
-            <Select
-              label="On a weekend"
-              value={form.weekend}
-              onChange={(v) => set({ weekend: v as WeekendRule })}
-            >
-              {Object.entries(WEEKEND).map(([id, label]) => (
-                <SelectItem key={id} id={id}>
-                  {label}
-                </SelectItem>
-              ))}
-            </Select>
-          )}
           {monthly && form.repeat !== 'twice' ? (
             <div className="grid grid-cols-2 gap-3 sm:col-span-2">
               <Select
