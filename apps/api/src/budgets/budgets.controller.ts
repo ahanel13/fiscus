@@ -8,11 +8,13 @@ import {
   type BudgetSummary,
   type BudgetYear,
   createBudgetSchema,
+  moveMoneySchema,
   type ScopePreview,
   setBudgetScopeSchema,
   setBudgetAmountSchema,
   setBudgetCategorySchema,
   setFlexibleSchema,
+  setPercentageSchema,
   type StrategyPreview,
   switchStrategySchema,
 } from '@fiscus/shared';
@@ -170,5 +172,40 @@ export class BudgetsController {
     @Body(new ZodPipe(setFlexibleSchema)) body: z.infer<typeof setFlexibleSchema>,
   ): Promise<void> {
     await this.budgets.setFlexible(ctx, budgetId, month, body.amountMinor);
+  }
+
+  /** Move money, or Cover (zero-based, D9). */
+  @Post(':budgetId/months/:month/moves')
+  @HttpCode(204)
+  async moveMoney(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
+    @Body(new ZodPipe(moveMoneySchema)) body: z.infer<typeof moveMoneySchema>,
+  ): Promise<void> {
+    await this.budgets.moveMoney(ctx, budgetId, month, body);
+  }
+
+  /** Assign like last month (zero-based): a month assigns afresh (D8). */
+  @Post(':budgetId/months/:month/assign-like-last-month')
+  @HttpCode(204)
+  async assignLikeLastMonth(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
+  ): Promise<void> {
+    await this.budgets.assignLikeLastMonth(ctx, budgetId, month);
+  }
+
+  /** 50/30/20's split, for the period running in that month (§3.3). */
+  @Put(':budgetId/months/:month/percentage')
+  @HttpCode(204)
+  async setPercentage(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
+    @Body(new ZodPipe(setPercentageSchema)) body: z.infer<typeof setPercentageSchema>,
+  ): Promise<void> {
+    await this.budgets.setPercentage(ctx, budgetId, month, body);
   }
 }

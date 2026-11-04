@@ -167,3 +167,42 @@ export const budgetCategories = pgTable(
     check('budget_categories_yearly', sql`${t.yearlyMinor} IS NULL OR ${t.yearlyMinor} >= 0`),
   ],
 );
+
+/**
+ * Money moved between categories in a month (zero-based, D9): **Move money** and **Cover**. Each
+ * move is kept, so the month shows who moved what; a line's moves add up to its net.
+ */
+export const budgetMoves = pgTable(
+  'budget_moves',
+  {
+    id: id(),
+    householdId: uuid().notNull(),
+    budgetId: uuid().notNull(),
+    month: date({ mode: 'string' }).notNull(),
+    fromCategoryId: uuid().notNull(),
+    toCategoryId: uuid().notNull(),
+    /** In the household's base currency. */
+    amountMinor: money('amount_minor').notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.householdId, t.budgetId],
+      foreignColumns: [budgets.householdId, budgets.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.fromCategoryId],
+      foreignColumns: [categories.householdId, categories.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.toCategoryId],
+      foreignColumns: [categories.householdId, categories.id],
+    }).onDelete('cascade'),
+    index().on(t.budgetId, t.month),
+    index().on(t.fromCategoryId),
+    index().on(t.toCategoryId),
+    check('budget_moves_month', firstOfMonth(t.month)),
+    check('budget_moves_positive', sql`${t.amountMinor} > 0`),
+    check('budget_moves_two_categories', sql`${t.fromCategoryId} <> ${t.toCategoryId}`),
+  ],
+);

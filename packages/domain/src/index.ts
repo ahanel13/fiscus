@@ -62,7 +62,9 @@ export {
   periodFor,
   type BudgetCategory,
   type BudgetDefinition,
+  type BudgetGoalLine,
   type BudgetPeriod,
+  type BudgetScopeKind,
   type BudgetStrategy,
   type BudgetStrategyKind,
   type Carry,
@@ -72,6 +74,23 @@ export {
   type StrategyMonth,
   type StrategyRegistry,
 } from './budget.js';
+export { STRATEGY_REGISTRY } from './strategies.js';
+export {
+  bucketOfKind,
+  FIFTY_THIRTY_TWENTY,
+  percentage,
+  type PercentageBucket,
+  type PercentageBucketView,
+  type PercentageSettings,
+  type PercentageView,
+} from './percentage.js';
+export {
+  zeroBased,
+  type ZeroBasedGoalRow,
+  type ZeroBasedRow,
+  type ZeroBasedSettings,
+  type ZeroBasedView,
+} from './zero-based.js';
 export {
   etagFor,
   parseIfMatch,

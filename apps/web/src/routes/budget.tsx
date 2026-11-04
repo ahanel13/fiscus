@@ -11,10 +11,12 @@ import {
   type FlexMonth,
   type HouseholdMember,
   type IncomeRow,
+  type PercentageMonth,
   type ScopePreview,
   type StrategyPreview,
   type Household,
   type Transaction,
+  type ZeroBasedMonth,
   formatMoney,
   minorUnitExponent,
 } from '@fiscus/shared';
@@ -48,11 +50,15 @@ import {
   Menu,
   MenuItem,
   MenuTrigger,
+  Radio,
   RadioCard,
   RadioGroup,
   SegmentedControl,
+  Select,
+  SelectItem,
   Skeleton,
   Switch,
+  TextField,
   toast,
 } from '../components/ui.js';
 
@@ -661,6 +667,8 @@ function MonthView({
   );
   const [flexible, setFlexible] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [moving, setMoving] = useState<MoveStart | null>(null);
+  const [splitting, setSplitting] = useState(false);
   const [showAll, setShowAll] = useShowUnbudgeted();
   const goTo = useGoToView();
   const strategy = data.data?.view.strategy ?? budget.strategy;
@@ -670,7 +678,7 @@ function MonthView({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <MonthStepper month={shown} startsMonth={budget.startsMonth} />
         <div className="hidden flex-wrap items-center gap-2 sm:flex">
-          <Badge>{STRATEGY_NAMES[strategy as 'category' | 'flex'] ?? 'Category limits'}</Badge>
+          <Badge>{STRATEGY_NAMES[strategy as StrategyName] ?? 'Category limits'}</Badge>
           <ViewLink view="year">Annual view</ViewLink>
           {data.data?.canEdit ? (
             <Button variant="ghost" size="sm" onPress={() => setSwitching(true)}>
@@ -687,7 +695,7 @@ function MonthView({
             <MenuItem onAction={() => goTo('year')}>Annual view</MenuItem>
             {data.data?.canEdit ? (
               <MenuItem onAction={() => setSwitching(true)}>
-                Change how you budget ({STRATEGY_NAMES[strategy as 'category' | 'flex']})
+                Change how you budget ({STRATEGY_NAMES[strategy as StrategyName]})
               </MenuItem>
             ) : null}
           </Menu>
@@ -709,6 +717,24 @@ function MonthView({
           onOpen={setOpen}
           onYearly={data.data.canEdit ? setYearly : undefined}
           onFlexible={data.data.canEdit ? () => setFlexible(true) : undefined}
+        />
+      ) : data.data.view.strategy === 'percentage' ? (
+        <PercentageBody
+          data={data.data as BudgetMonth & { view: PercentageMonth }}
+          groups={groups}
+          householdId={household.id}
+          onOpen={setOpen}
+          onSplit={data.data.canEdit ? () => setSplitting(true) : undefined}
+        />
+      ) : data.data.view.strategy === 'zero_based' ? (
+        <ZeroBasedBody
+          data={data.data as BudgetMonth & { view: ZeroBasedMonth }}
+          groups={groups}
+          householdId={household.id}
+          showAll={showAll}
+          onShowAll={setShowAll}
+          onOpen={setOpen}
+          onMove={setMoving}
         />
       ) : (
         <MonthBody
@@ -738,6 +764,22 @@ function MonthView({
           onClose={() => setFlexible(false)}
         />
       ) : null}
+      {splitting && data.data?.view.strategy === 'percentage' ? (
+        <SplitDialog
+          householdId={household.id}
+          data={data.data as BudgetMonth & { view: PercentageMonth }}
+          onClose={() => setSplitting(false)}
+        />
+      ) : null}
+      {moving && data.data?.view.strategy === 'zero_based' ? (
+        <MoveDialog
+          householdId={household.id}
+          data={data.data as BudgetMonth & { view: ZeroBasedMonth }}
+          groups={groups}
+          start={moving}
+          onClose={() => setMoving(null)}
+        />
+      ) : null}
       {switching && data.data ? (
         <StrategyDialog
           householdId={household.id}
@@ -751,7 +793,7 @@ function MonthView({
           month={data.data}
           categoryId={open.categoryId}
           row={
-            data.data.view.strategy === 'category'
+            data.data.view.strategy === 'category' || data.data.view.strategy === 'zero_based'
               ? data.data.view.rows.find((r) => r.categoryId === open.categoryId)
               : open.row
           }
@@ -2172,7 +2214,23 @@ export function CountsIn({ householdId, t }: { householdId: string; t: Transacti
 
 // ── Flex (§3.4) ──────────────────────────────────────────────────────────────────────────────
 
-const STRATEGY_NAMES = { category: 'Category limits', flex: 'Flex' } as const;
+const STRATEGY_NAMES = {
+  category: 'Category limits',
+  flex: 'Flex',
+  zero_based: 'Zero-based',
+  percentage: '50/30/20',
+} as const;
+type StrategyName = keyof typeof STRATEGY_NAMES;
+/** What "Change how you budget" offers, in this order. */
+const SWITCHABLE: StrategyName[] = ['category', 'flex', 'zero_based', 'percentage'];
+const STRATEGY_DESCRIPTIONS: Record<StrategyName, string> = {
+  category: 'Each category gets a limit of its own.',
+  flex: 'Fixed costs one by one, saving up for non-monthly ones, and one number for the rest.',
+  zero_based:
+    'Every dollar that comes in gets a job. What a category doesn’t spend stays in it, and overspending is covered from another.',
+  percentage:
+    'Income split into buckets by percentage: needs, wants and savings, or your own. No limits per category.',
+};
 
 function FlexBody({
   data,
@@ -2353,6 +2411,760 @@ function FlexBody({
  * for yours, your income, with what you moved into joint accounts going to Ours.
  */
 /** What came in this month; in the household's budget, with what members put in. */
+// ── Zero-based (§3.2, #100) ──────────────────────────────────────────────────────────────────
+
+/** Where Move money starts: Cover fills in the overspent category and how much it's short. */
+interface MoveStart {
+  toCategoryId?: string;
+  amountMinor?: number;
+}
+
+/**
+ * A zero-based month: Ready to assign on top, then each group's envelopes with what's assigned,
+ * spent, and available. Every envelope rolls over; an overspent one is covered from another (D9).
+ * A month assigns afresh (D8), so a new one offers last month's amounts in one click.
+ */
+function ZeroBasedBody({
+  data,
+  groups,
+  householdId,
+  showAll,
+  onShowAll: setShowAll,
+  onOpen,
+  onMove,
+}: {
+  data: BudgetMonth & { view: ZeroBasedMonth };
+  groups: CategoryGroup[];
+  householdId: string;
+  showAll: boolean;
+  onShowAll: (show: boolean) => void;
+  onOpen: (e: { categoryId: string; row?: CategoryLimitRow }) => void;
+  onMove: (start: MoveStart) => void;
+}) {
+  const { view, currency, month } = data;
+  const queryClient = useQueryClient();
+  const [collapsed, toggle] = useCollapsed();
+  const rows = new Map(view.rows.map((r) => [r.categoryId, r]));
+  const excluded = new Set(data.excluded);
+  const fmt = (minor: number) => formatMinor(minor, currency);
+  const money = (minor: number, className?: string) => (
+    <Amount minor={minor} currency={currency} kind="balance" className={className} />
+  );
+  const like = useMutation({
+    mutationFn: () =>
+      api(
+        'POST',
+        `${base(householdId)}/budgets/${data.budget.id}/months/${month}/assign-like-last-month`,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', data.budget.id],
+      }),
+    onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
+  });
+
+  const { readyMinor, cameInMinor, carriedMinor, overspentMinor, assignedMinor } = view.ready;
+  const shared = data.budget.scope === 'household';
+  const parts = [
+    `${fmt(cameInMinor)} came in this month${
+      view.contributionsMinor
+        ? shared
+          ? ` (${fmt(view.contributionsMinor)} of it contributions)`
+          : ` (after ${fmt(view.contributionsMinor)} to Ours)`
+        : ''
+    }`,
+    carriedMinor > 0 ? `${fmt(carriedMinor)} left from last month` : null,
+    carriedMinor < 0 ? `${fmt(-carriedMinor)} assigned ahead last month` : null,
+    overspentMinor > 0 ? `${fmt(overspentMinor)} overspent last month` : null,
+    `${fmt(assignedMinor)} assigned`,
+  ].filter((p) => p !== null);
+
+  const spending = groups
+    .filter((g) => g.kind !== 'income' && g.kind !== 'transfer')
+    .map((g) => ({
+      group: g,
+      categories: g.categories.filter(
+        (c) => !excluded.has(c.id) && (rows.has(c.id) || (showAll && !c.archived)),
+      ),
+    }))
+    .filter((g) => g.categories.length > 0);
+
+  return (
+    <>
+      <section
+        aria-label="Ready to assign"
+        className={clsx(
+          'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-4',
+          readyMinor < 0
+            ? 'border-danger bg-danger-soft'
+            : readyMinor > 0
+              ? 'border-accent bg-accent-soft'
+              : 'border-border bg-surface',
+        )}
+      >
+        <div className="min-w-0">
+          <p
+            className={clsx(
+              'text-2xl font-semibold',
+              readyMinor < 0 ? 'text-danger' : readyMinor > 0 && 'text-accent-text',
+            )}
+          >
+            {money(Math.abs(readyMinor))}{' '}
+            <span className="text-base font-medium">
+              {readyMinor < 0 ? 'assigned more than you have' : 'ready to assign'}
+            </span>
+          </p>
+          <p className="text-sm text-muted">{parts.join(' · ')}</p>
+        </div>
+        {data.canEdit && !view.assigned && view.lastAssigned ? (
+          <Button isPending={like.isPending} onPress={() => like.mutate()}>
+            Assign like {monthName(view.lastAssigned.month)} ({fmt(view.lastAssigned.assignedMinor)}
+            )
+          </Button>
+        ) : null}
+      </section>
+
+      {view.totals.overCount ? (
+        <Alert tone="warning">
+          {view.totals.overCount} {view.totals.overCount === 1 ? 'category is' : 'categories are'}{' '}
+          overspent by {fmt(view.totals.overspentMinor)}. Cover{' '}
+          {view.totals.overCount === 1 ? 'it' : 'them'} by moving money from another category. Left
+          uncovered, it comes out of {monthName(addMonths(month, 1))}’s ready to assign.
+        </Alert>
+      ) : null}
+
+      {data.canEdit ? (
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <Button variant="secondary" size="sm" onPress={() => onMove({})}>
+            Move money
+          </Button>
+          <Switch isSelected={showAll} onChange={setShowAll}>
+            Show every category
+          </Switch>
+        </div>
+      ) : null}
+
+      <div className="rounded-xl border border-border bg-surface max-sm:space-y-3 max-sm:border-0 max-sm:bg-transparent sm:overflow-hidden">
+        <div
+          className={clsx(
+            'grid gap-3 border-b border-border px-4 py-2 text-xs font-semibold text-muted max-sm:border-0 max-sm:pb-0',
+            COLUMNS,
+          )}
+        >
+          <span className="max-sm:text-base max-sm:text-fg">Category</span>
+          <span className="self-end text-right">Assigned</span>
+          <span className="hidden text-right sm:block">Spent</span>
+          <span className="self-end text-right">Available</span>
+        </div>
+        {spending.length === 0 ? (
+          <p className={clsx('px-4 py-6 text-sm text-muted', PHONE_CARD)}>
+            Nothing’s assigned in {monthName(month)} yet.
+            {data.canEdit ? ' Show every category to give each one a job.' : ''}
+          </p>
+        ) : null}
+        {spending.map(({ group, categories }) => {
+          const here = categories.map((c) => rows.get(c.id)).filter((r) => r !== undefined);
+          const total = (f: (r: CategoryLimitRow) => number) => here.reduce((s, r) => s + f(r), 0);
+          const left = total((r) => r.leftMinor);
+          const open = !collapsed.has(group.id);
+          return (
+            <section key={group.id} className={PHONE_CARD}>
+              <GroupHeader
+                id={`budget-group-${group.id}`}
+                name={group.name}
+                className={open ? 'border-b' : 'border-b max-sm:border-b-0'}
+                open={open}
+                onToggle={() => toggle(group.id)}
+              >
+                <span className="text-right">{money(total((r) => r.budgetedMinor))}</span>
+                <span className="hidden text-right sm:block">
+                  {money(total((r) => r.spentMinor))}
+                </span>
+                <span className={clsx('text-right', left < 0 && 'text-danger')}>{money(left)}</span>
+              </GroupHeader>
+              {open ? (
+                <ul
+                  id={`budget-group-${group.id}`}
+                  className="divide-y divide-border border-b border-border max-sm:border-b-0"
+                >
+                  {categories.map((c) => {
+                    const r = rows.get(c.id);
+                    const available = r?.leftMinor ?? 0;
+                    const cover = data.canEdit && available < 0;
+                    return (
+                      <li key={c.id} className={clsx('grid items-center gap-3 px-4 py-2', COLUMNS)}>
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => onOpen({ categoryId: c.id, row: r })}
+                            className="block w-full min-w-0 py-1 text-left"
+                            aria-label={`${c.name}: its transactions and history`}
+                          >
+                            <span className="block truncate text-sm font-medium">{c.name}</span>
+                            <span className="block text-xs text-muted sm:hidden">
+                              {fmt(r?.spentMinor ?? 0)} spent
+                              {r?.rolledInMinor ? ` · ${fmt(r.rolledInMinor)} carried` : ''}
+                            </span>
+                          </button>
+                          {cover ? (
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-accent-text underline sm:hidden"
+                              onClick={() =>
+                                onMove({ toCategoryId: c.id, amountMinor: -available })
+                              }
+                            >
+                              Cover {fmt(-available)}
+                            </button>
+                          ) : null}
+                        </div>
+                        {data.canEdit ? (
+                          <BudgetAmount
+                            key={`${c.id}:${r?.budgetedMinor ?? 0}`}
+                            householdId={householdId}
+                            data={data}
+                            categoryId={c.id}
+                            name={c.name}
+                            value={r?.budgetedMinor ?? 0}
+                            applyTo="month"
+                          />
+                        ) : (
+                          money(r?.budgetedMinor ?? 0, 'text-right text-sm')
+                        )}
+                        <span className="hidden text-right text-sm sm:block">
+                          {money(r?.spentMinor ?? 0)}
+                        </span>
+                        <span className="flex items-center justify-end gap-2 text-sm">
+                          {cover ? (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="max-sm:hidden"
+                              onPress={() =>
+                                onMove({ toCategoryId: c.id, amountMinor: -available })
+                              }
+                            >
+                              Cover
+                            </Button>
+                          ) : null}
+                          {money(
+                            available,
+                            available < 0
+                              ? 'font-medium text-danger'
+                              : available === 0
+                                ? 'text-muted'
+                                : undefined,
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Move money between two categories this month, or Cover an overspent one (D9). Cover suggests
+ * the category with the most available; Ready to assign doesn't change.
+ */
+function MoveDialog({
+  householdId,
+  data,
+  groups,
+  start,
+  onClose,
+}: {
+  householdId: string;
+  data: BudgetMonth & { view: ZeroBasedMonth };
+  groups: CategoryGroup[];
+  start: MoveStart;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const excluded = new Set(data.excluded);
+  const name = (id: string) => categoryName(groups, id);
+  const fmt = (minor: number) => formatMinor(minor, data.currency);
+  const cover = start.toCategoryId !== undefined && start.amountMinor !== undefined;
+  const withMoney = data.view.rows
+    .filter((r) => r.leftMinor > 0)
+    .sort((a, b) => b.leftMinor - a.leftMinor);
+  const categories = groups
+    .filter((g) => g.kind !== 'income' && g.kind !== 'transfer')
+    .flatMap((g) => g.categories)
+    .filter((c) => !c.archived && !excluded.has(c.id));
+  const [to, setTo] = useState<string | null>(start.toCategoryId ?? null);
+  const [from, setFrom] = useState<string | null>(
+    withMoney.find((r) => r.categoryId !== start.toCategoryId)?.categoryId ?? null,
+  );
+  const [amount, setAmount] = useState<number | null>(start.amountMinor ?? null);
+  const available = withMoney.find((r) => r.categoryId === from)?.leftMinor ?? 0;
+  const save = useMutation({
+    mutationFn: () =>
+      api('POST', `${base(householdId)}/budgets/${data.budget.id}/months/${data.month}/moves`, {
+        body: { fromCategoryId: from, toCategoryId: to, amountMinor: amount },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', data.budget.id],
+      });
+      toast(`Moved ${fmt(amount ?? 0)} from ${name(from!)} to ${name(to!)}.`);
+      onClose();
+    },
+  });
+  const err = save.error as ApiError | null;
+  const ready = !!from && !!to && from !== to && !!amount && amount > 0;
+  return (
+    <Dialog
+      title={cover ? `Cover ${name(start.toCategoryId!)}` : 'Move money'}
+      isOpen
+      onOpenChange={(open) => (open ? null : onClose())}
+    >
+      <div className="space-y-4">
+        {cover ? (
+          <p className="text-sm text-muted">Overspent by {fmt(start.amountMinor!)}.</p>
+        ) : null}
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        {withMoney.length === 0 ? (
+          <Alert tone="info">
+            No category has money available to move. Assign more from Ready to assign instead.
+          </Alert>
+        ) : null}
+        <AmountInput
+          label="Move"
+          currency={data.currency}
+          value={amount}
+          onChange={setAmount}
+          errorMessage={
+            from && amount && amount > available
+              ? `${name(from)} has ${fmt(available)}.`
+              : undefined
+          }
+        />
+        <Select
+          label="From"
+          value={from}
+          onChange={(v) => setFrom(v ? String(v) : null)}
+          isDisabled={withMoney.length === 0}
+        >
+          {withMoney
+            .filter((r) => r.categoryId !== to)
+            .map((r) => (
+              <SelectItem key={r.categoryId} id={r.categoryId} textValue={name(r.categoryId)}>
+                {name(r.categoryId)} · {fmt(r.leftMinor)} available
+              </SelectItem>
+            ))}
+        </Select>
+        {cover ? null : (
+          <Select label="To" value={to} onChange={(v) => setTo(v ? String(v) : null)}>
+            {categories
+              .filter((c) => c.id !== from)
+              .map((c) => (
+                <SelectItem key={c.id} id={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+          </Select>
+        )}
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button
+            isDisabled={!ready || (amount ?? 0) > available}
+            isPending={save.isPending}
+            onPress={() => save.mutate()}
+          >
+            Move {amount ? fmt(amount) : ''}
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
+  );
+}
+
+// ── 50/30/20 (§3.3, #101) ────────────────────────────────────────────────────────────────────
+
+/** What fills each bucket, for the preset's keys; a bucket you add holds what you move into it. */
+const BUCKET_NOTES: Record<string, string> = {
+  needs: 'Fixed groups, and categories you’ve moved here',
+  wants: 'Flexible and non-monthly groups',
+  savings: 'The savings group, and money moved to savings and investment accounts',
+};
+
+/** The bucket a category's group kind puts it in (D10), as the engine reads it. */
+const kindBucket = (kind: CategoryGroup['kind']): string | null =>
+  kind === 'fixed'
+    ? 'needs'
+    : kind === 'flexible' || kind === 'non_monthly'
+      ? 'wants'
+      : kind === 'savings'
+        ? 'savings'
+        : null;
+
+/**
+ * A month split by percentage: what's split, then a card per bucket with its share, what it's
+ * spent, and its biggest categories, each of which can move to another bucket (D10). No limits.
+ */
+function PercentageBody({
+  data,
+  groups,
+  householdId,
+  onOpen,
+  onSplit,
+}: {
+  data: BudgetMonth & { view: PercentageMonth };
+  groups: CategoryGroup[];
+  householdId: string;
+  onOpen: (e: { categoryId: string }) => void;
+  onSplit?: (() => void) | undefined;
+}) {
+  const { view, currency } = data;
+  const queryClient = useQueryClient();
+  const progress = monthProgress(data.month);
+  const shared = data.budget.scope === 'household';
+  const money = (minor: number) => (
+    <Amount minor={minor} currency={currency} kind="balance" whole />
+  );
+  const kindOf = new Map(groups.flatMap((g) => g.categories.map((c) => [c.id, g.kind] as const)));
+  const move = useMutation({
+    mutationFn: ({ categoryId, bucket }: { categoryId: string; bucket: string | null }) =>
+      api('PUT', `${base(householdId)}/budgets/${data.budget.id}/categories/${categoryId}`, {
+        body: { bucket },
+      }),
+    onSuccess: (_, { categoryId, bucket }) => {
+      const to = view.buckets.find(
+        (b) => b.key === (bucket ?? kindBucket(kindOf.get(categoryId)!)),
+      );
+      toast(`${categoryName(groups, categoryId)} counts in ${to?.name ?? 'its own bucket'} now.`);
+      return queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', data.budget.id],
+      });
+    },
+    onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
+  });
+  const splitName = view.settings.buckets.map((b) => b.percent).join('/');
+  const baseNote =
+    view.base.income === 'expected'
+      ? 'income you expect'
+      : !shared && view.base.kind === 'after_contributions' && view.contributionsMinor
+        ? 'income after contributions'
+        : 'income this month';
+  const moveMenu = (categoryId: string, current: string) =>
+    data.canEdit && view.buckets.length > 1 ? (
+      <MenuTrigger>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Move ${categoryName(groups, categoryId)} to another bucket`}
+        >
+          <MoreHorizontal aria-hidden className="size-4" />
+        </Button>
+        <Menu placement="bottom end">
+          {view.buckets
+            .filter((b) => b.key !== current)
+            .map((b) => (
+              <MenuItem
+                key={b.key}
+                onAction={() =>
+                  move.mutate({
+                    categoryId,
+                    // Back where its group's kind puts it: no setting of its own.
+                    bucket: kindBucket(kindOf.get(categoryId)!) === b.key ? null : b.key,
+                  })
+                }
+              >
+                Count in {b.name}
+              </MenuItem>
+            ))}
+        </Menu>
+      </MenuTrigger>
+    ) : null;
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4">
+        <Stat label={shared ? 'Money in' : 'Your income'}>
+          {money(view.incomeMinor + (shared ? view.contributionsMinor : 0))}
+        </Stat>
+        {!shared && view.contributionsMinor ? (
+          <Stat label="To Ours" note="your contribution this month">
+            {money(-view.contributionsMinor)}
+          </Stat>
+        ) : (
+          <Stat label="Spent">{money(view.totals.spentMinor)}</Stat>
+        )}
+        <Stat label={`Split by ${splitName}`} note={baseNote}>
+          {money(view.base.amountMinor)}
+        </Stat>
+        <Stat
+          label={view.totals.notSpentMinor < 0 ? 'Spent beyond it' : 'Not spent yet'}
+          noteTone={view.totals.notSpentMinor < 0 ? 'danger' : undefined}
+        >
+          {money(Math.abs(view.totals.notSpentMinor))}
+        </Stat>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {view.buckets.map((b) => {
+          const share = view.base.amountMinor > 0 ? b.spentMinor / view.base.amountMinor : 0;
+          const used = b.targetMinor > 0 ? Math.min(1, b.spentMinor / b.targetMinor) : 0;
+          const over = b.spentMinor > b.targetMinor;
+          return (
+            <section
+              key={b.key}
+              aria-label={`${b.name}, ${b.percent}%`}
+              className="space-y-3 rounded-xl border border-border bg-surface p-4"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="font-semibold">
+                  {b.name} · {b.percent}%
+                </h3>
+                <span
+                  className={clsx(
+                    'text-sm',
+                    over ? (b.saving ? 'text-accent-text' : 'text-danger') : 'text-muted',
+                  )}
+                >
+                  {Math.round(share * 100)}% so far
+                </span>
+              </div>
+              <p className="text-xs text-muted">
+                {BUCKET_NOTES[b.key] ?? 'Categories you’ve moved here'}
+              </p>
+              <div
+                className="relative h-2 rounded-full bg-surface-2"
+                role="meter"
+                aria-label={`${b.name}: ${Math.round(used * 100)}% of its share`}
+                aria-valuenow={Math.round(used * 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={clsx(
+                    'h-full rounded-full',
+                    over && !b.saving ? 'bg-danger' : 'bg-accent',
+                  )}
+                  style={{ width: `${used * 100}%` }}
+                />
+                {progress !== null && !b.saving ? (
+                  <span
+                    aria-hidden
+                    className="absolute -top-1 -bottom-1 w-0.5 bg-fg/40"
+                    style={{ left: `${progress * 100}%` }}
+                  />
+                ) : null}
+              </div>
+              <p className="text-sm">
+                <span className="font-semibold">{money(b.spentMinor)}</span>{' '}
+                <span className="text-muted">of {money(b.targetMinor)}</span>
+              </p>
+              {b.categories.length || b.movedToSavingsMinor ? (
+                <ul className="divide-y divide-border text-sm">
+                  {b.categories.map((c) => (
+                    <li key={c.categoryId} className="flex items-center gap-2 py-1">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 truncate text-left hover:underline"
+                        onClick={() => onOpen({ categoryId: c.categoryId })}
+                      >
+                        {categoryName(groups, c.categoryId)}
+                      </button>
+                      {money(c.spentMinor)}
+                      {moveMenu(c.categoryId, b.key)}
+                    </li>
+                  ))}
+                  {b.movedToSavingsMinor ? (
+                    <li className="flex items-center gap-2 py-1">
+                      <span className="min-w-0 flex-1 truncate">
+                        Moved to savings and investment accounts
+                      </span>
+                      {money(b.movedToSavingsMinor)}
+                    </li>
+                  ) : null}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted">Nothing yet this month.</p>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      {view.notInBucket.length ? (
+        <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+          <p className="font-medium">Not in a bucket</p>
+          <ul className="divide-y divide-border">
+            {view.notInBucket.map((c) => (
+              <li key={c.categoryId} className="flex items-center gap-2 py-1">
+                <span className="min-w-0 flex-1 truncate">
+                  {categoryName(groups, c.categoryId)}
+                </span>
+                {money(c.spentMinor)}
+                {moveMenu(c.categoryId, '')}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm text-muted">
+        Buckets follow each category group’s kind. Move a category between buckets from its menu.
+        {onSplit ? (
+          <Button variant="ghost" size="sm" onPress={onSplit}>
+            Change the split
+          </Button>
+        ) : null}
+      </p>
+    </>
+  );
+}
+
+/** 50/30/20's split (§3.3): bucket names and shares adding up to 100%, and what's split (D11). */
+function SplitDialog({
+  householdId,
+  data,
+  onClose,
+}: {
+  householdId: string;
+  data: BudgetMonth & { view: PercentageMonth };
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const s = data.view.settings;
+  const shared = data.budget.scope === 'household';
+  const [buckets, setBuckets] = useState(s.buckets.map((b) => ({ ...b, text: String(b.percent) })));
+  const [baseKind, setBaseKind] = useState(s.base);
+  const [income, setIncome] = useState(s.income);
+  const [expected, setExpected] = useState<number | null>(s.expectedMinor);
+  const total = buckets.reduce((sum, b) => sum + (Number(b.text) || 0), 0);
+  const set = (i: number, patch: Partial<(typeof buckets)[number]>) =>
+    setBuckets(buckets.map((b, j) => (j === i ? { ...b, ...patch } : b)));
+  const save = useMutation({
+    mutationFn: () =>
+      api('PUT', `${base(householdId)}/budgets/${data.budget.id}/months/${data.month}/percentage`, {
+        body: {
+          buckets: buckets.map(({ key, name, text }) => ({
+            key,
+            name: name.trim(),
+            percent: Number(text),
+          })),
+          base: baseKind,
+          income,
+          expectedMinor: income === 'expected' ? expected : null,
+        },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', data.budget.id],
+      });
+      toast('Split saved.');
+      onClose();
+    },
+  });
+  const err = save.error as ApiError | null;
+  const valid =
+    total === 100 &&
+    buckets.every((b) => b.name.trim() && Number.isInteger(Number(b.text)) && Number(b.text) > 0) &&
+    (income === 'actual' || expected !== null);
+  return (
+    <Dialog
+      title="Change the split"
+      size="lg"
+      isOpen
+      onOpenChange={(open) => (open ? null : onClose())}
+    >
+      <div className="space-y-4">
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <div className="space-y-2">
+          {buckets.map((b, i) => (
+            <div key={b.key} className="flex items-end gap-2">
+              <TextField
+                label={i === 0 ? 'Bucket' : undefined}
+                aria-label={i === 0 ? undefined : `Bucket ${i + 1}`}
+                value={b.name}
+                onChange={(name) => set(i, { name })}
+                className="min-w-0 flex-1"
+              />
+              <TextField
+                label={i === 0 ? 'Share (%)' : undefined}
+                aria-label={i === 0 ? undefined : `${b.name || `Bucket ${i + 1}`} share`}
+                value={b.text}
+                inputMode="numeric"
+                onChange={(text) => set(i, { text: text.replace(/[^0-9]/g, '') })}
+                className="w-24"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                isDisabled={buckets.length === 1}
+                onPress={() => setBuckets(buckets.filter((_, j) => j !== i))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+          <div className="flex items-center justify-between gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              isDisabled={buckets.length >= 10}
+              onPress={() =>
+                setBuckets([
+                  ...buckets,
+                  { key: `bucket-${Date.now().toString(36)}`, name: '', percent: 0, text: '' },
+                ])
+              }
+            >
+              Add a bucket
+            </Button>
+            <span className={clsx('text-sm', total === 100 ? 'text-muted' : 'text-danger')}>
+              {total}% of 100%
+            </span>
+          </div>
+        </div>
+        {shared ? null : (
+          <RadioGroup
+            label="Split"
+            value={baseKind}
+            onChange={(v) => setBaseKind(v as typeof baseKind)}
+          >
+            <Radio value="after_contributions">
+              Income after contributions (what you send to Ours is budgeted there)
+            </Radio>
+            <Radio value="whole">The whole income, with contributions as a need</Radio>
+          </RadioGroup>
+        )}
+        <RadioGroup label="Income" value={income} onChange={(v) => setIncome(v as typeof income)}>
+          <Radio value="actual">What actually comes in each month</Radio>
+          <Radio value="expected">A monthly figure I expect (for irregular pay)</Radio>
+        </RadioGroup>
+        {income === 'expected' ? (
+          <AmountInput
+            label="Expected each month"
+            currency={data.currency}
+            value={expected}
+            onChange={setExpected}
+          />
+        ) : null}
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button isDisabled={!valid} isPending={save.isPending} onPress={() => save.mutate()}>
+            Save
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
+  );
+}
+
 function moneyIn(data: BudgetMonth) {
   const { incomeMinor, contributionsMinor } = data.view;
   return incomeMinor + (data.budget.scope === 'household' ? contributionsMinor : 0);
@@ -2507,7 +3319,8 @@ function StrategyDialog({
 }) {
   const queryClient = useQueryClient();
   const current = month.view.strategy;
-  const target = current === 'flex' ? 'category' : 'flex';
+  const choices = SWITCHABLE.filter((s) => s !== current);
+  const [target, setTarget] = useState<StrategyName>(choices[0]!);
   const now = thisMonth();
   const next = addMonths(now, 1);
   const [from, setFrom] = useState(next);
@@ -2536,7 +3349,7 @@ function StrategyDialog({
   const p = preview.data;
   return (
     <Dialog
-      title={`Switch to ${STRATEGY_NAMES[target].toLowerCase()}`}
+      title="Change how you budget"
       size="lg"
       isOpen
       onOpenChange={(open) => (open ? null : onClose())}
@@ -2544,14 +3357,23 @@ function StrategyDialog({
       <div className="space-y-4">
         {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
         <p className="text-sm text-muted">
-          Nothing is deleted. Every amount you’ve set is kept, and switching back brings it all
-          back.
+          You budget with {STRATEGY_NAMES[current].toLowerCase()} now. Nothing is deleted: every
+          amount you’ve set is kept, and switching back brings it all back.
         </p>
-        <p className="text-sm">
-          {target === 'flex'
-            ? 'Flex budgets fixed costs one by one, saves up for non-monthly ones, and gives everything else one number.'
-            : 'Category limits give each category a limit of its own.'}
-        </p>
+        <RadioGroup
+          label="Budget with"
+          value={target}
+          onChange={(v) => setTarget(v as StrategyName)}
+        >
+          {choices.map((s) => (
+            <RadioCard
+              key={s}
+              value={s}
+              title={STRATEGY_NAMES[s]}
+              description={STRATEGY_DESCRIPTIONS[s]}
+            />
+          ))}
+        </RadioGroup>
         <RadioGroup label="Starting" value={from} onChange={setFrom}>
           <RadioCard
             value={next}
@@ -2589,6 +3411,48 @@ function StrategyDialog({
                   Non-monthly categories save up once you give them a yearly amount.
                 </p>
               </>
+            ) : p.after.strategy === 'percentage' ? (
+              <>
+                <p>
+                  Split by 50/30/20:{' '}
+                  <Amount
+                    minor={p.after.base.amountMinor}
+                    currency={month.currency}
+                    kind="balance"
+                  />{' '}
+                  this month.{' '}
+                  {p.after.buckets
+                    .map((b) => `${b.name} ${formatMinor(b.targetMinor, month.currency)}`)
+                    .join(', ')}
+                  .
+                </p>
+                <p className="text-muted">
+                  Categories count in a bucket by their group’s kind; no limits per category. Your
+                  limits stay saved, for switching back.
+                </p>
+              </>
+            ) : p.after.strategy === 'zero_based' ? (
+              <>
+                <p>
+                  Ready to assign:{' '}
+                  <Amount
+                    minor={p.after.ready.readyMinor}
+                    currency={month.currency}
+                    kind="balance"
+                  />
+                  , with your limits as what’s assigned (
+                  <Amount
+                    minor={p.after.ready.assignedMinor}
+                    currency={month.currency}
+                    kind="balance"
+                  />
+                  ).
+                </p>
+                <p className="text-muted">
+                  Each month after starts with nothing assigned, and assigns from what’s come in.
+                  What a category doesn’t spend stays in it.
+                </p>
+              </>
             ) : (
               <p>
                 Each category’s limit as you last set it:{' '}
@@ -2597,7 +3461,12 @@ function StrategyDialog({
                   currency={month.currency}
                   kind="balance"
                 />{' '}
-                in all. The flexible number stays saved, for switching back.
+                in all.
+                {current === 'flex'
+                  ? ' The flexible number stays saved, for switching back.'
+                  : current === 'zero_based'
+                    ? ' What’s left in each category stays only where rollover is on.'
+                    : ''}
               </p>
             )}
           </div>
