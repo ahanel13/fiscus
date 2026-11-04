@@ -303,8 +303,8 @@ the bill.
 
 **D16. The channels.**
 - **In Fiscus:** the bell, with a list of recent notifications (#130).
-- **Email:** sent by the server. The instance admin sets it up once, with new settings
-  (`SMTP_URL`, `MAIL_FROM`) and a test on the Server page. Without them, the email row says
+- **Email:** sent by the server. The instance admin sets it up once, on the Server page (or
+  with `SMTP_URL` and `MAIL_FROM`, which win), with a test there. Without it, the email row says
   "Your server can't send email yet; ask whoever runs it." (#125)
 - **ntfy, Gotify and webhooks:** set up by each person, with their own server address and topic
   or token, stored encrypted (#126). ntfy is the easiest way to get phone push without an app
@@ -340,6 +340,11 @@ short-term cash-flow forecast (ADR 0010), which later adds budgeted spending and
 household's occurrences daily, in its timezone, and records what it sent. A reminder goes out
 once per occurrence and rule, even if the worker restarts. A bill paid before its reminder isn't
 reminded about at all.
+
+**As built so far** (#125, #126, #130): Settings → Notifications, the bell, email (with Server →
+Email's test), ntfy, Gotify and webhooks with their tests, detail levels, and the delivery the
+worker does: [notifications](../notifications.md). The one notification sent so far is "A bank
+connection needs you"; the other rules (#127) and the recap (#128) come next.
 
 ---
 

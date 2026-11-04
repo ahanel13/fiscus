@@ -11,10 +11,12 @@ import {
 import { envKeyProvider, FieldCrypto, masterKeysOrExit } from '@fiscus/crypto';
 import { createDb, HouseholdKeyStore, pingDatabase } from '@fiscus/db';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
+import { GotifyChannel, mailConfigOrExit, NtfyChannel, WebhookChannel } from '@fiscus/notify';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import workerEnv from './env.js';
 import { startHealthServer } from './health-server.js';
+import { MailSource } from './notify/mail-source.js';
 import { Runner } from './runner/runner.js';
 import { WorkerModule } from './worker.module.js';
 
@@ -46,12 +48,26 @@ const providers = new ProviderRegistry([
   new SimpleFinProvider(instanceSimpleFinConfig(env)),
 ]);
 
+// Notification email (#125, D16): only with the server's mail settings. One without the other
+// stops the worker, as Plaid's keys do.
+const mail = mailConfigOrExit(env, (message) => new Logger('Mail').fatal(message));
+
 const app = await NestFactory.createApplicationContext(
   WorkerModule.forRoot({
     db: db.db,
     crypto,
     providers,
     options: { pollMs: env.SYNC_POLL_SECONDS * 1000, intervalHours: env.SYNC_INTERVAL_HOURS },
+    notify: {
+      channels: {
+        // SMTP_URL and MAIL_FROM, else the Server page's settings, read as they change.
+        email: new MailSource(db.db, crypto, mail),
+        ntfy: new NtfyChannel(),
+        gotify: new GotifyChannel(),
+        webhook: new WebhookChannel(),
+      },
+      options: { publicUrl: env.PUBLIC_URL ?? null },
+    },
   }),
   { logger: toNestLogLevels(env.LOG_LEVEL) },
 );
@@ -65,6 +81,11 @@ const logger = new Logger('Worker');
 logger.log(`Worker ready (health on :${env.HEALTH_PORT})`);
 // Only whether, and which environment: never the keys.
 plaidLogger.log(plaidStatus(plaid));
+logger.log(
+  mail
+    ? 'Notification email: SMTP_URL'
+    : 'Notification email: the Server page’s settings, when an admin sets them',
+);
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {

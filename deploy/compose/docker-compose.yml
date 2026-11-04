@@ -111,8 +111,12 @@ services:
         PLAID_SECRET: ${PLAID_SECRET:-}
         PLAID_ENV: ${PLAID_ENV:-}
         PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI:-}
+        # Notification email (docs/design/notifications.md): both or neither. Unset: no email.
+        SMTP_URL: ${SMTP_URL:-}
+        MAIL_FROM: ${MAIL_FROM:-}
+        # Links in invites, password resets and notifications.
+        PUBLIC_URL: ${FISCUS_PUBLIC_URL:-http://localhost:8080}
         LOG_LEVEL: ${LOG_LEVEL:-info}
-      PUBLIC_URL: ${FISCUS_PUBLIC_URL:-http://localhost:8080}
       SIGNUP_MODE: ${FISCUS_SIGNUP_MODE:-invite_only}
       COOKIE_SECURE: ${FISCUS_COOKIE_SECURE:-true}
       # Rate limits are counted here, so they hold across api replicas and restarts (#377).

@@ -18,6 +18,7 @@ import { RecurringModule } from './recurring/recurring.module.js';
 import { RulesModule } from './rules/rules.module.js';
 import { SharedCostsModule } from './shared-costs/shared-costs.module.js';
 import { MeController } from './me/me.controller.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 
 @Global()
 @Module({})
@@ -49,6 +50,7 @@ export class AppModule {
         BudgetsModule,
         RecapModule,
         RecurringModule,
+        NotificationsModule,
         RulesModule,
         SharedCostsModule,
       ],

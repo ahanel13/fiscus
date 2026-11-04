@@ -20,8 +20,11 @@ import type {
   ImportProfile,
   InvitePreview,
   Lens,
+  MailStatus,
   Me,
   NetWorth,
+  NotificationList,
+  NotificationSettingsView,
   PlaidAvailability,
   PossibleDuplicate,
   RecurringSeries,
@@ -409,3 +412,26 @@ export const importCategoryMapQuery = (id: string, format: 'csv' | 'monarch') =>
         )
       ).data,
   });
+
+/** The bell (#130): your recent notifications and the unread count, checked every minute. */
+export const notificationsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'notifications'],
+    queryFn: async () => (await api<Data<NotificationList>>('GET', `${hh(id)}/notifications`)).data,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
+/** Settings → Notifications: your channels and rules (bills walkthrough §7). */
+export const notificationSettingsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'notifications', 'settings'],
+    queryFn: async () =>
+      (await api<Data<NotificationSettingsView>>('GET', `${hh(id)}/notifications/settings`)).data,
+  });
+
+/** Server → Email (D16): whether the server can send it. */
+export const mailStatusQuery = queryOptions({
+  queryKey: ['admin', 'mail'],
+  queryFn: async () => (await api<Data<MailStatus>>('GET', '/api/v1/admin/mail')).data,
+});

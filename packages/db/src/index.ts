@@ -23,6 +23,13 @@ export {
 } from './activity.js';
 export { readConnectionSecret, saveConnectionSecret } from './connection-secrets.js';
 export {
+  channelSecretContext,
+  decryptChannelSecret,
+  encryptChannelSecret,
+  enqueueNotification,
+  type NewNotification,
+} from './notifications.js';
+export {
   activePlaidKeySet,
   type PlaidKeySet,
   plaidKeySetUses,
@@ -32,6 +39,14 @@ export {
   shredPlaidKeySet,
 } from './plaid-credentials.js';
 export { setContext, systemContext, userContext, withContext, type DbContext } from './context.js';
+export {
+  encryptMailPassword,
+  MAIL_SETTING_KEY,
+  readStoredMail,
+  readStoredMailValue,
+  type StoredMail,
+  type StoredMailValue,
+} from './mail-settings.js';
 export { MAINTENANCE_JOBS, runMaintenanceJob, type MaintenanceJob } from './maintenance.js';
 export { pingDatabase } from './health.js';
 export { bytea, householdId, id, money, timestamps, versioning } from './columns.js';
