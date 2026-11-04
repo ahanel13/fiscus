@@ -20,6 +20,9 @@ export const memberRoleSchema = z.enum(['owner', 'member', 'viewer']);
 export type MemberRole = z.infer<typeof memberRoleSchema>;
 export const financeStyleSchema = z.enum(['combined', 'hybrid', 'separate', 'roommates']);
 export type FinanceStyle = z.infer<typeof financeStyleSchema>;
+/** What the review queue asks about: every new transaction, or only the uncategorized ones. */
+export const reviewScopeSchema = z.enum(['all', 'uncategorized']);
+export type ReviewScope = z.infer<typeof reviewScopeSchema>;
 export const dateBasisSchema = z.enum(['posted', 'authorized']);
 
 const householdSettings = {
@@ -32,6 +35,7 @@ const householdSettings = {
   financeStyle: financeStyleSchema,
   /** Setting a transaction's category marks it reviewed. */
   categorizeMarksReviewed: z.boolean(),
+  reviewScope: reviewScopeSchema,
   /** Name imported transactions from a cleaned-up bank description. */
   cleanMerchantNames: z.boolean(),
 };
@@ -43,6 +47,7 @@ export const createHouseholdSchema = z.object({
   dateBasis: householdSettings.dateBasis.default('posted'),
   financeStyle: householdSettings.financeStyle.default('hybrid'),
   categorizeMarksReviewed: householdSettings.categorizeMarksReviewed.default(true),
+  reviewScope: householdSettings.reviewScope.default('all'),
   cleanMerchantNames: householdSettings.cleanMerchantNames.default(true),
   /** How the creator appears in this household. Defaults to their account display name. */
   displayName: displayNameSchema.optional(),
@@ -83,6 +88,8 @@ export interface Household {
   financeStyle: 'combined' | 'hybrid' | 'separate' | 'roommates';
   /** Setting a transaction's category marks it reviewed. */
   categorizeMarksReviewed: boolean;
+  /** What the review queue asks about: every new transaction, or only the uncategorized ones. */
+  reviewScope: ReviewScope;
   /** Name imported transactions from a cleaned-up bank description. */
   cleanMerchantNames: boolean;
   status: 'active' | 'disabled' | 'deleting';

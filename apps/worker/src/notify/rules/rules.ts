@@ -14,6 +14,7 @@ import {
   cardStatementsDue,
   loadBudgetDefinition,
   seriesOccurrences,
+  waitingForReview,
 } from '@fiscus/ledger';
 import { addDays } from '@fiscus/shared';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
@@ -320,7 +321,7 @@ export async function review(m: MemberRun): Promise<number> {
     .from(transactions)
     .where(
       and(
-        eq(transactions.reviewStatus, 'needs_review'),
+        waitingForReview(),
         isNull(transactions.deletedAt),
         eq(transactions.hasSplits, false),
         inArray(transactions.accountId, reviewable),

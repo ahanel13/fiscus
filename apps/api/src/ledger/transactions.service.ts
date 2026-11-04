@@ -31,6 +31,7 @@ import {
   transferReview,
   type TransferReviewIds,
   unlinkTransfers,
+  waitingForReview,
 } from '@fiscus/ledger';
 import { planVersionedPatch } from '@fiscus/domain';
 import type {
@@ -259,7 +260,11 @@ export class TransactionsService {
           : undefined,
         q.minAmount !== undefined ? gte(transactions.amountMinor, q.minAmount) : undefined,
         q.maxAmount !== undefined ? lte(transactions.amountMinor, q.maxAmount) : undefined,
-        q.review ? eq(transactions.reviewStatus, q.review) : undefined,
+        q.review === 'needs_review'
+          ? waitingForReview()
+          : q.review
+            ? eq(transactions.reviewStatus, q.review)
+            : undefined,
         q.includeExcluded === 'false' ? eq(transactions.excluded, false) : undefined,
         await spendingLensFilter(tx, ctx, q.lens),
       ];
@@ -322,7 +327,7 @@ export class TransactionsService {
         .from(transactions)
         .where(
           and(
-            eq(transactions.reviewStatus, 'needs_review'),
+            waitingForReview(),
             isNull(transactions.deletedAt),
             eq(transactions.hasSplits, false),
             inArray(transactions.accountId, accountIds),
