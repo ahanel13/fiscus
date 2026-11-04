@@ -124,6 +124,43 @@ describe('rules', () => {
     expect(uncategorized).toBeTruthy();
   });
 
+  it('matches any one of several description checks, with match: any', async () => {
+    const acc = await account(A, 'Either checking');
+    const id = await rule(A, {
+      conditions: {
+        match: 'any',
+        descriptions: [
+          { op: 'contains', value: 'wal-mart' },
+          { op: 'starts_with', value: 'wm supercenter' },
+        ],
+      },
+      actions: { rename: 'Walmart', categoryId: groceries },
+    });
+    const saved = (
+      (await A.get(url('/rules'))).body.data as { id: string; conditions: unknown }[]
+    ).find((r) => r.id === id);
+    expect(saved?.conditions).toMatchObject({ match: 'any' });
+    await csv(acc, [
+      ['WAL-MART #1182', -2298],
+      ['WM SUPERCENTER #1182', -855],
+      ['TARGET 0042', -1500],
+    ]);
+    const rows = await txns(acc);
+    const byAmount = (n: number) => rows.find((t) => t.amountMinor === n);
+    expect(byAmount(-2298)).toMatchObject({ displayName: 'Walmart', categoryId: groceries });
+    expect(byAmount(-855)).toMatchObject({ displayName: 'Walmart', categoryId: groceries });
+    expect(byAmount(-1500)?.displayName).not.toBe('Walmart');
+    // A description and a list of them can't both be given.
+    const both = await A.post(url('/rules'), {
+      conditions: {
+        description: { op: 'contains', value: 'a' },
+        descriptions: [{ op: 'contains', value: 'b' }],
+      },
+      actions: { categoryId: groceries },
+    });
+    expect(both.status).toBe(422);
+  });
+
   it('never changes what a person set, by hand or in bulk', async () => {
     const acc = await account(A, 'Hand checking');
     const id = (
