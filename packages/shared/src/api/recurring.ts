@@ -751,5 +751,7 @@ export function seriesChanges(x: {
 export function paymentsPerYear(s: RecurringSchedule): number {
   if (s.unit === 'week') return 52 / s.every;
   if (s.unit === 'day') return 365 / s.every;
-  return (12 / s.every) * s.days.length;
+  // A weekday in the month (#506) has no `days`: once a month.
+  const days = (s as { days?: readonly number[] }).days;
+  return (12 / s.every) * (days?.length ?? 1);
 }
