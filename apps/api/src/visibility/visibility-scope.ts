@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { accountOwners, type Executor, householdMembers, transactions } from '@fiscus/db';
-import { accessLevels } from '@fiscus/ledger';
+import { accountOwners, type Executor, householdMembers } from '@fiscus/db';
+import { accessLevels, attributedTo, attributedToTwoOrMore } from '@fiscus/ledger';
 import type { AccessLevel, Lens } from '@fiscus/shared';
 import { and, eq, isNull } from 'drizzle-orm';
-import { type SQL, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { Problem } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 
@@ -92,11 +92,7 @@ export async function spendingLensFilter(
   lens: Lens,
 ): Promise<SQL | undefined> {
   if (lens === 'all') return undefined;
-  const members = sql`coalesce(
-    (SELECT array_agg(ta.member_id) FROM transaction_attributions ta WHERE ta.transaction_id = ${transactions.id}),
-    (SELECT array_agg(o.member_id)
-     FROM fiscus_owners_on(${transactions.accountId}, ${transactions.effectiveDate}) o))`;
-  if (lens === 'shared') return sql`coalesce(array_length(${members}, 1), 0) >= 2`;
+  if (lens === 'shared') return attributedToTwoOrMore;
   const member = lens === 'me' ? ctx.memberId : lens.slice('member:'.length);
   if (lens !== 'me') {
     const [active] = await tx
@@ -105,5 +101,5 @@ export async function spendingLensFilter(
       .where(and(eq(householdMembers.id, member), isNull(householdMembers.leftAt)));
     if (!active) throw invalidLens();
   }
-  return sql`${members} = ARRAY[${member}::uuid]`;
+  return attributedTo(member);
 }

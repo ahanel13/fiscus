@@ -17,6 +17,7 @@ import {
 import { Amount } from '../components/Amount.js';
 import { BankConnections } from '../components/BankConnections.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { WeeklyRecapCard } from '../components/WeeklyRecapCard.js';
 import { CompareSelect, GranularityToggle, PeriodStepper } from '../components/RangeControls.js';
 import { Alert, Button, ButtonLink, Card, LoadingRegion, Skeleton } from '../components/ui.js';
 import {
@@ -48,6 +49,7 @@ export function DashboardPage() {
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 md:px-8">
         <FirstRunChecklist household={household} members={members} />
         <BrokenConnections householdId={householdId} members={members} />
+        <WeeklyRecapCard householdId={householdId} />
         <CashFlowCard household={household} lens={lens} range={range} />
         <NetWorthCard household={household} lens={lens} range={range} />
       </div>

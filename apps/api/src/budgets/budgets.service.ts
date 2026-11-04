@@ -9,12 +9,10 @@ import {
   type Executor,
   householdMembers,
   households,
-  transactions,
 } from '@fiscus/db';
 import {
   addMonths,
   amountsFor,
-  type BudgetCategory,
   type BudgetStrategyKind,
   categoryLimits,
   type CategoryLimitsView,
@@ -24,10 +22,14 @@ import {
   flexibleFor,
   type FlexView,
   periodFor,
-  type MonthActivity,
   suggestAmounts,
 } from '@fiscus/domain';
-import { householdRanges, ownersOnDates, transactionDate } from '@fiscus/ledger';
+import {
+  budgetActivity,
+  type BudgetDefinitionRows,
+  householdRanges,
+  loadBudgetDefinition,
+} from '@fiscus/ledger';
 import type {
   BudgetCategoryHistory,
   BudgetMonth,
@@ -41,13 +43,12 @@ import type {
   StrategyPreview,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, isNull, lte, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import type { HouseholdActivity } from '../households/household-scope.js';
 import { HouseholdScope } from '../households/household-scope.js';
-import { spendingLensFilter } from '../visibility/visibility-scope.js';
 
 type CreateInput = z.infer<typeof createBudgetSchema>;
 type BudgetRow = typeof budgets.$inferSelect;
@@ -83,7 +84,7 @@ export class BudgetsService {
       const { today } = await householdRanges(tx, ctx.householdId);
       const thisMonth = monthOfDate(today);
       const months = [-3, -2, -1].map((n) => addMonths(thisMonth, n));
-      const activity = await this.#activity(tx, ctx, resolved, months[0]!, months[2]!);
+      const activity = await budgetActivity(tx, ctx, resolved, months[0]!, months[2]!);
       const spent = months.map((m) => activity.get(m)?.spentMinor ?? new Map<string, number>());
       const spending = await spendingCategories(tx);
       const keep = (m: ReadonlyMap<string, number>) =>
@@ -171,8 +172,8 @@ export class BudgetsService {
           'Earlier months have spending only.',
         );
       }
-      const definition = await loadDefinition(tx, row);
-      const ledger = await this.#activity(tx, ctx, scope, startsMonth, month);
+      const definition = await loadBudgetDefinition(tx, row);
+      const ledger = await budgetActivity(tx, ctx, scope, startsMonth, month);
       const out = computeBudgetMonth(definition, month, ledger, STRATEGIES);
       const [h] = await tx
         .select({ currency: households.baseCurrency })
@@ -203,8 +204,8 @@ export class BudgetsService {
       const row = await findBudget(tx, budgetId);
       await checkSwitchMonth(tx, ctx, row, fromMonth);
       const scope: BudgetScope = row.memberId ? 'mine' : 'household';
-      const definition = await loadDefinition(tx, row);
-      const ledger = await this.#activity(tx, ctx, scope, monthOfDate(row.startsMonth), fromMonth);
+      const definition = await loadBudgetDefinition(tx, row);
+      const ledger = await budgetActivity(tx, ctx, scope, monthOfDate(row.startsMonth), fromMonth);
       const before = computeBudgetMonth(definition, fromMonth, ledger, STRATEGIES);
       const flexibleMinor = strategy === 'flex' ? flexibleStart(definition, fromMonth) : null;
       const switched = withPeriod(definition, fromMonth, strategy, flexibleMinor);
@@ -229,7 +230,7 @@ export class BudgetsService {
       const row = await findBudget(tx, budgetId);
       checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
       await checkSwitchMonth(tx, ctx, row, fromMonth);
-      const definition = await loadDefinition(tx, row);
+      const definition = await loadBudgetDefinition(tx, row);
       const current = definition.periods
         .filter((p) => p.fromMonth <= fromMonth)
         .sort((a, b) => (a.fromMonth < b.fromMonth ? 1 : -1))[0];
@@ -284,12 +285,12 @@ export class BudgetsService {
       const { today } = await householdRanges(tx, ctx.householdId);
       const start = monthOfDate(row.startsMonth);
       const month = monthOfDate(today) < start ? start : monthOfDate(today);
-      const definition = await loadDefinition(tx, row);
+      const definition = await loadBudgetDefinition(tx, row);
       const as = async (s: BudgetScope) => {
         const out = computeBudgetMonth(
           definition,
           month,
-          await this.#activity(tx, ctx, s, start, month),
+          await budgetActivity(tx, ctx, s, start, month),
           STRATEGIES,
         );
         return viewOf(out.kind, out.view);
@@ -467,8 +468,8 @@ export class BudgetsService {
       if (!(await spendingCategories(tx)).has(categoryId)) throw problems.notFound();
       const scope: BudgetScope = row.memberId ? 'mine' : 'household';
       const months = Array.from({ length: count }, (_, i) => addMonths(to, i - count + 1));
-      const ledger = await this.#activity(tx, ctx, scope, months[0]!, to);
-      const definition = await loadDefinition(tx, row);
+      const ledger = await budgetActivity(tx, ctx, scope, months[0]!, to);
+      const definition = await loadBudgetDefinition(tx, row);
       const startsMonth = monthOfDate(row.startsMonth);
       const out = months.map((month) => ({
         month,
@@ -503,8 +504,8 @@ export class BudgetsService {
       const ranges = await householdRanges(tx, ctx.householdId);
       const first = `${year}-${String(ranges.settings.fiscalYearStartMonth).padStart(2, '0')}`;
       const months = Array.from({ length: 12 }, (_, i) => addMonths(first, i));
-      const ledger = await this.#activity(tx, ctx, scope, months[0]!, months[11]!);
-      const definition = await loadDefinition(tx, row);
+      const ledger = await budgetActivity(tx, ctx, scope, months[0]!, months[11]!);
+      const definition = await loadBudgetDefinition(tx, row);
       const startsMonth = monthOfDate(row.startsMonth);
       const kinds = new Map(definition.categories.map((c) => [c.id, c]));
       const budgetedIn = (month: string, categoryId: string): number | null => {
@@ -609,167 +610,6 @@ export class BudgetsService {
       .limit(1);
     return summaryOf(row, current?.strategy ?? 'category');
   }
-
-  /**
-   * What happened in a scope each month from `from` to `to` (D1): spending per category, net of
-   * refunds, and income, in the household's currency. Transfers, settle-ups, excluded
-   * transactions and split parents don't count; uncategorized ones count as Uncategorized.
-   */
-  async #activity(
-    tx: Executor,
-    ctx: HouseholdContext,
-    scope: BudgetScope,
-    from: string,
-    to: string,
-  ): Promise<Map<string, MonthActivity>> {
-    const ranges = await householdRanges(tx, ctx.householdId);
-    const date = transactionDate(ranges.dateBasis);
-    const [h] = await tx
-      .select({ currency: households.baseCurrency })
-      .from(households)
-      .where(eq(households.id, ctx.householdId));
-    const [uncategorized] = await tx
-      .select({ id: categories.id })
-      .from(categories)
-      .where(eq(categories.systemKey, 'uncategorized'));
-    const lens = await spendingLensFilter(tx, ctx, scope === 'mine' ? 'me' : 'shared');
-    const end = firstDayOf(addMonths(to, 1));
-    const rows = await tx
-      .select({
-        month: sql<string>`to_char(${date}, 'YYYY-MM')`,
-        categoryId: transactions.categoryId,
-        kind: categoryGroups.kind,
-        total: sql<string>`sum(${transactions.amountMinor})::text`,
-      })
-      .from(transactions)
-      .leftJoin(categories, eq(categories.id, transactions.categoryId))
-      .leftJoin(categoryGroups, eq(categoryGroups.id, categories.groupId))
-      .where(
-        and(
-          isNull(transactions.deletedAt),
-          eq(transactions.hasSplits, false),
-          eq(transactions.excluded, false),
-          eq(transactions.currency, h!.currency),
-          sql`coalesce(${categoryGroups.kind}::text, '') <> 'transfer'`,
-          gte(date, firstDayOf(from)),
-          sql`${date} < ${end}::date`,
-          lens,
-        ),
-      )
-      .groupBy(sql`1`, transactions.categoryId, categoryGroups.kind);
-    const out = new Map<
-      string,
-      {
-        spentMinor: Map<string, number>;
-        incomeMinor: number;
-        incomeByCategory: Map<string, number>;
-      }
-    >();
-    for (const r of rows) {
-      const m = out.get(r.month) ?? {
-        spentMinor: new Map<string, number>(),
-        incomeMinor: 0,
-        incomeByCategory: new Map<string, number>(),
-      };
-      const total = Number(r.total);
-      if (r.kind === 'income') {
-        m.incomeMinor += total;
-        if (r.categoryId) {
-          m.incomeByCategory.set(r.categoryId, (m.incomeByCategory.get(r.categoryId) ?? 0) + total);
-        }
-      } else {
-        const id = r.categoryId ?? uncategorized?.id;
-        if (id) m.spentMinor.set(id, (m.spentMinor.get(id) ?? 0) - total);
-      }
-      out.set(r.month, m);
-    }
-    const contributed = await contributions(tx, ctx, scope, date, from, end, h!.currency);
-    const months = new Set([...out.keys(), ...contributed.keys()]);
-    return new Map(
-      [...months].map((k) => [
-        k,
-        {
-          spentMinor: out.get(k)?.spentMinor ?? new Map<string, number>(),
-          incomeMinor: out.get(k)?.incomeMinor ?? 0,
-          incomeByCategory: out.get(k)?.incomeByCategory ?? new Map<string, number>(),
-          contributionsMinor: contributed.get(k) ?? 0,
-        },
-      ]),
-    );
-  }
-}
-
-/**
- * Contributions (D2), per month: money moved from a member's own account into a joint one (two
- * or more owners on its date). For the household's budget, what arrived in joint accounts from
- * accounts that aren't joint, including ones you can't see (someone else's own). For yours, what
- * left accounts you own alone for a joint one. Settle-ups aren't contributions.
- */
-async function contributions(
-  tx: Executor,
-  ctx: HouseholdContext,
-  scope: BudgetScope,
-  date: ReturnType<typeof transactionDate>,
-  from: string,
-  end: string,
-  currency: string,
-): Promise<Map<string, number>> {
-  const legs = await tx
-    .select({
-      id: transactions.id,
-      accountId: transactions.accountId,
-      amountMinor: transactions.amountMinor,
-      group: transactions.transferGroupId,
-      effectiveDate: transactions.effectiveDate,
-      month: sql<string>`to_char(${date}, 'YYYY-MM')`,
-    })
-    .from(transactions)
-    .where(
-      and(
-        isNotNull(transactions.transferGroupId),
-        isNull(transactions.deletedAt),
-        eq(transactions.excluded, false),
-        eq(transactions.isSettlement, false),
-        eq(transactions.currency, currency),
-        gte(date, firstDayOf(from)),
-        sql`${date} < ${end}::date`,
-        scope === 'household'
-          ? sql`${transactions.amountMinor} > 0`
-          : sql`${transactions.amountMinor} < 0`,
-      ),
-    );
-  if (legs.length === 0) return new Map();
-  // The other side of each, if you can see it.
-  const others = await tx
-    .select({
-      id: transactions.id,
-      accountId: transactions.accountId,
-      group: transactions.transferGroupId,
-      effectiveDate: transactions.effectiveDate,
-    })
-    .from(transactions)
-    .where(
-      and(
-        inArray(transactions.transferGroupId, [...new Set(legs.map((l) => l.group!))]),
-        isNull(transactions.deletedAt),
-      ),
-    );
-  const ownersOn = await ownersOnDates(tx, [
-    ...new Set([...legs, ...others].map((r) => r.accountId)),
-  ]);
-  const joint = (r: { accountId: string; effectiveDate: string }) =>
-    ownersOn(r.accountId, r.effectiveDate).length >= 2;
-  const out = new Map<string, number>();
-  for (const leg of legs) {
-    const other = others.find((o) => o.group === leg.group && o.id !== leg.id);
-    const owners = ownersOn(leg.accountId, leg.effectiveDate);
-    const counts =
-      scope === 'household'
-        ? joint(leg) && (!other || !joint(other))
-        : owners.length === 1 && owners[0]!.memberId === ctx.memberId && !!other && joint(other);
-    if (counts) out.set(leg.month, (out.get(leg.month) ?? 0) + Math.abs(leg.amountMinor));
-  }
-  return out;
 }
 
 const summaryOf = (row: BudgetRow, strategy: BudgetStrategyKind): BudgetSummary => ({
@@ -893,55 +733,6 @@ async function spendingCategories(tx: Executor): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id));
 }
 
-async function loadDefinition(tx: Executor, row: BudgetRow) {
-  const cats = await tx
-    .select({
-      id: categories.id,
-      kind: categoryGroups.kind,
-      rollover: budgetCategories.rollover,
-      bucket: budgetCategories.bucket,
-      yearlyMinor: budgetCategories.yearlyMinor,
-      excluded: budgetCategories.excluded,
-    })
-    .from(categories)
-    .innerJoin(categoryGroups, eq(categoryGroups.id, categories.groupId))
-    .leftJoin(
-      budgetCategories,
-      and(eq(budgetCategories.categoryId, categories.id), eq(budgetCategories.budgetId, row.id)),
-    )
-    .orderBy(asc(categoryGroups.sortOrder), asc(categories.sortOrder), asc(categories.name));
-  const amounts = new Map<string, Map<string, number>>();
-  for (const a of await tx.select().from(budgetAmounts).where(eq(budgetAmounts.budgetId, row.id))) {
-    const m = amounts.get(monthOfDate(a.month)) ?? new Map<string, number>();
-    m.set(a.categoryId, a.amountMinor);
-    amounts.set(monthOfDate(a.month), m);
-  }
-  const periods = await tx
-    .select()
-    .from(budgetStrategies)
-    .where(eq(budgetStrategies.budgetId, row.id));
-  return {
-    startsMonth: monthOfDate(row.startsMonth),
-    periods: periods.map((p) => ({
-      fromMonth: monthOfDate(p.fromMonth),
-      kind: p.strategy,
-      settings: p.settings,
-    })),
-    // "Don't budget": a category left out is in no row, total, or spending without a limit.
-    excluded: cats.filter((c) => c.excluded).map((c) => c.id),
-    categories: cats
-      .filter((c) => !c.excluded)
-      .map((c): BudgetCategory => ({
-        id: c.id,
-        kind: c.kind,
-        rollover: c.rollover ?? false,
-        bucket: c.bucket ?? null,
-        yearlyMinor: c.yearlyMinor ?? null,
-      })),
-    amounts,
-  };
-}
-
 /** Changes to the household's budget are in its activity (D4); your own budget's are yours. */
 async function record(
   activity: HouseholdActivity,
@@ -993,7 +784,7 @@ async function checkSwitchMonth(
 }
 
 /** Flex's first flexible number: the flexible categories' amounts in that month, added up. */
-function flexibleStart(definition: Awaited<ReturnType<typeof loadDefinition>>, month: string) {
+function flexibleStart(definition: BudgetDefinitionRows, month: string) {
   const amounts = amountsFor(month, definition.amounts);
   return definition.categories
     .filter((c) => c.kind === 'flexible')
@@ -1002,7 +793,7 @@ function flexibleStart(definition: Awaited<ReturnType<typeof loadDefinition>>, m
 
 /** The definition as it would be with a switch from `fromMonth`, later switches dropped. */
 function withPeriod(
-  definition: Awaited<ReturnType<typeof loadDefinition>>,
+  definition: BudgetDefinitionRows,
   fromMonth: string,
   strategy: BudgetStrategyKind,
   flexibleMinor: number | null,

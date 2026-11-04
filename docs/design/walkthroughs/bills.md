@@ -365,6 +365,12 @@ Every Monday morning (#128), on the dashboard as a card, and by email for those 
 can see (SYS-02). Alex's says "what you can see: yours and ours"; Sam's includes Sam's private
 card, which Alex's doesn't. A quiet week still sends a short recap, so it's clear nothing broke.
 
+**Built (#128).** `buildWeeklyRecap()` in `@fiscus/ledger` builds a person's recap in their own
+context (never system context), so row-level security keeps it to what they see. The dashboard
+shows last week's as a card (`GET /households/:id/recap`), and `renderWeeklyRecapEmail()` in
+`@fiscus/shared` turns it into the email, at full, summary or minimal detail (D17), for the
+Monday send. New subscriptions and price rises join "worth a look" with #123 and #129.
+
 ---
 
 ## Decisions
