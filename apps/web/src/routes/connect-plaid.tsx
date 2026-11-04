@@ -619,7 +619,8 @@ function Point({
 /** What one offered account becomes, as the page holds it. */
 interface Choice {
   providerAccountId: string;
-  choice: 'link' | 'new' | 'skip';
+  /** `keep`: choosing again, one this connection tracks already stays. */
+  choice: 'link' | 'new' | 'skip' | 'keep';
   accountId: string | null;
   owners: string[];
   visibility: AccountVisibility;
@@ -628,6 +629,7 @@ interface Choice {
 const fromSuggestion = (a: OfferedAccount, defaults: Choice): Choice => {
   const s = a.suggestion;
   if (s.choice === 'link') return { ...defaults, choice: 'link', accountId: s.accountId };
+  if (s.choice === 'keep') return { ...defaults, choice: 'keep' };
   if (s.choice === 'skip') return { ...defaults, choice: 'skip' };
   return {
     ...defaults,
@@ -649,6 +651,7 @@ export function confirmBody(choices: Choice[], activeMembers: number): AccountCh
     if (c.choice === 'link')
       return { providerAccountId: c.providerAccountId, choice: 'link', accountId: c.accountId! };
     if (c.choice === 'skip') return { providerAccountId: c.providerAccountId, choice: 'skip' };
+    if (c.choice === 'keep') return { providerAccountId: c.providerAccountId, choice: 'keep' };
     return {
       providerAccountId: c.providerAccountId,
       choice: 'new',
@@ -783,14 +786,27 @@ function ChooseAccounts({
         `${base(household.id)}/connections/${setup.connectionId}/confirm`,
         { body: { accounts: confirmBody(choices, members.length) } },
       ),
-    onSuccess: (r) => onConfirmed(r.data, choices),
+    onSuccess: (r) =>
+      setup.chosen
+        ? leaveTo(back, {
+            title: `${bank}: saved.`,
+            ...(r.data.accounts.length && {
+              description: 'Accounts you added sync now, with their history.',
+            }),
+            tone: 'info',
+          })
+        : onConfirmed(r.data, choices),
   });
   const err = confirm.error as ApiError | null;
 
   return (
     <ConnectLayout household={household} wide>
-      <Steps current={1} />
-      {setup.replacesConnectionId ? (
+      {setup.chosen ? null : <Steps current={1} />}
+      {setup.chosen ? (
+        <Heading sub="What it tracks stays unless you stop tracking it, which keeps its history. Add the accounts it doesn’t track yet, as new ones or linked to ones you have here, including ones another connection syncs now.">
+          {`${bank}: choose what to track`}
+        </Heading>
+      ) : setup.replacesConnectionId ? (
         <Heading sub="Link each account to the one it syncs into now, so its history stays. Once you confirm, the old connection ends: any of its accounts you don’t link here stop syncing, and keep their history.">
           {`${bank}: move to new keys`}
         </Heading>
@@ -824,16 +840,22 @@ function ChooseAccounts({
             Choose at least one account to track.
           </p>
         ) : null}
-        <Button variant="secondary" onPress={() => setCancelling(true)}>
-          Cancel
-        </Button>
+        {setup.chosen ? (
+          <LeaveLink href={back}>Cancel</LeaveLink>
+        ) : (
+          <Button variant="secondary" onPress={() => setCancelling(true)}>
+            Cancel
+          </Button>
+        )}
         <Button
           className="max-md:w-full"
           onPress={() => confirm.mutate()}
           isPending={confirm.isPending}
           isDisabled={tracked === 0}
         >
-          Track {tracked} {tracked === 1 ? 'account' : 'accounts'}
+          {setup.chosen
+            ? `Save: track ${tracked} ${tracked === 1 ? 'account' : 'accounts'}`
+            : `Track ${tracked} ${tracked === 1 ? 'account' : 'accounts'}`}
         </Button>
       </div>
       <ConfirmDialog
@@ -964,11 +986,20 @@ function OfferedRow({
     reason = `${s.by === 'mask' ? 'Same last 4 digits and type' : 'Same name'}. Keeps its history; sync fills in after it.`;
   } else if (c.choice === 'link') {
     reason = 'Keeps its history; sync fills in after it.';
+  } else if (a.tracked && c.choice === 'keep') {
+    const y = yours.find((x) => x.id === a.tracked!.accountId);
+    reason = a.tracked.accountId
+      ? `Tracked already${y ? `, as ${y.name}` : ''}.`
+      : 'Tracked already, as an account you can’t see. Only its owners can stop tracking it.';
+  } else if (a.tracked && c.choice === 'skip') {
+    reason = 'Stops syncing. The account and its history stay here.';
+  } else if (c.choice === 'skip' && s.choice === 'skip' && s.reason === 'declined') {
+    reason = 'You chose not to track it before.';
   } else if (c.choice === 'skip' && s.choice === 'skip' && s.reason === 'synced') {
     const y = yours.find((x) => x.id === s.accountId);
     const by = syncedBy.get(s.accountId);
     reason = `${y?.name ?? 'This account'} syncs from ${by ? connectionLabel(by) : 'another connection'} already, so it isn’t tracked twice. To move it here, choose Link to ${y?.name ?? 'it'}.`;
-  } else if (c.choice === 'skip' && s.choice === 'skip') {
+  } else if (c.choice === 'skip' && s.choice === 'skip' && s.reason === 'closed') {
     const closed = yours.find((y) => y.id === s.accountId);
     reason = `Matches ${closed?.name ?? 'an account'} you closed here, so it isn’t tracked.`;
   }
@@ -1048,30 +1079,42 @@ function OfferedRow({
         </div>
       </div>
       <div className="space-y-1">
-        <ComboBox
-          aria-label={`What ${a.name}${a.mask ? ` ending in ${a.mask}` : ''} becomes`}
-          placeholder="Search your accounts"
-          menuTrigger="focus"
-          allowsEmptyCollection
-          selectedKey={c.choice === 'link' ? c.accountId : c.choice}
-          onSelectionChange={(v) => {
-            if (v === null) return;
-            const value = String(v);
-            if (value === 'new' || value === 'skip') onChange({ choice: value, accountId: null });
-            else onChange({ choice: 'link', accountId: value });
-          }}
-        >
-          <SelectItem id="new">New account</SelectItem>
-          <SelectItem id="skip">Don’t track</SelectItem>
-          {byType.map((g) => (
-            <SelectSection
-              key={g.type}
-              title={`${TYPE_LABELS[g.type]}${g.type === a.type ? ' (same kind)' : ''}`}
-            >
-              {g.accounts.map(linkItem)}
-            </SelectSection>
-          ))}
-        </ComboBox>
+        {a.tracked ? (
+          <Select
+            aria-label={`Keep tracking ${a.name}${a.mask ? ` ending in ${a.mask}` : ''}`}
+            value={c.choice === 'skip' ? 'skip' : 'keep'}
+            isDisabled={a.tracked.accountId === null}
+            onChange={(v) => v && onChange({ choice: v as 'keep' | 'skip', accountId: null })}
+          >
+            <SelectItem id="keep">Keep tracking</SelectItem>
+            <SelectItem id="skip">Stop tracking</SelectItem>
+          </Select>
+        ) : (
+          <ComboBox
+            aria-label={`What ${a.name}${a.mask ? ` ending in ${a.mask}` : ''} becomes`}
+            placeholder="Search your accounts"
+            menuTrigger="focus"
+            allowsEmptyCollection
+            selectedKey={c.choice === 'link' ? c.accountId : c.choice}
+            onSelectionChange={(v) => {
+              if (v === null) return;
+              const value = String(v);
+              if (value === 'new' || value === 'skip') onChange({ choice: value, accountId: null });
+              else onChange({ choice: 'link', accountId: value });
+            }}
+          >
+            <SelectItem id="new">New account</SelectItem>
+            <SelectItem id="skip">Don’t track</SelectItem>
+            {byType.map((g) => (
+              <SelectSection
+                key={g.type}
+                title={`${TYPE_LABELS[g.type]}${g.type === a.type ? ' (same kind)' : ''}`}
+              >
+                {g.accounts.map(linkItem)}
+              </SelectSection>
+            ))}
+          </ComboBox>
+        )}
         {reason ? <p className="text-xs text-muted">{reason}</p> : null}
       </div>
     </li>

@@ -55,6 +55,11 @@ export interface SyncState {
    * cursor asks again from a fortnight before it, not the whole history every time (#91).
    */
   lastProviderDate: string | null;
+  /**
+   * A provider without a cursor has sent everything from `since` once already. Until then (a new
+   * connection, or accounts added to it later), it asks from `since`, so they bring their history.
+   */
+  historyComplete: boolean;
   /** The household's time zone: providers reporting instants date transactions in it (#91). */
   timeZone: string;
 }
@@ -62,9 +67,14 @@ export interface SyncState {
 /** How far before its latest transaction a provider without a cursor asks again (#91). */
 export const WINDOW_OVERLAP_DAYS = 14;
 
-/** Where a provider without a cursor starts: its accounts' `sync_from`, or a fortnight back. */
-export function windowStart(state: Pick<SyncState, 'since' | 'lastProviderDate'>): string | null {
-  if (!state.lastProviderDate) return state.since;
+/**
+ * Where a provider without a cursor starts: its accounts' `sync_from` until it has sent that
+ * history, then a fortnight before its latest transaction.
+ */
+export function windowStart(
+  state: Pick<SyncState, 'since' | 'lastProviderDate' | 'historyComplete'>,
+): string | null {
+  if (!state.lastProviderDate || !state.historyComplete) return state.since;
   const d = new Date(`${state.lastProviderDate}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - WINDOW_OVERLAP_DAYS);
   const recent = d.toISOString().slice(0, 10);
@@ -102,6 +112,7 @@ export async function readSyncState(
         ownerMemberId: connections.ownerMemberId,
         leftAt: householdMembers.leftAt,
         cursor: connections.syncCursor,
+        historyComplete: connections.historicalComplete,
         timeZone: households.timezone,
       })
       .from(connections)
@@ -133,6 +144,7 @@ export async function readSyncState(
       cursor: row.cursor,
       since: since?.since ?? null,
       lastProviderDate: latest?.date ?? null,
+      historyComplete: row.historyComplete,
       timeZone: row.timeZone,
     };
   });

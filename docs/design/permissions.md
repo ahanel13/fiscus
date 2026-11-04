@@ -183,12 +183,13 @@ caller can't see ("Transfer to Anthony").
 | SHR-03 | Read your balance with each person, and the month's shared expenses | own | own | own | Only balances that involve you, from shared expenses you're for or paid. Someone else's payment shows as them, never their account (F1) |
 | SHR-04 | Record or remove a settle-up between you and someone else | own | own | ❌ | Only the two people it's between see or remove it. A transfer that paid it must be in an account you own; it's then marked a settle-up |
 
-### 4.10 Bills and recurring (bills walkthrough §1–§3)
+### 4.10 Bills and recurring (bills walkthrough §1–§3, §6)
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
-| REC-01 | Read the recurring series on accounts whose transactions you see | ✅ | ✅ | ✅ | With its payments and estimate, from the transactions you can see (D10) |
+| REC-01 | Read the recurring series on accounts whose transactions you see | ✅ | ✅ | ✅ | With its payments and estimate, from the transactions you can see (D10). Card statements from the bank (#122, D9) show to those who see the card's statement details: owner and full access |
 | REC-02 | Make, change, end or delete a series; mark a date paid or skipped | ✅ | ✅ | ❌ | Needs owner or full access to its account: the same as changing its transactions. Each change is in the activity of those who see the account |
 | REC-03 | A series on an account you can't see | — | — | — | Not listed, not readable, and not changeable: it doesn't exist for you (404), as the account doesn't |
+| REC-04 | Hand a bill to someone else to look after (#121, D13) | ✅ | ✅ | ❌ | Anyone who sees the series can, view-only access included: it changes who gets its reminders, nothing else. Only to a current member who sees its account too (422 otherwise). Income has "for" instead, from its payments' attribution. When someone leaves or is removed, their bills pass to the account's other owner, else the household's first owner who sees it |
 
 ### 4.11 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |

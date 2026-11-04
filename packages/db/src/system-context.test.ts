@@ -572,15 +572,19 @@ describe('system context belongs to the worker', () => {
       SELECT p.proname, r.rolname FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
       WHERE p.proname IN ('fiscus_create_household', 'fiscus_join_household', 'fiscus_reassign_category',
                           'fiscus_set_instance_setting', 'fiscus_claim_due_connections',
-                          'fiscus_disconnect_connection', 'fiscus_finish_connection_job')
+                          'fiscus_disconnect_connection', 'fiscus_finish_connection_job',
+                          'fiscus_unrouted_notifications', 'fiscus_claim_notification_deliveries',
+                          'fiscus_notification_households',
+                          'fiscus_households_with_new_transactions')
       ORDER BY 1`);
-    expect(owners.map((o) => o.rolname)).toEqual(Array(7).fill('fiscus_steward'));
+    expect(owners.map((o) => o.rolname)).toEqual(Array(11).fill('fiscus_steward'));
     const { rows } = await owner.query(`
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
                                     'categories', 'household_keys', 'audit_events', 'users',
                                     'instance_settings', 'accounts', 'connections',
                                     'connection_secrets', 'budget_amounts',
-                                    'budget_categories']) t,
+                                    'budget_categories', 'notifications',
+                                    'notification_deliveries']) t,
                        unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) p
       WHERE has_table_privilege('fiscus_steward', t, p)`);
     // A category merging into another adds its budget amounts into the other's (0065).
@@ -614,6 +618,13 @@ describe('system context belongs to the worker', () => {
       'instance_settings.value',
       'invites.accepted_at',
       'invites.accepted_by_user_id',
+      // Claiming a delivery leases it (0079).
+      'notification_deliveries.lease_until',
+      'notification_deliveries.updated_at',
+      // Who looks after a bill: handed over, or passed on when someone leaves (0077).
+      'recurring_series.responsible_member_id',
+      'recurring_series.updated_at',
+      'recurring_series.version',
       'rules.actions',
       'rules.conditions',
       'rules.updated_at',

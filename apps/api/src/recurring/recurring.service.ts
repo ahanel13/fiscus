@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
-  accountLiabilities,
   accounts,
   type Executor,
   households,
@@ -9,7 +8,19 @@ import {
   recurringSeries,
   transactions,
 } from '@fiscus/db';
-import { accessLevels } from '@fiscus/ledger';
+import {
+  accessLevels,
+  cardStatements,
+  type SeriesLike,
+  changesOf,
+  seriesCandidates,
+  seriesHistory,
+  seriesOccurrences,
+  type SeriesPeople,
+  seriesPeople,
+  seriesWho,
+  type SeriesWho,
+} from '@fiscus/ledger';
 import {
   addDays,
   type createRecurringSchema,
@@ -19,13 +30,10 @@ import {
   estimateCount,
   estimateNext,
   guessSchedule,
-  LATE_AFTER_DAYS,
   type MarkOccurrence,
   nextOccurrences,
   occurrences,
-  payOccurrences,
   RECURRING_DEFAULT_WINDOW,
-  type RecurringCandidate,
   type RecurringDraft,
   type RecurringKind,
   type RecurringMatch,
@@ -38,10 +46,12 @@ import {
   type RecurringSchedule,
   type RecurringSeries,
   type RecurringSuggestion,
+  type SeriesChanges,
   type updateRecurringSchema,
+  whoLooksAfter,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { todayIn } from '../common/dates.js';
 import { Problem, problems } from '../common/problem.js';
@@ -51,17 +61,6 @@ import { HouseholdScope } from '../households/household-scope.js';
 type CreateInput = z.infer<typeof createRecurringSchema>;
 type UpdateInput = z.infer<typeof updateRecurringSchema>;
 type Row = typeof recurringSeries.$inferSelect;
-type MarkRow = typeof recurringMarks.$inferSelect;
-
-/** A series, or a draft of one: what working out its payments needs. */
-interface SeriesLike {
-  id?: string;
-  accountId: string;
-  match: unknown;
-  schedule: unknown;
-  windowDays: number;
-  endedOn?: string | null;
-}
 
 /** The most suggestions shown at once: the most-paid first. */
 const MAX_SUGGESTIONS = 50;
@@ -73,6 +72,14 @@ const LATE_LOOKBACK_DAYS = 62;
 const RECENT = 6;
 /** How far back Make recurring looks for payments like the one it starts from. */
 const SUGGEST_YEARS = 2;
+
+const cannotSee = () =>
+  new Problem(
+    422,
+    'member_cannot_see_account',
+    'They can’t see this account',
+    'Only someone who sees its account can look after it.',
+  );
 
 const cannotChange = () =>
   new Problem(
@@ -95,15 +102,21 @@ export class RecurringService {
   async list(ctx: HouseholdContext): Promise<RecurringSeries[]> {
     return this.scope.run(ctx, async (tx) => {
       const today = await this.#today(tx, ctx);
+      const people = await seriesPeople(tx);
       const rows = await tx
         .select({ series: recurringSeries, currency: accounts.currency })
         .from(recurringSeries)
         .innerJoin(accounts, eq(accounts.id, recurringSeries.accountId))
         .orderBy(asc(recurringSeries.name), asc(recurringSeries.id));
       return Promise.all(
-        rows.map(async ({ series, currency }) =>
-          toSeries(series, currency, await this.#paid(tx, series, today), today),
-        ),
+        rows.map(async ({ series, currency }) => {
+          const history = await seriesHistory(tx, series, today, today);
+          const paid = history.payments;
+          return toSeries(series, currency, paid, today, {
+            ...(await seriesWho(tx, series, people, paid)),
+            changes: changesOf(series, history, today),
+          });
+        }),
       );
     });
   }
@@ -113,7 +126,17 @@ export class RecurringService {
     return this.scope.run(ctx, async (tx) => {
       const today = await this.#today(tx, ctx);
       const paid = await this.#paid(tx, draft, today);
+      const people = await seriesPeople(tx);
       return {
+        responsibleMemberId: whoLooksAfter({
+          kind: 'bill',
+          responsibleMemberId: null,
+          createdByMemberId: ctx.memberId,
+          seenBy: people.seenBy(draft.accountId),
+          accountOwners: people.owners(draft.accountId),
+          householdOwners: people.householdOwners,
+        }),
+        seenBy: people.seenBy(draft.accountId),
         next: nextOccurrences(draft.schedule, today, 6),
         paidCount: paid.length,
         firstPaid: paid[0]?.date ?? null,
@@ -136,7 +159,7 @@ export class RecurringService {
       if (!t) throw problems.notFound();
       const direction = t.amountMinor > 0 ? 'in' : 'out';
       const like = (
-        await this.#candidates(
+        await seriesCandidates(
           tx,
           t.accountId,
           direction,
@@ -179,6 +202,21 @@ export class RecurringService {
   async create(ctx: HouseholdContext, input: CreateInput): Promise<RecurringSeries> {
     return this.scope.run(ctx, async (tx, activity) => {
       await this.#checkAccount(tx, input.accountId);
+      const people = await seriesPeople(tx);
+      const seenBy = people.seenBy(input.accountId);
+      if (input.responsibleMemberId && !seenBy.includes(input.responsibleMemberId)) {
+        throw cannotSee();
+      }
+      // Who looks after it from now on (D13): whoever was chosen, else the account's only owner,
+      // else whoever confirms it. Kept, so a later change of owners doesn't move it.
+      const responsibleMemberId = whoLooksAfter({
+        kind: input.kind,
+        responsibleMemberId: input.responsibleMemberId ?? null,
+        createdByMemberId: ctx.memberId,
+        seenBy,
+        accountOwners: people.owners(input.accountId),
+        householdOwners: people.householdOwners,
+      });
       const [row] = await tx
         .insert(recurringSeries)
         .values({
@@ -190,6 +228,7 @@ export class RecurringService {
           schedule: input.schedule,
           windowDays: input.windowDays,
           createdByMemberId: ctx.memberId,
+          responsibleMemberId,
         })
         .returning();
       await activity.record({
@@ -249,6 +288,44 @@ export class RecurringService {
   }
 
   /**
+   * Hands a series to someone else who sees its account (D13; REC-04). Anyone who sees the series
+   * can, view-only access included: it changes who's reminded, nothing else.
+   */
+  async handOver(ctx: HouseholdContext, id: string, memberId: string): Promise<RecurringSeries> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const [before] = await tx.select().from(recurringSeries).where(eq(recurringSeries.id, id));
+      if (!before) throw problems.notFound();
+      if (before.kind === 'income') {
+        throw new Problem(
+          422,
+          'income_has_no_owner',
+          'Income has no one looking after it',
+          'Who it’s for comes from its payments.',
+        );
+      }
+      const people = await seriesPeople(tx);
+      if (!people.seenBy(before.accountId).includes(memberId)) throw cannotSee();
+      const { rows } = await tx.execute<{ changed: boolean }>(
+        sql`SELECT fiscus_hand_over_series(${id}::uuid, ${memberId}::uuid) AS changed`,
+      );
+      if (!rows[0]?.changed) throw problems.notFound();
+      await activity.record({
+        action: 'recurring.handed_over',
+        targetType: 'recurring_series',
+        targetId: id,
+        accountId: before.accountId,
+        metadata: { to: memberId },
+        changes: {
+          before: { responsibleMemberId: before.responsibleMemberId },
+          after: { responsibleMemberId: memberId },
+        },
+      });
+      const [row] = await tx.select().from(recurringSeries).where(eq(recurringSeries.id, id));
+      return this.#read(tx, ctx, row!);
+    });
+  }
+
+  /**
    * A month of what's due (§4, §5): every series' dates in it, paid, late, due or skipped, and
    * card statements due in it, from the bank (D9). For the current month, dates still late from
    * before it come first.
@@ -264,11 +341,7 @@ export class RecurringService {
       const end = addDays(nextMonthStart(month), -1);
       const current = today >= start && today <= end;
       const lateFrom = current ? addDays(start, -LATE_LOOKBACK_DAYS) : start;
-      const rows = await tx
-        .select({ series: recurringSeries, currency: accounts.currency })
-        .from(recurringSeries)
-        .innerJoin(accounts, eq(accounts.id, recurringSeries.accountId))
-        .orderBy(asc(recurringSeries.name));
+      const people = await seriesPeople(tx);
       const out: RecurringOccurrence[] = [];
       const totals = {
         billsMinor: 0,
@@ -279,53 +352,22 @@ export class RecurringService {
         subscriptionsMinor: 0,
         subscriptionCount: 0,
       };
-      for (const { series, currency } of rows) {
-        const schedule = series.schedule as RecurringSchedule;
-        const { dates, payments, marks } = await this.#history(tx, series, today, end, lateFrom);
-        const paidBy = new Map(payments.map((p) => [p.due, p]));
-        const estimate = estimateNext(payments, estimateCount(schedule));
-        // Dates before the series was made, and before its first payment, were never expected.
-        const since = [payments[0]?.due, addDays(series.createdAt.toISOString().slice(0, 10), -31)]
-          .filter((d) => d !== undefined)
-          .sort()[0]!;
-        const inMonth = dates.filter((d) => d >= start && d <= end);
+      for (const {
+        series,
+        currency,
+        estimate,
+        inRange,
+        occurrences: list,
+      } of await seriesOccurrences(tx, { start, end, lateFrom, today })) {
         const counted = hh && currency === hh.currency;
-        for (const due of dates.filter((d) => d >= lateFrom && d <= end)) {
-          const mark = marks.get(due);
-          const payment = paidBy.get(due);
-          const status: RecurringOccurrence['status'] =
-            mark?.mark === 'skipped'
-              ? 'skipped'
-              : payment || mark?.mark === 'paid'
-                ? 'paid'
-                : addDays(due, LATE_AFTER_DAYS) < today
-                  ? 'late'
-                  : 'due';
-          if (due < start && status !== 'late') continue;
-          if (status !== 'paid' && status !== 'skipped' && due < since) continue;
-          const occurrence: RecurringOccurrence = {
-            seriesId: series.id,
-            name: series.name,
-            kind: series.kind,
-            accountId: series.accountId,
-            currency,
-            due,
-            status,
-            expectedMinor: payment?.amountMinor ?? estimate,
-            payment: payment
-              ? {
-                  transactionId: payment.transactionId,
-                  date: payment.date,
-                  amountMinor: payment.amountMinor,
-                }
-              : mark?.mark === 'paid'
-                ? { transactionId: null, date: null, amountMinor: null }
-                : null,
-          };
+        for (const occurrence of list) {
           out.push(occurrence);
+          const { due, status } = occurrence;
           if (!counted || due < start || status === 'skipped') continue;
           const size = Math.abs(occurrence.expectedMinor ?? 0);
-          const paidSize = Math.abs(payment?.amountMinor ?? (status === 'paid' ? size : 0));
+          const paidSize = Math.abs(
+            occurrence.payment?.amountMinor ?? (status === 'paid' ? size : 0),
+          );
           if (series.kind === 'income') {
             totals.incomeMinor += size;
             totals.incomeReceivedMinor += paidSize;
@@ -337,10 +379,10 @@ export class RecurringService {
         const ended = series.endedOn !== null && series.endedOn < start;
         if (series.kind === 'subscription' && counted && !ended) {
           totals.subscriptionCount += 1;
-          totals.subscriptionsMinor += Math.abs(estimate ?? 0) * Math.max(1, inMonth.length);
+          totals.subscriptionsMinor += Math.abs(estimate ?? 0) * Math.max(1, inRange.length);
         }
       }
-      for (const st of await this.#statements(tx, lateFrom, end, today)) {
+      for (const st of await this.#statements(tx, lateFrom, end, today, people)) {
         if (st.due < start && st.status !== 'late') continue;
         out.push(st);
         if (hh && st.currency === hh.currency && st.due >= start) {
@@ -359,59 +401,33 @@ export class RecurringService {
 
   /**
    * Card statements due from `from` to `to`, from the bank (D9): paid once what's gone into the
-   * card since the statement reaches its balance.
+   * card since the statement reaches its balance; minimum paid, or partly paid, with less. Seen by
+   * those who see the card's statement details (owner and full access); whose card it is shows
+   * where more than one of them does (D22).
    */
   async #statements(
     tx: Executor,
     from: string,
     to: string,
     today: string,
+    people: SeriesPeople,
   ): Promise<RecurringOccurrence[]> {
-    const rows = await tx
-      .select({ l: accountLiabilities, name: accounts.name, currency: accounts.currency })
-      .from(accountLiabilities)
-      .innerJoin(accounts, eq(accounts.id, accountLiabilities.accountId))
-      .where(
-        and(gte(accountLiabilities.nextDueDate, from), lte(accountLiabilities.nextDueDate, to)),
-      );
-    const out: RecurringOccurrence[] = [];
-    for (const { l, name, currency } of rows) {
-      const owed = -(l.lastStatementBalanceMinor ?? 0);
-      if (owed <= 0 || !l.nextDueDate) continue;
-      const [paid] = await tx
-        .select({ total: sql<string>`coalesce(sum(${transactions.amountMinor}), 0)` })
-        .from(transactions)
-        .where(
-          and(
-            eq(transactions.accountId, l.accountId),
-            isNull(transactions.parentId),
-            isNull(transactions.deletedAt),
-            gt(transactions.amountMinor, 0),
-            l.lastStatementDate ? gt(transactions.effectiveDate, l.lastStatementDate) : undefined,
-          ),
-        );
-      const paidSoFar = Number(paid?.total ?? 0);
-      const status: RecurringOccurrence['status'] =
-        paidSoFar >= owed
-          ? 'paid'
-          : addDays(l.nextDueDate, LATE_AFTER_DAYS) < today
-            ? 'late'
-            : 'due';
-      out.push({
-        seriesId: null,
-        name: `${name} statement`,
-        kind: 'statement',
-        accountId: l.accountId,
-        currency,
-        due: l.nextDueDate,
-        status,
-        expectedMinor: -owed,
-        payment: null,
-        minimumMinor: l.minimumPaymentMinor,
-        paidSoFarMinor: paidSoFar,
-      });
-    }
-    return out;
+    return (await cardStatements(tx, { from, to, today })).map((st) => ({
+      seriesId: null,
+      name: `${st.accountName} statement`,
+      kind: 'statement',
+      accountId: st.accountId,
+      currency: st.currency,
+      due: st.due,
+      status: st.status,
+      expectedMinor: -st.owedMinor,
+      payment: null,
+      minimumMinor: st.minimumMinor,
+      paidSoFarMinor: st.paidSoFarMinor,
+      statementPaid: st.paid,
+      memberIds: people.owners(st.accountId),
+      shared: people.seeStatement(st.accountId).length > 1,
+    }));
   }
 
   /** Says a date was paid (by a transaction, or another way) or skipped (D12). */
@@ -539,7 +555,7 @@ export class RecurringService {
         g.name = r.displayName;
         if (r.transferGroupId) g.transfer = true;
       }
-      const out: DetectedSeries[] = [];
+      const out: { found: DetectedSeries; g: DetectGroup }[] = [];
       for (const g of groups.values()) {
         if (g.payments.length < 2) continue;
         // Already one of yours: a series on the account that takes most of these payments.
@@ -551,9 +567,30 @@ export class RecurringService {
         });
         if (covered) continue;
         const found = detectRecurring(g, today);
-        if (found) out.push(found);
+        if (found) out.push({ found, g });
       }
-      return out.sort((a, b) => b.seenCount - a.seenCount).slice(0, MAX_SUGGESTIONS);
+      // Who would look after each, shown on the suggestion so it can be changed first (D13).
+      const people = await seriesPeople(tx);
+      return Promise.all(
+        out
+          .sort((a, b) => b.found.seenCount - a.found.seenCount)
+          .slice(0, MAX_SUGGESTIONS)
+          .map(async ({ found, g }) => {
+            const latest = g.payments.at(-1)!;
+            const who = await seriesWho(
+              tx,
+              {
+                kind: found.kind,
+                accountId: g.accountId,
+                responsibleMemberId: null,
+                createdByMemberId: ctx.memberId,
+              },
+              people,
+              [{ due: latest.date, transactionId: latest.id, date: latest.date, amountMinor: 0 }],
+            );
+            return { ...found, ...who };
+          }),
+      );
     });
   }
 
@@ -584,7 +621,13 @@ export class RecurringService {
       .select({ currency: accounts.currency })
       .from(accounts)
       .where(eq(accounts.id, row.accountId));
-    return toSeries(row, account!.currency, await this.#paid(tx, row, today), today);
+    const history = await seriesHistory(tx, row, today, today);
+    const paid = history.payments;
+    const who = await seriesWho(tx, row, await seriesPeople(tx), paid);
+    return toSeries(row, account!.currency, paid, today, {
+      ...who,
+      changes: changesOf(row, history, today),
+    });
   }
 
   /** Owner or full access to the account: the same as changing its transactions. */
@@ -596,107 +639,7 @@ export class RecurringService {
 
   /** The payments it's had, oldest first. */
   async #paid(tx: Executor, s: SeriesLike, today: string): Promise<RecurringPayment[]> {
-    return (await this.#history(tx, s, today, today)).payments;
-  }
-
-  /**
-   * Its dates from its first payment (or `from`, if earlier) to `until`, and the payments that
-   * paid them: the closest match, a late one, or the one someone linked. Also what people marked.
-   */
-  async #history(
-    tx: Executor,
-    s: SeriesLike,
-    today: string,
-    until: string,
-    from?: string,
-  ): Promise<{ dates: string[]; payments: RecurringPayment[]; marks: Map<string, MarkRow> }> {
-    const match = s.match as RecurringMatch;
-    const marks = new Map<string, MarkRow>();
-    if (s.id) {
-      for (const m of await tx
-        .select()
-        .from(recurringMarks)
-        .where(eq(recurringMarks.seriesId, s.id))) {
-        marks.set(m.due, m);
-      }
-    }
-    const linkedIds = [...marks.values()].flatMap((m) =>
-      m.transactionId ? [m.transactionId] : [],
-    );
-    const linkedRows = linkedIds.length
-      ? await tx
-          .select({
-            id: transactions.id,
-            date: transactions.effectiveDate,
-            amountMinor: transactions.amountMinor,
-            displayName: transactions.displayName,
-            originalDescription: transactions.originalDescription,
-          })
-          .from(transactions)
-          .where(and(inArray(transactions.id, linkedIds), isNull(transactions.deletedAt)))
-      : [];
-    const byId = new Map(linkedRows.map((r) => [r.id, { ...r, date: r.date! }]));
-    const linked = new Map<string, RecurringCandidate>();
-    for (const m of marks.values()) {
-      const t = m.transactionId ? byId.get(m.transactionId) : undefined;
-      if (t) linked.set(m.due, t);
-    }
-    const candidates = (
-      await this.#candidates(tx, s.accountId, match.direction, null, match)
-    ).filter((c) => recurringMatches(match, c) && !byId.has(c.id));
-    const first = [candidates[0]?.date, from, ...marks.keys()]
-      .filter((d) => d !== undefined)
-      .sort()[0];
-    if (!first) return { dates: [], payments: [], marks };
-    const end = s.endedOn && s.endedOn < until ? s.endedOn : until;
-    const dates = occurrences(
-      s.schedule as RecurringSchedule,
-      addDays(first, -s.windowDays),
-      addDays(end > today ? end : today, s.windowDays),
-    ).filter((d) => d <= end);
-    const payments = payOccurrences(
-      dates.filter((d) => marks.get(d)?.mark !== 'skipped'),
-      candidates,
-      s.windowDays,
-      linked,
-    );
-    return { dates, payments, marks };
-  }
-
-  /**
-   * The account's transactions in one direction, oldest first: whole transactions, not their
-   * split parts, and not deleted. The amount condition narrows it in the database.
-   */
-  async #candidates(
-    tx: Executor,
-    accountId: string,
-    direction: 'in' | 'out',
-    from: string | null,
-    match?: RecurringMatch,
-  ): Promise<RecurringCandidate[]> {
-    const size = sql`abs(${transactions.amountMinor})`;
-    const rows = await tx
-      .select({
-        id: transactions.id,
-        date: transactions.effectiveDate,
-        amountMinor: transactions.amountMinor,
-        displayName: transactions.displayName,
-        originalDescription: transactions.originalDescription,
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.accountId, accountId),
-          isNull(transactions.parentId),
-          isNull(transactions.deletedAt),
-          direction === 'in' ? gt(transactions.amountMinor, 0) : lt(transactions.amountMinor, 0),
-          from ? gte(transactions.effectiveDate, from) : undefined,
-          match?.amount?.min !== undefined ? sql`${size} >= ${match.amount.min}` : undefined,
-          match?.amount?.max !== undefined ? sql`${size} <= ${match.amount.max}` : undefined,
-        ),
-      )
-      .orderBy(asc(transactions.effectiveDate), asc(transactions.id));
-    return rows.map((r) => ({ ...r, date: r.date! }));
+    return (await seriesHistory(tx, s, today, today)).payments;
   }
 
   async #today(tx: Executor, ctx: HouseholdContext): Promise<string> {
@@ -722,6 +665,7 @@ function toSeries(
   currency: string,
   paid: RecurringPayment[],
   today: string,
+  who: SeriesWho & { changes: SeriesChanges },
 ): RecurringSeries {
   const schedule = row.schedule as RecurringSchedule;
   const paidDues = new Set(paid.map((p) => p.due));
@@ -742,6 +686,8 @@ function toSeries(
     estimateMinor: estimateNext(paid, estimateCount(schedule)),
     recent: paid.slice(-RECENT).reverse(),
     paidCount: paid.length,
+    lastPaid: paid.at(-1)?.date ?? null,
+    ...who,
     version: row.version,
     updatedAt: row.updatedAt.toISOString(),
   };

@@ -13,6 +13,11 @@ import {
   type RecurringSchedule,
   recurringMatches,
   recurringScheduleSchema,
+  showWho,
+  statementPaid,
+  whoLooksAfter,
+  paymentsPerYear,
+  seriesChanges,
 } from './recurring.js';
 
 const pay = (id: string, date: string, amountMinor = 241_236): RecurringCandidate => ({
@@ -403,5 +408,200 @@ describe('detectRecurring', () => {
     )!;
     expect(found.kind).toBe('income');
     expect(found.draft.schedule).toMatchObject({ unit: 'month', days: [1, 15], weekend: 'before' });
+  });
+});
+
+describe('whoLooksAfter (D13)', () => {
+  const [alex, sam, jo] = ['alex', 'sam', 'jo'];
+  const base = {
+    kind: 'bill' as const,
+    responsibleMemberId: null,
+    createdByMemberId: alex,
+    seenBy: [alex, sam],
+    accountOwners: [sam],
+    householdOwners: [alex],
+  };
+
+  it('is the account’s only owner, whoever confirmed it', () => {
+    expect(whoLooksAfter(base)).toBe(sam);
+  });
+
+  it('is whoever confirmed it, for a joint account', () => {
+    expect(whoLooksAfter({ ...base, accountOwners: [sam, alex] })).toBe(alex);
+    expect(whoLooksAfter({ ...base, accountOwners: [sam, alex], createdByMemberId: sam })).toBe(
+      sam,
+    );
+  });
+
+  it('is whoever was chosen, while they still see the account', () => {
+    expect(whoLooksAfter({ ...base, responsibleMemberId: alex })).toBe(alex);
+    // Jo can't see it (any more): back to the default.
+    expect(whoLooksAfter({ ...base, responsibleMemberId: jo })).toBe(sam);
+  });
+
+  it('falls back to an owner of the account, then of the household', () => {
+    // Made by someone who's gone, on a joint account.
+    expect(whoLooksAfter({ ...base, createdByMemberId: jo, accountOwners: [sam, alex] })).toBe(sam);
+    // No owner left who sees it.
+    expect(whoLooksAfter({ ...base, createdByMemberId: jo, accountOwners: [] })).toBe(alex);
+    expect(
+      whoLooksAfter({ ...base, createdByMemberId: jo, accountOwners: [], seenBy: [] }),
+    ).toBeNull();
+  });
+
+  it('is nobody for income, which has "for" instead', () => {
+    expect(whoLooksAfter({ ...base, kind: 'income', responsibleMemberId: alex })).toBeNull();
+  });
+});
+
+describe('showWho (D22)', () => {
+  it('shows a person only when more than one member sees it', () => {
+    expect(showWho([])).toBe(false);
+    expect(showWho(['alex'])).toBe(false);
+    expect(showWho(['alex', 'sam'])).toBe(true);
+  });
+});
+
+describe('statementPaid (D9)', () => {
+  it('is paid at the balance, minimum paid at the minimum, partly paid below it', () => {
+    expect(statementPaid(50_000, 3_500, 50_000)).toBe('paid');
+    expect(statementPaid(50_000, 3_500, 60_000)).toBe('paid');
+    expect(statementPaid(50_000, 3_500, 3_500)).toBe('minimum');
+    expect(statementPaid(50_000, 3_500, 1_000)).toBe('part');
+    expect(statementPaid(50_000, 3_500, 0)).toBeNull();
+    // No minimum reported: anything short of the balance is part of it.
+    expect(statementPaid(50_000, null, 10_000)).toBe('part');
+  });
+});
+
+describe('seriesChanges (D14)', () => {
+  const months = [
+    '2026-05-10',
+    '2026-06-10',
+    '2026-07-10',
+    '2026-08-10',
+    '2026-09-10',
+    '2026-10-10',
+  ];
+  const pays = (amounts: number[]) =>
+    amounts.map((a, i) => ({
+      due: months[i]!,
+      transactionId: `t${i}`,
+      date: months[i]!,
+      amountMinor: -a,
+    }));
+  const base = {
+    kind: 'subscription' as const,
+    dates: months,
+    skipped: new Set<string>(),
+    since: '2026-05-10',
+    createdOn: '2026-05-01',
+    endedOn: null,
+    today: '2026-10-20',
+  };
+
+  it('sees a price that went up and stayed up', () => {
+    const c = seriesChanges({
+      ...base,
+      payments: pays([1_549, 1_549, 1_549, 1_549, 2_049, 2_049]),
+    });
+    expect(c.priceUp).toEqual({ changeMinor: 500, since: '2026-09-10' });
+  });
+
+  it('doesn’t count one odd payment, a rise that went back, or a small move', () => {
+    expect(
+      seriesChanges({ ...base, payments: pays([1_549, 1_549, 1_549, 1_549, 1_549, 2_049]) })
+        .priceUp,
+    ).toBeNull();
+    expect(
+      seriesChanges({ ...base, payments: pays([1_549, 1_549, 1_549, 1_549, 2_049, 1_549]) })
+        .priceUp,
+    ).toBeNull();
+    expect(
+      seriesChanges({ ...base, payments: pays([1_549, 1_549, 1_549, 1_549, 1_599, 1_599]) })
+        .priceUp,
+    ).toBeNull();
+  });
+
+  it('needs five payments, isn’t news after 120 days, and isn’t for income', () => {
+    expect(
+      seriesChanges({
+        ...base,
+        payments: pays([1_549, 1_549, 2_049, 2_049]),
+        dates: months.slice(0, 4),
+      }).priceUp,
+    ).toBeNull();
+    expect(
+      seriesChanges({
+        ...base,
+        payments: pays([1_549, 1_549, 1_549, 1_549, 2_049, 2_049]),
+        today: '2027-02-01',
+      }).priceUp,
+    ).toBeNull();
+    expect(
+      seriesChanges({
+        ...base,
+        kind: 'income',
+        payments: pays([1_549, 1_549, 1_549, 1_549, 2_049, 2_049]),
+      }).priceUp,
+    ).toBeNull();
+  });
+
+  it('calls a subscription new while its first payment is recent', () => {
+    const recent = { ...base, dates: months.slice(-1), since: '2026-10-10' };
+    expect(seriesChanges({ ...recent, payments: pays([0, 0, 0, 0, 0, 999]).slice(-1) }).isNew).toBe(
+      true,
+    );
+    expect(seriesChanges({ ...base, payments: pays([999, 999, 999]) }).isNew).toBe(false);
+    // Confirmed with nothing paid yet.
+    expect(seriesChanges({ ...base, payments: [], createdOn: '2026-10-01' }).isNew).toBe(true);
+    expect(
+      seriesChanges({ ...recent, kind: 'bill', payments: pays([0, 0, 0, 0, 0, 999]).slice(-1) })
+        .isNew,
+    ).toBe(false);
+  });
+
+  it('looks ended after two late dates in a row, not one, and not once ended', () => {
+    const four = pays([999, 999, 999, 999]);
+    expect(seriesChanges({ ...base, payments: four }).looksEnded).toBe(true);
+    expect(seriesChanges({ ...base, payments: pays([999, 999, 999, 999, 999]) }).looksEnded).toBe(
+      false,
+    );
+    expect(seriesChanges({ ...base, payments: four, endedOn: '2026-08-31' }).looksEnded).toBe(
+      false,
+    );
+    // A skipped one, or one paid another way, isn't late.
+    expect(
+      seriesChanges({ ...base, payments: four, skipped: new Set(['2026-10-10']) }).looksEnded,
+    ).toBe(false);
+    expect(
+      seriesChanges({ ...base, payments: four, markedPaid: new Set(['2026-09-10']) }).looksEnded,
+    ).toBe(false);
+  });
+});
+
+describe('paymentsPerYear', () => {
+  it('counts weeks, months, twice a month and days', () => {
+    expect(
+      paymentsPerYear({ unit: 'week', every: 2, anchor: '2026-01-02', weekend: 'as_is' }),
+    ).toBe(26);
+    expect(
+      paymentsPerYear({
+        unit: 'month',
+        every: 1,
+        days: [1, 15],
+        anchor: '2026-01-01',
+        weekend: 'as_is',
+      }),
+    ).toBe(24);
+    expect(
+      paymentsPerYear({
+        unit: 'month',
+        every: 12,
+        days: [3],
+        anchor: '2026-01-03',
+        weekend: 'as_is',
+      }),
+    ).toBe(1);
   });
 });

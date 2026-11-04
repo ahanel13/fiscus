@@ -272,6 +272,9 @@ catalogs:
     lucide-react:
       specifier: 1.48.0
       version: 1.48.0
+    nodemailer:
+      specifier: 10.2.1
+      version: 10.2.1
     pg:
       specifier: 8.23.0
       version: 8.23.0
@@ -382,6 +385,9 @@ importers:
       '@fiscus/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
+      '@fiscus/notify':
+        specifier: workspace:*
+        version: link:../../packages/notify
       '@fiscus/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -586,6 +592,9 @@ importers:
       '@fiscus/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
+      '@fiscus/notify':
+        specifier: workspace:*
+        version: link:../../packages/notify
       '@fiscus/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -776,6 +785,31 @@ importers:
       uuid:
         specifier: 'catalog:'
         version: 14.0.2
+    devDependencies:
+      '@fiscus/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@types/node@26.6.2)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/notify:
+    dependencies:
+      '@fiscus/shared':
+        specifier: workspace:*
+        version: link:../shared
+      nodemailer:
+        specifier: 'catalog:'
+        version: 10.2.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
     devDependencies:
       '@fiscus/config':
         specifier: workspace:*
@@ -3574,6 +3608,10 @@ packages:
   node-releases@2.0.57:
     resolution: {integrity: sha512-kQK9LGGFiHtrWiNhZtA7Qbw17AQz+dmsEKODRIVTXA9+e5MS/2gZEBhYJt13GrAz5/IOZKddH/0Z3TP/Zgo+yw==}
     engines: {node: '>=18'}
+
+  nodemailer@10.2.1:
+    resolution: {integrity: sha512-ZrDNsPFoDMwefNs7sJwrYiEJ/CG4ClJWDZv05iNJsEBWa8GRDry1QJHTJxsuTAY9eDDKjX4k+q3SxslXJOao7w==}
+    engines: {node: '>=20.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -6873,6 +6911,8 @@ snapshots:
       content-type: 2.1.0
 
   node-releases@2.0.57: {}
+
+  nodemailer@10.2.1: {}
 
   normalize-path@3.0.0: {}
 

@@ -288,6 +288,14 @@ throughout. A Separate household, or someone on their own, sees the same screens
 - **New subscription**, when a new one is found.
 - **Looks ended**, after two late occurrences.
 
+Built (#129, #123): a price rise is the last 2 payments both 5% or more over the average of the 3
+before them, while the first of them is from the last 120 days; a subscription is new while its
+first payment (or, with none yet, its confirming) is from the last 45 days; it looks ended when its
+last two dates more than 2 days ago are unpaid and nobody marked it ended (`seriesChanges` in
+`@fiscus/shared`). "A new subscription, or a price went up" tells each member who sees the series,
+once per change. **All → Subscriptions** lists each subscription with what it costs a month and a
+year and when it was last paid, with the year's total; the Upcoming total opens it.
+
 ---
 
 ## 7. Notifications: channels and rules
@@ -307,8 +315,8 @@ the bill.
 
 **D16. The channels.**
 - **In Fiscus:** the bell, with a list of recent notifications (#130).
-- **Email:** sent by the server. The instance admin sets it up once, with new settings
-  (`SMTP_URL`, `MAIL_FROM`) and a test on the Server page. Without them, the email row says
+- **Email:** sent by the server. The instance admin sets it up once, on the Server page (or
+  with `SMTP_URL` and `MAIL_FROM`, which win), with a test there. Without it, the email row says
   "Your server can't send email yet; ask whoever runs it." (#125)
 - **ntfy, Gotify and webhooks:** set up by each person, with their own server address and topic
   or token, stored encrypted (#126). ntfy is the easiest way to get phone push without an app
@@ -345,6 +353,12 @@ household's occurrences daily, in its timezone, and records what it sent. A remi
 once per occurrence and rule, even if the worker restarts. A bill paid before its reminder isn't
 reminded about at all.
 
+**As built so far** (#125, #126, #130): Settings → Notifications, the bell, email (with Server →
+Email's test), ntfy, Gotify and webhooks with their tests, detail levels, and the delivery the
+worker does: [notifications](../notifications.md). The rules (#127) are built, each run in the
+member's own view of the household; "A new subscription, or a price went up" waits for D14's
+detection. The weekly recap goes out at each person's day and hour (#128).
+
 ---
 
 ## 8. The weekly recap
@@ -363,6 +377,12 @@ Every Monday morning (#128), on the dashboard as a card, and by email for those 
 **D21. Each person's recap is their own.** It's built for the person reading it, from what they
 can see (SYS-02). Alex's says "what you can see: yours and ours"; Sam's includes Sam's private
 card, which Alex's doesn't. A quiet week still sends a short recap, so it's clear nothing broke.
+
+**Built (#128).** `buildWeeklyRecap()` in `@fiscus/ledger` builds a person's recap in their own
+context (never system context), so row-level security keeps it to what they see. The dashboard
+shows last week's as a card (`GET /households/:id/recap`), and `renderWeeklyRecapEmail()` in
+`@fiscus/shared` turns it into the email, at full, summary or minimal detail (D17), for the
+Monday send. New subscriptions and price rises join "worth a look" with #123 and #129.
 
 ---
 

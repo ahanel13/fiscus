@@ -51,6 +51,8 @@ export interface Connection {
    * and history (#83, D15). It keeps syncing meanwhile.
    */
   onOldKeys: boolean;
+  /** The bank offers accounts its owner hasn't chosen about yet: "Choose accounts" to add them. */
+  newAccountsAvailable: boolean;
 }
 
 /** Providers that say when the history they're sending is complete. */
@@ -207,7 +209,11 @@ export type ConnectSuggestion =
    * Not tracked: it matches one of your accounts that you closed, or one that another of your
    * connections syncs already (`synced`: linking it moves it here, Plaid to SimpleFIN or back).
    */
-  | { choice: 'skip'; reason: 'closed' | 'synced'; accountId: string };
+  | { choice: 'skip'; reason: 'closed' | 'synced'; accountId: string }
+  /** Choosing again: you chose not to track it before. */
+  | { choice: 'skip'; reason: 'declined' }
+  /** This connection tracks it already (choosing again): it stays, unless you stop tracking it. */
+  | { choice: 'keep' };
 
 /** An account the bank offers, from Plaid's `/accounts/get` (never Link's metadata). */
 export interface OfferedAccount {
@@ -222,6 +228,11 @@ export interface OfferedAccount {
   /** The bank's current balance, in Fiscus's sign (what a card owes is negative). */
   balance: { amountMinor: number; currency: string } | null;
   suggestion: ConnectSuggestion;
+  /**
+   * This connection tracks it already (choosing again): as your account, or `accountId` null for
+   * one you can't see, which only its owners can stop tracking.
+   */
+  tracked: { accountId: string | null } | null;
 }
 
 /** A connection being set up: only its owner sees it until they confirm (D4). */
@@ -231,6 +242,11 @@ export interface ConnectionSetup {
   accounts: OfferedAccount[];
   /** The connection this one moves to new keys, ended once this is confirmed (#83); else null. */
   replacesConnectionId: string | null;
+  /**
+   * Set up already: its accounts are being chosen again, to track ones it doesn't (a SimpleFIN
+   * account added at the Bridge later), move some here, or stop tracking some.
+   */
+  chosen: boolean;
 }
 
 const providerAccountId = z.string().min(1).max(200);
@@ -249,6 +265,8 @@ export const accountChoiceSchema = z.discriminatedUnion('choice', [
     visibility: accountVisibilitySchema.optional(),
   }),
   z.object({ providerAccountId, choice: z.literal('skip') }),
+  /** Choosing again: one it tracks already stays. */
+  z.object({ providerAccountId, choice: z.literal('keep') }),
 ]);
 export type AccountChoiceInput = z.infer<typeof accountChoiceSchema>;
 

@@ -519,6 +519,69 @@
       "when": 1793654791675,
       "tag": "0073_connection_has_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1793656128209,
+      "tag": "0074_connection_known_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1793656130056,
+      "tag": "0075_connection_tracked",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1793689699776,
+      "tag": "0076_recurring_responsible",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1793689701683,
+      "tag": "0077_recurring_responsible_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1793723777111,
+      "tag": "0078_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1793723778660,
+      "tag": "0079_notifications_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1793724474911,
+      "tag": "0080_transactions_created",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793724476524,
+      "tag": "0081_notification_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1793725227771,
+      "tag": "0082_notification_email",
+      "breakpoints": true
     }
   ]
 }

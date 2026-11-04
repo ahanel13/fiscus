@@ -4,6 +4,7 @@ import type { FieldCrypto } from '@fiscus/crypto';
 import type { Database } from '@fiscus/db';
 import { describeError } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
+import { notifyConnectionTrouble } from '../notify/connection-trouble.js';
 import { failureOf, FAILURE, JobFailure, jobKindFor, type JobHandlers } from './jobs.js';
 import {
   abandonSetups,
@@ -257,12 +258,30 @@ export class Runner {
         this.#logger.warn(
           `${kind} ${id} failed (${failure.code}${request}), retry in ${minutes(nextInMs)}`,
         );
+        await this.#notifyTrouble(claimed);
       } catch (finishing) {
         // The lease expires on its own; the connection is claimed again then.
         this.#logger.error(
           `${kind} ${id}: recording the failure failed: ${describeError(finishing)}`,
         );
       }
+    }
+  }
+
+  /** Tells the connection's owner when it needs them (D18); a failure here changes nothing else. */
+  async #notifyTrouble(claimed: Claimed): Promise<void> {
+    if (this.#released.has(claimed.connectionId)) return;
+    try {
+      const trouble = await notifyConnectionTrouble(
+        this.#deps.db,
+        claimed.householdId,
+        claimed.connectionId,
+      );
+      if (trouble) this.#logger.log(`${claimed.connectionId}: told its owner (${trouble})`);
+    } catch (error) {
+      this.#logger.error(
+        `${claimed.connectionId}: notifying its owner failed: ${describeError(error)}`,
+      );
     }
   }
 

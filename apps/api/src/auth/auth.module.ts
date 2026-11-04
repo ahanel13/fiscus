@@ -2,6 +2,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminInvitesController } from '../admin/admin-invites.controller.js';
+import { AdminMailController } from '../admin/admin-mail.controller.js';
 import { AdminSettingsController } from '../admin/admin-settings.controller.js';
 import { AdminUsersController } from '../admin/admin-users.controller.js';
 import { InstanceSettingsService } from '../admin/instance-settings.service.js';
@@ -23,6 +24,7 @@ import { SignInService } from './sign-in.service.js';
     AdminUsersController,
     AdminInvitesController,
     AdminSettingsController,
+    AdminMailController,
   ],
   providers: [
     AuditService,

@@ -1099,19 +1099,23 @@ test('connects a bank through Plaid Link, on its own page, and chooses what to t
   // stack's fake Plaid isn't a provider the worker has).
   await page.getByRole('link', { name: /^(Go to accounts|Cancel)$/ }).click();
   await expect(page).toHaveURL(/\/accounts$/);
-  // On Accounts: the connection, how fresh it is, and "Refresh now" with its limit (#81, D10).
+  // On Accounts, only connections that need someone get a row; Household settings → Connections
+  // has each one, how fresh it is, and "Refresh now" with its limit (#81, D10).
   const connections = page.getByRole('region', { name: 'Bank connections' });
-  await expect(connections).toContainText('Harbor Credit Union · Plaid');
-  const refresh = connections.getByRole('button', { name: 'Refresh Harbor Credit Union now' });
+  await expect(connections).toBeVisible();
+  await page.goto(`${householdUrl}/settings/connections`);
+  const managed = page.getByRole('region', { name: 'Bank connections' });
+  const refresh = managed.getByRole('button', { name: 'Refresh Harbor Credit Union now' });
   // Enabled once its first sync is done.
   await expect(refresh).toBeEnabled({ timeout: 30_000 });
-  await expect(connections).toContainText(/Synced (just now|\d+ minutes? ago) · next in/);
+  await expect(managed).toContainText(/Synced (just now|\d+ minutes? ago) · next in/);
   expect(await axeViolations(page)).toEqual([]);
   await refresh.click();
   await expect(page.getByText('Syncing Harbor Credit Union now.')).toBeVisible();
   await expect(refresh).toBeDisabled();
   await expect(refresh).toHaveText(/Refresh in 1[45] minutes/);
-  await expect(connections).toContainText(/Syncing…|Synced just now · next in \d hours?/);
+  await expect(managed).toContainText(/Syncing…|Synced just now · next in \d hours?/);
+  await page.goto(`${householdUrl}/accounts`);
 
   // The bank wants a sign-in: everyone sees it, with the accounts it leaves stale (D11, D12), and
   // its owner signs in again through Link's update mode, which keeps the same connection.
@@ -1147,11 +1151,14 @@ test('connects a bank through Plaid Link, on its own page, and chooses what to t
   await expect(connections).not.toContainText('sign in again');
   expect(await plaidLoaded()).toBe(false);
 
-  // The setup is over: its page says so, and sends you back.
+  // The setup is over: its page chooses the accounts again (D19), keeping what it tracks.
   await page.goto(setupUrl);
   await expect(
-    page.getByRole('heading', { level: 1, name: 'This bank is already connected' }),
+    page.getByRole('heading', { level: 1, name: 'Harbor Credit Union: choose what to track' }),
   ).toBeVisible();
+  await expect(page.getByText('Tracked already, as Everyday checking.')).toBeVisible();
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
 });
 
 test('moves a bank to the household’s own Plaid keys, keeping its accounts (#83)', async ({
@@ -1264,6 +1271,11 @@ test('connects the SimpleFIN Bridge with a setup token, claimed once (#91)', asy
   ).toBeFocused();
   await page.getByRole('link', { name: 'Go to accounts' }).click();
   await expect(page).toHaveURL(/\/accounts$/);
+  // Its first sync gets a row on Accounts; once it syncs on its own, it's under Household
+  // settings → Connections.
+  await expect(page.getByRole('region', { name: 'Bank connections' })).toBeVisible();
+  const accountsUrl = page.url();
+  await page.goto(accountsUrl.replace(/\/accounts$/, '/settings/connections'));
   const bridgeLine = page
     .getByRole('region', { name: 'Bank connections' })
     .locator('div', { hasText: 'SimpleFIN Bridge · SimpleFIN' })
@@ -1277,8 +1289,11 @@ test('connects the SimpleFIN Bridge with a setup token, claimed once (#91)', asy
       timeout: 30_000,
     },
   );
-  await page.reload();
+  await page.goto(accountsUrl);
   await expect(page.getByRole('link', { name: /Harbor CU Visa/ })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Bank connections' })).toContainText(
+    /bank connections? syncs? on (its|their) own/,
+  );
 
   // Claimed once: the same token again is refused, and says where a new one comes from.
   dialog = await paste();

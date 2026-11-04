@@ -75,6 +75,7 @@ export class ConnectionsService {
           firstFailedAt: connections.firstFailedAt,
           refreshRequestedAt: connections.refreshRequestedAt,
           historicalComplete: connections.historicalComplete,
+          newAccountsAvailable: connections.newAccountsAvailable,
           credentialSetId: connections.credentialSetId,
         })
         .from(connections)
@@ -135,6 +136,7 @@ export class ConnectionsService {
             status !== 'setup' &&
             newKeys !== undefined &&
             r.credentialSetId !== newKeys,
+          newAccountsAvailable: status !== 'setup' && r.newAccountsAvailable,
         };
       });
     });

@@ -9,12 +9,16 @@ import {
   type RecurringPreview,
   type RecurringSchedule,
   type RecurringSeries,
+  showWho,
   type WeekendRule,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
+import { membersQuery } from '../api/queries.js';
+import { namesOf } from '../lib/recurring.js';
 import { Amount } from './Amount.js';
+import { ChangeBadges } from './ChangeBadges.js';
 import {
   AmountInput,
   Button,
@@ -231,7 +235,13 @@ export function RecurringDialog({
   onClose,
 }: {
   householdId: string;
-  initial: { name: string; kind: RecurringKind; draft: RecurringDraft };
+  initial: {
+    name: string;
+    kind: RecurringKind;
+    draft: RecurringDraft;
+    /** Who looks after it, if someone chose already (a suggestion's review). */
+    responsibleMemberId?: string | null;
+  };
   series?: RecurringSeries;
   accountName: string;
   currency: string;
@@ -242,6 +252,9 @@ export function RecurringDialog({
   const queryClient = useQueryClient();
   const today = useToday();
   const [form, setForm] = useState(() => toForm(initial.name, initial.kind, initial.draft));
+  const members = useQuery(membersQuery(householdId)).data ?? [];
+  // Who looks after a new one: chosen here, else the default the preview gives (D13).
+  const [who, setWho] = useState<string | null>(initial.responsibleMemberId ?? null);
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
   // Added by hand with no name to match: its own name, so not every payment from the account
   // counts as this one.
@@ -274,7 +287,13 @@ export function RecurringDialog({
     toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' });
   const save = useMutation({
     mutationFn: () => {
-      const body = { name: form.name.trim(), kind: form.kind, ...toDraft(effective) };
+      const responsibleMemberId = form.kind !== 'income' && showWho(seenBy) ? who : null;
+      const body = {
+        name: form.name.trim(),
+        kind: form.kind,
+        ...toDraft(effective),
+        ...(responsibleMemberId ? { responsibleMemberId } : {}),
+      };
       return series
         ? api('PATCH', `/api/v1/households/${householdId}/recurring/${series.id}`, {
             body: {
@@ -300,6 +319,19 @@ export function RecurringDialog({
       done(endedOn ? `${form.name.trim()} has ended.` : `${form.name.trim()} is back.`),
     onError: fail,
   });
+  // Handing it over (D13): anyone who sees it can, so it's saved at once, apart from Save.
+  const handOver = useMutation({
+    mutationFn: (memberId: string) =>
+      api('PUT', `/api/v1/households/${householdId}/recurring/${series!.id}/responsible`, {
+        body: { memberId },
+      }),
+    onSuccess: (_r, memberId) => {
+      setWho(memberId);
+      void queryClient.invalidateQueries({ queryKey: ['households', householdId, 'recurring'] });
+      toast(`${namesOf([memberId], members) || 'They'} looks after ${series!.name} now.`);
+    },
+    onError: fail,
+  });
   const remove = useMutation({
     mutationFn: () => api('DELETE', `/api/v1/households/${householdId}/recurring/${series!.id}`),
     onSuccess: () => done(`${form.name.trim()} is removed. Its transactions stay as they are.`),
@@ -307,6 +339,9 @@ export function RecurringDialog({
   });
   const p = preview.data;
   const schedule = toSchedule(form);
+  const seenBy = series?.seenBy ?? p?.seenBy ?? [];
+  const lookAfter = who ?? series?.responsibleMemberId ?? p?.responsibleMemberId ?? null;
+  const forNames = series ? namesOf(series.forMemberIds, members) : '';
   const monthly = schedule.unit === 'month';
 
   return (
@@ -316,6 +351,11 @@ export function RecurringDialog({
       onOpenChange={(open) => (open ? null : onClose())}
     >
       <div className="space-y-4">
+        {series && (series.changes.priceUp || series.changes.isNew || series.changes.looksEnded) ? (
+          <p className="flex flex-wrap gap-2">
+            <ChangeBadges changes={series.changes} currency={series.currency} />
+          </p>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField
             label="Name"
@@ -327,7 +367,10 @@ export function RecurringDialog({
             <Select
               label="Account"
               value={form.accountId}
-              onChange={(v) => set({ accountId: String(v) })}
+              onChange={(v) => {
+                set({ accountId: String(v) });
+                setWho(null);
+              }}
             >
               {accounts.map((a) => (
                 <SelectItem key={a.id} id={a.id}>
@@ -466,6 +509,40 @@ export function RecurringDialog({
             />
           ) : null}
         </div>
+
+        {form.kind !== 'income' && showWho(seenBy) ? (
+          // Only where there's a choice: an account more than one of you sees (D22).
+          <div className="space-y-1">
+            <Select
+              label="Who looks after it"
+              className="sm:w-1/2"
+              value={lookAfter}
+              isDisabled={handOver.isPending}
+              onChange={(v) => {
+                const memberId = String(v);
+                if (series && series.kind !== 'income') handOver.mutate(memberId);
+                else setWho(memberId);
+              }}
+            >
+              {seenBy.map((m) => (
+                <SelectItem key={m} id={m}>
+                  {namesOf([m], members) || 'Someone'}
+                </SelectItem>
+              ))}
+            </Select>
+            {lookAfter ? (
+              <p className="text-xs text-muted">
+                {namesOf([lookAfter], members)} gets its reminders. Everyone who sees {accountName}{' '}
+                sees it here too.
+              </p>
+            ) : null}
+          </div>
+        ) : form.kind === 'income' && showWho(seenBy) && forNames ? (
+          <p className="text-sm">
+            For <b>{forNames}</b>
+            <span className="text-muted">, from who its payments are for.</span>
+          </p>
+        ) : null}
 
         <fieldset className="space-y-3 rounded-xl border border-border p-4">
           <legend className="px-1 text-xs font-semibold text-muted">Matches</legend>

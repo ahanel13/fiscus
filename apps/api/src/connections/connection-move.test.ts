@@ -21,6 +21,7 @@ let bridge: FakeSimpleFin;
 let db: pg.Client;
 let hh = '';
 let A: TestClient;
+let B: TestClient;
 const member = { A: '', B: '' };
 const user = { A: '', B: '' };
 const url = (p = '') => `/api/v1/households/${hh}${p}`;
@@ -53,7 +54,7 @@ beforeAll(async () => {
   hh = created.id;
   member.A = created.you.memberId;
   user.A = (await A.get('/api/v1/me')).body.data.id;
-  const B = await signup('Sam');
+  B = await signup('Sam');
   const me = (await B.get('/api/v1/me')).body.data;
   user.B = me.id;
   const invite = await A.post(url('/invites'), { email: me.email, role: 'member' });
@@ -189,5 +190,127 @@ describe('moving accounts between bank connections', () => {
     expect(await ask('A', conn.amex)).toBe(true);
     expect(await ask('A', conn.chase)).toBe(false);
     expect(await ask('B', conn.amex)).toBe(null);
+  });
+});
+
+describe('choosing a live connection’s accounts again', () => {
+  const setup = async () => {
+    const r = await A.get(url(`/connections/${conn.simplefin}/setup`));
+    ok(r);
+    return {
+      chosen: r.body.data.chosen as boolean,
+      offered: Object.fromEntries(
+        (r.body.data.accounts as any[]).map((a) => [a.providerAccountId, a]),
+      ) as Record<string, any>,
+    };
+  };
+
+  it('offers what it tracks to keep, and what you didn’t track as you left it', async () => {
+    const { chosen, offered } = await setup();
+    expect(chosen).toBe(true);
+    expect(offered[RIVERA.checking]).toMatchObject({
+      suggestion: { choice: 'keep' },
+      tracked: { accountId: acct.checking },
+    });
+    expect(offered[RIVERA.oldSavings]).toMatchObject({
+      suggestion: { choice: 'skip', reason: 'declined' },
+      tracked: null,
+    });
+  });
+
+  it('is only for its owner', async () => {
+    const r = await B.get(url(`/connections/${conn.simplefin}/setup`));
+    expect(r.status).toBe(403);
+  });
+
+  it('keeps only what it tracks, and adds only what it doesn’t', async () => {
+    const r = await A.post(url(`/connections/${conn.simplefin}/confirm`), {
+      accounts: [
+        { providerAccountId: RIVERA.checking, choice: 'new' },
+        { providerAccountId: RIVERA.visa, choice: 'keep' },
+        { providerAccountId: RIVERA.savings, choice: 'keep' },
+        { providerAccountId: RIVERA.oldSavings, choice: 'skip' },
+      ],
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(r.body.code).toBe('choices_mismatch');
+  });
+
+  it('adds an account the bank offers now, stops tracking one, and syncs from the start', async () => {
+    // An account the Bridge added later: nobody chose about it.
+    await db.query(
+      `UPDATE connections SET known_account_ids = array_remove(known_account_ids, $2),
+              new_accounts_available = true, sync_cursor = 'c-1', historical_complete = true
+        WHERE id = $1`,
+      [conn.simplefin, RIVERA.oldSavings],
+    );
+    const listed = ((await A.get(url('/connections'))).body.data as any[]).find(
+      (c) => c.id === conn.simplefin,
+    );
+    expect(listed.newAccountsAvailable).toBe(true);
+    expect((await setup()).offered[RIVERA.oldSavings].suggestion).toMatchObject({ choice: 'new' });
+
+    const r = await A.post(url(`/connections/${conn.simplefin}/confirm`), {
+      accounts: [
+        { providerAccountId: RIVERA.checking, choice: 'keep' },
+        { providerAccountId: RIVERA.visa, choice: 'skip' },
+        { providerAccountId: RIVERA.savings, choice: 'skip' },
+        { providerAccountId: RIVERA.oldSavings, choice: 'new' },
+      ],
+    });
+    ok(r);
+    expect(r.body.data.accounts).toHaveLength(1);
+    const added = r.body.data.accounts[0].accountId;
+    expect(await syncsFrom(added)).toBe(conn.simplefin);
+    expect(await syncsFrom(acct.checking)).toBe(conn.simplefin);
+    // Stopped: it keeps its history and its provider id, so linking it back is suggested.
+    expect(await syncsFrom(acct.visa)).toBe(null);
+    const row = (
+      await db.query(
+        `SELECT status, known_account_ids, new_accounts_available, sync_cursor,
+                historical_complete, next_sync_at
+           FROM connections WHERE id = $1`,
+        [conn.simplefin],
+      )
+    ).rows[0];
+    expect(row).toMatchObject({
+      status: 'ok',
+      new_accounts_available: false,
+      sync_cursor: null,
+      historical_complete: false,
+    });
+    expect([...row.known_account_ids].sort()).toEqual(
+      [RIVERA.checking, RIVERA.visa, RIVERA.savings, RIVERA.oldSavings].sort(),
+    );
+    expect(row.next_sync_at.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  it('won’t stop tracking an account you can’t see', async () => {
+    // Sam's private account, synced by Alex's connection: Alex can't see it.
+    const mine = await B.post(url('/accounts'), {
+      name: 'Sam’s savings',
+      type: 'depository',
+      visibility: 'private',
+    });
+    ok(mine);
+    await db.query(
+      'UPDATE accounts SET connection_id = $2, provider_account_id = $3 WHERE id = $1',
+      [mine.body.data.id, conn.simplefin, RIVERA.savings],
+    );
+    const { offered } = await setup();
+    expect(offered[RIVERA.savings]).toMatchObject({
+      suggestion: { choice: 'keep' },
+      tracked: { accountId: null },
+    });
+    const r = await A.post(url(`/connections/${conn.simplefin}/confirm`), {
+      accounts: [
+        { providerAccountId: RIVERA.checking, choice: 'keep' },
+        { providerAccountId: RIVERA.visa, choice: 'skip' },
+        { providerAccountId: RIVERA.savings, choice: 'skip' },
+        { providerAccountId: RIVERA.oldSavings, choice: 'keep' },
+      ],
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(403);
+    expect(await syncsFrom(mine.body.data.id)).toBe(conn.simplefin);
   });
 });

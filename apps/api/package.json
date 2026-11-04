@@ -19,6 +19,7 @@
     "@fiscus/domain": "workspace:*",
     "@fiscus/env": "workspace:*",
     "@fiscus/ledger": "workspace:*",
+    "@fiscus/notify": "workspace:*",
     "@fiscus/shared": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",

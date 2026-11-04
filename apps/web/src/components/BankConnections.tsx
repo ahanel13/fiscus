@@ -22,9 +22,10 @@ import {
 import { BankLogo } from './BankLogo.js';
 
 // A household's bank connections (the bank connections walkthrough §5–§7, D10–D14): at the top of
-// Accounts, each with how fresh it is, "Refresh now" for its owner, and what's wrong when
-// something is; on the dashboard, only the broken ones; in Household settings → Connections, all
-// of them with who linked them and "Disconnect". Whoever sees its accounts sees it, with whose it
+// Accounts, the ones that need someone (to finish setup, sign in again, choose new accounts, or
+// that are failing or still bringing in history) and one line for the rest; on the dashboard,
+// only the broken ones; in Household settings → Connections, all of them with how fresh each is,
+// "Refresh now", who linked them and "Disconnect". Whoever sees its accounts sees it, with whose it
 // is: only its owner fixes it (D11), and the accounts it leaves stale are named (D12).
 
 type Data<T> = { data: T };
@@ -45,6 +46,19 @@ export function connectionTrouble(c: Connection): ConnectionTrouble | null {
   if (c.status === 'login_required') return 'needs_sign_in';
   if (c.status === 'error' && c.notWorking) return 'not_working';
   return null;
+}
+
+/** Worth a row on Accounts: something to do or wait for. The rest sync on their own. */
+function needsAttention(c: Connection): boolean {
+  return (
+    c.status === 'setup' ||
+    c.status === 'login_required' ||
+    c.status === 'error' ||
+    c.newAccountsAvailable ||
+    c.importingHistory ||
+    c.onOldKeys ||
+    (c.status === 'ok' && c.lastSyncedAt === null)
+  );
 }
 
 /** Each account's connection trouble, for the badge on its row (D13). */
@@ -95,8 +109,12 @@ export function BankConnections({
   const shown =
     variant === 'dashboard'
       ? connections.filter((c) => c.status === 'login_required' || c.status === 'error')
-      : connections;
-  if (shown.length === 0) return null;
+      : variant === 'accounts'
+        ? connections.filter(needsAttention)
+        : connections;
+  // On Accounts, the ones that sync on their own are one line, to settings.
+  const quiet = variant === 'accounts' ? connections.length - shown.length : 0;
+  if (shown.length === 0 && quiet === 0) return null;
   const me = members.find((m) => m.isYou)?.id;
   return (
     <section
@@ -113,6 +131,23 @@ export function BankConnections({
           manage={variant === 'settings'}
         />
       ))}
+      {quiet ? (
+        <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
+          <Landmark aria-hidden className="size-4 shrink-0" />
+          <span>
+            {shown.length ? `${quiet} more` : quiet} bank{' '}
+            {quiet === 1 ? 'connection syncs' : 'connections sync'} on{' '}
+            {quiet === 1 ? 'its' : 'their'} own.
+          </span>
+          <Link
+            to="/h/$householdId/settings/connections"
+            params={{ householdId }}
+            className="font-medium text-accent-text underline-offset-2 hover:underline"
+          >
+            Manage connections
+          </Link>
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -228,6 +263,16 @@ function ConnectionLine({
     </p>
   ) : null;
 
+  // The bank offers accounts nobody chose about yet (a SimpleFIN account added at the Bridge).
+  const unchosen = c.newAccountsAvailable ? (
+    <p className="text-xs text-fg">
+      {bank} has accounts you haven’t chosen about yet.{' '}
+      {yours ? 'Choose accounts to track them.' : `${c.owner.name} can add them.`}
+    </p>
+  ) : null;
+  // Choosing again: track more, move some here, or stop tracking some (D18).
+  const choosable = c.status === 'ok' || c.status === 'error';
+
   const trouble = connectionTrouble(c);
   const linked = manage ? (
     <p className="text-xs text-muted">
@@ -270,6 +315,7 @@ function ConnectionLine({
           {status}
         </p>
         {importing}
+        {unchosen}
         {oldKeys}
         {stale}
       </div>
@@ -280,6 +326,17 @@ function ConnectionLine({
               to="/h/$householdId/connect/setup/$connectionId"
               params={{ householdId, connectionId: c.id }}
               className={buttonStyles({ size: 'sm' })}
+            >
+              Choose accounts
+            </Link>
+          ) : choosable ? (
+            <Link
+              to="/h/$householdId/connect/setup/$connectionId"
+              params={{ householdId, connectionId: c.id }}
+              className={buttonStyles({
+                size: 'sm',
+                variant: c.newAccountsAvailable ? 'primary' : 'secondary',
+              })}
             >
               Choose accounts
             </Link>
