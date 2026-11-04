@@ -284,6 +284,14 @@ throughout. A Separate household, or someone on their own, sees the same screens
 - **New subscription**, when a new one is found.
 - **Looks ended**, after two late occurrences.
 
+Built (#129, #123): a price rise is the last 2 payments both 5% or more over the average of the 3
+before them, while the first of them is from the last 120 days; a subscription is new while its
+first payment (or, with none yet, its confirming) is from the last 45 days; it looks ended when its
+last two dates more than 2 days ago are unpaid and nobody marked it ended (`seriesChanges` in
+`@fiscus/shared`). "A new subscription, or a price went up" tells each member who sees the series,
+once per change. **All → Subscriptions** lists each subscription with what it costs a month and a
+year and when it was last paid, with the year's total; the Upcoming total opens it.
+
 ---
 
 ## 7. Notifications: channels and rules
