@@ -28,11 +28,18 @@ const dayOfMonth = z
   .max(31)
   .refine((d) => d !== 0, 'A day of the month is 1–31, or −1 for the last');
 
+/** A weekday in the month: the 1st–4th of it, or the last (−1). `day` is 0 (Sunday) to 6. */
+const weekdayOfMonth = z.object({
+  nth: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)]),
+  day: z.number().int().min(0).max(6),
+});
+
 /**
  * When it comes. `anchor` is one of its dates: it sets the weekday (weeks), the phase (every 2
- * weeks, every 3 months), and the month (yearly). Twice a month is `month` with two days.
+ * weeks, every 3 months), and the month (yearly). Twice a month is `month` with two days. A month
+ * schedule has `days` (the 1st, the 15th) or `weekday` (the first Friday), not both.
  */
-export const recurringScheduleSchema = z.discriminatedUnion('unit', [
+const scheduleUnion = z.discriminatedUnion('unit', [
   z.object({
     unit: z.literal('week'),
     every: z.number().int().min(1).max(8),
@@ -46,7 +53,9 @@ export const recurringScheduleSchema = z.discriminatedUnion('unit', [
       .array(dayOfMonth)
       .min(1)
       .max(2)
-      .refine((d) => new Set(d).size === d.length, 'Two different days'),
+      .refine((d) => new Set(d).size === d.length, 'Two different days')
+      .optional(),
+    weekday: weekdayOfMonth.optional(),
     anchor: isoDate,
     weekend: weekendRuleSchema,
   }),
@@ -57,6 +66,10 @@ export const recurringScheduleSchema = z.discriminatedUnion('unit', [
     weekend: weekendRuleSchema,
   }),
 ]);
+export const recurringScheduleSchema = scheduleUnion.refine(
+  (s) => s.unit !== 'month' || !!s.days !== !!s.weekday,
+  'Give days of the month or a weekday in it',
+);
 export type RecurringSchedule = z.infer<typeof recurringScheduleSchema>;
 
 /**
@@ -316,6 +329,19 @@ function onDay(index: number, day: number): string {
   return toDate(Date.UTC(y, m0, d));
 }
 
+/** The `nth` (−1: last) `day` of the week in month `index`. */
+function onWeekday(index: number, nth: number, day: number): string {
+  const y = Math.floor(index / 12);
+  const m0 = index % 12;
+  if (nth === -1) {
+    const last = lastDayOf(y, m0);
+    const back = (new Date(Date.UTC(y, m0, last)).getUTCDay() - day + 7) % 7;
+    return toDate(Date.UTC(y, m0, last - back));
+  }
+  const first = (day - new Date(Date.UTC(y, m0, 1)).getUTCDay() + 7) % 7;
+  return toDate(Date.UTC(y, m0, 1 + first + 7 * (nth - 1)));
+}
+
 function shift(d: string, rule: WeekendRule): string {
   const w = weekday(d);
   if (rule === 'as_is' || (w !== 0 && w !== 6)) return d;
@@ -334,7 +360,8 @@ export function occurrences(s: RecurringSchedule, from: string, to: string): str
     const first = monthIndex(lo);
     const start = first - ((((first - a) % s.every) + s.every) % s.every);
     for (let i = start; i <= monthIndex(hi); i += s.every) {
-      for (const day of s.days) nominal.push(onDay(i, day));
+      if (s.weekday) nominal.push(onWeekday(i, s.weekday.nth, s.weekday.day));
+      for (const day of s.days ?? []) nominal.push(onDay(i, day));
     }
   } else {
     const step = s.unit === 'week' ? 7 * s.every : s.every;
@@ -360,6 +387,13 @@ export function nextOccurrences(s: RecurringSchedule, from: string, count: numbe
 const ordinal = (n: number) =>
   n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 const dayName = (d: number) => (d === LAST_DAY ? 'the last day' : `the ${ordinal(d)}`);
+const NTH: Record<number, string> = {
+  1: 'first',
+  2: 'second',
+  3: 'third',
+  4: 'fourth',
+  [-1]: 'last',
+};
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = [
   'January',
@@ -383,7 +417,15 @@ export function describeSchedule(s: RecurringSchedule): string {
     return s.every === 1 ? `Every week, ${on}` : `Every ${s.every} weeks, ${on}`;
   }
   if (s.unit === 'day') return s.every === 1 ? 'Every day' : `Every ${s.every} days`;
-  const days = [...s.days].sort((a, b) => (a === LAST_DAY ? 32 : a) - (b === LAST_DAY ? 32 : b));
+  if (s.weekday) {
+    const which = `the ${NTH[s.weekday.nth]} ${WEEKDAYS[s.weekday.day]}`;
+    if (s.every === 12)
+      return `Every year, ${which} of ${MONTHS[Number(s.anchor.slice(5, 7)) - 1]}`;
+    return s.every === 1 ? `Every month, on ${which}` : `Every ${s.every} months, on ${which}`;
+  }
+  const days = [...(s.days ?? [])].sort(
+    (a, b) => (a === LAST_DAY ? 32 : a) - (b === LAST_DAY ? 32 : b),
+  );
   const on = days.map(dayName).join(' and ');
   if (days.length === 2 && s.every === 1) return `Twice a month, ${on}`;
   if (s.every === 12)
@@ -596,7 +638,7 @@ const cycleDays = (s: RecurringSchedule) =>
     ? 7 * s.every
     : s.unit === 'day'
       ? s.every
-      : s.days.length === 2
+      : s.days?.length === 2
         ? 15
         : 30.4 * s.every;
 
