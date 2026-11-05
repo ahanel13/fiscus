@@ -408,6 +408,18 @@ interface ClaimDraft {
 }
 
 /**
+ * A new claim starts as the whole account: 100%, so it grows and falls with the balance. When
+ * other goals already have part of it, all that's still free, as its share of the balance.
+ */
+function wholeAccount(a: GoalAccount): ClaimDraft {
+  const off = { on: false, amountMinor: null };
+  if (a.unclaimedMinor >= a.balanceMinor) return { ...off, kind: 'percent', percent: '100' };
+  if (a.unclaimedMinor <= 0) return { ...off, kind: 'amount', percent: '' };
+  const bps = Math.floor((a.unclaimedMinor * 10_000) / a.balanceMinor);
+  return { ...off, kind: 'percent', percent: String(bps / 100) };
+}
+
+/**
  * New goal, or changing one (walkthrough §2): its name, whose, target, date and plan, and the
  * accounts it draws on. Claims are yours to set on accounts you own (G7); another's show as they
  * are.
@@ -445,12 +457,14 @@ function GoalDialog({
         const c = existing.get(a.accountId);
         return [
           a.accountId,
-          {
-            on: !!c,
-            kind: c?.percentBps !== null && c?.percentBps !== undefined ? 'percent' : 'amount',
-            amountMinor: c?.amountMinor ?? null,
-            percent: c?.percentBps ? String(c.percentBps / 100) : '',
-          },
+          c
+            ? {
+                on: true,
+                kind: c.percentBps !== null ? 'percent' : 'amount',
+                amountMinor: c.amountMinor,
+                percent: c.percentBps ? String(c.percentBps / 100) : '',
+              }
+            : wholeAccount(a),
         ];
       }),
     ),

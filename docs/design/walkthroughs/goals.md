@@ -62,8 +62,9 @@ as the lens does elsewhere (ADR 0006). Sam never sees Alex's emergency fund, or 
 3. A **target**, and optionally a **date**. Without a date there's no status, just progress and
    how long it would take at your pace.
 4. **Funded by**: one or more accounts, each by a fixed amount or a percentage (G2). Only accounts
-   you own are offered (G7). The row says what's left unclaimed after this, and won't go beyond the
-   balance (G3).
+   you own are offered (G7). Turning an account on assumes the whole of it: 100%, or all that's
+   still free when other goals have part of it. You change it from there. The row says what's left
+   unclaimed after this, and won't go beyond the balance (G3).
 
 Then it works out the monthly amount that makes the date, from what's left after the claims:
 "To make May: $400.00 a month". If the goal's budget exists, **Add a $400.00 line to the Ours
