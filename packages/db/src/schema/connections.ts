@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -138,6 +139,14 @@ export const connections = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /**
+     * Accounts the provider couldn't update on its last sync (SimpleFIN's `errlist`, D12): each
+     * by its provider id, with the provider's code and when that began. Cleared once it updates.
+     */
+    accountErrors: jsonb()
+      .$type<Record<string, { code: string; since: string }>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     /** Disconnected, and the worker still has to end it at the provider, then drop its secret. */
     disconnectRequested: boolean().notNull().default(false),
     /** Plaid's /transactions/sync cursor. */

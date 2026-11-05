@@ -466,6 +466,7 @@ describe('cross-member visibility (generated)', () => {
               'owner',
               'provider',
               'refreshAvailableAt',
+              'staleAccounts',
               'status',
             ].sort(),
           );

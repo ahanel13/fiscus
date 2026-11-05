@@ -12,7 +12,7 @@ import { Alert, Button, Dialog, DialogActions, Form, TextField } from './ui.js';
 // access it gives, encrypted; then the same choose step as Plaid's (D4).
 
 type Data<T> = { data: T };
-const BRIDGE = 'https://beta-bridge.simplefin.org';
+export const BRIDGE = 'https://beta-bridge.simplefin.org';
 
 export function SimpleFinDialog({
   householdId,

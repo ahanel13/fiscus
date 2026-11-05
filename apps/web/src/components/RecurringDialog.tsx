@@ -550,14 +550,22 @@ export function RecurringDialog({
             {form.direction === 'in' ? 'Money into' : 'Money out of'} <b>{accountName}</b>
           </p>
           <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+            {/* Added by hand, it matches its own name until given another: say so, not "Any". */}
             <Select
               label="Named"
-              value={form.named.trim() ? form.namedOp : 'any'}
+              value={effective.named.trim() ? effective.namedOp : 'any'}
               onChange={(v) =>
-                v === 'any' ? set({ named: '' }) : set({ namedOp: v as Form['namedOp'] })
+                v === 'any'
+                  ? set({ named: '' })
+                  : set({
+                      namedOp: v as Form['namedOp'],
+                      named: form.named.trim() ? form.named : effective.named,
+                    })
               }
             >
-              <SelectItem id="any">Any name</SelectItem>
+              {effective.named.trim() && !form.named.trim() ? null : (
+                <SelectItem id="any">Any name</SelectItem>
+              )}
               <SelectItem id="equals">Exactly</SelectItem>
               <SelectItem id="contains">Containing</SelectItem>
               <SelectItem id="starts_with">Starting with</SelectItem>

@@ -53,7 +53,23 @@ export interface Connection {
   onOldKeys: boolean;
   /** The bank offers accounts its owner hasn't chosen about yet: "Choose accounts" to add them. */
   newAccountsAvailable: boolean;
+  /**
+   * Accounts you can see that it isn't updating while it works (D12): the provider said it
+   * couldn't (`code`, SimpleFIN's), or no balance has come from the bank in
+   * {@link STALE_ACCOUNT_DAYS}. `asOf`: the date of the latest balance from the bank; null with
+   * none. Empty while the whole connection is broken: that says so itself.
+   */
+  staleAccounts: StaleAccount[];
 }
+
+export interface StaleAccount {
+  accountId: string;
+  code: string | null;
+  asOf: string | null;
+}
+
+/** Days without a balance from the bank before a connected account counts as not updating. */
+export const STALE_ACCOUNT_DAYS = 4;
 
 /** Providers that say when the history they're sending is complete. */
 export const REPORTS_HISTORY: Record<ConnectionProvider, boolean> = {

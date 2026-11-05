@@ -152,6 +152,56 @@ describe('a connection day to day (#81)', () => {
     expect(await listed(A, fine)).toMatchObject({ failingSince: null, notWorking: false });
   });
 
+  it('[D12] names the accounts a working connection isn’t updating, to whoever sees them', async () => {
+    const fresh = await account(A);
+    const quiet = await account(A);
+    const erring = await account(A);
+    const hidden = await account(A, 'private');
+    const closed = await account(A);
+    const id = await connection(member.A, [fresh, quiet, erring, hidden, closed], {
+      provider: 'simplefin',
+    });
+    const balance = (accountId: string, ago: number) =>
+      db.query(
+        `INSERT INTO balance_snapshots (household_id, account_id, as_of, balance_minor, source)
+         VALUES ($1, $2, current_date - $3::int, 1000, 'provider')`,
+        [hh, accountId, ago],
+      );
+    await balance(fresh, 0);
+    await balance(quiet, 10);
+    await balance(erring, 0);
+    await balance(hidden, 10);
+    await balance(closed, 10);
+    await db.query(`UPDATE accounts SET provider_account_id = 'sfin-' || id WHERE id = ANY($1)`, [
+      [fresh, quiet, erring, hidden, closed],
+    ]);
+    await db.query('UPDATE accounts SET closed_at = now() WHERE id = $1', [closed]);
+    // Not synced yet: nothing to say.
+    expect((await listed(A, id)).staleAccounts).toEqual([]);
+    await db.query(
+      `UPDATE connections SET last_synced_at = now(), account_errors = $2 WHERE id = $1`,
+      [id, { [`sfin-${erring}`]: { code: 'act.auth', since: new Date().toISOString() } }],
+    );
+    const asOf = (ago: number) =>
+      new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10);
+    const forA = (await listed(A, id)).staleAccounts;
+    expect(forA).toHaveLength(3);
+    expect(forA).toEqual(
+      expect.arrayContaining([
+        { accountId: quiet, code: null, asOf: asOf(10) },
+        { accountId: erring, code: 'act.auth', asOf: asOf(0) },
+        { accountId: hidden, code: null, asOf: asOf(10) },
+      ]),
+    );
+    // Sam doesn't see the private one, so isn't told about it.
+    expect(
+      (await listed(B, id)).staleAccounts.map((a: { accountId: string }) => a.accountId).sort(),
+    ).toEqual([quiet, erring].sort());
+    // Broken as a whole: the connection says so itself.
+    await db.query(`UPDATE connections SET status = 'error' WHERE id = $1`, [id]);
+    expect((await listed(A, id)).staleAccounts).toEqual([]);
+  });
+
   describe('Refresh now (D10)', () => {
     it('makes it due now, then refuses another within 15 minutes, saying when', async () => {
       const id = await connection(member.A, [await account(A)]);
