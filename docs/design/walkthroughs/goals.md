@@ -40,8 +40,13 @@ Goals has two kinds, in two sections:
   money in accounts, by claims (G2).
 - **Pay down**: a loan or a card. Progress is how far its balance has come down (G9).
 
-Each card shows how far it's come, its status (§4), this month's plan against what moved, and what
-it draws on. The bar's mark is where a steady pace would be by now.
+Each goal is a row, as in Monarch: its **picture** (a photo, or an icon on a color), its name with
+the logos of the banks it draws on, its status (§4) with when its pace gets there ("Apr 2030 (28
+months behind)"), what it has and its share of the target, and a bar in the status's color. The
+section's header adds up what's saved. A goal you're done with can be **archived**: its claims
+end, so its money is unclaimed again, and it waits under "Show archived goals" with what it had,
+until it's brought back (with no accounts) or deleted. A photo is shrunk in the browser to a small
+square and served from Fiscus itself, never fetched from a stock-photo service.
 
 The summary across the top: what's saved toward goals, this month's plans, **unclaimed** money in
 savings (what no goal has earmarked yet), and debt left with the date it's gone.
@@ -62,8 +67,9 @@ as the lens does elsewhere (ADR 0006). Sam never sees Alex's emergency fund, or 
 3. A **target**, and optionally a **date**. Without a date there's no status, just progress and
    how long it would take at your pace.
 4. **Funded by**: one or more accounts, each by a fixed amount or a percentage (G2). Only accounts
-   you own are offered (G7). The row says what's left unclaimed after this, and won't go beyond the
-   balance (G3).
+   you own are offered (G7). Turning an account on assumes the whole of it: 100%, or all that's
+   still free when other goals have part of it. You change it from there. The row says what's left
+   unclaimed after this, and won't go beyond the balance (G3).
 
 Then it works out the monthly amount that makes the date, from what's left after the claims:
 "To make May: $400.00 a month". If the goal's budget exists, **Add a $400.00 line to the Ours

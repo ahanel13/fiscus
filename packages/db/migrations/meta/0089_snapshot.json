@@ -1,5 +1,5 @@
 {
-  "id": "53559b90-a8d0-42fc-8c81-8b2317bba5c3",
+  "id": "172096fb-f0fa-4dad-a0da-e37370eb6ec4",
   "prevId": "0f16d87d-9213-48d2-8c34-9274972f37e6",
   "version": "7",
   "dialect": "postgresql",
@@ -1889,13 +1889,6 @@
           "notNull": true,
           "default": "'{}'::text[]"
         },
-        "account_errors": {
-          "name": "account_errors",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
         "disconnect_requested": {
           "name": "disconnect_requested",
           "type": "boolean",
@@ -2477,6 +2470,48 @@
           "notNull": true,
           "default": 0
         },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image": {
+          "name": "image",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image_type": {
+          "name": "image_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image_updated_at": {
+          "name": "image_updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_progress_minor": {
+          "name": "archived_progress_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "version": {
           "name": "version",
           "type": "integer",
@@ -2592,6 +2627,14 @@
         "goals_plan": {
           "name": "goals_plan",
           "value": "\"goals\".\"plan_minor\" IS NULL OR \"goals\".\"plan_minor\" >= 0"
+        },
+        "goals_color": {
+          "name": "goals_color",
+          "value": "\"goals\".\"color\" IS NULL OR \"goals\".\"color\" ~ '^#[0-9a-f]{6}$'"
+        },
+        "goals_image": {
+          "name": "goals_image",
+          "value": "(\"goals\".\"image\" IS NULL) = (\"goals\".\"image_type\" IS NULL) AND (\"goals\".\"image\" IS NULL OR octet_length(\"goals\".\"image\") <= 200000)"
         }
       },
       "isRLSEnabled": false
