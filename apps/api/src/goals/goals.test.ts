@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
-import type { Goal, GoalsOverview } from '@fiscus/shared';
+import { type Goal, type GoalsOverview, goalPace } from '@fiscus/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TestClient } from '../testing/test-app.js';
@@ -264,5 +264,96 @@ describe('goals', () => {
     ]);
     expect((await B.request('DELETE', url(`/goals/${goal.trip}`))).status).toBe(204);
     expect(await find(A, goal.trip)).toBeUndefined();
+  });
+
+  it('says where each goal stands at its plan (walkthrough §4)', async () => {
+    const g = (await find(B, goal.house))!;
+    expect(g.pace).toEqual(goalPace({ ...g, thisMonth: today.slice(0, 7) }));
+    expect(g.pace.status).not.toBeNull();
+    // The claim's bank, for its logo: none for an account that isn't connected.
+    expect(g.claims[0]!.institution).toBeNull();
+  });
+
+  it('wears an icon and color, or a photo, which whoever sees it can load [GOAL-03/MEM]', async () => {
+    const before = (await find(B, goal.house))!;
+    const looked = await B.request(
+      'PATCH',
+      url(`/goals/${goal.house}`),
+      { icon: 'house', color: '#2b7bb9' },
+      { headers: { 'if-match': `"v${before.version}"` } },
+    );
+    expect(looked.status, JSON.stringify(looked.body)).toBe(200);
+    expect(looked.body.data).toMatchObject({ icon: 'house', color: '#2b7bb9', imageVersion: null });
+    expect(
+      (
+        await B.request(
+          'PATCH',
+          url(`/goals/${goal.house}`),
+          { color: '#123456' },
+          { headers: { 'if-match': `"v${looked.body.data.version}"` } },
+        )
+      ).status,
+    ).toBe(422);
+
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1]);
+    const put = (c: TestClient, bytes: Buffer, type = 'image/jpeg') =>
+      c.request('PUT', url(`/goals/${goal.house}/image`), {
+        type,
+        dataBase64: bytes.toString('base64'),
+      });
+    expect((await put(V, jpeg)).status).toBe(403);
+    const bad = await put(B, Buffer.from('<svg onload=alert(1)>'), 'image/png');
+    expect(bad.status, JSON.stringify(bad.body)).toBe(422);
+    const ok = await put(B, jpeg);
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(ok.body.data.imageVersion).not.toBeNull();
+    const got = (await V.request('GET', url(`/goals/${goal.house}/image`))).raw;
+    expect(got.statusCode).toBe(200);
+    expect(got.headers['content-type']).toBe('image/jpeg');
+    expect(got.rawPayload.equals(jpeg)).toBe(true);
+
+    const off = await B.request('DELETE', url(`/goals/${goal.house}/image`));
+    expect(off.body.data.imageVersion).toBeNull();
+    expect((await A.request('GET', url(`/goals/${goal.house}/image`))).status).toBe(404);
+  });
+
+  it('puts a goal away, ending its claims, and brings it back [GOAL-03/MEM]', async () => {
+    const made = await B.post(url('/goals'), { name: 'New bike', targetMinor: 150000 });
+    const bike = made.body.data.id as string;
+    // Alex earmarks Alex's own private savings for it: not Sam's claim to end.
+    expect((await claim(A, bike, acct.alexs, { amountMinor: 50000 })).status).toBe(200);
+    const refused = await B.request('PUT', url(`/goals/${bike}/archived`), { archived: true });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(refused.body.code).toBe('claims_not_yours');
+    expect(
+      (await V.request('PUT', url(`/goals/${bike}/archived`), { archived: true })).status,
+    ).toBe(403);
+
+    const unclaimed = (await overview(A)).accounts.find((a) => a.accountId === acct.alexs)!;
+    const away = await A.request('PUT', url(`/goals/${bike}/archived`), { archived: true });
+    expect(away.status, JSON.stringify(away.body)).toBe(200);
+    const view = await overview(A);
+    expect(view.goals.map((g) => g.id)).not.toContain(bike);
+    expect(view.archived.find((g) => g.id === bike)).toMatchObject({
+      progressMinor: 50000,
+      claims: [],
+    });
+    expect(view.accounts.find((a) => a.accountId === acct.alexs)!.unclaimedMinor).toBe(
+      unclaimed.unclaimedMinor + 50000,
+    );
+    // Away, it takes no claims, and isn't in the priority list.
+    expect((await claim(A, bike, acct.alexs, { amountMinor: 100 })).status).toBe(409);
+    expect(
+      (
+        await B.request('PUT', url('/goals/order'), {
+          ids: [...view.goals.map((g) => g.id), bike],
+        })
+      ).status,
+    ).toBe(422);
+
+    const back = await B.request('PUT', url(`/goals/${bike}/archived`), { archived: false });
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    expect(back.body.data).toMatchObject({ archivedAt: null, progressMinor: 0, claims: [] });
+    expect((await overview(B)).goals.at(-1)!.id).toBe(bike);
   });
 });

@@ -14,7 +14,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { id, money, timestamps, versioning } from '../columns.js';
+import { bytea, id, money, timestamps, versioning } from '../columns.js';
 import { accounts } from './accounts.js';
 import { householdMembers, households } from './households.js';
 
@@ -43,6 +43,16 @@ export const goals = pgTable(
     planMinor: money('plan_minor'),
     /** Priority (G19): lower comes first; the highest number gives way to a shortfall first. */
     position: integer().notNull().default(0),
+    /** Its look: an icon (lucide's name) on a color, `#rrggbb`; null for the default. */
+    icon: text(),
+    color: text(),
+    /** A photo instead, a small square the browser made, served from Fiscus's own origin. */
+    image: bytea('image'),
+    imageType: text(),
+    imageUpdatedAt: timestamp({ withTimezone: true }),
+    /** Put away: its claims ended, and what they were worth then is kept to show. */
+    archivedAt: timestamp({ withTimezone: true }),
+    archivedProgressMinor: bigint({ mode: 'number' }),
     ...versioning(),
     ...timestamps(),
   },
@@ -57,6 +67,11 @@ export const goals = pgTable(
     check('goals_name', sql`length(btrim(${t.name})) BETWEEN 1 AND 80`),
     check('goals_target', sql`${t.targetMinor} > 0`),
     check('goals_plan', sql`${t.planMinor} IS NULL OR ${t.planMinor} >= 0`),
+    check('goals_color', sql`${t.color} IS NULL OR ${t.color} ~ '^#[0-9a-f]{6}$'`),
+    check(
+      'goals_image',
+      sql`(${t.image} IS NULL) = (${t.imageType} IS NULL) AND (${t.image} IS NULL OR octet_length(${t.image}) <= 200000)`,
+    ),
   ],
 );
 

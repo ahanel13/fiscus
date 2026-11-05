@@ -4,6 +4,7 @@ import {
   type Goal,
   type GoalAccount,
   type GoalClaim,
+  type GoalIconName,
   type GoalShortfall,
   type GoalsOverview,
   type HouseholdMember,
@@ -11,17 +12,25 @@ import {
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { Goal as GoalIcon, MoreHorizontal, Plus } from 'lucide-react';
+import { Check, Eye, EyeOff, Goal as GoalIcon, MoreHorizontal, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { goalsQuery, householdQuery, membersQuery } from '../api/queries.js';
-import { Amount } from '../components/Amount.js';
+import { BankLogo } from '../components/BankLogo.js';
 import { EmptyState } from '../components/EmptyState.js';
+import {
+  GoalPicture,
+  type GoalLook,
+  goalPhotoUrl,
+  PicturePicker,
+  shrinkPhoto,
+} from '../components/GoalPicture.js';
 import { PageHeader } from '../components/PageHeader.js';
 import {
   Alert,
   AmountInput,
   Badge,
+  type BadgeTone,
   Button,
   ConfirmDialog,
   DatePicker,
@@ -40,9 +49,11 @@ import {
   toast,
 } from '../components/ui.js';
 
-// Goals (#132, #136, #138; goals walkthrough §1–§5): savings goals that draw on accounts by
-// claims, a fixed amount or a percentage of each (G2). Progress is what the claims are worth.
-// Paying down debt, goals in budgets, and spending from goals come later (G22).
+// Goals (#132, #136, #137, #138; goals walkthrough §1–§5): savings goals that draw on accounts by
+// claims, a fixed amount or a percentage of each (G2). Progress is what the claims are worth; the
+// status says whether its plan gets there by its date. Each wears a photo, or an icon on a color,
+// and can be put away when it's done with. Paying down debt, goals in budgets, and spending from
+// goals come later (G22).
 
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
 type Scope = 'all' | 'household' | 'mine';
@@ -50,6 +61,29 @@ type Scope = 'all' | 'household' | 'mine';
 /** "May 2027", from a date. */
 const monthYear = (date: string) =>
   new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+/** "Mar 2054", from `YYYY-MM` or a date. */
+const shortMonth = (month: string) =>
+  new Date(`${month.slice(0, 7)}-01T00:00:00`).toLocaleDateString(undefined, {
+    month: 'short',
+    year: 'numeric',
+  });
+
+/** A goal's picture: its photo, else its icon and color. */
+export const lookOf = (householdId: string, g: Goal): GoalLook => ({
+  icon: g.icon,
+  color: g.color,
+  photo: g.imageVersion ? goalPhotoUrl(householdId, g.id, g.imageVersion) : null,
+});
+
+const STATUS: Record<
+  NonNullable<Goal['pace']['status']>,
+  { label: string; tone: BadgeTone; bar: string }
+> = {
+  done: { label: 'Completed', tone: 'positive', bar: 'bg-positive' },
+  on_track: { label: 'On track', tone: 'accent', bar: 'bg-accent' },
+  at_risk: { label: 'At risk', tone: 'warning', bar: 'bg-warning' },
+  short: { label: 'Short', tone: 'danger', bar: 'bg-danger' },
+};
 
 /** A claim's account, as you may see it: its name, or only whose it is (G7). */
 export function claimLabel(c: GoalClaim, members: HouseholdMember[]): string {
@@ -73,6 +107,8 @@ export function GoalsPage() {
   const [scope, setScope] = useState<Scope>('all');
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
   const [deleting, setDeleting] = useState<Goal | null>(null);
+  const [archiving, setArchiving] = useState<Goal | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [resolving, setResolving] = useState<GoalShortfall | null>(null);
   const queryClient = useQueryClient();
   const currency = household.baseCurrency;
@@ -92,6 +128,21 @@ export function GoalsPage() {
       await invalidate();
       toast(`${g.name} deleted. The money stays where it is.`);
       setDeleting(null);
+    },
+  });
+
+  const archive = useMutation({
+    mutationFn: ({ g, archived }: { g: Goal; archived: boolean }) =>
+      api('PUT', `${base(householdId)}/goals/${g.id}/archived`, { body: { archived } }),
+    onSuccess: async (_, { g, archived }) => {
+      await invalidate();
+      toast(archived ? `${g.name} is put away. Its money is unclaimed now.` : `${g.name} is back.`);
+      setArchiving(null);
+    },
+    onError: (e) => {
+      const err = e as ApiError;
+      toast(err.title, { tone: 'error', description: err.detail ?? '' });
+      setArchiving(null);
     },
   });
 
@@ -123,7 +174,7 @@ export function GoalsPage() {
           </LoadingRegion>
         ) : query.isError || !data ? (
           <Alert>Couldn’t load your goals. Try again in a moment.</Alert>
-        ) : data.goals.length === 0 ? (
+        ) : data.goals.length === 0 && data.archived.length === 0 ? (
           <Empty data={data} currency={currency} onNew={() => setEditing('new')} />
         ) : (
           <>
@@ -149,18 +200,6 @@ export function GoalsPage() {
               ) : null}
             </div>
 
-            <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
-              <Stat label="Saved toward goals" note={`across ${data.goals.length} goals`}>
-                <Amount minor={data.totals.savedMinor} currency={currency} kind="balance" />
-              </Stat>
-              <Stat label="Planned each month">
-                <Amount minor={data.totals.plannedMinor} currency={currency} kind="balance" />
-              </Stat>
-              <Stat label="Unclaimed in your accounts" note="Money no goal has earmarked yet">
-                <Amount minor={data.totals.unclaimedMinor} currency={currency} kind="balance" />
-              </Stat>
-            </div>
-
             {data.shortfalls.map((s) => (
               <Alert key={s.accountId} tone="warning">
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -178,43 +217,106 @@ export function GoalsPage() {
               </Alert>
             ))}
 
-            {shown.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-border px-6 py-10 text-center text-sm text-muted">
-                {scope === 'mine' ? 'You have no goals of your own.' : 'No shared goals yet.'}
+            <section
+              aria-label="Save up"
+              className="overflow-hidden rounded-xl border border-border bg-surface"
+            >
+              <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3 sm:px-5">
+                <h2 className="text-lg font-semibold">Save up</h2>
+                <p className="text-lg font-semibold tabular-nums">
+                  {formatMoney(
+                    shown.reduce((sum, g) => sum + g.progressMinor, 0),
+                    currency,
+                  )}
+                </p>
+              </header>
+              {shown.length === 0 ? (
+                <p className="px-6 py-10 text-center text-sm text-muted">
+                  {data.goals.length === 0
+                    ? 'Every goal is put away.'
+                    : scope === 'mine'
+                      ? 'You have no goals of your own.'
+                      : 'No shared goals yet.'}
+                </p>
+              ) : (
+                <ul className="divide-y divide-border" aria-label="Goals, by priority">
+                  {shown.map((g) => {
+                    const i = data.goals.findIndex((x) => x.id === g.id);
+                    const editable = g.canEdit || g.claims.some((c) => c.yours);
+                    return (
+                      <li key={g.id}>
+                        <GoalRow
+                          householdId={householdId}
+                          goal={g}
+                          currency={currency}
+                          members={members}
+                          shared={shared}
+                          onOpen={editable ? () => setEditing(g) : undefined}
+                          onArchive={g.canEdit ? () => setArchiving(g) : undefined}
+                          onDelete={g.canEdit ? () => setDeleting(g) : undefined}
+                          onUp={data.canCreate && i > 0 ? () => move(g, -1) : undefined}
+                          onDown={
+                            data.canCreate && i < data.goals.length - 1
+                              ? () => move(g, 1)
+                              : undefined
+                          }
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {data.archived.length ? (
+                <div className="border-t border-border">
+                  <button
+                    type="button"
+                    aria-expanded={showArchived}
+                    onClick={() => setShowArchived((v) => !v)}
+                    className="flex w-full items-center gap-2 px-4 py-3 text-sm text-muted hover:text-fg sm:px-5"
+                  >
+                    {showArchived ? (
+                      <EyeOff aria-hidden className="size-4" />
+                    ) : (
+                      <Eye aria-hidden className="size-4" />
+                    )}
+                    {showArchived ? 'Hide' : 'Show'} {data.archived.length} archived{' '}
+                    {data.archived.length === 1 ? 'goal' : 'goals'}
+                  </button>
+                  {showArchived ? (
+                    <ul
+                      className="divide-y divide-border border-t border-border"
+                      aria-label="Archived goals"
+                    >
+                      {data.archived.map((g) => (
+                        <li key={g.id} className="opacity-75">
+                          <GoalRow
+                            householdId={householdId}
+                            goal={g}
+                            currency={currency}
+                            members={members}
+                            shared={shared}
+                            onRestore={
+                              g.canEdit ? () => archive.mutate({ g, archived: false }) : undefined
+                            }
+                            onDelete={g.canEdit ? () => setDeleting(g) : undefined}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+            {data.accounts.length ? (
+              <p className="px-1 text-sm text-muted">
+                {formatMoney(data.totals.unclaimedMinor, currency)} in your savings and investment
+                accounts isn’t earmarked for any goal.
               </p>
-            ) : (
-              <ul
-                className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
-                aria-label="Goals, by priority"
-              >
-                {shown.map((g) => {
-                  const i = data.goals.findIndex((x) => x.id === g.id);
-                  return (
-                    <li key={g.id}>
-                      <GoalCard
-                        goal={g}
-                        currency={currency}
-                        members={members}
-                        shared={shared}
-                        onEdit={
-                          g.canEdit || g.claims.some((c) => c.yours)
-                            ? () => setEditing(g)
-                            : undefined
-                        }
-                        onDelete={g.canEdit ? () => setDeleting(g) : undefined}
-                        onUp={data.canCreate && i > 0 ? () => move(g, -1) : undefined}
-                        onDown={
-                          data.canCreate && i < data.goals.length - 1 ? () => move(g, 1) : undefined
-                        }
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            ) : null}
             <p className="px-1 text-xs text-muted">
               Goals are in priority order. When an account falls short, the lowest gives way first,
-              and only when its owners say so.
+              and only when its owners say so. Status and dates are estimates from each goal’s
+              monthly plan and today’s balances, so they move as those do.
             </p>
           </>
         )}
@@ -250,25 +352,20 @@ export function GoalsPage() {
           Its claims end and its history goes. The money stays in its accounts, unclaimed.
         </ConfirmDialog>
       ) : null}
+      {archiving ? (
+        <ConfirmDialog
+          title={`Put ${archiving.name} away?`}
+          confirmLabel="Archive goal"
+          isOpen
+          onOpenChange={(open) => (open ? null : setArchiving(null))}
+          onConfirm={() => archive.mutateAsync({ g: archiving, archived: true })}
+        >
+          It moves to archived goals, showing the {formatMoney(archiving.progressMinor, currency)}{' '}
+          it had. Its claims end, so that money is unclaimed again. Bring it back any time; it
+          starts without accounts.
+        </ConfirmDialog>
+      ) : null}
     </>
-  );
-}
-
-function Stat({
-  label,
-  note,
-  children,
-}: {
-  label: string;
-  note?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="bg-surface px-4 py-3">
-      <p className="text-xs text-muted">{label}</p>
-      <div className="text-lg font-semibold">{children}</div>
-      {note ? <p className="text-xs text-muted">{note}</p> : null}
-    </div>
   );
 }
 
@@ -303,99 +400,161 @@ function Empty({
   );
 }
 
-function GoalCard({
+/** One goal (walkthrough §1): its picture, name and banks, status, progress and its bar. */
+function GoalRow({
+  householdId,
   goal: g,
   currency,
   members,
   shared,
-  onEdit,
+  onOpen,
+  onArchive,
+  onRestore,
   onDelete,
   onUp,
   onDown,
 }: {
+  householdId: string;
   goal: Goal;
   currency: string;
   members: HouseholdMember[];
   shared: boolean;
-  onEdit?: (() => void) | undefined;
+  onOpen?: (() => void) | undefined;
+  onArchive?: (() => void) | undefined;
+  onRestore?: (() => void) | undefined;
   onDelete?: (() => void) | undefined;
   onUp?: (() => void) | undefined;
   onDown?: (() => void) | undefined;
 }) {
   const share = Math.min(1, g.progressMinor / g.targetMinor);
+  const percent = Math.floor((g.progressMinor / g.targetMinor) * 100);
   const money = (minor: number) => formatMoney(minor, currency);
-  const status = g.done ? (
-    <Badge tone="positive">Done</Badge>
-  ) : g.shortMinor ? (
-    <Badge tone="danger">Short {money(g.shortMinor)}</Badge>
-  ) : g.targetDate ? null : (
-    <Badge>No date</Badge>
-  );
+  const { status, projectedMonth, monthsLate } = g.pace;
+  const badge = status ? STATUS[status] : null;
+  // The date line: when it gets there at this pace, against its own date.
+  const when = g.archivedAt
+    ? `Archived ${shortMonth(g.archivedAt)}`
+    : status === 'done'
+      ? g.targetDate
+        ? `Target ${shortMonth(g.targetDate)}`
+        : 'No target date'
+      : status === 'short'
+        ? `${money(g.shortMinor)} short in its accounts`
+        : status === 'at_risk'
+          ? projectedMonth
+            ? `${shortMonth(projectedMonth)} (${monthsLate} ${monthsLate === 1 ? 'month' : 'months'} behind)`
+            : 'No monthly plan to get there'
+          : status === 'on_track'
+            ? `${shortMonth(projectedMonth!)} · target ${shortMonth(g.targetDate!)}`
+            : projectedMonth
+              ? `No target date · about ${shortMonth(projectedMonth)} at its plan`
+              : 'No target date';
+  const banks = g.claims.slice(0, 3);
+  const menu = onOpen || onArchive || onRestore || onDelete || onUp || onDown;
   return (
     <article
       aria-label={g.name}
-      className="flex h-full flex-col gap-2 rounded-xl border border-border bg-surface p-4"
+      className="relative flex gap-3 px-4 py-4 hover:bg-surface-2/50 sm:gap-4 sm:px-5"
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="truncate font-semibold">{g.name}</h2>
-          <p className="text-xs text-muted">
-            {shared ? (g.scope === 'mine' ? 'Mine · ' : 'Ours · ') : ''}
-            {g.targetDate ? `by ${monthYear(g.targetDate)}` : 'no date'}
-          </p>
+      <GoalPicture look={lookOf(householdId, g)} />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <h3 className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-base font-medium">
+              {onOpen ? (
+                // The whole row opens it; the name is the button that says so.
+                <button
+                  type="button"
+                  onClick={onOpen}
+                  className="truncate text-left after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:rounded-sm focus-visible:after:ring-2 focus-visible:after:ring-accent"
+                >
+                  {g.name}
+                </button>
+              ) : (
+                <span className="truncate">{g.name}</span>
+              )}
+              {banks.length ? (
+                <span className="flex items-center -space-x-1.5">
+                  {banks.map((c) => (
+                    <BankLogo
+                      key={c.accountId}
+                      institution={c.institution}
+                      name={claimLabel(c, members)}
+                      size="sm"
+                    />
+                  ))}
+                  {g.claims.length > 3 ? (
+                    <span className="pl-2.5 text-xs text-muted">+{g.claims.length - 3}</span>
+                  ) : null}
+                </span>
+              ) : null}
+              {shared ? (
+                <span className="text-xs font-normal text-muted">
+                  {g.scope === 'mine' ? 'Mine' : 'Ours'}
+                </span>
+              ) : null}
+            </h3>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+              {badge ? (
+                <Badge tone={badge.tone}>
+                  {status === 'done' ? <Check aria-hidden className="size-3" /> : null}
+                  {badge.label}
+                </Badge>
+              ) : null}
+              <span>{when}</span>
+            </p>
+            {/* On a phone, the amounts get their own line, so the name has the width. */}
+            <p className="text-sm text-muted sm:hidden">
+              <span className="font-semibold text-fg tabular-nums">{money(g.progressMinor)}</span> ·{' '}
+              {percent}% of {money(g.targetMinor)}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-start gap-1">
+            <div className="hidden text-right sm:block">
+              <p className="text-base font-semibold tabular-nums">{money(g.progressMinor)}</p>
+              <p className="text-sm text-muted tabular-nums">
+                {percent}% of {money(g.targetMinor)}
+              </p>
+            </div>
+            {menu ? (
+              <MenuTrigger>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`${g.name}: more`}
+                  className="relative z-10"
+                >
+                  <MoreHorizontal aria-hidden className="size-4" />
+                </Button>
+                <Menu placement="bottom end">
+                  {onOpen ? <MenuItem onAction={onOpen}>Edit</MenuItem> : null}
+                  {onUp ? <MenuItem onAction={onUp}>Move up in priority</MenuItem> : null}
+                  {onDown ? <MenuItem onAction={onDown}>Move down in priority</MenuItem> : null}
+                  {onArchive ? <MenuItem onAction={onArchive}>Archive</MenuItem> : null}
+                  {onRestore ? <MenuItem onAction={onRestore}>Bring back</MenuItem> : null}
+                  {onDelete ? <MenuItem onAction={onDelete}>Delete</MenuItem> : null}
+                </Menu>
+              </MenuTrigger>
+            ) : null}
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {status}
-          {onEdit || onDelete || onUp || onDown ? (
-            <MenuTrigger>
-              <Button variant="ghost" size="icon" aria-label={`${g.name}: more`}>
-                <MoreHorizontal aria-hidden className="size-4" />
-              </Button>
-              <Menu placement="bottom end">
-                {onEdit ? <MenuItem onAction={onEdit}>Edit</MenuItem> : null}
-                {onUp ? <MenuItem onAction={onUp}>Move up in priority</MenuItem> : null}
-                {onDown ? <MenuItem onAction={onDown}>Move down in priority</MenuItem> : null}
-                {onDelete ? <MenuItem onAction={onDelete}>Delete</MenuItem> : null}
-              </Menu>
-            </MenuTrigger>
-          ) : null}
-        </div>
-      </div>
-      <p className="flex items-baseline justify-between gap-2">
-        <span className="text-lg font-semibold">{money(g.progressMinor)}</span>
-        <span className="text-sm text-muted">of {money(g.targetMinor)}</span>
-      </p>
-      <div
-        className="h-2 rounded-full bg-surface-2"
-        role="meter"
-        aria-label={`${g.name}: ${Math.round(share * 100)}% of its target`}
-        aria-valuenow={Math.round(share * 100)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
         <div
-          className={clsx('h-full rounded-full', g.shortMinor ? 'bg-danger' : 'bg-accent')}
-          style={{ width: `${share * 100}%` }}
-        />
-      </div>
-      <p className="text-sm">
-        {g.done
-          ? 'Reached its target.'
-          : g.planMinor
-            ? `${money(g.planMinor)} a month`
-            : 'No monthly plan'}
-        {g.toMakeDateMinor !== null && g.targetDate ? (
-          <span className="text-muted">
-            {' '}
-            · {money(g.toMakeDateMinor)} a month makes {monthYear(g.targetDate).split(' ')[0]}
-          </span>
+          className="h-2 rounded-full bg-surface-2"
+          role="meter"
+          aria-label={`${g.name}: ${percent}% of its target`}
+          aria-valuenow={Math.min(100, percent)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className={clsx('h-full rounded-full', badge ? badge.bar : 'bg-accent')}
+            style={{ width: `${share * 100}%` }}
+          />
+        </div>
+        {!g.archivedAt && g.claims.length === 0 ? (
+          <p className="text-xs text-muted">Not funded yet: no account drawn on.</p>
         ) : null}
-      </p>
-      <p className="mt-auto text-xs text-muted">
-        {g.claims.length
-          ? g.claims.map((c) => `${claimLabel(c, members)} ${claimAmount(c, currency)}`).join(' · ')
-          : 'Not funded yet: no account drawn on.'}
-      </p>
+      </div>
     </article>
   );
 }
@@ -450,6 +609,25 @@ function GoalDialog({
   const [target, setTarget] = useState<number | null>(goal?.targetMinor ?? null);
   const [date, setDate] = useState<string | null>(goal?.targetDate ?? null);
   const [plan, setPlan] = useState<number | null>(goal?.planMinor ?? null);
+  const [icon, setIcon] = useState<GoalIconName | null>(goal?.icon ?? null);
+  const [color, setColor] = useState<string | null>(goal?.color ?? null);
+  // A photo chosen and not yet sent, or the one it has taken off; null: as it was.
+  const [photo, setPhoto] = useState<{ previewUrl: string; dataBase64: string } | 'remove' | null>(
+    null,
+  );
+  const shownPhoto =
+    photo === 'remove'
+      ? null
+      : (photo?.previewUrl ?? (goal ? lookOf(householdId, goal).photo : null));
+  const choosePhoto = (file: File) =>
+    shrinkPhoto(file).then(setPhoto, () =>
+      toast('That photo couldn’t be read', {
+        tone: 'error',
+        description: 'Choose a JPEG, PNG or WebP picture.',
+      }),
+    );
+  // Picking an icon or a color means the icon shows: the photo goes.
+  const plain = () => setPhoto(shownPhoto ? 'remove' : null);
   const existing = new Map(goal?.claims.map((c) => [c.accountId, c]));
   const [claims, setClaims] = useState<Record<string, ClaimDraft>>(() =>
     Object.fromEntries(
@@ -499,20 +677,31 @@ function GoalDialog({
   const save = useMutation({
     mutationFn: async () => {
       const chosen = accounts.filter((a) => claims[a.accountId]!.on);
+      const sendPhoto = async (goalId: string) => {
+        const url = `${base(householdId)}/goals/${goalId}/image`;
+        if (photo === 'remove') await api('DELETE', url);
+        else if (photo) {
+          await api('PUT', url, { body: { type: 'image/jpeg', dataBase64: photo.dataBase64 } });
+        }
+      };
       if (!goal) {
-        return api('POST', `${base(householdId)}/goals`, {
+        const made = await api<{ data: Goal }>('POST', `${base(householdId)}/goals`, {
           body: {
             name,
             ...(shared ? { scope } : {}),
             targetMinor: target,
             targetDate: date,
             planMinor: plan,
+            icon,
+            color,
             claims: chosen.map((a) => ({
               accountId: a.accountId,
               ...claimBody(claims[a.accountId]!),
             })),
           },
         });
+        await sendPhoto(made.data.id);
+        return;
       }
       if (canEdit) {
         const patch = {
@@ -520,6 +709,8 @@ function GoalDialog({
           ...(target !== goal.targetMinor ? { targetMinor: target } : {}),
           ...(date !== goal.targetDate ? { targetDate: date } : {}),
           ...(plan !== goal.planMinor ? { planMinor: plan } : {}),
+          ...(icon !== goal.icon ? { icon } : {}),
+          ...(color !== goal.color ? { color } : {}),
         };
         if (Object.keys(patch).length) {
           await api('PATCH', `${base(householdId)}/goals/${goal.id}`, {
@@ -527,6 +718,7 @@ function GoalDialog({
             headers: { 'if-match': `"v${goal.version}"` },
           });
         }
+        await sendPhoto(goal.id);
       }
       for (const a of accounts) {
         const d = claims[a.accountId]!;
@@ -573,6 +765,20 @@ function GoalDialog({
     >
       <div className="space-y-4">
         {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <PicturePicker
+          look={{ icon, color, photo: shownPhoto }}
+          isDisabled={!canEdit}
+          onIcon={(i) => {
+            setIcon(i);
+            plain();
+          }}
+          onColor={(c) => {
+            setColor(c);
+            plain();
+          }}
+          onPhoto={(file) => void choosePhoto(file)}
+          onRemovePhoto={() => setPhoto(goal?.imageVersion ? 'remove' : null)}
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField
             label="Name"
