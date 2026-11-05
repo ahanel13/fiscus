@@ -5,6 +5,7 @@ import {
   giveWaySchema,
   type Goal,
   goalClaimSchema,
+  goalImageSchema,
   type GoalsOverview,
   orderGoalsSchema,
   updateGoalSchema,
@@ -20,9 +21,11 @@ import {
   Patch,
   Post,
   Put,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { z } from 'zod';
+import type { FastifyReply } from 'fastify';
+import { z } from 'zod';
 import { Problem } from '../common/problem.js';
 import { UuidPipe } from '../common/uuid-pipe.js';
 import { ZodPipe } from '../common/zod-pipe.js';
@@ -32,6 +35,8 @@ import {
   HouseholdGuard,
 } from '../households/household-context.js';
 import { GoalsService } from './goals.service.js';
+
+const archiveSchema = z.object({ archived: z.boolean() }).strict();
 
 /**
  * Goals (GOAL-01–07): the household's, and your own. Who may change a goal is checked per goal
@@ -98,6 +103,48 @@ export class GoalsController {
     @Param('goalId', UuidPipe) goalId: string,
   ): Promise<void> {
     await this.goals.remove(ctx, goalId);
+  }
+
+  /** Its photo, for whoever sees the goal (GOAL-01/02), from Fiscus's own origin. */
+  @Get(':goalId/image')
+  async image(
+    @Household() ctx: HouseholdContext,
+    @Param('goalId', UuidPipe) goalId: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<Buffer> {
+    const image = await this.goals.image(ctx, goalId);
+    void reply
+      .header('content-type', image.type)
+      .header('cache-control', 'private, max-age=86400')
+      .header('x-content-type-options', 'nosniff');
+    return image.data;
+  }
+
+  @Put(':goalId/image')
+  async setImage(
+    @Household() ctx: HouseholdContext,
+    @Param('goalId', UuidPipe) goalId: string,
+    @Body(new ZodPipe(goalImageSchema)) body: z.infer<typeof goalImageSchema>,
+  ): Promise<{ data: Goal }> {
+    return { data: await this.goals.setImage(ctx, goalId, body) };
+  }
+
+  @Delete(':goalId/image')
+  async removeImage(
+    @Household() ctx: HouseholdContext,
+    @Param('goalId', UuidPipe) goalId: string,
+  ): Promise<{ data: Goal }> {
+    return { data: await this.goals.setImage(ctx, goalId, null) };
+  }
+
+  /** Puts it away, or brings it back. */
+  @Put(':goalId/archived')
+  async archive(
+    @Household() ctx: HouseholdContext,
+    @Param('goalId', UuidPipe) goalId: string,
+    @Body(new ZodPipe(archiveSchema)) body: z.infer<typeof archiveSchema>,
+  ): Promise<{ data: Goal }> {
+    return { data: await this.goals.archive(ctx, goalId, body.archived) };
   }
 
   @Put(':goalId/claims/:accountId')

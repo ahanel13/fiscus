@@ -2,12 +2,14 @@
 import {
   accountOwners,
   accounts,
+  connections,
   type Executor,
   goalClaimEvents,
   goalClaims,
   goals,
   householdMembers,
   households,
+  institutions,
 } from '@fiscus/db';
 import { householdRanges } from '@fiscus/ledger';
 import {
@@ -18,10 +20,13 @@ import {
   type GoalClaim,
   type GoalShortfall,
   type GoalsOverview,
+  type goalImageSchema,
+  goalPace,
+  type InstitutionSummary,
   type updateGoalSchema,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
@@ -29,7 +34,9 @@ import type { HouseholdContext } from '../households/household-context.js';
 import type { HouseholdActivity } from '../households/household-scope.js';
 import { HouseholdScope } from '../households/household-scope.js';
 
-type GoalRow = typeof goals.$inferSelect;
+// Everything but the photo, which only its own route reads.
+const { image: _image, ...goalColumns } = getTableColumns(goals);
+type GoalRow = Omit<typeof goals.$inferSelect, 'image'>;
 type ClaimRow = typeof goalClaims.$inferSelect;
 type ClaimInput = { amountMinor?: number | undefined; percentBps?: number | undefined };
 
@@ -57,7 +64,16 @@ export class GoalsService {
   async overview(ctx: HouseholdContext): Promise<GoalsOverview> {
     return this.scope.run(ctx, async (tx) => {
       const { today } = await householdRanges(tx, ctx.householdId);
-      const rows = await tx.select().from(goals).orderBy(asc(goals.position), asc(goals.createdAt));
+      const rows = await tx
+        .select(goalColumns)
+        .from(goals)
+        .where(isNull(goals.archivedAt))
+        .orderBy(asc(goals.position), asc(goals.createdAt));
+      const archived = await tx
+        .select(goalColumns)
+        .from(goals)
+        .where(isNotNull(goals.archivedAt))
+        .orderBy(desc(goals.archivedAt));
       const claims = rows.length
         ? await tx
             .select()
@@ -72,9 +88,12 @@ export class GoalsService {
       const values = await claimValues(tx);
       const mine = await ownedAccounts(tx, ctx);
       const owned = new Set(mine.map((a) => a.accountId));
-      const goalList = rows.map((g) => present(ctx, g, claims, values, owned, today.slice(0, 7)));
+      const banks = await banksOf(tx, claims);
+      const month = today.slice(0, 7);
+      const goalList = rows.map((g) => present(ctx, g, claims, values, owned, banks, month));
       return {
         goals: goalList,
+        archived: archived.map((g) => present(ctx, g, [], [], owned, banks, month)),
         accounts: mine,
         shortfalls: shortfalls(rows, claims, values, owned),
         totals: {
@@ -109,9 +128,11 @@ export class GoalsService {
           targetMinor: input.targetMinor,
           targetDate: input.targetDate ?? null,
           planMinor: input.planMinor ?? null,
+          icon: input.icon ?? null,
+          color: input.color ?? null,
           position: last?.n ?? 0,
         })
-        .returning();
+        .returning(goalColumns);
       for (const c of input.claims) await setClaim(tx, ctx, row!, c.accountId, c);
       await record(activity, row!, 'goal.created', {
         name: row!.name,
@@ -144,7 +165,7 @@ export class GoalsService {
         .update(goals)
         .set({ ...patch, version: sql`${goals.version} + 1` })
         .where(eq(goals.id, goalId))
-        .returning();
+        .returning(goalColumns);
       await record(activity, updated!, 'goal.changed', { name: updated!.name, ...patch });
       return this.#one(tx, ctx, goalId);
     });
@@ -160,6 +181,111 @@ export class GoalsService {
     });
   }
 
+  /** Its photo, for whoever sees the goal; the type it was stored with. */
+  async image(ctx: HouseholdContext, goalId: string): Promise<{ type: string; data: Buffer }> {
+    return this.scope.run(ctx, async (tx) => {
+      const [row] = await tx
+        .select({ image: goals.image, type: goals.imageType })
+        .from(goals)
+        .where(eq(goals.id, goalId));
+      if (!row?.image || !row.type) throw problems.notFound();
+      return { type: row.type, data: row.image };
+    });
+  }
+
+  /**
+   * Sets its photo, or takes it off (GOAL-03/04). The browser shrinks it to a small square first;
+   * here it must be the image it says it is, and small.
+   */
+  async setImage(
+    ctx: HouseholdContext,
+    goalId: string,
+    image: z.infer<typeof goalImageSchema> | null,
+  ): Promise<Goal> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const row = await findGoal(tx, goalId);
+      checkCanEdit(ctx, row);
+      let data: Buffer | null = null;
+      if (image) {
+        data = Buffer.from(image.dataBase64, 'base64');
+        if (data.length > GOAL_IMAGE_BYTES || !looksLike(data, image.type)) {
+          throw new Problem(
+            422,
+            'not_an_image',
+            'That isn’t a photo Fiscus can keep',
+            'Choose a JPEG, PNG or WebP picture.',
+          );
+        }
+      }
+      await tx
+        .update(goals)
+        .set({
+          image: data,
+          imageType: image ? image.type : null,
+          imageUpdatedAt: image ? new Date() : null,
+          version: sql`${goals.version} + 1`,
+        })
+        .where(eq(goals.id, goalId));
+      await record(activity, row, image ? 'goal.image_set' : 'goal.image_removed', {
+        name: row.name,
+      });
+      return this.#one(tx, ctx, goalId);
+    });
+  }
+
+  /**
+   * Puts a goal away, or brings it back (GOAL-03/04). Away, its claims end (the money stays,
+   * unclaimed) and what they were worth is kept to show; back, it starts with no accounts and goes
+   * last in priority.
+   */
+  async archive(ctx: HouseholdContext, goalId: string, archived: boolean): Promise<Goal> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const row = await findGoal(tx, goalId);
+      checkCanEdit(ctx, row);
+      if ((row.archivedAt !== null) === archived) return this.#one(tx, ctx, goalId);
+      if (archived) {
+        const progress = (await this.#one(tx, ctx, goalId)).progressMinor;
+        const gone = await tx.delete(goalClaims).where(eq(goalClaims.goalId, goalId)).returning();
+        // Claims on someone else's account aren't yours to end (G7): they stay, so it doesn't go.
+        if ((await claimCount(tx, goalId)) > 0) {
+          throw new Problem(
+            409,
+            'claims_not_yours',
+            'It draws on someone else’s account',
+            'Its owners take that claim off first, then you can put the goal away.',
+          );
+        }
+        for (const c of gone) await event(tx, ctx, c, 'released', null);
+        await tx
+          .update(goals)
+          .set({
+            archivedAt: new Date(),
+            archivedProgressMinor: progress,
+            version: sql`${goals.version} + 1`,
+          })
+          .where(eq(goals.id, goalId));
+      } else {
+        const [last] = await tx
+          .select({ n: sql<number>`coalesce(max(${goals.position}) + 1, 0)::int` })
+          .from(goals)
+          .where(isNull(goals.archivedAt));
+        await tx
+          .update(goals)
+          .set({
+            archivedAt: null,
+            archivedProgressMinor: null,
+            position: last?.n ?? 0,
+            version: sql`${goals.version} + 1`,
+          })
+          .where(eq(goals.id, goalId));
+      }
+      await record(activity, row, archived ? 'goal.archived' : 'goal.unarchived', {
+        name: row.name,
+      });
+      return this.#one(tx, ctx, goalId);
+    });
+  }
+
   /** Claims an account, or changes a claim (GOAL-05): the account's owners, within what's free. */
   async claim(
     ctx: HouseholdContext,
@@ -170,6 +296,9 @@ export class GoalsService {
     return this.scope.run(ctx, async (tx, activity) => {
       const row = await findGoal(tx, goalId);
       if (ctx.role === 'viewer') throw problems.forbidden('Viewers don’t claim accounts.');
+      if (row.archivedAt) {
+        throw new Problem(409, 'goal_archived', 'This goal is put away', 'Bring it back first.');
+      }
       await setClaim(tx, ctx, row, accountId, claim);
       await record(activity, row, 'goal.claim_set', { name: row.name, ...claim });
       return this.#one(tx, ctx, goalId);
@@ -202,7 +331,7 @@ export class GoalsService {
   async order(ctx: HouseholdContext, ids: string[]): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
       if (ctx.role === 'viewer') throw problems.forbidden('Viewers can’t change goals.');
-      const seen = await tx.select({ id: goals.id }).from(goals);
+      const seen = await tx.select({ id: goals.id }).from(goals).where(isNull(goals.archivedAt));
       if (seen.length !== ids.length || seen.some((g) => !ids.includes(g.id))) {
         throw new Problem(422, 'every_goal', 'List every goal once, in the order you want');
       }
@@ -280,8 +409,54 @@ export class GoalsService {
     const claims = await tx.select().from(goalClaims).where(eq(goalClaims.goalId, goalId));
     const owned = new Set((await ownedAccounts(tx, ctx)).map((a) => a.accountId));
     const { today } = await householdRanges(tx, ctx.householdId);
-    return present(ctx, row, claims, await claimValues(tx), owned, today.slice(0, 7));
+    const values = await claimValues(tx);
+    return present(ctx, row, claims, values, owned, await banksOf(tx, claims), today.slice(0, 7));
   }
+}
+
+const GOAL_IMAGE_BYTES = 200_000;
+
+/** Whether the bytes start as their type's do: JPEG, PNG or WebP. */
+function looksLike(data: Buffer, type: string): boolean {
+  if (type === 'image/jpeg') return data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+  if (type === 'image/png') return data.subarray(0, 8).equals(PNG);
+  return (
+    data.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    data.subarray(8, 12).toString('latin1') === 'WEBP'
+  );
+}
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** Claims left on a goal: ones row-level security kept from being deleted. */
+async function claimCount(tx: Executor, goalId: string): Promise<number> {
+  const [{ n }] = (await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(goalClaims)
+    .where(eq(goalClaims.goalId, goalId))) as [{ n: number }];
+  return n;
+}
+
+/** The bank each claimed account you see syncs from, for its logo (#423). */
+async function banksOf(tx: Executor, claims: ClaimRow[]): Promise<Map<string, InstitutionSummary>> {
+  const ids = [...new Set(claims.map((c) => c.accountId))];
+  const banks = new Map<string, InstitutionSummary>();
+  if (!ids.length) return banks;
+  for (const b of await tx
+    .select({
+      accountId: accounts.id,
+      id: institutions.id,
+      name: institutions.name,
+      color: institutions.color,
+      hasLogo: sql<boolean>`${institutions.logoPng} IS NOT NULL`,
+    })
+    .from(accounts)
+    .innerJoin(connections, eq(connections.id, accounts.connectionId))
+    .innerJoin(institutions, eq(institutions.id, connections.institutionId))
+    .where(inArray(accounts.id, ids))) {
+    const { accountId, ...bank } = b;
+    banks.set(accountId, bank);
+  }
+  return banks;
 }
 
 async function claimValues(tx: Executor): Promise<ClaimValue[]> {
@@ -441,6 +616,7 @@ function present(
   claims: ClaimRow[],
   values: ClaimValue[],
   owned: Set<string>,
+  banks: Map<string, InstitutionSummary>,
   thisMonth: string,
 ): Goal {
   const worth = new Map(values.map((v) => [v.claim_id, v]));
@@ -457,12 +633,20 @@ function present(
         valueMinor: Number(v?.value_minor ?? 0),
         shortMinor: Number(v?.short_minor ?? 0),
         yours: owned.has(c.accountId),
+        institution: banks.get(c.accountId) ?? null,
       };
     });
-  const progress = list.reduce((s, c) => s + c.valueMinor, 0);
+  // Put away: what it had then.
+  const progress = g.archivedAt
+    ? (g.archivedProgressMinor ?? 0)
+    : list.reduce((s, c) => s + c.valueMinor, 0);
   const done = progress >= g.targetMinor;
+  // A fixed claim on an account that's short leaves the goal short too (G3).
+  const short = list
+    .filter((c) => c.amountMinor !== null)
+    .reduce((s, c) => s + Math.min(c.shortMinor, c.amountMinor!), 0);
   let toMakeDate: number | null = null;
-  if (g.targetDate && !done) {
+  if (g.targetDate && !done && !g.archivedAt) {
     const [y, m] = g.targetDate.split('-').map(Number) as [number, number];
     const [ty, tm] = thisMonth.split('-').map(Number) as [number, number];
     const months = (y - ty) * 12 + (m - tm) + 1;
@@ -478,12 +662,23 @@ function present(
     planMinor: g.planMinor,
     position: g.position,
     progressMinor: progress,
-    // A fixed claim on an account that's short leaves the goal short too (G3).
-    shortMinor: list
-      .filter((c) => c.amountMinor !== null)
-      .reduce((s, c) => s + Math.min(c.shortMinor, c.amountMinor!), 0),
+    shortMinor: short,
     toMakeDateMinor: toMakeDate,
     done,
+    pace: g.archivedAt
+      ? { status: done ? 'done' : null, projectedMonth: null, monthsLate: null }
+      : goalPace({
+          progressMinor: progress,
+          targetMinor: g.targetMinor,
+          targetDate: g.targetDate,
+          planMinor: g.planMinor,
+          shortMinor: short,
+          thisMonth,
+        }),
+    icon: g.icon as Goal['icon'],
+    color: g.color,
+    imageVersion: g.imageUpdatedAt ? String(g.imageUpdatedAt.getTime()) : null,
+    archivedAt: g.archivedAt?.toISOString() ?? null,
     claims: list,
     canEdit: canEdit(ctx, g),
     version: g.version,
@@ -544,7 +739,7 @@ function checkCanEdit(ctx: HouseholdContext, g: GoalRow): void {
 
 /** Row-level security hides another member's goal: it's simply not found (G15). */
 async function findGoal(tx: Executor, id: string): Promise<GoalRow> {
-  const [row] = await tx.select().from(goals).where(eq(goals.id, id));
+  const [row] = await tx.select(goalColumns).from(goals).where(eq(goals.id, id));
   if (!row) throw problems.notFound();
   return row;
 }

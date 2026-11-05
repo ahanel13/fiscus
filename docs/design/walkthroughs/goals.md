@@ -40,8 +40,13 @@ Goals has two kinds, in two sections:
   money in accounts, by claims (G2).
 - **Pay down**: a loan or a card. Progress is how far its balance has come down (G9).
 
-Each card shows how far it's come, its status (§4), this month's plan against what moved, and what
-it draws on. The bar's mark is where a steady pace would be by now.
+Each goal is a row, as in Monarch: its **picture** (a photo, or an icon on a color), its name with
+the logos of the banks it draws on, its status (§4) with when its pace gets there ("Apr 2030 (28
+months behind)"), what it has and its share of the target, and a bar in the status's color. The
+section's header adds up what's saved. A goal you're done with can be **archived**: its claims
+end, so its money is unclaimed again, and it waits under "Show archived goals" with what it had,
+until it's brought back (with no accounts) or deleted. A photo is shrunk in the browser to a small
+square and served from Fiscus itself, never fetched from a stock-photo service.
 
 The summary across the top: what's saved toward goals, this month's plans, **unclaimed** money in
 savings (what no goal has earmarked yet), and debt left with the date it's gone.
