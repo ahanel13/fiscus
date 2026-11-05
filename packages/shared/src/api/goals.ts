@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
+import { payoff } from '../payoff.js';
 import { type InstitutionSummary, isoDateSchema } from './accounts.js';
 
 // Goals (#131; goals walkthrough, goals and budgets G1–G22). Money in minor units of the
@@ -8,6 +9,9 @@ import { type InstitutionSummary, isoDateSchema } from './accounts.js';
 /** Whose goal: the household's, or your own (G15). Viewer-relative, as for budgets. */
 export const goalScopeSchema = z.enum(['household', 'mine']);
 export type GoalScope = z.infer<typeof goalScopeSchema>;
+
+/** Saving up, by claims on accounts (G2); or paying down a loan or card's balance (G9). */
+export type GoalKind = 'save' | 'pay_down';
 
 const money = z.number().int().min(1).max(1_000_000_000_00);
 
@@ -90,12 +94,40 @@ export const createGoalSchema = z.object({
     .default([]),
 });
 
+/** A rate you enter for a debt, in basis points (24.99% = 2499), when the bank doesn't say. */
+const aprBps = z.number().int().min(0).max(10_000);
+/** A minimum payment you enter, when the bank doesn't say. */
+const minimum = z.number().int().min(0).max(1_000_000_000_00);
+
+/**
+ * Pay down a loan or card (G9): one goal per debt. Its target is what's owed when it starts,
+ * unless you say otherwise; its plan is the extra over the minimum each month.
+ */
+export const createPayDownSchema = z
+  .object({
+    accountId: z.uuid(),
+    /** Defaults to the account's name. */
+    name: z.string().trim().min(1).max(80).optional(),
+    scope: goalScopeSchema.optional(),
+    targetMinor: money.optional(),
+    targetDate: isoDateSchema.nullable().optional(),
+    planMinor: z.number().int().min(0).max(1_000_000_000_00).nullable().optional(),
+    aprBps: aprBps.nullable().optional(),
+    minimumMinor: minimum.nullable().optional(),
+    icon: goalLook.icon.optional(),
+    color: goalLook.color.optional(),
+  })
+  .strict();
+
 export const updateGoalSchema = z
   .object({
     name: z.string().trim().min(1).max(80),
     targetMinor: money,
     targetDate: isoDateSchema.nullable(),
     planMinor: z.number().int().min(0).max(1_000_000_000_00).nullable(),
+    /** A debt's rate and minimum as you enter them; null goes back to the bank's (G9). */
+    aprBps: aprBps.nullable(),
+    minimumMinor: minimum.nullable(),
     ...goalLook,
   })
   .partial()
@@ -181,17 +213,70 @@ export function goalPace(g: {
   return { status: late ? 'at_risk' : 'on_track', projectedMonth, monthsLate: late };
 }
 
+/**
+ * A debt a pay-down goal is on (G9): what's owed now, and its rate and minimum, from the bank
+ * (Plaid's liabilities) or as entered, the entered one first.
+ */
+export interface GoalDebt {
+  accountId: string;
+  /** Null when you can't see the account: it was made private since (only its owners see it). */
+  accountName: string | null;
+  type: 'credit' | 'loan' | null;
+  institution: InstitutionSummary | null;
+  /** Owed now, positive; null when you can't see it. */
+  owedMinor: number | null;
+  /** What the bank says, when it does. */
+  bank: { aprBps: number | null; minimumMinor: number | null; nextDueDate: string | null } | null;
+  /** What's been entered on the goal. */
+  entered: { aprBps: number | null; minimumMinor: number | null };
+  /** What counts: the entered value, else the bank's. */
+  aprBps: number | null;
+  minimumMinor: number | null;
+}
+
+/**
+ * A pay-down goal's status (walkthrough §8): `done` once nothing's owed, and with a date,
+ * `on_track` or `at_risk` by when its minimum and its plan pay it off. Interest counts.
+ */
+export function debtPace(g: {
+  owedMinor: number;
+  aprBps: number | null;
+  minimumMinor: number;
+  planMinor: number | null;
+  targetDate: string | null;
+  thisMonth: string;
+}): GoalPace {
+  if (g.owedMinor <= 0) return { status: 'done', projectedMonth: null, monthsLate: null };
+  const projected = payoff(
+    [
+      {
+        id: 'debt',
+        owedMinor: g.owedMinor,
+        aprBps: g.aprBps,
+        minimumMinor: g.minimumMinor,
+        extraMinor: g.planMinor ?? 0,
+      },
+    ],
+    'planned',
+    g.thisMonth,
+  ).debtFreeMonth;
+  if (!g.targetDate) return { status: null, projectedMonth: projected, monthsLate: null };
+  if (projected === null) return { status: 'at_risk', projectedMonth: null, monthsLate: null };
+  const late = Math.max(0, monthIndex(projected) - monthIndex(g.targetDate.slice(0, 7)));
+  return { status: late ? 'at_risk' : 'on_track', projectedMonth: projected, monthsLate: late };
+}
+
 export interface Goal {
   id: string;
   scope: GoalScope;
-  kind: 'save';
+  kind: GoalKind;
   name: string;
   targetMinor: number;
   targetDate: string | null;
   planMinor: number | null;
   /** Priority: 0 comes first, and gives way last (G19). */
   position: number;
-  /** The claims added up (G2). */
+  /** The claims added up (G2); for a debt, how far it's come down from its target (G9). */
   progressMinor: number;
   /** What its accounts with fixed claims on it fall short by (G3). */
   shortMinor: number;
@@ -207,6 +292,8 @@ export interface Goal {
   /** Put away (archived): its claims ended, and progress is what it had then. */
   archivedAt: string | null;
   claims: GoalClaim[];
+  /** The loan or card a pay-down goal is on; null for saving up. */
+  debt: GoalDebt | null;
   /** Whether you can change it (GOAL-03, GOAL-04); claims are changed by account owners. */
   canEdit: boolean;
   version: number;
@@ -222,6 +309,21 @@ export interface GoalAccount {
   /** Every goal's claims on it, yours or not (G3). */
   claimedMinor: number;
   unclaimedMinor: number;
+}
+
+/** A loan or card you see the balance of, for Pay down's Manage (G9). */
+export interface DebtAccount {
+  accountId: string;
+  name: string;
+  type: 'credit' | 'loan';
+  institution: InstitutionSummary | null;
+  owedMinor: number;
+  aprBps: number | null;
+  minimumMinor: number | null;
+  /** Private: only an own (Mine) goal can be on it, as everyone sees the household's. */
+  private: boolean;
+  /** The goal you see on it, when there is one (archived ones aside). */
+  goalId: string | null;
 }
 
 /** An account below its fixed claims (G3), as someone who sees its goals sees it. */
@@ -244,10 +346,16 @@ export interface GoalsOverview {
   archived: Goal[];
   /** Accounts you own that goals can draw on. */
   accounts: GoalAccount[];
+  /** Loans and cards you see, to pay down. */
+  debts: DebtAccount[];
   shortfalls: GoalShortfall[];
   totals: {
+    /** What saving-up goals have. */
     savedMinor: number;
+    /** Saving-up goals' monthly plans. */
     plannedMinor: number;
+    /** What pay-down goals still owe, where you see it. */
+    owedMinor: number;
     /** Unclaimed money in the accounts you own. */
     unclaimedMinor: number;
   };

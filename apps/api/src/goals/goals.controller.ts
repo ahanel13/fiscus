@@ -2,6 +2,7 @@
 import { parseIfMatch } from '@fiscus/domain';
 import {
   createGoalSchema,
+  createPayDownSchema,
   giveWaySchema,
   type Goal,
   goalClaimSchema,
@@ -39,7 +40,7 @@ import { GoalsService } from './goals.service.js';
 const archiveSchema = z.object({ archived: z.boolean() }).strict();
 
 /**
- * Goals (GOAL-01–07): the household's, and your own. Who may change a goal is checked per goal
+ * Goals (GOAL-01–08): the household's, and your own; saving up, and paying down debt. Who may change a goal is checked per goal
  * (GOAL-03/04); who may claim an account, by the database (GOAL-05); whether you see a goal at
  * all, by row-level security (GOAL-02).
  */
@@ -59,6 +60,15 @@ export class GoalsController {
     @Body(new ZodPipe(createGoalSchema)) body: z.infer<typeof createGoalSchema>,
   ): Promise<{ data: Goal }> {
     return { data: await this.goals.create(ctx, body) };
+  }
+
+  /** Pay down a loan or card (G9). */
+  @Post('pay-down')
+  async createPayDown(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(createPayDownSchema)) body: z.infer<typeof createPayDownSchema>,
+  ): Promise<{ data: Goal }> {
+    return { data: await this.goals.createPayDown(ctx, body) };
   }
 
   /** Priority, highest first (G19). */

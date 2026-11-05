@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  accountLiabilities,
   accountOwners,
   accounts,
+  balanceSnapshots,
   connections,
   type Executor,
   goalClaimEvents,
@@ -14,10 +16,15 @@ import {
 import { householdRanges } from '@fiscus/ledger';
 import {
   type createGoalSchema,
+  type createPayDownSchema,
+  type DebtAccount,
+  debtPace,
+  estimatedMinimum,
   formatMoney,
   type Goal,
   type GoalAccount,
   type GoalClaim,
+  type GoalDebt,
   type GoalShortfall,
   type GoalsOverview,
   type goalImageSchema,
@@ -39,6 +46,18 @@ const { image: _image, ...goalColumns } = getTableColumns(goals);
 type GoalRow = Omit<typeof goals.$inferSelect, 'image'>;
 type ClaimRow = typeof goalClaims.$inferSelect;
 type ClaimInput = { amountMinor?: number | undefined; percentBps?: number | undefined };
+
+/** A loan or card as the caller sees it (row-level security): pay-down goals read these (G9). */
+interface Debt {
+  accountId: string;
+  name: string;
+  type: 'credit' | 'loan';
+  private: boolean;
+  closed: boolean;
+  owedMinor: number;
+  institution: InstitutionSummary | null;
+  bank: GoalDebt['bank'];
+}
 
 /** A claim's worth, from fiscus_goal_claim_values() (0088): balances stay in the database. */
 interface ClaimValue {
@@ -89,16 +108,33 @@ export class GoalsService {
       const mine = await ownedAccounts(tx, ctx);
       const owned = new Set(mine.map((a) => a.accountId));
       const banks = await banksOf(tx, claims);
+      const debts = await debtsOf(tx);
       const month = today.slice(0, 7);
-      const goalList = rows.map((g) => present(ctx, g, claims, values, owned, banks, month));
+      const at = { claims, values, owned, banks, debts, month };
+      const goalList = rows.map((g) => present(ctx, g, at));
+      const saving = goalList.filter((g) => g.kind === 'save');
       return {
         goals: goalList,
-        archived: archived.map((g) => present(ctx, g, [], [], owned, banks, month)),
+        archived: archived.map((g) => present(ctx, g, { ...at, claims: [], values: [] })),
         accounts: mine,
+        debts: [...debts.values()]
+          .filter((d) => !d.closed)
+          .map((d): DebtAccount => ({
+            accountId: d.accountId,
+            name: d.name,
+            type: d.type,
+            institution: d.institution,
+            owedMinor: d.owedMinor,
+            aprBps: d.bank?.aprBps ?? null,
+            minimumMinor: d.bank?.minimumMinor ?? null,
+            private: d.private,
+            goalId: rows.find((g) => g.accountId === d.accountId)?.id ?? null,
+          })),
         shortfalls: shortfalls(rows, claims, values, owned),
         totals: {
-          savedMinor: goalList.reduce((s, g) => s + g.progressMinor, 0),
-          plannedMinor: goalList.reduce((s, g) => s + (g.planMinor ?? 0), 0),
+          savedMinor: saving.reduce((s, g) => s + g.progressMinor, 0),
+          plannedMinor: saving.reduce((s, g) => s + (g.planMinor ?? 0), 0),
+          owedMinor: goalList.reduce((s, g) => s + (g.debt?.owedMinor ?? 0), 0),
           unclaimedMinor: mine.reduce((s, a) => s + a.unclaimedMinor, 0),
         },
         canCreate: ctx.role !== 'viewer',
@@ -143,6 +179,77 @@ export class GoalsService {
     });
   }
 
+  /**
+   * Pay down a loan or card (G9, GOAL-08): one you see the balance of, with no goal of yours on it
+   * yet. Everyone sees the household's goals, so one on a private account must be your own. Its
+   * target is what's owed now, unless you say.
+   */
+  async createPayDown(
+    ctx: HouseholdContext,
+    input: z.infer<typeof createPayDownSchema>,
+  ): Promise<Goal> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      if (ctx.role === 'viewer') {
+        throw problems.forbidden(
+          'Viewers don’t have goals of their own, or change the household’s.',
+        );
+      }
+      const debt = (await debtsOf(tx, [input.accountId])).get(input.accountId);
+      if (!debt || debt.closed) {
+        throw new Problem(422, 'not_a_debt', 'A pay-down goal is on an open loan or card you see');
+      }
+      const scope =
+        input.scope ??
+        (!debt.private && (await activeMembers(tx, ctx.householdId)) > 1 ? 'household' : 'mine');
+      if (scope === 'household' && debt.private) {
+        throw new Problem(
+          422,
+          'private_debt',
+          'This account is private',
+          'Everyone sees the household’s goals, and its balance with them. Make the goal yours, or share the account first.',
+        );
+      }
+      const [taken] = await tx
+        .select({ id: goals.id })
+        .from(goals)
+        .where(and(eq(goals.accountId, input.accountId), isNull(goals.archivedAt)));
+      if (taken) {
+        throw new Problem(409, 'debt_has_goal', 'There’s a goal on this debt already');
+      }
+      const target = input.targetMinor ?? debt.owedMinor;
+      if (target <= 0) {
+        throw new Problem(422, 'nothing_owed', `Nothing’s owed on ${debt.name}`);
+      }
+      const [last] = await tx
+        .select({ n: sql<number>`coalesce(max(${goals.position}) + 1, 0)::int` })
+        .from(goals);
+      const [row] = await tx
+        .insert(goals)
+        .values({
+          householdId: ctx.householdId,
+          memberId: scope === 'mine' ? ctx.memberId : null,
+          kind: 'pay_down',
+          accountId: input.accountId,
+          name: input.name ?? debt.name,
+          targetMinor: target,
+          targetDate: input.targetDate ?? null,
+          planMinor: input.planMinor ?? null,
+          aprBps: input.aprBps ?? null,
+          minimumMinor: input.minimumMinor ?? null,
+          icon: input.icon ?? null,
+          color: input.color ?? null,
+          position: last?.n ?? 0,
+        })
+        .returning(goalColumns);
+      await record(activity, row!, 'goal.created', {
+        name: row!.name,
+        targetMinor: row!.targetMinor,
+        kind: 'pay_down',
+      });
+      return this.#one(tx, ctx, row!.id);
+    });
+  }
+
   /** Name, target, date and plan (GOAL-03/04): first save wins. */
   async update(
     ctx: HouseholdContext,
@@ -153,6 +260,12 @@ export class GoalsService {
     return this.scope.run(ctx, async (tx, activity) => {
       const row = await findGoal(tx, goalId);
       checkCanEdit(ctx, row);
+      if (
+        row.kind !== 'pay_down' &&
+        (patch.aprBps !== undefined || patch.minimumMinor !== undefined)
+      ) {
+        throw new Problem(422, 'not_a_debt', 'Only a pay-down goal has a rate and a minimum');
+      }
       if (row.version !== baseVersion) {
         throw new Problem(
           409,
@@ -265,6 +378,15 @@ export class GoalsService {
           })
           .where(eq(goals.id, goalId));
       } else {
+        if (row.accountId) {
+          const [taken] = await tx
+            .select({ id: goals.id })
+            .from(goals)
+            .where(and(eq(goals.accountId, row.accountId), isNull(goals.archivedAt)));
+          if (taken) {
+            throw new Problem(409, 'debt_has_goal', 'There’s a goal on this debt already');
+          }
+        }
         const [last] = await tx
           .select({ n: sql<number>`coalesce(max(${goals.position}) + 1, 0)::int` })
           .from(goals)
@@ -298,6 +420,9 @@ export class GoalsService {
       if (ctx.role === 'viewer') throw problems.forbidden('Viewers don’t claim accounts.');
       if (row.archivedAt) {
         throw new Problem(409, 'goal_archived', 'This goal is put away', 'Bring it back first.');
+      }
+      if (row.kind === 'pay_down') {
+        throw new Problem(422, 'pay_down_no_claims', 'A pay-down goal is its debt, not claims');
       }
       await setClaim(tx, ctx, row, accountId, claim);
       await record(activity, row, 'goal.claim_set', { name: row.name, ...claim });
@@ -409,8 +534,14 @@ export class GoalsService {
     const claims = await tx.select().from(goalClaims).where(eq(goalClaims.goalId, goalId));
     const owned = new Set((await ownedAccounts(tx, ctx)).map((a) => a.accountId));
     const { today } = await householdRanges(tx, ctx.householdId);
-    const values = await claimValues(tx);
-    return present(ctx, row, claims, values, owned, await banksOf(tx, claims), today.slice(0, 7));
+    return present(ctx, row, {
+      claims,
+      values: await claimValues(tx),
+      owned,
+      banks: await banksOf(tx, claims),
+      debts: row.accountId ? await debtsOf(tx, [row.accountId]) : new Map(),
+      month: today.slice(0, 7),
+    });
   }
 }
 
@@ -457,6 +588,75 @@ async function banksOf(tx: Executor, claims: ClaimRow[]): Promise<Map<string, In
     banks.set(accountId, bank);
   }
   return banks;
+}
+
+/**
+ * Loans and cards the caller sees (row-level security: someone else's private account isn't
+ * there), with what's owed and what the bank says of its rate and minimum, where they see that.
+ */
+async function debtsOf(tx: Executor, ids?: string[]): Promise<Map<string, Debt>> {
+  const rows = await tx
+    .select({
+      accountId: accounts.id,
+      name: accounts.name,
+      type: accounts.type,
+      visibility: accounts.visibility,
+      closedAt: accounts.closedAt,
+      id: institutions.id,
+      bankName: institutions.name,
+      color: institutions.color,
+      hasLogo: sql<boolean>`${institutions.logoPng} IS NOT NULL`,
+      aprBps: accountLiabilities.aprBps,
+      minimumMinor: accountLiabilities.minimumPaymentMinor,
+      nextDueDate: accountLiabilities.nextDueDate,
+      hasLiability: sql<boolean>`${accountLiabilities.accountId} IS NOT NULL`,
+    })
+    .from(accounts)
+    .leftJoin(connections, eq(connections.id, accounts.connectionId))
+    .leftJoin(institutions, eq(institutions.id, connections.institutionId))
+    .leftJoin(accountLiabilities, eq(accountLiabilities.accountId, accounts.id))
+    .where(
+      and(inArray(accounts.type, ['credit', 'loan']), ids ? inArray(accounts.id, ids) : undefined),
+    )
+    .orderBy(asc(accounts.name));
+  const balances = new Map<string, number>();
+  if (rows.length) {
+    for (const b of await tx
+      .selectDistinctOn([balanceSnapshots.accountId], {
+        accountId: balanceSnapshots.accountId,
+        balanceMinor: balanceSnapshots.balanceMinor,
+      })
+      .from(balanceSnapshots)
+      .where(
+        inArray(
+          balanceSnapshots.accountId,
+          rows.map((r) => r.accountId),
+        ),
+      )
+      .orderBy(balanceSnapshots.accountId, desc(balanceSnapshots.asOf))) {
+      balances.set(b.accountId, b.balanceMinor);
+    }
+  }
+  return new Map(
+    rows.map((r) => [
+      r.accountId,
+      {
+        accountId: r.accountId,
+        name: r.name,
+        type: r.type as Debt['type'],
+        private: r.visibility === 'private',
+        closed: r.closedAt !== null,
+        // What's owed is negative in Fiscus's sign; a card in credit owes nothing.
+        owedMinor: Math.max(0, -(balances.get(r.accountId) ?? 0)),
+        institution: r.id
+          ? { id: r.id, name: r.bankName!, color: r.color, hasLogo: r.hasLogo }
+          : null,
+        bank: r.hasLiability
+          ? { aprBps: r.aprBps, minimumMinor: r.minimumMinor, nextDueDate: r.nextDueDate }
+          : null,
+      },
+    ]),
+  );
 }
 
 async function claimValues(tx: Executor): Promise<ClaimValue[]> {
@@ -609,16 +809,37 @@ async function event(
   });
 }
 
+/** What presenting goals needs: claims and their worth, and the debts pay-down goals are on. */
+interface Context {
+  claims: ClaimRow[];
+  values: ClaimValue[];
+  owned: Set<string>;
+  banks: Map<string, InstitutionSummary>;
+  debts: Map<string, Debt>;
+  month: string;
+}
+
+/** A pay-down goal's debt as the caller sees it (G9): the entered rate and minimum first. */
+function debtOf(g: GoalRow, debts: Map<string, Debt>): GoalDebt {
+  const d = debts.get(g.accountId!);
+  const entered = { aprBps: g.aprBps, minimumMinor: g.minimumMinor };
+  return {
+    accountId: g.accountId!,
+    accountName: d?.name ?? null,
+    type: d?.type ?? null,
+    institution: d?.institution ?? null,
+    owedMinor: d ? d.owedMinor : null,
+    bank: d?.bank ?? null,
+    entered,
+    aprBps: entered.aprBps ?? d?.bank?.aprBps ?? null,
+    minimumMinor: entered.minimumMinor ?? d?.bank?.minimumMinor ?? null,
+  };
+}
+
 /** The api's goal: its claims with what they're worth, progress, and what makes its date. */
-function present(
-  ctx: HouseholdContext,
-  g: GoalRow,
-  claims: ClaimRow[],
-  values: ClaimValue[],
-  owned: Set<string>,
-  banks: Map<string, InstitutionSummary>,
-  thisMonth: string,
-): Goal {
+function present(ctx: HouseholdContext, g: GoalRow, at: Context): Goal {
+  const { claims, values, owned, banks, month: thisMonth } = at;
+  const debt = g.kind === 'pay_down' ? debtOf(g, at.debts) : null;
   const worth = new Map(values.map((v) => [v.claim_id, v]));
   const list: GoalClaim[] = claims
     .filter((c) => c.goalId === g.id)
@@ -636,26 +857,51 @@ function present(
         institution: banks.get(c.accountId) ?? null,
       };
     });
-  // Put away: what it had then.
+  // Put away: what it had then. A debt: how far it's come down, never below where it started.
   const progress = g.archivedAt
     ? (g.archivedProgressMinor ?? 0)
-    : list.reduce((s, c) => s + c.valueMinor, 0);
+    : debt
+      ? debt.owedMinor === null
+        ? 0
+        : Math.max(0, g.targetMinor - debt.owedMinor)
+      : list.reduce((s, c) => s + c.valueMinor, 0);
   const done = progress >= g.targetMinor;
   // A fixed claim on an account that's short leaves the goal short too (G3).
   const short = list
     .filter((c) => c.amountMinor !== null)
     .reduce((s, c) => s + Math.min(c.shortMinor, c.amountMinor!), 0);
   let toMakeDate: number | null = null;
-  if (g.targetDate && !done && !g.archivedAt) {
+  if (g.targetDate && !done && !g.archivedAt && !debt) {
     const [y, m] = g.targetDate.split('-').map(Number) as [number, number];
     const [ty, tm] = thisMonth.split('-').map(Number) as [number, number];
     const months = (y - ty) * 12 + (m - tm) + 1;
     if (months >= 1) toMakeDate = Math.ceil((g.targetMinor - progress) / months);
   }
+  const pace: Goal['pace'] = g.archivedAt
+    ? { status: done ? 'done' : null, projectedMonth: null, monthsLate: null }
+    : debt
+      ? debt.owedMinor === null
+        ? { status: null, projectedMonth: null, monthsLate: null }
+        : debtPace({
+            owedMinor: debt.owedMinor,
+            aprBps: debt.aprBps,
+            minimumMinor: debt.minimumMinor ?? estimatedMinimum(debt.owedMinor),
+            planMinor: g.planMinor,
+            targetDate: g.targetDate,
+            thisMonth,
+          })
+      : goalPace({
+          progressMinor: progress,
+          targetMinor: g.targetMinor,
+          targetDate: g.targetDate,
+          planMinor: g.planMinor,
+          shortMinor: short,
+          thisMonth,
+        });
   return {
     id: g.id,
     scope: g.memberId ? 'mine' : 'household',
-    kind: 'save',
+    kind: g.kind,
     name: g.name,
     targetMinor: g.targetMinor,
     targetDate: g.targetDate,
@@ -665,21 +911,13 @@ function present(
     shortMinor: short,
     toMakeDateMinor: toMakeDate,
     done,
-    pace: g.archivedAt
-      ? { status: done ? 'done' : null, projectedMonth: null, monthsLate: null }
-      : goalPace({
-          progressMinor: progress,
-          targetMinor: g.targetMinor,
-          targetDate: g.targetDate,
-          planMinor: g.planMinor,
-          shortMinor: short,
-          thisMonth,
-        }),
+    pace,
     icon: g.icon as Goal['icon'],
     color: g.color,
     imageVersion: g.imageUpdatedAt ? String(g.imageUpdatedAt.getTime()) : null,
     archivedAt: g.archivedAt?.toISOString() ?? null,
     claims: list,
+    debt,
     canEdit: canEdit(ctx, g),
     version: g.version,
     createdAt: g.createdAt.toISOString(),

@@ -202,6 +202,7 @@ caller can't see ("Transfer to Anthony").
 | GOAL-05 | Claim an account for a goal, change a claim, or take it off | ✅ | ✅ | ❌ | Only the account's owners, on a goal they see (G7): the database refuses anyone else. Never beyond the balance less every other goal's claims (G3) |
 | GOAL-06 | Choose which goal gives way when an account falls short | ✅ | ✅ | ❌ | The account's owners, from its fixed claims on goals they see (G3, G19) |
 | GOAL-07 | A member's own goals when they leave | — | — | — | Deleted, with their claims and history, as their budget is (BUD-05) |
+| GOAL-08 | Pay down a loan or card: a goal on it, and its rate and minimum | ✅ | ✅ | ❌ | An open loan or card whose balance you see, one goal each among those you see. Everyone sees the household's goals, and the debt's balance with them, so a goal on a private account is your own (G9, G15). A rate or minimum entered goes before the bank's |
 
 ### 4.11 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |

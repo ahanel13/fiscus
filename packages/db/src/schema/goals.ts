@@ -20,7 +20,8 @@ import { householdMembers, households } from './households.js';
 
 // Goals (#131; goals walkthrough, goals and budgets G1–G22). A savings goal draws on accounts by
 // claims: part of a balance, as a fixed amount or a percentage (G2). Progress is the claims added
-// up, never stored. Every change to a claim is kept with its reason (G17). Row-level security:
+// up, never stored. A pay-down goal is on one loan or card (G9, #134): its target is what was owed
+// when it began, and progress is how far the balance has come down. Every change to a claim is kept with its reason (G17). Row-level security:
 // migration 0088.
 
 export const goalKind = pgEnum('goal_kind', ['save', 'pay_down']);
@@ -53,6 +54,10 @@ export const goals = pgTable(
     /** Put away: its claims ended, and what they were worth then is kept to show. */
     archivedAt: timestamp({ withTimezone: true }),
     archivedProgressMinor: bigint({ mode: 'number' }),
+    /** Pay down: the loan or card, and its rate and minimum as entered when the bank doesn't say. */
+    accountId: uuid(),
+    aprBps: integer(),
+    minimumMinor: money('minimum_minor'),
     ...versioning(),
     ...timestamps(),
   },
@@ -62,11 +67,19 @@ export const goals = pgTable(
       columns: [t.householdId, t.memberId],
       foreignColumns: [householdMembers.householdId, householdMembers.id],
     }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.accountId],
+      foreignColumns: [accounts.householdId, accounts.id],
+    }).onDelete('cascade'),
     index().on(t.householdId),
     index().on(t.memberId),
+    index().on(t.accountId),
     check('goals_name', sql`length(btrim(${t.name})) BETWEEN 1 AND 80`),
     check('goals_target', sql`${t.targetMinor} > 0`),
     check('goals_plan', sql`${t.planMinor} IS NULL OR ${t.planMinor} >= 0`),
+    check('goals_debt', sql`(${t.kind} = 'pay_down') = (${t.accountId} IS NOT NULL)`),
+    check('goals_apr', sql`${t.aprBps} IS NULL OR ${t.aprBps} BETWEEN 0 AND 10000`),
+    check('goals_minimum', sql`${t.minimumMinor} IS NULL OR ${t.minimumMinor} >= 0`),
     check('goals_color', sql`${t.color} IS NULL OR ${t.color} ~ '^#[0-9a-f]{6}$'`),
     check(
       'goals_image',

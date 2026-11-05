@@ -638,6 +638,13 @@
       "when": 1793896630363,
       "tag": "0090_connection_account_errors",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1793901076973,
+      "tag": "0091_goal_pay_down",
+      "breakpoints": true
     }
   ]
 }
