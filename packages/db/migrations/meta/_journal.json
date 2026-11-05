@@ -624,6 +624,13 @@
       "when": 1793810934404,
       "tag": "0088_goals_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1793858335111,
+      "tag": "0089_connection_account_errors",
+      "breakpoints": true
     }
   ]
 }

@@ -138,7 +138,9 @@ setup token share too little. Each provider has a `ProviderConnectFlow` whose `c
     402 `consent_expired` (`SIMPLEFIN_PAYMENT_REQUIRED`: the Bridge subscription), 429
     `rate_limited`, anything else `transient`. An `errlist` entry naming an account, or its
     connection, leaves that account out of the window (so what it had is kept) and lists it in
-    `accountErrors` with the code, never the message. Errors with no accounts at all fail the sync.
+    `accountErrors` with the code, never the message. The sync keeps them on the connection
+    (`account_errors`, with when each began) until the account updates again. Errors with no
+    accounts at all fail the sync.
   - **`remove`** calls nothing: the Bridge can't end a token's access from here, so its owner
     revokes it at the Bridge (D14) and Fiscus deletes the access URL.
 - `@fiscus/aggregation/testing`, for tests only:
@@ -489,6 +491,12 @@ the line per connection at the top of Accounts (`apps/web/src/components/BankCon
   Accounts shows each with how fresh it is ("Synced 2 hours ago · next in 2 hours"); a broken one
   is highlighted, says what's wrong and whose it is to fix (D11), and names the accounts it leaves
   stale, with the date their balances are from (D12).
+- **An account that stops updating** on a working connection (D12). The bank can stop sending
+  one account while the rest keep coming: SimpleFIN lists it in `errlist`, or just stops
+  returning it or its new data. `staleAccounts` names the open accounts you see that have a
+  stored error, or no balance from the bank in `STALE_ACCOUNT_DAYS` (4), with that balance's
+  date. Accounts shows the connection, highlighted, with where to fix it (for SimpleFIN, a link
+  to the Bridge) and whose that is, and the account's row says **Not updating**.
 - **Refresh now** (D10). `POST …/connections/:id/refresh`, its owner only (ACC-03): `next_sync_at`
   becomes now and `refresh_requested_at` is stamped. Another within the provider's limit
   (`REFRESH_LIMIT_MS`: Plaid 15 minutes, SimpleFIN 6 hours) is 429 `refresh_too_soon`, with

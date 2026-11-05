@@ -177,6 +177,45 @@ describe('SimpleFIN sync, end to end (#91)', { timeout: 60_000 }, () => {
     ).toEqual([{ new_accounts_available: false }]);
   });
 
+  it('keeps the accounts the Bridge couldn’t update, and since when, until they do (D12)', async () => {
+    fake = await startFakeSimpleFin();
+    const b = await connect(fake, [
+      [RIVERA.checking, 'depository'],
+      [RIVERA.visa, 'credit'],
+    ]);
+    const errors = async () =>
+      (
+        await sql<{ account_errors: Record<string, { code: string; since: string }> }>(
+          'SELECT account_errors FROM connections WHERE id = $1',
+          [b.connectionId],
+        )
+      )[0]!.account_errors;
+    const again = () =>
+      h.owner.query('UPDATE connections SET next_sync_at = now() WHERE id = $1', [b.connectionId]);
+
+    fake.failNext({
+      errlist: [{ code: 'act.auth', msg: 'Sign in, Alex', account_id: RIVERA.visa }],
+    });
+    await run(fake);
+    // The connection works; only the card is stuck, with the code and never the message.
+    expect(await h.row(b.connectionId)).toMatchObject({ status: 'ok', lastErrorCode: null });
+    const first = await errors();
+    expect(Object.keys(first)).toEqual([RIVERA.visa]);
+    expect(first[RIVERA.visa]!.code).toBe('act.auth');
+    expect(logs.join('\n')).not.toContain('Alex');
+
+    // Still stuck: since when stays.
+    fake.failNext({ errlist: [{ code: 'act.auth', account_id: RIVERA.visa }] });
+    await again();
+    await run(fake);
+    expect((await errors())[RIVERA.visa]!.since).toBe(first[RIVERA.visa]!.since);
+
+    // Updated again: cleared.
+    await again();
+    await run(fake);
+    expect(await errors()).toEqual({});
+  });
+
   it('fails a revoked token as needing its owner, and doesn’t poll it', async () => {
     fake = await startFakeSimpleFin();
     const b = await connect(fake, [[RIVERA.checking, 'depository']]);

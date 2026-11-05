@@ -20,13 +20,15 @@ import {
   toast,
 } from './ui.js';
 import { BankLogo } from './BankLogo.js';
+import { BRIDGE } from './SimpleFinDialog.js';
 
 // A household's bank connections (the bank connections walkthrough §5–§7, D10–D14): at the top of
 // Accounts, the ones that need someone (to finish setup, sign in again, choose new accounts, or
 // that are failing or still bringing in history) and one line for the rest; on the dashboard,
 // only the broken ones; in Household settings → Connections, all of them with how fresh each is,
 // "Refresh now", who linked them and "Disconnect". Whoever sees its accounts sees it, with whose it
-// is: only its owner fixes it (D11), and the accounts it leaves stale are named (D12).
+// is: only its owner fixes it (D11), and the accounts it leaves stale are named (D12), as are the
+// ones a working connection isn't updating: the bank stopped sending them.
 
 type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
@@ -34,11 +36,12 @@ const base = (householdId: string) => `/api/v1/households/${householdId}`;
 const PROVIDER: Record<Connection['provider'], string> = { plaid: 'Plaid', simplefin: 'SimpleFIN' };
 
 /** What's wrong with a connection, when something is that its accounts should say (D12, D13). */
-export type ConnectionTrouble = 'needs_sign_in' | 'not_working';
+export type ConnectionTrouble = 'needs_sign_in' | 'not_working' | 'not_updating';
 
 export const TROUBLE: Record<ConnectionTrouble, { label: string; tone: BadgeTone }> = {
   needs_sign_in: { label: 'Needs sign-in', tone: 'warning' },
   not_working: { label: 'Not working', tone: 'danger' },
+  not_updating: { label: 'Not updating', tone: 'warning' },
 };
 
 /** A sign-in it needs, or 3 days of failures. A failure Fiscus is still retrying isn't one yet. */
@@ -57,11 +60,12 @@ function needsAttention(c: Connection): boolean {
     c.newAccountsAvailable ||
     c.importingHistory ||
     c.onOldKeys ||
+    c.staleAccounts.length > 0 ||
     (c.status === 'ok' && c.lastSyncedAt === null)
   );
 }
 
-/** Each account's connection trouble, for the badge on its row (D13). */
+/** Each account's connection trouble, for the badge on its row (D13), or that it isn't updating. */
 export function useAccountTrouble(householdId: string): Map<string, ConnectionTrouble> {
   const data = useQuery(connectionsQuery(householdId)).data;
   return useMemo(
@@ -69,7 +73,9 @@ export function useAccountTrouble(householdId: string): Map<string, ConnectionTr
       new Map(
         (data ?? []).flatMap((c) => {
           const trouble = connectionTrouble(c);
-          return trouble ? c.accountIds.map((id) => [id, trouble] as const) : [];
+          return trouble
+            ? c.accountIds.map((id) => [id, trouble] as const)
+            : c.staleAccounts.map((a) => [a.accountId, 'not_updating'] as const);
         }),
       ),
     [data],
@@ -108,7 +114,9 @@ export function BankConnections({
 
   const shown =
     variant === 'dashboard'
-      ? connections.filter((c) => c.status === 'login_required' || c.status === 'error')
+      ? connections.filter(
+          (c) => c.status === 'login_required' || c.status === 'error' || c.staleAccounts.length,
+        )
       : variant === 'accounts'
         ? connections.filter(needsAttention)
         : connections;
@@ -211,6 +219,10 @@ function ConnectionLine({
   const waitUntil = c.refreshAvailableAt && Date.parse(c.refreshAvailableAt) > now;
   const stale =
     broken && accounts.length ? <StaleAccounts accounts={accounts} since={c.lastSyncedAt} /> : null;
+  const notUpdating = c.staleAccounts.length ? (
+    <NotUpdating connection={c} accounts={accounts} yours={yours} />
+  ) : null;
+  const attention = broken || notUpdating !== null;
 
   let status: React.ReactNode;
   if (c.status === 'setup') {
@@ -285,10 +297,10 @@ function ConnectionLine({
     <div
       className={clsx(
         'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border px-4 py-3',
-        broken ? 'border-warning/40 bg-warning-soft' : 'border-border bg-surface',
+        attention ? 'border-warning/40 bg-warning-soft' : 'border-border bg-surface',
       )}
     >
-      {broken ? (
+      {attention ? (
         <TriangleAlert aria-hidden className="size-5 shrink-0 text-warning" />
       ) : c.institution ? (
         <BankLogo institution={c.institution} name={bank} />
@@ -318,6 +330,7 @@ function ConnectionLine({
         {unchosen}
         {oldKeys}
         {stale}
+        {notUpdating}
       </div>
       {yours ? (
         <div className="flex flex-wrap gap-2">
@@ -411,6 +424,60 @@ function StaleAccounts({ accounts, since }: { accounts: Account[]; since: string
         ' from before it broke'
       )}
       .
+    </p>
+  );
+}
+
+/**
+ * The accounts a working connection isn't updating (D12): the provider said it couldn't, or no
+ * balance has come from the bank for days. Usually the bank wants signing in again at the
+ * provider, so it says where, and whose that is (D11).
+ */
+function NotUpdating({
+  connection: c,
+  accounts,
+  yours,
+}: {
+  connection: Connection;
+  accounts: Account[];
+  yours: boolean;
+}) {
+  const names = c.staleAccounts.map(
+    (s) => accounts.find((a) => a.id === s.accountId)?.name ?? 'An account',
+  );
+  const one = names.length === 1;
+  const shown =
+    names.length <= 2
+      ? names.join(' and ')
+      : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+  // The oldest balance any of them has from the bank.
+  const asOf = c.staleAccounts
+    .map((s) => s.asOf)
+    .filter((d) => d !== null)
+    .sort()[0];
+  const fix =
+    c.provider === 'simplefin' ? (
+      <>
+        {yours ? 'Check it at the ' : `${c.owner.name} can check it at the `}
+        <a href={BRIDGE} target="_blank" rel="noreferrer" className="text-accent-text underline">
+          SimpleFIN Bridge
+        </a>
+        : the bank may want signing in to again there.
+      </>
+    ) : yours ? (
+      'Try Refresh now. If it stays, disconnect the bank and connect it again.'
+    ) : (
+      `${c.owner.name} connected it, so ${c.owner.name} can connect it again.`
+    );
+  return (
+    <p className="text-xs text-fg">
+      {shown} {one ? 'isn’t' : 'aren’t'} updating
+      {asOf ? (
+        <>
+          : the latest balance from the bank is from <DateText value={asOf} format="short" />
+        </>
+      ) : null}
+      . {fix}
     </p>
   );
 }

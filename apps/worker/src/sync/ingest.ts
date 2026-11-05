@@ -357,7 +357,8 @@ export function mergePages(pages: SyncPage[]): SyncPage {
  * Advances the connection past a sync's pages, in the transaction that applied them. A window
  * (a provider without a cursor) sent everything it was asked for, so its history is complete. An
  * account the bank offers that isn't tracked and nobody chose about (a SimpleFIN account added at
- * the Bridge later) asks its owner to choose.
+ * the Bridge later) asks its owner to choose. The accounts the provider couldn't update are kept,
+ * each with when that began, so the connection can name them (D12); the rest are cleared.
  */
 export async function advanceConnection(
   tx: Executor,
@@ -367,11 +368,29 @@ export async function advanceConnection(
   const cursor = page.mode === 'delta' && page.nextCursor !== null;
   const complete = page.historicalComplete || page.mode === 'window';
   let unchosen = false;
+  const [c] = await tx
+    .select({
+      known: connections.knownAccountIds,
+      flagged: connections.newAccountsAvailable,
+      errors: connections.accountErrors,
+    })
+    .from(connections)
+    .where(eq(connections.id, connectionId));
+  const now = new Date().toISOString();
+  const errors = Object.fromEntries(
+    (page.accountErrors ?? []).map((e) => {
+      const before = c?.errors[e.providerAccountId];
+      return [
+        e.providerAccountId,
+        { code: e.code, since: before?.code === e.code ? before.since : now },
+      ];
+    }),
+  );
+  // In key order: the database keeps a jsonb object's keys in its own.
+  const canon = (o: object) =>
+    JSON.stringify(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+  const errorsChanged = canon(errors) !== canon(c?.errors ?? {});
   if (page.accounts?.length) {
-    const [c] = await tx
-      .select({ known: connections.knownAccountIds, flagged: connections.newAccountsAvailable })
-      .from(connections)
-      .where(eq(connections.id, connectionId));
     if (c && !c.flagged) {
       const tracked = await tx
         .select({ id: accounts.providerAccountId })
@@ -381,13 +400,14 @@ export async function advanceConnection(
       unchosen = page.accounts.some((a) => !chosen.has(a.providerAccountId));
     }
   }
-  if (!cursor && !complete && !unchosen) return;
+  if (!cursor && !complete && !unchosen && !errorsChanged) return;
   await tx
     .update(connections)
     .set({
       ...(cursor && { syncCursor: page.nextCursor }),
       ...(complete && { historicalComplete: true }),
       ...(unchosen && { newAccountsAvailable: true }),
+      ...(errorsChanged && { accountErrors: errors }),
       updatedAt: new Date(),
     })
     .where(eq(connections.id, connectionId));

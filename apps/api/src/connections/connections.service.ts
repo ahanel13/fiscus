@@ -2,9 +2,11 @@
 import {
   accounts,
   activePlaidKeySet,
+  balanceSnapshots,
   connections,
   type Executor,
   householdMembers,
+  households,
   institutions,
 } from '@fiscus/db';
 import type { HouseholdActivity } from '@fiscus/ledger';
@@ -12,14 +14,18 @@ import {
   type Connection,
   type ConnectionProvider,
   type ConnectionStatus,
+  addDays,
   NOT_WORKING_AFTER_MS,
   REFRESH_LIMIT_MS,
   REPORTS_HISTORY,
   type RefreshTooSoon,
+  STALE_ACCOUNT_DAYS,
+  type StaleAccount,
 } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, max, ne, sql } from 'drizzle-orm';
 import { Problem, problems } from '../common/problem.js';
+import { todayIn } from '../common/dates.js';
 import { APP_CONFIG, type AppConfig } from '../config.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
@@ -77,6 +83,7 @@ export class ConnectionsService {
           historicalComplete: connections.historicalComplete,
           newAccountsAvailable: connections.newAccountsAvailable,
           credentialSetId: connections.credentialSetId,
+          accountErrors: connections.accountErrors,
         })
         .from(connections)
         .leftJoin(institutions, eq(institutions.id, connections.institutionId))
@@ -88,7 +95,23 @@ export class ConnectionsService {
       // Only the accounts you can see count (row-level security), so hidden ones aren't revealed.
       const visible = rows.length
         ? await tx
-            .select({ id: accounts.id, connectionId: accounts.connectionId })
+            .select({
+              id: accounts.id,
+              connectionId: accounts.connectionId,
+              providerAccountId: accounts.providerAccountId,
+              closedAt: accounts.closedAt,
+              createdAt: accounts.createdAt,
+              // Its latest balance from the bank: an account the bank stopped sending stops here.
+              asOf: sql<string | null>`(${tx
+                .select({ d: max(balanceSnapshots.asOf) })
+                .from(balanceSnapshots)
+                .where(
+                  and(
+                    eq(balanceSnapshots.accountId, accounts.id),
+                    eq(balanceSnapshots.source, 'provider'),
+                  ),
+                )})`,
+            })
             .from(accounts)
             .where(
               inArray(
@@ -98,6 +121,11 @@ export class ConnectionsService {
             )
             .orderBy(asc(accounts.sortOrder), asc(accounts.id))
         : [];
+      const [hh] = await tx
+        .select({ timezone: households.timezone })
+        .from(households)
+        .where(eq(households.id, ctx.householdId));
+      const cutoff = addDays(todayIn(hh?.timezone ?? 'UTC'), -STALE_ACCOUNT_DAYS);
       // The keys new banks are connected with: the household's own, else the server's (#83).
       const active = await activePlaidKeySet(tx, ctx.householdId);
       const newKeys = active ? active.id : this.config.plaid ? null : undefined;
@@ -107,6 +135,17 @@ export class ConnectionsService {
         const status = r.status as ConnectionStatus;
         const accountIds = visible.filter((a) => a.connectionId === r.id).map((a) => a.id);
         const failing = (status === 'error' || status === 'login_required') && r.firstFailedAt;
+        // While it works and has synced: the accounts it isn't updating (D12). Open ones only.
+        const staleAccounts: StaleAccount[] =
+          status === 'ok' && r.lastSyncedAt
+            ? visible.flatMap((a) => {
+                if (a.connectionId !== r.id || a.closedAt) return [];
+                const code =
+                  (a.providerAccountId && r.accountErrors[a.providerAccountId]?.code) || null;
+                const last = a.asOf ?? a.createdAt.toISOString().slice(0, 10);
+                return code || last < cutoff ? [{ accountId: a.id, code, asOf: a.asOf }] : [];
+              })
+            : [];
         return {
           id: r.id,
           provider,
@@ -137,6 +176,7 @@ export class ConnectionsService {
             newKeys !== undefined &&
             r.credentialSetId !== newKeys,
           newAccountsAvailable: status !== 'setup' && r.newAccountsAvailable,
+          staleAccounts,
         };
       });
     });
