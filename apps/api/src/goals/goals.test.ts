@@ -2,13 +2,15 @@
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import { type Goal, type GoalsOverview, goalPace } from '@fiscus/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TestClient } from '../testing/test-app.js';
 
 /**
- * Savings goals, end to end (#132, #136, #138; goals walkthrough §1–§5): goals that draw on
- * accounts by claims, the household's and your own, claims only by an account's owners and never
- * beyond what's free, and choosing which goal gives way when a balance falls short.
+ * Goals, end to end (#132, #134, #136, #138; goals walkthrough §1–§5, §8): savings goals that draw
+ * on accounts by claims, the household's and your own, claims only by an account's owners and
+ * never beyond what's free, and choosing which goal gives way when a balance falls short; and
+ * paying down a loan or card.
  */
 describe('goals', () => {
   let tdb: TestDatabase;
@@ -355,5 +357,130 @@ describe('goals', () => {
     expect(back.status, JSON.stringify(back.body)).toBe(200);
     expect(back.body.data).toMatchObject({ archivedAt: null, progressMinor: 0, claims: [] });
     expect((await overview(B)).goals.at(-1)!.id).toBe(bike);
+  });
+
+  it('pays down a card from what’s owed, at the bank’s rate or one entered [GOAL-08/OWN] [GOAL-08/VIEW] [GOAL-01/VIEW]', async () => {
+    const r = await A.post(url('/accounts'), {
+      name: 'Harbor Visa',
+      type: 'credit',
+      visibility: 'full',
+      owners: [{ memberId: id.A }, { memberId: id.B }],
+      openingBalance: { amountMinor: -300000, asOf: yesterday },
+    });
+    const visa = r.body.data.id as string;
+    // What the bank says (Plaid liabilities, #86): 24% and a $100 minimum.
+    const db = new pg.Client({ connectionString: tdb.ownerUrl });
+    await db.connect();
+    try {
+      await db.query(
+        `INSERT INTO account_liabilities (account_id, household_id, apr_bps, minimum_payment_minor)
+         VALUES ($1, $2, 2400, 10000)`,
+        [visa, hh],
+      );
+    } finally {
+      await db.end();
+    }
+    const made = await A.post(url('/goals/pay-down'), { accountId: visa, planMinor: 20000 });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const g = made.body.data as Goal;
+    expect(g).toMatchObject({
+      kind: 'pay_down',
+      name: 'Harbor Visa',
+      scope: 'household',
+      targetMinor: 300000,
+      progressMinor: 0,
+      claims: [],
+    });
+    expect(g.debt).toMatchObject({
+      accountName: 'Harbor Visa',
+      type: 'credit',
+      owedMinor: 300000,
+      aprBps: 2400,
+      minimumMinor: 10000,
+      bank: { aprBps: 2400, minimumMinor: 10000 },
+    });
+    // $300 a month against 2% a month: paid off in about a year.
+    expect(g.pace.projectedMonth).not.toBeNull();
+    const view = await overview(B);
+    expect(view.debts.find((d) => d.accountId === visa)).toMatchObject({ goalId: g.id });
+    expect(view.totals.owedMinor).toBe(300000);
+    // Viewers see it, with what's owed.
+    expect((await find(V, g.id))?.debt?.owedMinor).toBe(300000);
+
+    // One goal a debt, and no claims on it.
+    const again = await B.post(url('/goals/pay-down'), { accountId: visa });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('debt_has_goal');
+    const claimed = await claim(A, g.id, acct.harbor, { amountMinor: 100 });
+    expect(claimed.status).toBe(422);
+    expect(claimed.body.code).toBe('pay_down_no_claims');
+
+    // The balance comes down: that's progress.
+    expect(
+      (await A.request('PUT', url(`/accounts/${visa}/balances/${today}`), { amountMinor: -200000 }))
+        .status,
+    ).toBe(200);
+    expect(await find(A, g.id)).toMatchObject({ progressMinor: 100000 });
+
+    // A rate entered goes first; taking it off goes back to the bank's.
+    const patch = (body: object, version: number) =>
+      B.request('PATCH', url(`/goals/${g.id}`), body, {
+        headers: { 'if-match': `"v${version}"` },
+      });
+    const set = await patch({ aprBps: 1999, minimumMinor: 5000 }, g.version);
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    expect(set.body.data.debt).toMatchObject({
+      aprBps: 1999,
+      minimumMinor: 5000,
+      entered: { aprBps: 1999, minimumMinor: 5000 },
+      bank: { aprBps: 2400 },
+    });
+    const back = await patch({ aprBps: null }, set.body.data.version);
+    expect(back.body.data.debt).toMatchObject({ aprBps: 2400, minimumMinor: 5000 });
+    // A savings goal has no rate.
+    const house = (await find(A, goal.house))!;
+    const saving = await A.request(
+      'PATCH',
+      url(`/goals/${house.id}`),
+      { aprBps: 500 },
+      { headers: { 'if-match': `"v${house.version}"` } },
+    );
+    expect(saving.status).toBe(422);
+    expect((await V.post(url('/goals/pay-down'), { accountId: visa })).status).toBe(403);
+  });
+
+  it('keeps a goal on a private debt your own [GOAL-08/MEM]', async () => {
+    const r = await A.post(url('/accounts'), {
+      name: 'Alex car loan',
+      type: 'loan',
+      visibility: 'private',
+      openingBalance: { amountMinor: -1200000, asOf: yesterday },
+    });
+    const loan = r.body.data.id as string;
+    const ours = await A.post(url('/goals/pay-down'), { accountId: loan, scope: 'household' });
+    expect(ours.status).toBe(422);
+    expect(ours.body.code).toBe('private_debt');
+    const mine = await A.post(url('/goals/pay-down'), { accountId: loan });
+    expect(mine.status, JSON.stringify(mine.body)).toBe(201);
+    expect(mine.body.data).toMatchObject({ scope: 'mine', targetMinor: 1200000 });
+    // Sam sees neither the loan nor the goal, and can't start one on it.
+    const view = await overview(B);
+    expect(view.debts.map((d) => d.accountId)).not.toContain(loan);
+    expect(view.goals.map((g) => g.id)).not.toContain(mine.body.data.id);
+    expect((await B.post(url('/goals/pay-down'), { accountId: loan })).body.code).toBe(
+      'not_a_debt',
+    );
+    // A member pays down their own card, for the household by default.
+    const card = (
+      await B.post(url('/accounts'), {
+        name: 'Sam card',
+        type: 'credit',
+        visibility: 'full',
+        openingBalance: { amountMinor: -50000, asOf: yesterday },
+      })
+    ).body.data.id as string;
+    const sams = await B.post(url('/goals/pay-down'), { accountId: card, name: 'Clear my card' });
+    expect(sams.status, JSON.stringify(sams.body)).toBe(201);
+    expect(sams.body.data).toMatchObject({ scope: 'household', name: 'Clear my card' });
   });
 });

@@ -11,87 +11,52 @@ import {
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
-import { clsx } from 'clsx';
-import { Check, Eye, EyeOff, Goal as GoalIcon, MoreHorizontal, Plus } from 'lucide-react';
+import { Eye, EyeOff, Goal as GoalIcon, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { goalsQuery, householdQuery, membersQuery } from '../api/queries.js';
-import { BankLogo } from '../components/BankLogo.js';
 import { EmptyState } from '../components/EmptyState.js';
-import {
-  GoalPicture,
-  type GoalLook,
-  goalPhotoUrl,
-  PicturePicker,
-  shrinkPhoto,
-} from '../components/GoalPicture.js';
+import { PicturePicker, shrinkPhoto } from '../components/GoalPicture.js';
+import { claimLabel, GoalRow, lookOf } from '../components/GoalRow.js';
 import { PageHeader } from '../components/PageHeader.js';
 import {
   Alert,
   AmountInput,
   Badge,
-  type BadgeTone,
   Button,
   ConfirmDialog,
   DatePicker,
   Dialog,
   DialogActions,
   LoadingRegion,
-  Menu,
-  MenuItem,
-  MenuTrigger,
   Radio,
   RadioGroup,
   SegmentedControl,
   Skeleton,
   Switch,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
   TextField,
   toast,
 } from '../components/ui.js';
+import { DebtDialog, ManageDebts, PayDown } from './goals-pay-down.js';
 
-// Goals (#132, #136, #137, #138; goals walkthrough §1–§5): savings goals that draw on accounts by
-// claims, a fixed amount or a percentage of each (G2). Progress is what the claims are worth; the
+// Goals (#132, #134, #136, #137, #138; goals walkthrough §1–§5, §8): savings goals that draw on
+// accounts by claims, a fixed amount or a percentage of each (G2), and paying down loans and cards
+// (G9), on two tabs. Progress is what the claims are worth, or how far a debt has come down; the
 // status says whether its plan gets there by its date. Each wears a photo, or an icon on a color,
-// and can be put away when it's done with. Paying down debt, goals in budgets, and spending from
-// goals come later (G22).
+// and can be put away when it's done with. Goals in budgets and spending from goals come later
+// (G22).
 
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
 type Scope = 'all' | 'household' | 'mine';
+type Kind = 'save' | 'pay_down';
 
 /** "May 2027", from a date. */
 const monthYear = (date: string) =>
   new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-/** "Mar 2054", from `YYYY-MM` or a date. */
-const shortMonth = (month: string) =>
-  new Date(`${month.slice(0, 7)}-01T00:00:00`).toLocaleDateString(undefined, {
-    month: 'short',
-    year: 'numeric',
-  });
-
-/** A goal's picture: its photo, else its icon and color. */
-export const lookOf = (householdId: string, g: Goal): GoalLook => ({
-  icon: g.icon,
-  color: g.color,
-  photo: g.imageVersion ? goalPhotoUrl(householdId, g.id, g.imageVersion) : null,
-});
-
-const STATUS: Record<
-  NonNullable<Goal['pace']['status']>,
-  { label: string; tone: BadgeTone; bar: string }
-> = {
-  done: { label: 'Completed', tone: 'positive', bar: 'bg-positive' },
-  on_track: { label: 'On track', tone: 'accent', bar: 'bg-accent' },
-  at_risk: { label: 'At risk', tone: 'warning', bar: 'bg-warning' },
-  short: { label: 'Short', tone: 'danger', bar: 'bg-danger' },
-};
-
-/** A claim's account, as you may see it: its name, or only whose it is (G7). */
-export function claimLabel(c: GoalClaim, members: HouseholdMember[]): string {
-  if (c.accountName) return c.accountName;
-  const owners = c.ownerIds.map((id) => members.find((m) => m.id === id)?.displayName ?? 'Someone');
-  return `${owners.join(' and ')}’s account`;
-}
-
 /** How a claim reads: "$14,000.00", or "40%" with what it's worth now. */
 function claimAmount(c: GoalClaim, currency: string): string {
   return c.percentBps !== null
@@ -110,6 +75,8 @@ export function GoalsPage() {
   const [archiving, setArchiving] = useState<Goal | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [resolving, setResolving] = useState<GoalShortfall | null>(null);
+  const [tab, setTab] = useState<Kind>('save');
+  const [managing, setManaging] = useState(false);
   const queryClient = useQueryClient();
   const currency = household.baseCurrency;
   const shared = members.length > 1;
@@ -136,7 +103,13 @@ export function GoalsPage() {
       api('PUT', `${base(householdId)}/goals/${g.id}/archived`, { body: { archived } }),
     onSuccess: async (_, { g, archived }) => {
       await invalidate();
-      toast(archived ? `${g.name} is put away. Its money is unclaimed now.` : `${g.name} is back.`);
+      toast(
+        !archived
+          ? `${g.name} is back.`
+          : g.kind === 'pay_down'
+            ? `${g.name} is put away.`
+            : `${g.name} is put away. Its money is unclaimed now.`,
+      );
       setArchiving(null);
     },
     onError: (e) => {
@@ -147,12 +120,18 @@ export function GoalsPage() {
   });
 
   const data = query.data;
-  const shown = (data?.goals ?? []).filter((g) => scope === 'all' || g.scope === scope);
+  const ofKind = (kind: Kind) =>
+    (data?.goals ?? []).filter((g) => g.kind === kind && (scope === 'all' || g.scope === scope));
+  const shown = ofKind('save');
+  const saving = (data?.goals ?? []).filter((g) => g.kind === 'save');
+  const archived = (data?.archived ?? []).filter((g) => g.kind === tab);
+  // Priority among savings goals: swap with the next one up or down, wherever debts sit between.
   const move = (g: Goal, by: number) => {
     const ids = data!.goals.map((x) => x.id);
     const i = ids.indexOf(g.id);
-    const j = i + by;
-    if (j < 0 || j >= ids.length) return;
+    const k = saving.findIndex((x) => x.id === g.id) + by;
+    if (k < 0 || k >= saving.length) return;
+    const j = ids.indexOf(saving[k]!.id);
     [ids[i], ids[j]] = [ids[j]!, ids[i]!];
     order.mutate(ids);
   };
@@ -174,10 +153,14 @@ export function GoalsPage() {
           </LoadingRegion>
         ) : query.isError || !data ? (
           <Alert>Couldn’t load your goals. Try again in a moment.</Alert>
-        ) : data.goals.length === 0 && data.archived.length === 0 ? (
+        ) : data.goals.length === 0 && data.archived.length === 0 && data.debts.length === 0 ? (
           <Empty data={data} currency={currency} onNew={() => setEditing('new')} />
         ) : (
-          <>
+          <Tabs selectedKey={tab} onSelectionChange={(k) => setTab(k as Kind)}>
+            <TabList aria-label="Kind of goal">
+              <Tab id="save">Save up</Tab>
+              <Tab id="pay_down">Pay down</Tab>
+            </TabList>
             <div className="flex flex-wrap items-center justify-between gap-3">
               {shared ? (
                 <SegmentedControl
@@ -193,135 +176,162 @@ export function GoalsPage() {
               ) : (
                 <span />
               )}
-              {data.canCreate ? (
+              {!data.canCreate ? null : tab === 'save' ? (
                 <Button size="sm" onPress={() => setEditing('new')}>
                   <Plus aria-hidden className="size-4" /> New goal
+                </Button>
+              ) : data.debts.length ? (
+                <Button size="sm" variant="secondary" onPress={() => setManaging(true)}>
+                  Manage debts
                 </Button>
               ) : null}
             </div>
 
-            {data.shortfalls.map((s) => (
-              <Alert key={s.accountId} tone="warning">
-                <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="min-w-0 flex-1">
-                    {s.accountName ?? 'An account'} is {formatMoney(s.shortMinor, currency)} short
-                    of what goals have earmarked. Nothing moves until{' '}
-                    {s.canResolve ? 'you choose' : 'its owners choose'} which goal gives way.
+            <TabPanel id="save" className="space-y-5">
+              {data.shortfalls.map((s) => (
+                <Alert key={s.accountId} tone="warning">
+                  <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="min-w-0 flex-1">
+                      {s.accountName ?? 'An account'} is {formatMoney(s.shortMinor, currency)} short
+                      of what goals have earmarked. Nothing moves until{' '}
+                      {s.canResolve ? 'you choose' : 'its owners choose'} which goal gives way.
+                    </span>
+                    {s.canResolve ? (
+                      <Button size="sm" variant="secondary" onPress={() => setResolving(s)}>
+                        Choose which goal gives way
+                      </Button>
+                    ) : null}
                   </span>
-                  {s.canResolve ? (
-                    <Button size="sm" variant="secondary" onPress={() => setResolving(s)}>
-                      Choose which goal gives way
-                    </Button>
-                  ) : null}
-                </span>
-              </Alert>
-            ))}
+                </Alert>
+              ))}
 
-            <section
-              aria-label="Save up"
-              className="overflow-hidden rounded-xl border border-border bg-surface"
-            >
-              <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3 sm:px-5">
-                <h2 className="text-lg font-semibold">Save up</h2>
-                <p className="text-lg font-semibold tabular-nums">
-                  {formatMoney(
-                    shown.reduce((sum, g) => sum + g.progressMinor, 0),
-                    currency,
-                  )}
-                </p>
-              </header>
-              {shown.length === 0 ? (
-                <p className="px-6 py-10 text-center text-sm text-muted">
-                  {data.goals.length === 0
-                    ? 'Every goal is put away.'
-                    : scope === 'mine'
-                      ? 'You have no goals of your own.'
-                      : 'No shared goals yet.'}
-                </p>
-              ) : (
-                <ul className="divide-y divide-border" aria-label="Goals, by priority">
-                  {shown.map((g) => {
-                    const i = data.goals.findIndex((x) => x.id === g.id);
-                    const editable = g.canEdit || g.claims.some((c) => c.yours);
-                    return (
-                      <li key={g.id}>
-                        <GoalRow
-                          householdId={householdId}
-                          goal={g}
-                          currency={currency}
-                          members={members}
-                          shared={shared}
-                          onOpen={editable ? () => setEditing(g) : undefined}
-                          onArchive={g.canEdit ? () => setArchiving(g) : undefined}
-                          onDelete={g.canEdit ? () => setDeleting(g) : undefined}
-                          onUp={data.canCreate && i > 0 ? () => move(g, -1) : undefined}
-                          onDown={
-                            data.canCreate && i < data.goals.length - 1
-                              ? () => move(g, 1)
-                              : undefined
-                          }
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              {data.archived.length ? (
-                <div className="border-t border-border">
-                  <button
-                    type="button"
-                    aria-expanded={showArchived}
-                    onClick={() => setShowArchived((v) => !v)}
-                    className="flex w-full items-center gap-2 px-4 py-3 text-sm text-muted hover:text-fg sm:px-5"
-                  >
-                    {showArchived ? (
-                      <EyeOff aria-hidden className="size-4" />
-                    ) : (
-                      <Eye aria-hidden className="size-4" />
+              <section
+                aria-label="Save up"
+                className="overflow-hidden rounded-xl border border-border bg-surface"
+              >
+                <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3 sm:px-5">
+                  <h2 className="text-lg font-semibold">Save up</h2>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {formatMoney(
+                      shown.reduce((sum, g) => sum + g.progressMinor, 0),
+                      currency,
                     )}
-                    {showArchived ? 'Hide' : 'Show'} {data.archived.length} archived{' '}
-                    {data.archived.length === 1 ? 'goal' : 'goals'}
-                  </button>
-                  {showArchived ? (
-                    <ul
-                      className="divide-y divide-border border-t border-border"
-                      aria-label="Archived goals"
-                    >
-                      {data.archived.map((g) => (
-                        <li key={g.id} className="opacity-75">
+                  </p>
+                </header>
+                {shown.length === 0 ? (
+                  <p className="px-6 py-10 text-center text-sm text-muted">
+                    {saving.length === 0 && data.archived.some((g) => g.kind === 'save')
+                      ? 'Every goal is put away.'
+                      : saving.length === 0
+                        ? 'No savings goals yet. Start one with New goal.'
+                        : scope === 'mine'
+                          ? 'You have no goals of your own.'
+                          : 'No shared goals yet.'}
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border" aria-label="Goals, by priority">
+                    {shown.map((g) => {
+                      const i = saving.findIndex((x) => x.id === g.id);
+                      const editable = g.canEdit || g.claims.some((c) => c.yours);
+                      return (
+                        <li key={g.id}>
                           <GoalRow
                             householdId={householdId}
                             goal={g}
                             currency={currency}
                             members={members}
                             shared={shared}
-                            onRestore={
-                              g.canEdit ? () => archive.mutate({ g, archived: false }) : undefined
-                            }
+                            onOpen={editable ? () => setEditing(g) : undefined}
+                            onArchive={g.canEdit ? () => setArchiving(g) : undefined}
                             onDelete={g.canEdit ? () => setDeleting(g) : undefined}
+                            onUp={data.canCreate && i > 0 ? () => move(g, -1) : undefined}
+                            onDown={
+                              data.canCreate && i < saving.length - 1 ? () => move(g, 1) : undefined
+                            }
                           />
                         </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+              {data.accounts.length ? (
+                <p className="px-1 text-sm text-muted">
+                  {formatMoney(data.totals.unclaimedMinor, currency)} in your savings and investment
+                  accounts isn’t earmarked for any goal.
+                </p>
               ) : null}
-            </section>
-            {data.accounts.length ? (
-              <p className="px-1 text-sm text-muted">
-                {formatMoney(data.totals.unclaimedMinor, currency)} in your savings and investment
-                accounts isn’t earmarked for any goal.
+              <p className="px-1 text-xs text-muted">
+                Goals are in priority order. When an account falls short, the lowest gives way
+                first, and only when its owners say so. Status and dates are estimates from each
+                goal’s monthly plan and today’s balances, so they move as those do.
               </p>
+            </TabPanel>
+            <TabPanel id="pay_down" className="space-y-5">
+              <PayDown
+                householdId={householdId}
+                data={data}
+                goals={ofKind('pay_down')}
+                currency={currency}
+                members={members}
+                shared={shared}
+                onEdit={setEditing}
+                onArchive={setArchiving}
+                onDelete={setDeleting}
+                onManage={() => setManaging(true)}
+              />
+            </TabPanel>
+            {archived.length ? (
+              <div className="overflow-hidden rounded-xl border border-border bg-surface">
+                <button
+                  type="button"
+                  aria-expanded={showArchived}
+                  onClick={() => setShowArchived((v) => !v)}
+                  className="flex w-full items-center gap-2 px-4 py-3 text-sm text-muted hover:text-fg sm:px-5"
+                >
+                  {showArchived ? (
+                    <EyeOff aria-hidden className="size-4" />
+                  ) : (
+                    <Eye aria-hidden className="size-4" />
+                  )}
+                  {showArchived ? 'Hide' : 'Show'} {archived.length} archived{' '}
+                  {archived.length === 1 ? 'goal' : 'goals'}
+                </button>
+                {showArchived ? (
+                  <ul
+                    className="divide-y divide-border border-t border-border"
+                    aria-label="Archived goals"
+                  >
+                    {archived.map((g) => (
+                      <li key={g.id} className="opacity-75">
+                        <GoalRow
+                          householdId={householdId}
+                          goal={g}
+                          currency={currency}
+                          members={members}
+                          shared={shared}
+                          onRestore={
+                            g.canEdit ? () => archive.mutate({ g, archived: false }) : undefined
+                          }
+                          onDelete={g.canEdit ? () => setDeleting(g) : undefined}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             ) : null}
-            <p className="px-1 text-xs text-muted">
-              Goals are in priority order. When an account falls short, the lowest gives way first,
-              and only when its owners say so. Status and dates are estimates from each goal’s
-              monthly plan and today’s balances, so they move as those do.
-            </p>
-          </>
+          </Tabs>
         )}
       </div>
-      {editing && data ? (
+      {editing && editing !== 'new' && editing.kind === 'pay_down' ? (
+        <DebtDialog
+          householdId={householdId}
+          goal={editing}
+          currency={currency}
+          onClose={() => setEditing(null)}
+        />
+      ) : editing && data ? (
         <GoalDialog
           householdId={householdId}
           goal={editing === 'new' ? null : editing}
@@ -330,6 +340,15 @@ export function GoalsPage() {
           shared={shared}
           currency={currency}
           onClose={() => setEditing(null)}
+        />
+      ) : null}
+      {managing && data ? (
+        <ManageDebts
+          householdId={householdId}
+          data={data}
+          shared={shared}
+          currency={currency}
+          onClose={() => setManaging(false)}
         />
       ) : null}
       {resolving && data ? (
@@ -349,7 +368,9 @@ export function GoalsPage() {
           onOpenChange={(open) => (open ? null : setDeleting(null))}
           onConfirm={() => remove.mutateAsync(deleting)}
         >
-          Its claims end and its history goes. The money stays in its accounts, unclaimed.
+          {deleting.kind === 'pay_down'
+            ? 'Its history goes. The debt and its account stay as they are.'
+            : 'Its claims end and its history goes. The money stays in its accounts, unclaimed.'}
         </ConfirmDialog>
       ) : null}
       {archiving ? (
@@ -360,9 +381,19 @@ export function GoalsPage() {
           onOpenChange={(open) => (open ? null : setArchiving(null))}
           onConfirm={() => archive.mutateAsync({ g: archiving, archived: true })}
         >
-          It moves to archived goals, showing the {formatMoney(archiving.progressMinor, currency)}{' '}
-          it had. Its claims end, so that money is unclaimed again. Bring it back any time; it
-          starts without accounts.
+          {archiving.kind === 'pay_down' ? (
+            <>
+              It moves to archived goals, showing the{' '}
+              {formatMoney(archiving.progressMinor, currency)} it had paid down. The debt stays
+              where it is. Bring it back any time.
+            </>
+          ) : (
+            <>
+              It moves to archived goals, showing the{' '}
+              {formatMoney(archiving.progressMinor, currency)} it had. Its claims end, so that money
+              is unclaimed again. Bring it back any time; it starts without accounts.
+            </>
+          )}
         </ConfirmDialog>
       ) : null}
     </>
@@ -397,165 +428,6 @@ function Empty({
       )}
       {data.canCreate ? <Button onPress={onNew}>New goal</Button> : null}
     </EmptyState>
-  );
-}
-
-/** One goal (walkthrough §1): its picture, name and banks, status, progress and its bar. */
-function GoalRow({
-  householdId,
-  goal: g,
-  currency,
-  members,
-  shared,
-  onOpen,
-  onArchive,
-  onRestore,
-  onDelete,
-  onUp,
-  onDown,
-}: {
-  householdId: string;
-  goal: Goal;
-  currency: string;
-  members: HouseholdMember[];
-  shared: boolean;
-  onOpen?: (() => void) | undefined;
-  onArchive?: (() => void) | undefined;
-  onRestore?: (() => void) | undefined;
-  onDelete?: (() => void) | undefined;
-  onUp?: (() => void) | undefined;
-  onDown?: (() => void) | undefined;
-}) {
-  const share = Math.min(1, g.progressMinor / g.targetMinor);
-  const percent = Math.floor((g.progressMinor / g.targetMinor) * 100);
-  const money = (minor: number) => formatMoney(minor, currency);
-  const { status, projectedMonth, monthsLate } = g.pace;
-  const badge = status ? STATUS[status] : null;
-  // The date line: when it gets there at this pace, against its own date.
-  const when = g.archivedAt
-    ? `Archived ${shortMonth(g.archivedAt)}`
-    : status === 'done'
-      ? g.targetDate
-        ? `Target ${shortMonth(g.targetDate)}`
-        : 'No target date'
-      : status === 'short'
-        ? `${money(g.shortMinor)} short in its accounts`
-        : status === 'at_risk'
-          ? projectedMonth
-            ? `${shortMonth(projectedMonth)} (${monthsLate} ${monthsLate === 1 ? 'month' : 'months'} behind)`
-            : 'No monthly plan to get there'
-          : status === 'on_track'
-            ? `${shortMonth(projectedMonth!)} · target ${shortMonth(g.targetDate!)}`
-            : projectedMonth
-              ? `No target date · about ${shortMonth(projectedMonth)} at its plan`
-              : 'No target date';
-  const banks = g.claims.slice(0, 3);
-  const menu = onOpen || onArchive || onRestore || onDelete || onUp || onDown;
-  return (
-    <article
-      aria-label={g.name}
-      className="relative flex gap-3 px-4 py-4 hover:bg-surface-2/50 sm:gap-4 sm:px-5"
-    >
-      <GoalPicture look={lookOf(householdId, g)} />
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-base font-medium">
-              {onOpen ? (
-                // The whole row opens it; the name is the button that says so.
-                <button
-                  type="button"
-                  onClick={onOpen}
-                  className="truncate text-left after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:rounded-sm focus-visible:after:ring-2 focus-visible:after:ring-accent"
-                >
-                  {g.name}
-                </button>
-              ) : (
-                <span className="truncate">{g.name}</span>
-              )}
-              {banks.length ? (
-                <span className="flex items-center -space-x-1.5">
-                  {banks.map((c) => (
-                    <BankLogo
-                      key={c.accountId}
-                      institution={c.institution}
-                      name={claimLabel(c, members)}
-                      size="sm"
-                    />
-                  ))}
-                  {g.claims.length > 3 ? (
-                    <span className="pl-2.5 text-xs text-muted">+{g.claims.length - 3}</span>
-                  ) : null}
-                </span>
-              ) : null}
-              {shared ? (
-                <span className="text-xs font-normal text-muted">
-                  {g.scope === 'mine' ? 'Mine' : 'Ours'}
-                </span>
-              ) : null}
-            </h3>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-              {badge ? (
-                <Badge tone={badge.tone}>
-                  {status === 'done' ? <Check aria-hidden className="size-3" /> : null}
-                  {badge.label}
-                </Badge>
-              ) : null}
-              <span>{when}</span>
-            </p>
-            {/* On a phone, the amounts get their own line, so the name has the width. */}
-            <p className="text-sm text-muted sm:hidden">
-              <span className="font-semibold text-fg tabular-nums">{money(g.progressMinor)}</span> ·{' '}
-              {percent}% of {money(g.targetMinor)}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-start gap-1">
-            <div className="hidden text-right sm:block">
-              <p className="text-base font-semibold tabular-nums">{money(g.progressMinor)}</p>
-              <p className="text-sm text-muted tabular-nums">
-                {percent}% of {money(g.targetMinor)}
-              </p>
-            </div>
-            {menu ? (
-              <MenuTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`${g.name}: more`}
-                  className="relative z-10"
-                >
-                  <MoreHorizontal aria-hidden className="size-4" />
-                </Button>
-                <Menu placement="bottom end">
-                  {onOpen ? <MenuItem onAction={onOpen}>Edit</MenuItem> : null}
-                  {onUp ? <MenuItem onAction={onUp}>Move up in priority</MenuItem> : null}
-                  {onDown ? <MenuItem onAction={onDown}>Move down in priority</MenuItem> : null}
-                  {onArchive ? <MenuItem onAction={onArchive}>Archive</MenuItem> : null}
-                  {onRestore ? <MenuItem onAction={onRestore}>Bring back</MenuItem> : null}
-                  {onDelete ? <MenuItem onAction={onDelete}>Delete</MenuItem> : null}
-                </Menu>
-              </MenuTrigger>
-            ) : null}
-          </div>
-        </div>
-        <div
-          className="h-2 rounded-full bg-surface-2"
-          role="meter"
-          aria-label={`${g.name}: ${percent}% of its target`}
-          aria-valuenow={Math.min(100, percent)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <div
-            className={clsx('h-full rounded-full', badge ? badge.bar : 'bg-accent')}
-            style={{ width: `${share * 100}%` }}
-          />
-        </div>
-        {!g.archivedAt && g.claims.length === 0 ? (
-          <p className="text-xs text-muted">Not funded yet: no account drawn on.</p>
-        ) : null}
-      </div>
-    </article>
   );
 }
 

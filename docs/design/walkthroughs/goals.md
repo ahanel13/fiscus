@@ -35,7 +35,7 @@ Riveras, Alex and Sam, a **Hybrid** household seen by Alex, on November 4, 2026.
 
 ![Goals](goals/01-goals.png)
 
-Goals has two kinds, in two sections:
+Goals has two kinds, on two tabs:
 - **Save up**: for something (a trip, a house) or a cushion (an emergency fund). Progress is
   money in accounts, by claims (G2).
 - **Pay down**: a loan or a card. Progress is how far its balance has come down (G9).
@@ -62,7 +62,7 @@ as the lens does elsewhere (ADR 0006). Sam never sees Alex's emergency fund, or 
 ![New goal](goals/02-new-goal.png)
 
 **New goal** asks for:
-1. **Save up** or **Pay down**.
+1. **Save up**, on its tab. A debt is paid down from **Manage debts** on the Pay down tab (§8).
 2. A **name**, and **whose**: Ours or Mine. Mine is the default when you're on your own.
 3. A **target**, and optionally a **date**. Without a date there's no status, just progress and
    how long it would take at your pace.
@@ -193,14 +193,26 @@ spending (G6). Only savings goals take purchases (G14).
 
 ![Pay down](goals/07-pay-down.png)
 
-A **Pay down** goal is a loan or a card's balance reaching zero (G9, #134):
-- Its start is the balance when the goal began; progress is how far it's come down.
+A **Pay down** goal is a loan or a card's balance reaching zero (G9, #134), one goal per debt:
+- **Manage debts** lists the loans and cards whose balance you see. Turning one on makes its goal;
+  turning it off archives it. A goal on a private account is yours (Mine): everyone sees the
+  household's goals, and the balance with them.
+- Its start is what was owed when the goal began (you can change it); progress is how far it's
+  come down. The row shows what's owed, the share paid, and the rate and payments: "24.99% APR ·
+  $130.00 minimum + $250.00 extra a month".
 - The **minimum** is a bill (M4), with its reminders. The **extra** is the goal's plan and its
   budget line: what's paid over the minimum counts toward it.
-- With two or more, **avalanche** (highest rate first) or **snowball** (smallest balance first)
-  orders them. The extra goes to the first; when it's paid off, its payment rolls onto the next.
-- The page says when you're debt-free, how much sooner than minimums alone, and the interest saved.
-  Rates and minimums come from the account (Plaid liabilities) or are entered.
+- Rates and minimums come from the bank (Plaid liabilities), or are entered in the goal, which
+  goes first. Without a rate, **Set up APR** asks for one and the projection leaves its interest
+  out; without a minimum, 2% of what's owed (at least $25) is assumed, and said so.
+- Across the top: owed now, projected interest, the total to pay, and when you're debt-free.
+- A **payoff timeline** charts what's owed in all, month by month, against the minimums alone,
+  with each debt's balance at the crosshair.
+- A **strategy** picks the projection: **your plan** (each debt its minimum and its own extra),
+  **avalanche** (highest rate first) or **snowball** (smallest balance first). The two pooled
+  ones pay every minimum, put the rest on the first, and roll a paid-off debt's payment onto the
+  next. Each says when you're debt-free, the interest, and how much sooner and cheaper than
+  minimums alone. Choosing one changes the projection, not the goals.
 
 **G21. A card you still use counts its balance, not your payments.** New spending on the Visa
 raises its balance, and the goal shows that: progress is the balance against where it started.
