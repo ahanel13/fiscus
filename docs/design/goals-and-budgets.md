@@ -132,7 +132,13 @@ budget uses calendar months.
 
 ---
 
-## 7. What M3 builds now
+## 7. What M3 built, and M5 added
+
+Goal lines are built (#132): each goal's plan is its line in its scope's budget in every strategy,
+from `goal_plans` (G16), and its moved figure is worked out from transfers (G4, G13) or extra paid
+on a debt (G9). Still to come: putting a transfer toward one goal of two (G13's choice), and Move
+money and Cover with goal lines (zero-based).
+
 
 Nothing on goals' screens. Just enough that M5 adds goals without changing the budget engine:
 - **The budget engine (built in #98) learns line kinds.** A budget line is a category or a goal. The goal kind is

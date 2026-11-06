@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { BudgetStrategy, Carry } from './budget.js';
+import { type BudgetStrategy, type Carry, type GoalLineRow, goalLineRows } from './budget.js';
 
 // Category limits (#99, budgeting walkthrough §3.1): a limit per category and what's left of it.
 // What's left (or overspent) carries into next month only for categories with rollover on.
@@ -29,6 +29,8 @@ export interface CategoryLimitsView {
   rows: CategoryLimitRow[];
   /** Income categories with an amount expected, or money in this month. */
   income: IncomeRow[];
+  /** Goals' lines (G5): planned against what moved, never spending, never over. */
+  goals: GoalLineRow[];
   /** Spending in categories without one (D6), so nothing spent goes missing. */
   notBudgeted: { categoryId: string; spentMinor: number }[];
   incomeMinor: number;
@@ -51,7 +53,7 @@ export type CategoryLimitsSettings = Record<string, never>;
 export const categoryLimits: BudgetStrategy<CategoryLimitsSettings, CategoryLimitsView> = {
   kind: 'category',
   settings: () => ({}),
-  month({ categories, amounts, activity, carry }) {
+  month({ categories, goals, amounts, activity, carry }) {
     const rows: CategoryLimitRow[] = [];
     const notBudgeted: CategoryLimitsView['notBudgeted'] = [];
     const income: IncomeRow[] = [];
@@ -92,6 +94,7 @@ export const categoryLimits: BudgetStrategy<CategoryLimitsSettings, CategoryLimi
       view: {
         rows,
         income,
+        goals: goalLineRows(goals, activity),
         notBudgeted,
         incomeMinor: activity.incomeMinor,
         contributionsMinor: activity.contributionsMinor,

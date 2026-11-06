@@ -15,6 +15,7 @@ import {
 import { addMonths, type BudgetCategory, firstDayOf, type MonthActivity } from '@fiscus/domain';
 import type { BudgetScope } from '@fiscus/shared';
 import { and, asc, eq, gte, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
+import { budgetGoalLines, goalMoved } from './goal-lines.js';
 import { ownersOnDates } from './owners.js';
 import { householdRanges, transactionDate } from './ranges.js';
 
@@ -121,7 +122,22 @@ export async function budgetActivity(
   }
   const contributed = await contributions(tx, ctx, scope, date, from, end, h!.currency);
   const saved = await savingsMoved(tx, ctx, scope, date, from, end, h!.currency);
-  const months = new Set([...out.keys(), ...contributed.keys(), ...saved.keys()]);
+  const owner = scope === 'mine' ? ctx.memberId : null;
+  const toGoals = await goalMoved(
+    tx,
+    owner,
+    await budgetGoalLines(tx, ctx.householdId, owner),
+    date,
+    from,
+    end,
+    h!.currency,
+  );
+  const months = new Set([
+    ...out.keys(),
+    ...contributed.keys(),
+    ...saved.keys(),
+    ...toGoals.keys(),
+  ]);
   return new Map(
     [...months].map((k) => [
       k,
@@ -131,6 +147,8 @@ export async function budgetActivity(
         incomeByCategory: out.get(k)?.incomeByCategory ?? new Map<string, number>(),
         contributionsMinor: contributed.get(k) ?? 0,
         savingsMovedMinor: saved.get(k) ?? 0,
+        goalMovedMinor: toGoals.get(k)?.byGoal ?? new Map<string, number>(),
+        goalMovedElsewhereMinor: toGoals.get(k)?.elsewhereMinor ?? 0,
       },
     ]),
   );
@@ -282,7 +300,7 @@ async function savingsMoved(
   return out;
 }
 
-/** A budget's categories, amounts and strategies, as computeBudgetMonth() reads them. */
+/** A budget's categories, amounts, strategies and goals, as computeBudgetMonth() reads them. */
 export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
   const cats = await tx
     .select({
@@ -320,6 +338,7 @@ export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
   }
   return {
     scope: (row.memberId ? 'mine' : 'household') as BudgetScope,
+    goals: await budgetGoalLines(tx, row.householdId, row.memberId),
     startsMonth: monthOfDate(row.startsMonth),
     periods: periods.map((p) => ({
       fromMonth: monthOfDate(p.fromMonth),

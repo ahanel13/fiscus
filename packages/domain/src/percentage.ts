@@ -53,6 +53,11 @@ export interface PercentageBucketView extends PercentageBucket {
   categories: { categoryId: string; spentMinor: number }[];
   /** Savings only: transfers into savings and investment accounts. */
   movedToSavingsMinor: number;
+  /**
+   * Savings only: what reached each goal (G5), counted once: transfers into savings accounts are
+   * in `movedToSavingsMinor` already, and the rest (extra paid on debts, say) is added.
+   */
+  goals: { goalId: string; movedMinor: number }[];
   /** Over is good for Savings, and a warning for the rest. */
   saving: boolean;
 }
@@ -123,7 +128,7 @@ export const percentage: BudgetStrategy<PercentageSettings, PercentageView> = {
     }
     return { buckets: out, base, income, expectedMinor: expected as number | null };
   },
-  month({ settings, scope, categories, activity }) {
+  month({ settings, scope, categories, goals, activity }) {
     const keys = new Set(settings.buckets.map((b) => b.key));
     const byBucket = new Map<string, { categoryId: string; spentMinor: number }[]>();
     const notInBucket: PercentageView['notInBucket'] = [];
@@ -148,13 +153,16 @@ export const percentage: BudgetStrategy<PercentageSettings, PercentageView> = {
     const afterContributions = mine && settings.base === 'after_contributions';
     const base = afterContributions ? income - activity.contributionsMinor : income;
     const movedToSavings = activity.savingsMovedMinor ?? 0;
+    const goalMoved = goals
+      .map((g) => ({ goalId: g.id, movedMinor: activity.goalMovedMinor?.get(g.id) ?? 0 }))
+      .filter((g) => g.movedMinor !== 0);
     const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
     const buckets = settings.buckets.map((b): PercentageBucketView => {
       const cats = (byBucket.get(b.key) ?? []).sort((x, y) => y.spentMinor - x.spentMinor);
       const saving = b.key === 'savings';
       // With the whole income as the base, what you send to Ours is a need (D11).
       const contributed = mine && !afterContributions && b.key === 'needs';
-      const moved = saving ? movedToSavings : 0;
+      const moved = saving ? movedToSavings + (activity.goalMovedElsewhereMinor ?? 0) : 0;
       return {
         ...b,
         targetMinor: Math.round((Math.max(base, 0) * b.percent) / 100),
@@ -163,7 +171,8 @@ export const percentage: BudgetStrategy<PercentageSettings, PercentageView> = {
           moved +
           (contributed ? activity.contributionsMinor : 0),
         categories: cats,
-        movedToSavingsMinor: moved,
+        movedToSavingsMinor: saving ? movedToSavings : 0,
+        goals: saving ? goalMoved : [],
         saving,
       };
     });

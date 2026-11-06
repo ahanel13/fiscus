@@ -146,6 +146,37 @@ export interface CategoryLimitRow {
   rollover: boolean;
 }
 
+/**
+ * A goal's line (goals and budgets G4, G5): its plan, which is the goal's (G16), against what
+ * reached it this month. Never spending: it never makes the budget over.
+ */
+export interface GoalLine {
+  goalId: string;
+  budgetedMinor: number;
+  movedMinor: number;
+  /** Still to move; below zero is more than planned. */
+  leftMinor: number;
+}
+
+/** A goal with a line in a budget, as the line shows it. */
+export interface BudgetGoal {
+  id: string;
+  kind: 'save' | 'pay_down';
+  name: string;
+  icon: string | null;
+  color: string | null;
+  imageVersion: string | null;
+  /** Where its money goes: the accounts it draws on that you see, or its loan or card. */
+  accountNames: string[];
+  archived: boolean;
+}
+
+/**
+ * A goal's line amount from a month on (G16): the goal's plan, changed with it. `future`, the
+ * default, from this month on; `month`, this month only.
+ */
+export const setGoalLineSchema = setBudgetAmountSchema;
+
 /** An income category: what you expect this month, and what came in. */
 export interface IncomeRow {
   categoryId: string;
@@ -159,6 +190,7 @@ export interface CategoryLimitsMonth {
   rows: CategoryLimitRow[];
   /** Income categories with an amount expected, or money in this month. */
   income: IncomeRow[];
+  goals: GoalLine[];
   notBudgeted: { categoryId: string; spentMinor: number }[];
   incomeMinor: number;
   contributionsMinor: number;
@@ -182,6 +214,8 @@ export interface FlexMonth {
     spentMinor: number;
     savedMinor: number;
   }[];
+  /** Fixed lines beside the fixed costs, outside the flexible number (G5). */
+  goals: GoalLine[];
   flexible: {
     budgetedMinor: number;
     spentMinor: number;
@@ -203,7 +237,7 @@ export interface ZeroBasedMonth {
   strategy: 'zero_based';
   /** Rows are envelopes: `budgetedMinor` is assigned, `leftMinor` available; all roll over. */
   rows: (CategoryLimitRow & { movedMinor: number })[];
-  /** Goal lines (goals and budgets G5); none until goals exist. */
+  /** Goal lines (G5): assigned like a category; what's not moved yet rolls over. */
   goals: {
     goalId: string;
     budgetedMinor: number;
@@ -246,6 +280,8 @@ export interface PercentageMonth {
     spentMinor: number;
     categories: { categoryId: string; spentMinor: number }[];
     movedToSavingsMinor: number;
+    /** Savings: what reached each goal, counted once with what moved to savings (G5). */
+    goals: { goalId: string; movedMinor: number }[];
     /** Savings: over is good. */
     saving: boolean;
   }[];
@@ -277,6 +313,8 @@ export interface BudgetMonth {
   canEdit: boolean;
   /** Spending categories left out of this budget ("Don't budget"): in no row or total. */
   excluded: string[];
+  /** The goals with a line in it (G4): its scope's, Ours or Mine, in priority order. */
+  goals: BudgetGoal[];
   view: BudgetMonthView;
 }
 

@@ -310,7 +310,11 @@ export function ManageDebts({
       }
     },
     onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: ['households', householdId, 'goals'] }),
+      Promise.all(
+        ['goals', 'budgets'].map((k) =>
+          queryClient.invalidateQueries({ queryKey: ['households', householdId, k] }),
+        ),
+      ),
   });
   const err = toggle.error as ApiError | null;
   return (
@@ -414,6 +418,8 @@ export function DebtDialog({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['households', householdId, 'goals'] });
+      // Its extra is its budget line (G9, G16).
+      void queryClient.invalidateQueries({ queryKey: ['households', householdId, 'budgets'] });
       toast(`${name} saved.`);
       onClose();
     },
