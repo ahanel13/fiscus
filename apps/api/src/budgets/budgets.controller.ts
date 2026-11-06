@@ -14,6 +14,7 @@ import {
   setBudgetAmountSchema,
   setBudgetCategorySchema,
   setFlexibleSchema,
+  setGoalLineSchema,
   setPercentageSchema,
   type StrategyPreview,
   switchStrategySchema,
@@ -89,6 +90,19 @@ export class BudgetsController {
     @Body(new ZodPipe(setBudgetAmountSchema)) body: z.infer<typeof setBudgetAmountSchema>,
   ): Promise<void> {
     await this.budgets.setAmount(ctx, budgetId, month, categoryId, body.amountMinor, body.applyTo);
+  }
+
+  /** A goal's line from a month on (G16): the goal's plan changes with it. */
+  @Put(':budgetId/months/:month/goals/:goalId')
+  @HttpCode(204)
+  async setGoalLine(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
+    @Param('goalId', UuidPipe) goalId: string,
+    @Body(new ZodPipe(setGoalLineSchema)) body: z.infer<typeof setGoalLineSchema>,
+  ): Promise<void> {
+    await this.budgets.setGoalLine(ctx, budgetId, month, goalId, body.amountMinor, body.applyTo);
   }
 
   @Get(':budgetId/categories/:categoryId/history')

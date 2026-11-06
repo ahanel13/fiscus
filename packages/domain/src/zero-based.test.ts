@@ -120,8 +120,16 @@ describe('zero-based', () => {
   it('assigns to a goal’s line, and keeps what’s not moved yet (G5)', () => {
     const withGoal: BudgetDefinition = {
       ...budget,
-      goals: [{ id: 'japan' }],
-      amounts: new Map([['2026-09', map({ rent: 215000, japan: 45000 })]]),
+      goals: [
+        {
+          id: 'japan',
+          kind: 'save',
+          plans: map({ '2026-09': 45000 }),
+          fromMonth: '2026-09',
+          untilMonth: null,
+        },
+      ],
+      amounts: new Map([['2026-09', map({ rent: 215000 })]]),
     };
     const l = new Map([
       ['2026-09', { ...month({ rent: 215000 }, 0, 320000), goalMovedMinor: map({ japan: 30000 }) }],

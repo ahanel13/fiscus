@@ -59,8 +59,13 @@ export const goalPhotoUrl = (householdId: string, goalId: string, version: strin
   `${apiBase()}/api/v1/households/${householdId}/goals/${goalId}/image?v=${version}`;
 
 /** The picture, decorative: the goal's name is always beside it. */
-export function GoalPicture({ look, size = 'md' }: { look: GoalLook; size?: 'sm' | 'md' }) {
-  const box = size === 'sm' ? 'size-10 rounded-lg' : 'size-14 rounded-xl sm:size-16';
+export function GoalPicture({ look, size = 'md' }: { look: GoalLook; size?: 'xs' | 'sm' | 'md' }) {
+  const box =
+    size === 'xs'
+      ? 'size-7 rounded-md'
+      : size === 'sm'
+        ? 'size-10 rounded-lg'
+        : 'size-14 rounded-xl sm:size-16';
   if (look.photo) {
     return (
       <img
@@ -82,7 +87,7 @@ export function GoalPicture({ look, size = 'md' }: { look: GoalLook; size?: 'sm'
       )}
       style={look.color ? { backgroundColor: look.color, color: textOn(look.color) } : undefined}
     >
-      <Icon className={size === 'sm' ? 'size-5' : 'size-7'} />
+      <Icon className={size === 'xs' ? 'size-4' : size === 'sm' ? 'size-5' : 'size-7'} />
     </span>
   );
 }

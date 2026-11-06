@@ -162,7 +162,14 @@ A goal's plan is a line in its budget, in a **Goals** group (G4):
 - A transfer into an account backing two goals is split by their claims; its drawer lets you put
   it all toward one (G13).
 - Category limits and flex show the line as planned against moved, never as spending. 50/30/20
-  counts it in Savings, once.
+  counts it in Savings, once: a transfer into a savings account is counted there already, and
+  extra paid on a debt is added.
+- Moving more than planned is **ahead**, never overspending, in every strategy: nothing carries,
+  and nothing comes out of Ready to assign.
+- In zero-based, the plan is assigned once the month is being assigned (or when it's set in that
+  month), as amounts are (D8).
+- The **Summary** adds **Save up** (contributed) and **Pay down** (paid down) beside income and
+  expenses, and **Left to budget** takes the goals' plans off too, as Monarch's does.
 
 An Ours goal's line is in the Ours budget, a Mine goal's in yours. Without that budget, the goal
 keeps its plan to itself (G16).

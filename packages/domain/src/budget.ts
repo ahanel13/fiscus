@@ -45,9 +45,14 @@ export interface MonthActivity {
   contributionsMinor: number;
   /**
    * What reached each goal this month (goals and budgets G4): transfers into the accounts it
-   * draws on. Empty until goals exist (M5).
+   * draws on, split by claims (G13); for a debt, what was paid over its minimum (G9).
    */
   goalMovedMinor?: ReadonlyMap<string, number>;
+  /**
+   * The part of that which `savingsMovedMinor` doesn't already count: into accounts that aren't
+   * for saving, and extra paid on debts. 50/30/20's Savings adds it, so nothing counts twice (G5).
+   */
+  goalMovedElsewhereMinor?: number;
   /**
    * Money moved into savings and investment accounts in the scope (50/30/20's Savings, D10):
    * transfers from accounts that aren't either. A goal's contributions are among these (G5).
@@ -74,12 +79,75 @@ export const NOTHING_CARRIED: Carry = { balances: new Map(), unassignedMinor: 0 
 export type BudgetScopeKind = 'household' | 'mine';
 
 /**
- * A goal as a budget line (goals and budgets G4): its monthly contribution is an amount keyed by
- * the goal's id, and what moved is in the month's activity. No goals exist yet (M5).
+ * A goal as a budget line (goals and budgets G4): its plan is the line's amount (G16), by month,
+ * and what moved is in the month's activity. It's in the budget from the month it began, to the
+ * month it was archived in.
  */
 export interface BudgetGoalLine {
   id: string;
+  kind: 'save' | 'pay_down';
+  /** Its plan from a month on: a month without its own has the last one before it. */
+  plans: ReadonlyMap<Month, number>;
+  fromMonth: Month;
+  /** The month it was archived in, or null. */
+  untilMonth: Month | null;
 }
+
+/** A goal line in one month, as a strategy is given it. */
+export interface MonthGoal {
+  id: string;
+  kind: BudgetGoalLine['kind'];
+  /** Its plan this month. */
+  plannedMinor: number;
+  /** Whether the plan was set in this month itself, rather than repeating an earlier one. */
+  ownPlan: boolean;
+  /** Archived before this month, or begun after it: shown only for what's left on it. */
+  ended: boolean;
+}
+
+/** A goal line's plan in `month`: its own, or the last one before it. */
+export function planFor(month: Month, plans: ReadonlyMap<Month, number>): number {
+  let best: Month | undefined;
+  for (const m of plans.keys()) if (m <= month && (best === undefined || m > best)) best = m;
+  return best === undefined ? 0 : plans.get(best)!;
+}
+
+/**
+ * A goal's line where it's planned against what moved (category limits and flex, G5): never
+ * spending, so it never makes the budget over, and nothing rolls over.
+ */
+export interface GoalLineRow {
+  goalId: string;
+  budgetedMinor: number;
+  movedMinor: number;
+  /** Still to move: `budgeted − moved`; below zero is more than planned. */
+  leftMinor: number;
+}
+
+/** The goal lines of a month: every goal in it, and an ended one only if something moved. */
+export function goalLineRows(goals: readonly MonthGoal[], activity: MonthActivity): GoalLineRow[] {
+  const rows: GoalLineRow[] = [];
+  for (const g of goals) {
+    const moved = activity.goalMovedMinor?.get(g.id) ?? 0;
+    if (g.ended && moved === 0) continue;
+    const budgeted = g.ended ? 0 : g.plannedMinor;
+    rows.push({
+      goalId: g.id,
+      budgetedMinor: budgeted,
+      movedMinor: moved,
+      leftMinor: budgeted - moved,
+    });
+  }
+  return rows;
+}
+
+const monthGoal = (g: BudgetGoalLine, month: Month): MonthGoal => ({
+  id: g.id,
+  kind: g.kind,
+  plannedMinor: planFor(month, g.plans),
+  ownPlan: g.plans.has(month),
+  ended: month < g.fromMonth || (g.untilMonth !== null && month > g.untilMonth),
+});
 
 /** Everything a strategy is given for one month. */
 export interface StrategyMonth<S> {
@@ -87,7 +155,7 @@ export interface StrategyMonth<S> {
   settings: S;
   scope: BudgetScopeKind;
   categories: readonly BudgetCategory[];
-  goals: readonly BudgetGoalLine[];
+  goals: readonly MonthGoal[];
   /** This month's amounts by category id (see `amountsFor`). */
   amounts: ReadonlyMap<string, number>;
   /** Whether the month has amounts of its own, rather than repeating an earlier month's. */
@@ -130,7 +198,7 @@ export interface BudgetDefinition {
   amounts: ReadonlyMap<Month, ReadonlyMap<string, number>>;
   /** Money moved between lines, net per line, for the months that have some. */
   moves?: ReadonlyMap<Month, ReadonlyMap<string, number>>;
-  /** Goals with a line in this budget (G4). None until goals exist. */
+  /** Goals with a line in this budget (G4): its scope's, Ours or Mine. */
   goals?: readonly BudgetGoalLine[];
 }
 
@@ -225,7 +293,7 @@ export function computeBudgetMonth(
       settings: settings.get(period),
       scope: budget.scope ?? 'household',
       categories: budget.categories,
-      goals: budget.goals ?? [],
+      goals: (budget.goals ?? []).map((g) => monthGoal(g, month)),
       amounts: amountsFor(month, budget.amounts),
       ownAmounts: budget.amounts.has(month),
       moves: budget.moves?.get(month) ?? new Map(),

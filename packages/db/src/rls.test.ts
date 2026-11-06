@@ -40,6 +40,7 @@ describe('row-level security', () => {
     'category_groups',
     'goal_claim_events',
     'goal_claims',
+    'goal_plans',
     'goals',
     'import_batches',
     'import_profiles',

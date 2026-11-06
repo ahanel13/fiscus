@@ -7,6 +7,7 @@ export * from './activity.js';
 export * from './balances.js';
 export * from './budget-activity.js';
 export * from './engine.js';
+export * from './goal-lines.js';
 export * from './overlaps.js';
 export * from './owners.js';
 export * from './provider-balances.js';

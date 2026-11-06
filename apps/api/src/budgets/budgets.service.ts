@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  accounts,
   budgetAmounts,
   budgetCategories,
   budgetMoves,
@@ -8,6 +9,7 @@ import {
   categories,
   categoryGroups,
   type Executor,
+  goals,
   householdMembers,
   households,
 } from '@fiscus/db';
@@ -36,6 +38,7 @@ import {
 } from '@fiscus/ledger';
 import type {
   BudgetCategoryHistory,
+  BudgetGoal,
   BudgetMonth,
   BudgetScope,
   BudgetSuggestion,
@@ -48,12 +51,13 @@ import type {
   StrategyPreview,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
-import { and, eq, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import type { HouseholdActivity } from '../households/household-scope.js';
 import { HouseholdScope } from '../households/household-scope.js';
+import { setGoalPlan } from '../goals/goal-plans.js';
 
 type CreateInput = z.infer<typeof createBudgetSchema>;
 type BudgetRow = typeof budgets.$inferSelect;
@@ -189,6 +193,10 @@ export class BudgetsService {
         currency: h!.currency,
         canEdit: canEdit(ctx, scope),
         excluded: definition.excluded,
+        goals: await goalsOf(
+          tx,
+          definition.goals.map((g) => g.id),
+        ),
         view: viewOf(out.kind, out.view, definition, month),
       };
     });
@@ -509,6 +517,57 @@ export class BudgetsService {
         'budget.amount_changed',
         { month, categoryId, applyTo },
         { before: before?.amountMinor ?? null, after: amountMinor },
+      );
+    });
+  }
+
+  /**
+   * A goal's line (G16): its plan, from a month on or for that month only. The goal is the
+   * budget's scope's, and still in it; its plan changes with the line.
+   */
+  async setGoalLine(
+    ctx: HouseholdContext,
+    budgetId: string,
+    month: string,
+    goalId: string,
+    amountMinor: number,
+    applyTo: 'month' | 'future' = 'future',
+  ): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
+      const [goal] = await tx
+        .select({
+          id: goals.id,
+          householdId: goals.householdId,
+          memberId: goals.memberId,
+          name: goals.name,
+          planMinor: goals.planMinor,
+          archivedAt: goals.archivedAt,
+        })
+        .from(goals)
+        .where(eq(goals.id, goalId));
+      // Another scope's goal isn't in this budget (G4): an Ours goal is in Ours, a Mine in yours.
+      if (!goal || goal.memberId !== row.memberId) throw problems.notFound();
+      if (goal.archivedAt) {
+        throw new Problem(409, 'goal_archived', `${goal.name} is archived`, 'Bring it back first.');
+      }
+      const { today } = await householdRanges(tx, ctx.householdId);
+      const { before } = await setGoalPlan(
+        tx,
+        goal,
+        month,
+        amountMinor,
+        applyTo,
+        monthOfDate(today),
+      );
+      await record(
+        activity,
+        row,
+        'budget.goal_line_changed',
+        { month, goalId, applyTo },
+        { before, after: amountMinor },
       );
     });
   }
@@ -848,6 +907,56 @@ async function checkScopeChange(
       scope === 'mine' ? 'You already have a budget' : 'The household already has a budget',
     );
   }
+}
+
+/**
+ * The goals with lines in a budget, as the lines show them (G4): where each one's money goes, by
+ * the names of the accounts you see. A claim on someone's private account shows no name (G7).
+ */
+async function goalsOf(tx: Executor, ids: string[]): Promise<BudgetGoal[]> {
+  if (ids.length === 0) return [];
+  const rows = await tx
+    .select({
+      id: goals.id,
+      kind: goals.kind,
+      name: goals.name,
+      icon: goals.icon,
+      color: goals.color,
+      imageUpdatedAt: goals.imageUpdatedAt,
+      archivedAt: goals.archivedAt,
+      debtName: accounts.name,
+    })
+    .from(goals)
+    .leftJoin(accounts, eq(accounts.id, goals.accountId))
+    .where(inArray(goals.id, ids));
+  const { rows: claims } = await tx.execute<{ goal_id: string; account_name: string | null }>(
+    sql`SELECT goal_id, account_name FROM fiscus_goal_claim_values() ORDER BY value_minor DESC`,
+  );
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((r) => r !== undefined)
+    .map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      name: r.name,
+      icon: r.icon,
+      color: r.color,
+      imageVersion: r.imageUpdatedAt ? String(r.imageUpdatedAt.getTime()) : null,
+      accountNames:
+        r.kind === 'pay_down'
+          ? r.debtName
+            ? [r.debtName]
+            : []
+          : [
+              ...new Set(
+                claims
+                  .filter((c) => c.goal_id === r.id && c.account_name !== null)
+                  .map((c) => c.account_name!),
+              ),
+            ],
+      archived: r.archivedAt !== null,
+    }));
 }
 
 /** The categories a budget has amounts for: limits on spending, and income expected. */

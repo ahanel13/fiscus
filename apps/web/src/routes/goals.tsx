@@ -80,8 +80,13 @@ export function GoalsPage() {
   const queryClient = useQueryClient();
   const currency = household.baseCurrency;
   const shared = members.length > 1;
+  // A goal's plan and archiving show in its budget too (G16).
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ['households', householdId, 'goals'] });
+    Promise.all(
+      ['goals', 'budgets'].map((k) =>
+        queryClient.invalidateQueries({ queryKey: ['households', householdId, k] }),
+      ),
+    );
 
   const order = useMutation({
     mutationFn: (ids: string[]) =>
@@ -609,6 +614,8 @@ function GoalDialog({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['households', householdId, 'goals'] });
+      // Its plan is its budget line (G16).
+      void queryClient.invalidateQueries({ queryKey: ['households', householdId, 'budgets'] });
       toast(goal ? `${name} saved.` : `${name} created.`);
       onClose();
     },
