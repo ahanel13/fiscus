@@ -9,6 +9,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -121,6 +122,34 @@ export const goalClaims = pgTable(
       'goal_claims_percent',
       sql`${t.percentBps} IS NULL OR ${t.percentBps} BETWEEN 1 AND 10000`,
     ),
+  ],
+);
+
+/**
+ * A goal's monthly plan from a month on (G16): the same number as its budget line. A month without
+ * a row of its own has the last one before it, as budget amounts do, so changing the plan from a
+ * month never rewrites the months before. `goals.plan_minor` is this month's.
+ */
+export const goalPlans = pgTable(
+  'goal_plans',
+  {
+    householdId: uuid().notNull(),
+    goalId: uuid().notNull(),
+    month: date({ mode: 'string' }).notNull(),
+    amountMinor: money('amount_minor').notNull(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.goalId, t.month] }),
+    foreignKey({
+      columns: [t.householdId, t.goalId],
+      foreignColumns: [goals.householdId, goals.id],
+    }).onDelete('cascade'),
+    check('goal_plans_month', sql`extract(day from ${t.month}) = 1`),
+    check('goal_plans_amount', sql`${t.amountMinor} >= 0`),
   ],
 );
 

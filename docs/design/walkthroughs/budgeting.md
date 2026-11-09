@@ -131,7 +131,11 @@ With no budget yet, the Budget page offers to start one in a single step:
 Every strategy has the same frame:
 - **Header:** the period stepper (`‹ October 2026 ›`), the **Ours · Mine** switch, the strategy,
   and **Annual view**.
-- **Summary strip:** four numbers that answer "how are we doing".
+- **Summary strip:** four numbers that answer "how are we doing". Category limits shows it as
+  Monarch does: **Left to budget** (income expected, less every limit and goal plan), then
+  income, expenses, saving up and paying down, each planned against what's come in, gone out or
+  moved, with a bar. What's left is green while there's some, grey at nothing, and red once
+  spending is over. On a phone it folds away.
 - **Income first:** each income category's expected amount beside what came in, and a total.
   Expected income isn't a limit, and isn't in "Budgeted".
 - **Rows by category group:** the group with its totals, then each category: its amount, what's
@@ -165,8 +169,8 @@ A limit per category, and what's left of it. The simplest strategy, and the defa
 - **Rollover** is per category, off by default. When it's on, what's left at the end of the month
   is added to next month's limit: Groceries shows "+$35.20 rolled over from Sep". Overspending
   is carried too, as a smaller limit.
-- **Left in your budgets** is the sum of every row's "left", so overspent rows count against it.
-  "3 categories over" says how many.
+- **Expenses** in the summary is the limits against what's spent, so overspent rows count
+  against what's remaining.
 - **Money in** is shown for context. Category limits doesn't plan it.
 
 ### 3.2 Zero-based

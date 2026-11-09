@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { BudgetSettingsError, type BudgetStrategy, type Carry, type Month } from './budget.js';
+import {
+  BudgetSettingsError,
+  type BudgetStrategy,
+  type Carry,
+  type GoalLineRow,
+  goalLineRows,
+  type Month,
+} from './budget.js';
 
 // Flex (#102, budgeting walkthrough §3.4): Monarch's model. Fixed costs (and savings) are budgeted
 // one by one; non-monthly costs set aside a twelfth of a yearly figure each month, which builds
@@ -34,6 +41,8 @@ export interface FlexNonMonthlyRow {
 export interface FlexView {
   fixed: FlexFixedRow[];
   nonMonthly: FlexNonMonthlyRow[];
+  /** Goals' lines (G5): fixed, beside the fixed costs, outside the flexible number. */
+  goals: GoalLineRow[];
   flexible: {
     budgetedMinor: number;
     spentMinor: number;
@@ -77,7 +86,7 @@ export const flex: BudgetStrategy<FlexSettings, FlexView> = {
     }
     return { flexibleMinor: out };
   },
-  month({ month, settings, categories, amounts, activity, carry }) {
+  month({ month, settings, categories, goals, amounts, activity, carry }) {
     const fixed: FlexFixedRow[] = [];
     const nonMonthly: FlexNonMonthlyRow[] = [];
     const flexibleCats: { categoryId: string; spentMinor: number }[] = [];
@@ -121,6 +130,7 @@ export const flex: BudgetStrategy<FlexSettings, FlexView> = {
       view: {
         fixed,
         nonMonthly,
+        goals: goalLineRows(goals, activity),
         flexible: {
           budgetedMinor: flexibleBudgeted,
           spentMinor: flexibleSpent,

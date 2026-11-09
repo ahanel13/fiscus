@@ -26,7 +26,8 @@ export interface ZeroBasedRow {
 
 /**
  * A goal's line (goals and budgets G5): assigned like a category, and "spent" by moving money to
- * the goal. What's assigned but not moved yet stays, as **to move**.
+ * the goal. What's assigned but not moved yet stays, as **to move**. Moving more than that is
+ * ahead, never overspending: nothing carries, and nothing comes out of Ready to assign.
  */
 export interface ZeroBasedGoalRow {
   goalId: string;
@@ -35,7 +36,7 @@ export interface ZeroBasedGoalRow {
   rolledInMinor: number;
   /** What reached the goal this month. */
   sentMinor: number;
-  /** To move: `rolledIn + budgeted + moved − sent`. */
+  /** To move: `rolledIn + budgeted + moved − sent`; below zero is ahead. */
   leftMinor: number;
 }
 
@@ -117,10 +118,12 @@ export const zeroBased: BudgetStrategy<ZeroBasedSettings, ZeroBasedView> = {
     const goalRows: ZeroBasedGoalRow[] = [];
     for (const g of goals) {
       const inFromLast = rolledIn(g.id);
-      const budgeted = assignedOf(g.id);
+      // Its plan is what's assigned (G16), once the month is being assigned, or set in it.
+      const budgeted = !g.ended && (ownAmounts || g.ownPlan) ? g.plannedMinor : 0;
       const moved = moves.get(g.id) ?? 0;
       const sent = activity.goalMovedMinor?.get(g.id) ?? 0;
       const left = inFromLast + budgeted + moved - sent;
+      if (g.ended && inFromLast === 0 && moved === 0 && sent === 0) continue;
       goalRows.push({
         goalId: g.id,
         budgetedMinor: budgeted,
@@ -129,7 +132,7 @@ export const zeroBased: BudgetStrategy<ZeroBasedSettings, ZeroBasedView> = {
         sentMinor: sent,
         leftMinor: left,
       });
-      if (left !== 0) balances.set(g.id, left);
+      if (left > 0) balances.set(g.id, left);
     }
     const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
     const assigned =
@@ -138,7 +141,8 @@ export const zeroBased: BudgetStrategy<ZeroBasedSettings, ZeroBasedView> = {
       activity.incomeMinor +
       (scope === 'mine' ? -activity.contributionsMinor : activity.contributionsMinor);
     const ready = carry.unassignedMinor + cameIn - overspent - assigned;
-    const lines = [...rows, ...goalRows];
+    // A goal ahead isn't overspent: only what's still to move counts as available.
+    const lines = [...rows, ...goalRows.map((g) => ({ leftMinor: Math.max(0, g.leftMinor) }))];
     const out: Carry = { balances, unassignedMinor: ready };
     return {
       view: {

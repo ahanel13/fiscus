@@ -31,11 +31,13 @@ import {
   budgetsQuery,
   budgetSuggestionQuery,
   categoriesQuery,
+  goalsQuery,
   householdQuery,
   membersQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { GoalPicture, type GoalLook, goalPhotoUrl } from '../components/GoalPicture.js';
 import { PageHeader } from '../components/PageHeader.js';
 import {
   Alert,
@@ -714,6 +716,7 @@ function MonthView({
         <FlexBody
           data={data.data as BudgetMonth & { view: FlexMonth }}
           groups={groups}
+          householdId={household.id}
           onOpen={setOpen}
           onYearly={data.data.canEdit ? setYearly : undefined}
           onFlexible={data.data.canEdit ? () => setFlexible(true) : undefined}
@@ -1024,7 +1027,7 @@ function MonthBody({
   const quiet = spending.filter((g) => g.quiet);
   const hiddenSpent = view.notBudgeted.filter((n) => n.categoryId !== uncategorized);
   const uncategorizedSpent = uncategorized ? unbudgeted.get(uncategorized) : undefined;
-  const toBudget = view.totals.incomeBudgetedMinor - view.totals.budgetedMinor;
+  const toBudget = leftToBudget(data);
 
   return (
     <>
@@ -1045,34 +1048,12 @@ function MonthBody({
         </p>
       ) : null}
 
-      <PhoneSummary
+      <Summary
         data={data}
         progress={progress}
         open={!collapsed.has('summary')}
         onToggle={() => toggle('summary')}
       />
-
-      <div className="hidden grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid md:grid-cols-4">
-        <MoneyIn data={data} whole />
-        <Stat label="Budgeted">{money(view.totals.budgetedMinor)}</Stat>
-        <Stat
-          label="Spent"
-          note={progress !== null ? `${Math.round(progress * 100)}% of the month gone` : undefined}
-        >
-          {money(view.totals.spentMinor)}
-        </Stat>
-        <Stat
-          label="Left in your budgets"
-          note={
-            view.totals.overCount
-              ? `${view.totals.overCount} ${view.totals.overCount === 1 ? 'category' : 'categories'} over`
-              : undefined
-          }
-          noteTone={view.totals.overCount ? 'danger' : undefined}
-        >
-          {money(view.totals.leftMinor)}
-        </Stat>
-      </div>
 
       {data.canEdit ? (
         <div className="flex justify-end">
@@ -1284,6 +1265,7 @@ function MonthBody({
             );
           },
         )}
+        <GoalLines householdId={householdId} data={data} rows={view.goals} />
         {uncategorizedSpent ? (
           <div
             className={clsx(
@@ -1351,13 +1333,16 @@ function BudgetAmount({
   householdId,
   data,
   categoryId,
+  goalId,
   name,
   value,
   applyTo = 'future',
 }: {
   householdId: string;
   data: BudgetMonth;
-  categoryId: string;
+  categoryId?: string;
+  /** A goal's line instead: its plan, from this month on (G16). */
+  goalId?: string;
   name: string;
   value: number;
   /** This month and the ones after it (the default, as in a row), or this month only. */
@@ -1369,13 +1354,18 @@ function BudgetAmount({
     mutationFn: (amountMinor: number) =>
       api(
         'PUT',
-        `${base(householdId)}/budgets/${data.budget.id}/months/${data.month}/amounts/${categoryId}`,
+        `${base(householdId)}/budgets/${data.budget.id}/months/${data.month}/${
+          goalId ? `goals/${goalId}` : `amounts/${categoryId}`
+        }`,
         { body: { amountMinor, applyTo } },
       ),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
         queryKey: ['households', householdId, 'budgets', data.budget.id],
-      }),
+      });
+      if (goalId)
+        await queryClient.invalidateQueries({ queryKey: goalsQuery(householdId).queryKey });
+    },
     onError: (e) => {
       setAmount(value || null);
       toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' });
@@ -1398,11 +1388,172 @@ function BudgetAmount({
   );
 }
 
+/** A goal's line as each strategy gives it: zero-based adds what carried from last month. */
+interface GoalLineView {
+  goalId: string;
+  budgetedMinor: number;
+  movedMinor: number;
+  leftMinor: number;
+  rolledInMinor?: number;
+}
+
 /**
- * The month at a glance on a phone, as Monarch puts it: income and expenses, each planned against
- * what's come in or gone out so far. It folds away, and stays folded in this browser.
+ * The Goals group (goals and budgets G4, G5; goals walkthrough §6): each goal's plan, which is its
+ * line and is typed in here (G16), against what reached its accounts this month, and what's still
+ * to move. Never spending: a goal line never makes the budget over, and moving more is ahead.
  */
-function PhoneSummary({
+function GoalLines({
+  householdId,
+  data,
+  rows,
+  standalone = false,
+}: {
+  householdId: string;
+  data: BudgetMonth;
+  rows: GoalLineView[];
+  /** Its own card, with its own headings (flex, where the other lines aren't in a table). */
+  standalone?: boolean;
+}) {
+  const [collapsed, toggle] = useCollapsed();
+  const { currency } = data;
+  const goals = new Map(data.goals.map((g) => [g.id, g]));
+  const shown = rows.filter((r) => goals.has(r.goalId));
+  if (shown.length === 0) return null;
+  const fmt = (minor: number) => formatMinor(minor, currency);
+  const money = (minor: number, className?: string) => (
+    <Amount minor={minor} currency={currency} kind="balance" whole className={className} />
+  );
+  const total = (f: (r: GoalLineView) => number) => shown.reduce((s, r) => s + f(r), 0);
+  // What's still to move; a goal ahead doesn't make up for another behind.
+  const left = total((r) => Math.max(0, r.leftMinor));
+  const open = !collapsed.has('goals');
+  const where = (g: BudgetMonth['goals'][number]) =>
+    g.kind === 'pay_down'
+      ? `over the minimum on ${g.accountNames[0] ?? 'its debt'}`
+      : g.accountNames.length
+        ? `to ${g.accountNames.join(' and ')}`
+        : 'not funded yet';
+  const group = (
+    <section className={PHONE_CARD} aria-label="Goals">
+      <GroupHeader
+        id="budget-group-goals"
+        name="Goals"
+        className={open ? 'border-b' : 'border-b max-sm:border-b-0'}
+        open={open}
+        onToggle={() => toggle('goals')}
+      >
+        <span className="text-right">{money(total((r) => r.budgetedMinor))}</span>
+        <span className="hidden text-right sm:block">{money(total((r) => r.movedMinor))}</span>
+        <span className="text-right">{money(left)}</span>
+      </GroupHeader>
+      {open ? (
+        <ul
+          id="budget-group-goals"
+          className="divide-y divide-border border-b border-border max-sm:border-b-0"
+        >
+          {shown.map((r) => {
+            const g = goals.get(r.goalId)!;
+            const short = r.leftMinor < 0;
+            return (
+              <li key={r.goalId} className={clsx('grid items-center gap-3 px-4 py-2', COLUMNS)}>
+                <div className="flex min-w-0 items-center gap-2.5">
+                  {/* On a phone the name gets the room. */}
+                  <span className="contents max-sm:hidden">
+                    <GoalPicture
+                      size="xs"
+                      look={{
+                        icon: g.icon as GoalLook['icon'],
+                        color: g.color,
+                        photo: g.imageVersion
+                          ? goalPhotoUrl(householdId, g.id, g.imageVersion)
+                          : null,
+                      }}
+                    />
+                  </span>
+                  <div className="min-w-0 py-0.5">
+                    <Link
+                      to={`/h/${householdId}/goals`}
+                      className="block truncate text-sm font-medium hover:underline"
+                    >
+                      {g.name}
+                      {g.archived ? <Badge className="ml-2">Archived</Badge> : null}
+                    </Link>
+                    <span className="block truncate text-xs text-muted">
+                      {where(g)}
+                      <span className="sm:hidden"> · {fmt(r.movedMinor)} moved</span>
+                      {r.rolledInMinor ? ` · ${fmt(r.rolledInMinor)} carried` : ''}
+                    </span>
+                  </div>
+                </div>
+                {data.canEdit && !g.archived ? (
+                  <BudgetAmount
+                    key={`${g.id}:${r.budgetedMinor}`}
+                    householdId={householdId}
+                    data={data}
+                    goalId={g.id}
+                    name={g.name}
+                    value={r.budgetedMinor}
+                  />
+                ) : (
+                  money(r.budgetedMinor, 'text-right text-sm')
+                )}
+                <span className="hidden text-right text-sm sm:block">{money(r.movedMinor)}</span>
+                <span className="text-right text-sm">
+                  {r.budgetedMinor === 0 && r.movedMinor === 0 && !r.rolledInMinor ? (
+                    <span className="text-muted">—</span>
+                  ) : short ? (
+                    <span className="text-accent-text">
+                      <span className="sm:hidden">+</span>
+                      {money(-r.leftMinor)}
+                      <span className="hidden sm:inline"> ahead</span>
+                    </span>
+                  ) : (
+                    <span className={r.leftMinor === 0 ? 'text-muted' : undefined}>
+                      {money(r.leftMinor)}
+                      {r.leftMinor ? (
+                        <span className="hidden text-xs text-muted sm:inline"> to move</span>
+                      ) : null}
+                    </span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      <p className="px-4 py-2.5 text-xs text-muted">
+        A goal’s plan is its line here, and changes with it. Money moved into a goal’s accounts
+        counts as moved (split by their claims when an account backs more than one), and what’s paid
+        on a debt over its minimum. Goals are never spending.
+      </p>
+    </section>
+  );
+  if (!standalone) return group;
+  return (
+    <div className="rounded-xl border border-border bg-surface max-sm:space-y-3 max-sm:border-0 max-sm:bg-transparent sm:overflow-hidden">
+      <div
+        className={clsx(
+          'grid gap-3 border-b border-border px-4 py-2 text-xs font-semibold text-muted max-sm:border-0 max-sm:pb-0',
+          COLUMNS,
+        )}
+      >
+        <span className="max-sm:text-base max-sm:text-fg">Saving and paying down</span>
+        <span className="self-end text-right">Planned</span>
+        <span className="hidden text-right sm:block">Moved</span>
+        <span className="self-end text-right">Left</span>
+      </div>
+      {group}
+    </div>
+  );
+}
+
+/**
+ * The month at a glance, as Monarch puts it: what's left to budget, then income, expenses, saving
+ * up and paying down, each planned against what's come in, gone out or moved so far (G4). What's
+ * left is green while there's some, grey at nothing, and red once spending is over. On a phone it
+ * folds away, and stays folded in this browser.
+ */
+function Summary({
   data,
   progress,
   open,
@@ -1418,18 +1569,33 @@ function PhoneSummary({
   const money = (minor: number) => (
     <Amount minor={minor} currency={data.currency} kind="balance" whole />
   );
+  const kinds = new Map(data.goals.map((g) => [g.id, g.kind]));
+  const goalsOf = (kind: 'save' | 'pay_down') => {
+    const rows = data.view.goals.filter((r) => kinds.get(r.goalId) === kind);
+    return rows.length
+      ? {
+          planned: rows.reduce((s, r) => s + r.budgetedMinor, 0),
+          moved: rows.reduce((s, r) => s + r.movedMinor, 0),
+        }
+      : null;
+  };
+  const saving = goalsOf('save');
+  const paying = goalsOf('pay_down');
+  const toBudget = leftToBudget(data);
   const line = (
     label: string,
     planned: number,
     done: number,
     doneLabel: string,
     mark: number | null,
+    spending = false,
   ) => {
     const left = planned - done;
     const used = planned > 0 ? Math.min(1, done / planned) : done > 0 ? 1 : 0;
-    const over = left < 0 && label === 'Expenses';
+    // Over is bad only for spending: more income, or more moved to a goal, is good.
+    const over = spending && left < 0;
     return (
-      <div className="space-y-2 px-4 py-3">
+      <div className="space-y-2 bg-surface px-4 py-3">
         <p className="flex justify-between gap-3 text-sm">
           <span className="font-medium">{label}</span>
           <span className="text-muted">{money(planned)} planned</span>
@@ -1454,23 +1620,37 @@ function PhoneSummary({
             />
           ) : null}
         </div>
-        <p className="flex justify-between gap-3 text-sm">
+        <p className="flex flex-wrap justify-between gap-x-3 text-sm">
           <span className="font-semibold">
             {money(done)} {doneLabel}
           </span>
           <span className="text-muted">
-            <span className={clsx('font-semibold', over ? 'text-danger' : 'text-accent-text')}>
+            <span
+              className={clsx(
+                'font-semibold',
+                over ? 'text-danger' : left === 0 ? 'text-muted' : 'text-accent-text',
+              )}
+            >
               {money(Math.abs(left))}
             </span>{' '}
-            {over ? 'over' : left < 0 ? 'more' : 'remaining'}
+            {over ? 'over' : left < 0 ? (spending ? 'more' : 'ahead') : 'remaining'}
           </span>
         </p>
       </div>
     );
   };
+  const lines = [
+    line('Income', totals.incomeBudgetedMinor, earned, 'earned', null),
+    line('Expenses', totals.budgetedMinor, totals.spentMinor, 'spent', progress, true),
+    saving ? line('Save up', saving.planned, saving.moved, 'contributed', progress) : null,
+    paying ? line('Pay down', paying.planned, paying.moved, 'paid down', progress) : null,
+  ].filter((l) => l !== null);
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-surface sm:hidden">
-      <h2>
+    <section
+      aria-label="Summary"
+      className="overflow-hidden rounded-xl border border-border bg-surface"
+    >
+      <h2 className="sm:hidden">
         <button
           type="button"
           onClick={onToggle}
@@ -1485,13 +1665,48 @@ function PhoneSummary({
           Summary
         </button>
       </h2>
-      {open ? (
-        <div id="budget-summary" className="divide-y divide-border border-t border-border">
-          {line('Income', totals.incomeBudgetedMinor, earned, 'earned', null)}
-          {line('Expenses', totals.budgetedMinor, totals.spentMinor, 'spent', progress)}
-        </div>
+      {totals.incomeBudgetedMinor > 0 ? (
+        // On a phone it's in the bar that stays on top as you scroll.
+        <p
+          className={clsx(
+            'hidden items-baseline gap-2 border-b border-border px-4 py-3 sm:flex',
+            toBudget > 0 ? 'bg-accent-soft' : toBudget < 0 ? 'bg-danger-soft' : 'bg-surface-2',
+          )}
+        >
+          <span
+            className={clsx(
+              'text-2xl font-semibold',
+              toBudget > 0 ? 'text-accent-text' : toBudget < 0 ? 'text-danger' : 'text-muted',
+            )}
+          >
+            {money(Math.abs(toBudget))}
+          </span>
+          <span className="text-sm font-medium text-muted">
+            {toBudget < 0 ? 'over budget' : 'left to budget'}
+          </span>
+        </p>
       ) : null}
+      <div
+        id="budget-summary"
+        className={clsx(
+          'grid gap-px bg-border max-sm:border-t max-sm:border-border sm:grid-cols-2',
+          lines.length > 2 ? 'lg:grid-cols-4' : null,
+          !open && 'max-sm:hidden',
+        )}
+      >
+        {lines}
+      </div>
     </section>
+  );
+}
+
+/** What's left to budget (Monarch's): income expected, less every limit and goal planned. */
+function leftToBudget(data: BudgetMonth & { view: CategoryLimitsMonth }) {
+  const { totals, goals } = data.view;
+  return (
+    totals.incomeBudgetedMinor -
+    totals.budgetedMinor -
+    goals.reduce((s, g) => s + g.budgetedMinor, 0)
   );
 }
 
@@ -2235,12 +2450,14 @@ const STRATEGY_DESCRIPTIONS: Record<StrategyName, string> = {
 function FlexBody({
   data,
   groups,
+  householdId,
   onOpen,
   onYearly,
   onFlexible,
 }: {
   data: BudgetMonth & { view: FlexMonth };
   groups: CategoryGroup[];
+  householdId: string;
   onOpen: (e: { categoryId: string; row?: CategoryLimitRow }) => void;
   onYearly: ((e: { categoryId: string; yearlyMinor: number | null }) => void) | undefined;
   onFlexible: (() => void) | undefined;
@@ -2402,6 +2619,8 @@ function FlexBody({
           )}
         </section>
       </div>
+
+      <GoalLines householdId={householdId} data={data} rows={view.goals} standalone />
     </>
   );
 }
@@ -2664,6 +2883,12 @@ function ZeroBasedBody({
             </section>
           );
         })}
+        <GoalLines
+          householdId={householdId}
+          data={data}
+          // What reached the goal is `sent`; `moved` is Move money's.
+          rows={view.goals.map((g) => ({ ...g, movedMinor: g.sentMinor }))}
+        />
       </div>
     </>
   );
@@ -2964,7 +3189,7 @@ function PercentageBody({
                 <span className="font-semibold">{money(b.spentMinor)}</span>{' '}
                 <span className="text-muted">of {money(b.targetMinor)}</span>
               </p>
-              {b.categories.length || b.movedToSavingsMinor ? (
+              {b.categories.length || b.movedToSavingsMinor || b.goals.length ? (
                 <ul className="divide-y divide-border text-sm">
                   {b.categories.map((c) => (
                     <li key={c.categoryId} className="flex items-center gap-2 py-1">
@@ -2987,6 +3212,28 @@ function PercentageBody({
                       {money(b.movedToSavingsMinor)}
                     </li>
                   ) : null}
+                  {/* What reached goals (G5): saving goals' share of the line above, and extra
+                      paid on debts, which is added. */}
+                  {b.goals.map((g) => {
+                    const goal = data.goals.find((x) => x.id === g.goalId);
+                    if (!goal) return null;
+                    return (
+                      <li
+                        key={g.goalId}
+                        className={clsx(
+                          'flex items-center gap-2 py-1',
+                          goal.kind === 'save' && 'pl-3 text-muted',
+                        )}
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          {goal.kind === 'pay_down'
+                            ? `Extra paid on ${goal.name}`
+                            : `Toward ${goal.name}`}
+                        </span>
+                        {money(g.movedMinor)}
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="text-sm text-muted">Nothing yet this month.</p>
