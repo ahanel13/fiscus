@@ -1,0 +1,74 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cash flow, nothing confirmed yet · prototype</title>
+    <link rel="stylesheet" href="prototype.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="hh">Rivera Home</div>
+        <div class="search">Search</div>
+        <a>Dashboard</a>
+        <div class="label">MONEY</div>
+        <a>Accounts</a><a>Transactions</a><a>Bills &amp; recurring</a>
+        <div class="label">PLAN</div>
+        <a>Budget</a><a>Goals</a><a class="on">Planning</a>
+        <div class="label">ANALYZE</div>
+        <a>Reports</a><a>Investments</a>
+        <div class="label">TOGETHER</div>
+        <a>Shared costs</a>
+        <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 12px">
+          <a>Household settings</a><a>Alex</a>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="row"><h1>Planning</h1></div>
+        </div>
+        <div class="content">
+          <span class="seg"
+            ><span class="on">Cash flow</span><span>Retirement</span><span>FIRE</span></span
+          >
+          <div
+            class="card"
+            style="max-width: 640px; margin: 24px auto; text-align: center; padding: 28px"
+          >
+            <h2>See what’s ahead in your accounts</h2>
+            <p class="muted">
+              The forecast is built from your bills and paychecks. Fiscus found 6 that repeat;
+              confirm them, and you’ll see each account’s balance day by day for the next 90 days.
+            </p>
+            <div class="list" style="text-align: left; margin: 14px 0">
+              <div class="item row spread">
+                <span
+                  ><b>Brightline Labs payroll</b>
+                  <span class="small muted">every 2 weeks · +$2,412.36</span></span
+                ><span class="btn sm">Confirm</span>
+              </div>
+              <div class="item row spread">
+                <span><b>Mortgage</b> <span class="small muted">monthly · $2,140.00</span></span
+                ><span class="btn sm">Confirm</span>
+              </div>
+              <div class="item row spread">
+                <span
+                  ><b>Little Oaks Daycare</b>
+                  <span class="small muted">monthly · $1,450.00</span></span
+                ><span class="btn sm">Confirm</span>
+              </div>
+            </div>
+            <span class="link">Review all 6 in Bills &amp; recurring</span>
+            <p class="small muted" style="margin-top: 14px">
+              Card statements from the bank and your budget already count. Without a budget,
+              everyday spending is what you spent a day over the last 3 months.
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="proto">Prototype (#344), not the built app</div>
+  </body>
+</html>
