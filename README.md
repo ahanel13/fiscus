@@ -61,6 +61,12 @@ your household's menu to share a household.
 By default Fiscus listens on `127.0.0.1:8080` only. Put it behind a reverse proxy with HTTPS
 (Caddy, nginx, Traefik), or see the comments in `.env` for LAN access over plain HTTP.
 
+**On a phone:** open Fiscus in the browser and choose **Install** (Chrome, Edge, Samsung Internet)
+or **Add to Home screen** (Firefox, Safari). It opens in its own window, without the address bar.
+Browsers install it as a real app only over HTTPS; over plain HTTP you get a shortcut that opens
+in the browser. On Android, Firefox always marks its home-screen icons with a small Firefox badge;
+Chrome, Edge and Samsung Internet don't.
+
 **Backups:** the database is dumped daily into the `db-backups` volume. Copy the encrypted files
 off the server, put the volume itself on an encrypted disk, and try a restore now and then
 ([backups](docs/security/backups.md)).

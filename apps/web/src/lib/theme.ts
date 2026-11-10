@@ -26,4 +26,8 @@ export function applyTheme(pref: ThemePreference): void {
   const dark =
     resolveTheme(pref, window.matchMedia('(prefers-color-scheme: dark)').matches) === 'dark';
   document.documentElement.classList.toggle('dark', dark);
+  // The phone's status bar, when installed as an app: the page's background (--bg).
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', dark ? '#121212' : '#f6f7f6');
 }
