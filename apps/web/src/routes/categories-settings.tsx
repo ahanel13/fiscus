@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { Category, CategoryGroup, Tag } from '@fiscus/shared';
+import { type Category, type CategoryGroup, isEmoji, type Tag } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, FolderInput, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Archive, FolderInput, Pencil, Plus, SmilePlus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { categoriesQuery, tagsQuery } from '../api/queries.js';
@@ -125,6 +125,22 @@ export function CategoriesSettings({
               <ul className="divide-y divide-border rounded-lg border border-border">
                 {g.categories.map((c) => (
                   <li key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
+                    {canEdit ? (
+                      <IconPicker
+                        c={c}
+                        onChange={(icon) =>
+                          call.mutateAsync({
+                            method: 'PATCH',
+                            path: `/categories/${c.id}`,
+                            body: { icon },
+                          })
+                        }
+                      />
+                    ) : (
+                      <span aria-hidden className="w-7 text-center">
+                        {c.icon}
+                      </span>
+                    )}
                     <span className={c.archived ? 'flex-1 text-muted line-through' : 'flex-1'}>
                       {c.name}
                     </span>
@@ -272,6 +288,104 @@ const KIND_LABELS: Record<CategoryGroup['kind'], string> = {
   savings: 'Savings',
   transfer: 'Transfers',
 };
+
+/** Emoji to choose from; any other can be typed or pasted. */
+const ICONS: [string, string[]][] = [
+  ['Money', ['💰', '💵', '💳', '🏦', '📈', '📊', '🧾', '🪙', '🐷', '💸']],
+  ['Home', ['🏠', '🏡', '💡', '🔥', '💧', '📱', '📺', '🛋️', '🔧', '🧹']],
+  ['Food', ['🛒', '🍽️', '☕', '🍔', '🍕', '🥗', '🍺', '🍷']],
+  ['Getting around', ['🚗', '🚙', '⛽', '🚇', '🚌', '🚲', '🅿️', '✈️', '🚕']],
+  ['Shopping', ['👕', '👟', '🛍️', '💻', '🎮', '📚', '🧴', '🎁']],
+  ['Health', ['🩺', '💊', '🏋️', '🦷', '👓', '💇']],
+  ['Fun', ['🎬', '🎵', '🎨', '🎟️', '⚽', '🏖️', '🏕️', '🎉', '🔁']],
+  ['Family', ['🧒', '🧸', '🐾', '🎓', '👶', '🤝', '❤️']],
+  ['Other', ['🔄', '⚖️', '📦', '❔', '🏛️', '🛡️', '🧳', '🏨']],
+];
+
+/** A category's icon (#423): an emoji, chosen from a few or typed, or none. */
+function IconPicker({
+  c,
+  onChange,
+}: {
+  c: Category;
+  onChange: (icon: string | null) => Promise<unknown>;
+}) {
+  const [typed, setTyped] = useState('');
+  const valid = isEmoji(typed.trim());
+  return (
+    <DialogTrigger onOpenChange={() => setTyped('')}>
+      <Tooltip content={c.icon ? 'Change icon' : 'Add an icon'}>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={c.icon ? `Change the icon of ${c.name}` : `Add an icon to ${c.name}`}
+          className="w-7 px-0 text-base"
+        >
+          {c.icon ?? <SmilePlus aria-hidden className="size-3.5 text-muted" />}
+        </Button>
+      </Tooltip>
+      <Dialog title={`Icon for ${c.name}`} size="sm">
+        {(close) => {
+          const choose = (icon: string | null) => void onChange(icon).then(close);
+          return (
+            <div className="space-y-4">
+              {ICONS.map(([group, icons]) => (
+                <section key={group} aria-label={group}>
+                  <h3 className="mb-1 text-xs font-semibold text-muted">{group}</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {icons.map((icon) => (
+                      <Button
+                        key={icon}
+                        variant={icon === c.icon ? 'secondary' : 'ghost'}
+                        size="sm"
+                        aria-label={icon}
+                        aria-pressed={icon === c.icon}
+                        className="size-10 px-0"
+                        onPress={() => choose(icon)}
+                      >
+                        <span className="text-xl leading-none">{icon}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+              <Form
+                className="flex items-start gap-2 space-y-0"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (valid) choose(typed.trim());
+                }}
+              >
+                <TextField
+                  className="flex-1"
+                  label="Or type or paste one"
+                  value={typed}
+                  onChange={setTyped}
+                  maxLength={32}
+                  isInvalid={typed.trim() !== '' && !valid}
+                  errorMessage="One emoji"
+                />
+                <Button type="submit" variant="secondary" className="mt-7" isDisabled={!valid}>
+                  Use
+                </Button>
+              </Form>
+              <DialogActions>
+                {c.icon ? (
+                  <Button variant="secondary" className="mr-auto" onPress={() => choose(null)}>
+                    No icon
+                  </Button>
+                ) : null}
+                <Button variant="secondary" onPress={close}>
+                  Cancel
+                </Button>
+              </DialogActions>
+            </div>
+          );
+        }}
+      </Dialog>
+    </DialogTrigger>
+  );
+}
 
 function NameDialog({
   title,

@@ -185,13 +185,14 @@ describe('transaction visibility (RLS)', () => {
   it('seeds the default categories once per household', async () => {
     const { rows } = await owner.query(
       `SELECT count(DISTINCT g.id)::int AS groups, count(c.id)::int AS cats,
-              array_agg(c.system_key ORDER BY c.system_key) FILTER (WHERE c.system_key IS NOT NULL) AS keys
+              count(c.icon)::int AS icons, array_agg(c.system_key ORDER BY c.system_key) FILTER (WHERE c.system_key IS NOT NULL) AS keys
        FROM category_groups g JOIN categories c ON c.group_id = g.id WHERE g.household_id = $1`,
       [H],
     );
     expect(rows[0]).toEqual({
       groups: 14,
       cats: 42,
+      icons: 42, // each with its emoji (#423)
       keys: ['settlement', 'transfer', 'uncategorized'],
     });
     await owner.query(`SELECT fiscus_seed_default_categories($1)`, [H]); // idempotent
