@@ -46,6 +46,7 @@ import type {
   BudgetYear,
   BudgetYearRow,
   createBudgetSchema,
+  MoveMoney,
   ScopePreview,
   setPercentageSchema,
   StrategyPreview,
@@ -573,15 +574,16 @@ export class BudgetsService {
   }
 
   /**
-   * Move money, or Cover (zero-based, D9): from one category's available money to another's, in
-   * a month that runs zero-based. Ready to assign doesn't change. A category can't give more than
-   * it has available.
+   * Move money, or Cover (zero-based, D9): from one line's available money to another's, in a
+   * month that runs zero-based. A line is a category, or a goal of the budget's scope (G4) and
+   * its to-move money, never its claims (goals and budgets §7). Ready to assign doesn't change. A
+   * line can't give more than it has available; a goal ahead has nothing to give.
    */
   async moveMoney(
     ctx: HouseholdContext,
     budgetId: string,
     month: string,
-    move: { fromCategoryId: string; toCategoryId: string; amountMinor: number },
+    move: MoveMoney,
   ): Promise<void> {
     await this.scope.run(ctx, async (tx, activity) => {
       const row = await findBudget(tx, budgetId);
@@ -589,8 +591,25 @@ export class BudgetsService {
       checkCanEdit(ctx, scope);
       if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
       const spending = await spendingCategories(tx);
-      if (!spending.has(move.fromCategoryId) || !spending.has(move.toCategoryId)) {
-        throw problems.notFound();
+      for (const id of [move.fromCategoryId, move.toCategoryId]) {
+        if (id && !spending.has(id)) throw problems.notFound();
+      }
+      for (const id of [move.fromGoalId, move.toGoalId]) {
+        if (!id) continue;
+        const [goal] = await tx
+          .select({ memberId: goals.memberId, name: goals.name, archivedAt: goals.archivedAt })
+          .from(goals)
+          .where(eq(goals.id, id));
+        // Another scope's goal isn't in this budget (G4).
+        if (!goal || goal.memberId !== row.memberId) throw problems.notFound();
+        if (goal.archivedAt) {
+          throw new Problem(
+            409,
+            'goal_archived',
+            `${goal.name} is archived`,
+            'Bring it back first.',
+          );
+        }
       }
       if (!(await runsZeroBased(tx, budgetId, month))) {
         throw new Problem(
@@ -604,12 +623,16 @@ export class BudgetsService {
       const ledger = await budgetActivity(tx, ctx, scope, monthOfDate(row.startsMonth), month);
       const view = computeBudgetMonth(definition, month, ledger, STRATEGY_REGISTRY)
         .view as ZeroBasedView;
-      const available = view.rows.find((r) => r.categoryId === move.fromCategoryId)?.leftMinor ?? 0;
+      const available = move.fromGoalId
+        ? (view.goals.find((g) => g.goalId === move.fromGoalId)?.leftMinor ?? 0)
+        : (view.rows.find((r) => r.categoryId === move.fromCategoryId)?.leftMinor ?? 0);
       if (available < move.amountMinor) {
         throw new Problem(
           422,
           'not_enough_available',
-          'That category doesn’t have that much',
+          move.fromGoalId
+            ? 'That goal doesn’t have that much to move'
+            : 'That category doesn’t have that much',
           available > 0
             ? 'Move what it has available, or less.'
             : 'It has nothing available to move.',
@@ -619,7 +642,11 @@ export class BudgetsService {
         householdId: ctx.householdId,
         budgetId,
         month: firstDayOf(month),
-        ...move,
+        fromCategoryId: move.fromCategoryId ?? null,
+        fromGoalId: move.fromGoalId ?? null,
+        toCategoryId: move.toCategoryId ?? null,
+        toGoalId: move.toGoalId ?? null,
+        amountMinor: move.amountMinor,
       });
       await record(activity, row, 'budget.money_moved', { month, ...move });
     });

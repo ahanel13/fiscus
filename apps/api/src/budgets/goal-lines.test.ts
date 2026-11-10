@@ -283,4 +283,82 @@ describe('budgets: goal lines', () => {
     expect(next.goals.find((g) => g.goalId === goal.visa)?.budgetedMinor).toBe(0);
     expect(next.ready.assignedMinor).toBe(45000);
   });
+
+  it('moves money to and from a goal line’s to-move money in zero-based (goals and budgets §7)', async () => {
+    const cats = (
+      (await A.get(url('/categories'))).body.data as {
+        categories: { id: string; name: string }[];
+      }[]
+    ).flatMap((g) => g.categories);
+    const groceries = cats.find((c) => c.name === 'Groceries')!.id;
+    const put = await A.request(
+      'PUT',
+      url(`/budgets/${budgetId}/months/${month(1)}/amounts/${groceries}`),
+      { amountMinor: 30000, applyTo: 'month' },
+    );
+    expect(put.status, JSON.stringify(put.body)).toBe(204);
+    const move = (body: Record<string, unknown>, c = A) =>
+      c.post(url(`/budgets/${budgetId}/months/${month(1)}/moves`), body);
+    const state = async () => {
+      const v = (await read(month(1))).view as ZeroBasedMonth;
+      return {
+        trip: v.goals.find((g) => g.goalId === goal.trip)!,
+        visa: v.goals.find((g) => g.goalId === goal.visa)!,
+        groceries: v.rows.find((r) => r.categoryId === groceries)!.leftMinor,
+        ready: v.ready.assignedMinor,
+      };
+    };
+
+    const assigned = (await state()).ready;
+    // From a category to a goal, and back: Ready to assign doesn't change.
+    expect(
+      (await move({ fromCategoryId: groceries, toGoalId: goal.trip, amountMinor: 10000 })).status,
+    ).toBe(204);
+    let s = await state();
+    expect([s.trip.movedMinor, s.trip.leftMinor, s.groceries, s.ready]).toEqual([
+      10000,
+      55000,
+      20000,
+      assigned,
+    ]);
+    expect(
+      (await move({ fromGoalId: goal.trip, toCategoryId: groceries, amountMinor: 20000 })).status,
+    ).toBe(204);
+    // From one goal to another.
+    expect(
+      (await move({ fromGoalId: goal.trip, toGoalId: goal.visa, amountMinor: 5000 })).status,
+    ).toBe(204);
+    s = await state();
+    expect([s.trip.movedMinor, s.trip.leftMinor, s.visa.movedMinor, s.groceries]).toEqual([
+      -15000, 30000, 5000, 40000,
+    ]);
+
+    // Only what's still to move, never the goal's claims.
+    const tooMuch = await move({
+      fromGoalId: goal.trip,
+      toCategoryId: groceries,
+      amountMinor: 30001,
+    });
+    expect([tooMuch.status, tooMuch.body.code]).toEqual([422, 'not_enough_available']);
+    // Not an archived goal, another scope's, a viewer, or a line to itself.
+    const archived = await move({
+      fromCategoryId: groceries,
+      toGoalId: goal.house,
+      amountMinor: 100,
+    });
+    expect([archived.status, archived.body.code]).toEqual([409, 'goal_archived']);
+    expect(
+      (await move({ fromCategoryId: groceries, toGoalId: goal.mine, amountMinor: 100 })).status,
+    ).toBe(404);
+    expect(
+      (await move({ fromCategoryId: groceries, toGoalId: goal.trip, amountMinor: 100 }, V)).status,
+    ).toBe(403);
+    for (const bad of [
+      { fromGoalId: goal.trip, toGoalId: goal.trip },
+      { fromCategoryId: groceries, fromGoalId: goal.trip, toGoalId: goal.visa },
+      { toGoalId: goal.visa },
+    ])
+      expect((await move({ ...bad, amountMinor: 100 })).status).toBe(422);
+    expect((await state()).trip.leftMinor).toBe(30000);
+  });
 });

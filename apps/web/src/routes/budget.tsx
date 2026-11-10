@@ -58,6 +58,7 @@ import {
   SegmentedControl,
   Select,
   SelectItem,
+  SelectSection,
   Skeleton,
   Switch,
   TextField,
@@ -2895,8 +2896,9 @@ function ZeroBasedBody({
 }
 
 /**
- * Move money between two categories this month, or Cover an overspent one (D9). Cover suggests
- * the category with the most available; Ready to assign doesn't change.
+ * Move money between two lines this month, or Cover an overspent one (D9). A line is a category,
+ * or a goal's money still to move (goals and budgets §7), never what it already has. Cover
+ * suggests the line with the most available; Ready to assign doesn't change.
  */
 function MoveDialog({
   householdId,
@@ -2913,26 +2915,41 @@ function MoveDialog({
 }) {
   const queryClient = useQueryClient();
   const excluded = new Set(data.excluded);
-  const name = (id: string) => categoryName(groups, id);
+  // Lines by key: a category's id, or `goal:` and a goal's.
+  const goalKey = (id: string) => `goal:${id}`;
+  const goalOf = (key: string) => (key.startsWith('goal:') ? key.slice(5) : null);
+  const goalNames = new Map(data.goals.map((g) => [g.id, g.name]));
+  const name = (key: string) => {
+    const goal = goalOf(key);
+    return goal ? (goalNames.get(goal) ?? 'Goal') : categoryName(groups, key);
+  };
   const fmt = (minor: number) => formatMinor(minor, data.currency);
   const cover = start.toCategoryId !== undefined && start.amountMinor !== undefined;
-  const withMoney = data.view.rows
+  const withMoney = [
+    ...data.view.rows.map((r) => ({ key: r.categoryId, leftMinor: r.leftMinor, goal: false })),
+    ...data.view.goals.map((g) => ({ key: goalKey(g.goalId), leftMinor: g.leftMinor, goal: true })),
+  ]
     .filter((r) => r.leftMinor > 0)
     .sort((a, b) => b.leftMinor - a.leftMinor);
   const categories = groups
     .filter((g) => g.kind !== 'income' && g.kind !== 'transfer')
     .flatMap((g) => g.categories)
     .filter((c) => !c.archived && !excluded.has(c.id));
+  const goalLines = data.goals.filter((g) => !g.archived);
   const [to, setTo] = useState<string | null>(start.toCategoryId ?? null);
   const [from, setFrom] = useState<string | null>(
-    withMoney.find((r) => r.categoryId !== start.toCategoryId)?.categoryId ?? null,
+    withMoney.find((r) => r.key !== start.toCategoryId)?.key ?? null,
   );
   const [amount, setAmount] = useState<number | null>(start.amountMinor ?? null);
-  const available = withMoney.find((r) => r.categoryId === from)?.leftMinor ?? 0;
+  const available = withMoney.find((r) => r.key === from)?.leftMinor ?? 0;
+  const side = (key: string | null, which: 'from' | 'to') => {
+    const goal = key ? goalOf(key) : null;
+    return goal ? { [`${which}GoalId`]: goal } : { [`${which}CategoryId`]: key };
+  };
   const save = useMutation({
     mutationFn: () =>
       api('POST', `${base(householdId)}/budgets/${data.budget.id}/months/${data.month}/moves`, {
-        body: { fromCategoryId: from, toCategoryId: to, amountMinor: amount },
+        body: { ...side(from, 'from'), ...side(to, 'to'), amountMinor: amount },
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -2957,7 +2974,7 @@ function MoveDialog({
         {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
         {withMoney.length === 0 ? (
           <Alert tone="info">
-            No category has money available to move. Assign more from Ready to assign instead.
+            Nothing has money available to move. Assign more from Ready to assign instead.
           </Alert>
         ) : null}
         <AmountInput
@@ -2978,22 +2995,35 @@ function MoveDialog({
           isDisabled={withMoney.length === 0}
         >
           {withMoney
-            .filter((r) => r.categoryId !== to)
+            .filter((r) => r.key !== to)
             .map((r) => (
-              <SelectItem key={r.categoryId} id={r.categoryId} textValue={name(r.categoryId)}>
-                {name(r.categoryId)} · {fmt(r.leftMinor)} available
+              <SelectItem key={r.key} id={r.key} textValue={name(r.key)}>
+                {name(r.key)} · {fmt(r.leftMinor)} {r.goal ? 'to move' : 'available'}
               </SelectItem>
             ))}
         </Select>
         {cover ? null : (
           <Select label="To" value={to} onChange={(v) => setTo(v ? String(v) : null)}>
-            {categories
-              .filter((c) => c.id !== from)
-              .map((c) => (
-                <SelectItem key={c.id} id={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
+            <SelectSection title="Categories">
+              {categories
+                .filter((c) => c.id !== from)
+                .map((c) => (
+                  <SelectItem key={c.id} id={c.id} textValue={c.name}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+            </SelectSection>
+            {goalLines.length ? (
+              <SelectSection title="Goals">
+                {goalLines
+                  .filter((g) => goalKey(g.id) !== from)
+                  .map((g) => (
+                    <SelectItem key={goalKey(g.id)} id={goalKey(g.id)} textValue={g.name}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+              </SelectSection>
+            ) : null}
           </Select>
         )}
         <DialogActions>

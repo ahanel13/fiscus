@@ -126,16 +126,27 @@ export const switchStrategySchema = z.object({
 });
 
 /**
- * Move money, or Cover (zero-based, D9): from one category's available money to another's, this
- * month. Ready to assign doesn't change.
+ * Move money, or Cover (zero-based, D9): from one line's available money to another's, this
+ * month. A line is a category, or a goal's to-move money (goals and budgets §7), never its claims.
+ * Ready to assign doesn't change.
  */
 export const moveMoneySchema = z
   .object({
-    fromCategoryId: z.uuid(),
-    toCategoryId: z.uuid(),
+    fromCategoryId: z.uuid().optional(),
+    fromGoalId: z.uuid().optional(),
+    toCategoryId: z.uuid().optional(),
+    toGoalId: z.uuid().optional(),
     amountMinor: z.number().int().min(1).max(1_000_000_000_00),
   })
-  .refine((m) => m.fromCategoryId !== m.toCategoryId, 'Move money between two categories');
+  .refine(
+    (m) => !m.fromCategoryId !== !m.fromGoalId && !m.toCategoryId !== !m.toGoalId,
+    'Move money from one line to one line: a category or a goal on each side',
+  )
+  .refine(
+    (m) => (m.fromCategoryId ?? m.fromGoalId) !== (m.toCategoryId ?? m.toGoalId),
+    'Move money between two lines',
+  );
+export type MoveMoney = z.infer<typeof moveMoneySchema>;
 
 export interface CategoryLimitRow {
   categoryId: string;

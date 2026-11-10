@@ -328,12 +328,14 @@ export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
     .select()
     .from(budgetStrategies)
     .where(eq(budgetStrategies.budgetId, row.id));
-  // Move money and Cover (zero-based, D9), net per category per month.
+  // Move money and Cover (zero-based, D9), net per line (a category or a goal) per month.
   const moves = new Map<string, Map<string, number>>();
   for (const m of await tx.select().from(budgetMoves).where(eq(budgetMoves.budgetId, row.id))) {
     const net = moves.get(monthOfDate(m.month)) ?? new Map<string, number>();
-    net.set(m.fromCategoryId, (net.get(m.fromCategoryId) ?? 0) - m.amountMinor);
-    net.set(m.toCategoryId, (net.get(m.toCategoryId) ?? 0) + m.amountMinor);
+    const from = (m.fromCategoryId ?? m.fromGoalId)!;
+    const to = (m.toCategoryId ?? m.toGoalId)!;
+    net.set(from, (net.get(from) ?? 0) - m.amountMinor);
+    net.set(to, (net.get(to) ?? 0) + m.amountMinor);
     moves.set(monthOfDate(m.month), net);
   }
   return {

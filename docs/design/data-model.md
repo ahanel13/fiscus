@@ -383,6 +383,8 @@ Budgets (#98, migrations `0053`, `0054`; [budgeting walkthrough](walkthroughs/bu
 
 **`budget_categories`**: `(budget_id, category_id)` PK, `household_id`, `rollover` bool, `bucket` text null (50/30/20, D10), `yearly_minor` null (non-monthly, D12), `excluded` bool ("Don't budget": left out of the budget's rows, totals, and spending without a limit; still in reports). How the budget treats a category in every month.
 
+**`budget_moves`** (#100, migrations `0085`, `0086`, `0093`; D9): **Move money** and **Cover** in zero-based months. `household_id`, `budget_id`, `month`, one source (`from_category_id` or `from_goal_id`) and one destination (`to_category_id` or `to_goal_id`), never the same line, and `amount_minor` (> 0). A goal side moves its line's to-move money, never its claims; a goal you can't see can't be named (restrictive policy `budget_moves_goal`). Each move is kept; a line's moves add up to its net for the month.
+
 All three tables under `budgets` have composite FKs to it and to `categories`, cascading, and are visible exactly when their budget is.
 
 ### 3.7 Shared costs
