@@ -54,6 +54,7 @@ import {
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { MerchantLogo } from '../components/MerchantLogo.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { RecurringDialog } from '../components/RecurringDialog.js';
 import {
@@ -428,6 +429,7 @@ export function TransactionList({
                   </Cell>
                   <Cell>
                     <span className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+                      <MerchantLogo t={t} size="sm" />
                       <span className="max-w-full shrink-0 truncate font-medium">
                         {t.displayName}
                       </span>
@@ -497,6 +499,7 @@ export function TransactionList({
                     />
                   </span>
                 ) : null}
+                <MerchantLogo t={t} />
                 <button
                   type="button"
                   {...(onLongPress && t.can.categorize ? longPress.handlers(t.id) : {})}

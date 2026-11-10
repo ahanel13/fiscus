@@ -207,6 +207,8 @@ export interface Transaction {
   currency: string;
   displayName: string;
   originalDescription: string;
+  /** The merchant's logo, at `/api/v1/merchant-logos/:id`, once fetched (#423); else null. */
+  merchantLogoId: string | null;
   categoryId: string | null;
   reviewStatus: 'needs_review' | 'reviewed';
   excluded: boolean;

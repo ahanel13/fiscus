@@ -7,6 +7,7 @@ import { ConnectService } from './connect.service.js';
 import { ConnectionsController } from './connections.controller.js';
 import { ConnectionsService } from './connections.service.js';
 import { InstitutionsController } from './institutions.controller.js';
+import { MerchantLogosController } from './merchant-logos.controller.js';
 import { PlaidController } from './plaid.controller.js';
 import { PlaidKeysController } from './plaid-keys.controller.js';
 import { PlaidKeysService } from './plaid-keys.service.js';
@@ -17,6 +18,7 @@ import { SimpleFinController } from './simplefin.controller.js';
   controllers: [
     ConnectionsController,
     InstitutionsController,
+    MerchantLogosController,
     PlaidController,
     PlaidKeysController,
     SimpleFinController,

@@ -170,6 +170,8 @@ The provider interface these tables serve, and the conformance suite every adapt
 
 **`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id` (UNIQUE with `provider`), `name`, `url`, `logo_png` bytea null (a PNG of at most 64 KB, checked by its signature), `color` null (`#rrggbb`), `display_checked_at` (#423). Name, logo and color come from Plaid's `/institutions/get_by_id` with optional metadata when a bank is connected, and the worker asks again at most monthly after a sync, so banks connected earlier get theirs and rebrands show. The logo is served from Fiscus's own origin (`GET /api/v1/institutions/:id/logo`), so the Content-Security-Policy stays `img-src 'self'` and the provider never sees who looks. SimpleFIN has none.
 
+**`merchant_logos`** (#423, migration `0093`): global reference data like `institutions` (no household, no RLS): `provider`, `provider_key` (UNIQUE with `provider`: Plaid's `merchant_entity_id`, else the logo's address), `source_url` (the provider's CDN), `image` bytea null and `content_type` (PNG, JPEG or WebP by their first bytes, at most 64 KB, by a check constraint), `fetched_at`, `failures` and `failed_at`. Sync makes a row the first time a merchant is seen and points the transaction at it (`transactions.merchant_logo_id`); after each sync the worker fetches up to 25 not fetched yet, only from `https://plaid-*.plaid.com` with no redirects, giving up after 3 failures. The api offers a transaction's logo only once fetched, and serves it from Fiscus's own origin (`GET /api/v1/merchant-logos/:id`), so browsers never ask the provider's CDN. A row says nothing about who bought there; only a transaction you can see leads to it.
+
 **`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008, #83): `household_id`, `provider` (`plaid` only), `client_id`, `secret_enc` (encrypted with the household key, bound to the row; emptied once no connection needs it), `env`, `created_by_member_id`, `revoked_at`. At most one active set (`revoked_at` null) per household, kept by the api under an advisory lock: replacing keys revokes the old set, which still serves the connections made with it. Rows stay for the connections that name them. Readable in the household (members connecting a bank use the household's keys; the api never returns the secret, HH-08), changed by household owners or the worker. See [aggregation](aggregation.md) §6a.
 
 **`connections`**: one per Plaid Item or SimpleFIN access URL. File imports and manual accounts don't need one.
@@ -300,7 +302,8 @@ An account's current balance (`balance` in the api) is its latest snapshot; for 
 | pending | bool | |
 | original_description | text | Raw from provider/import. Untrusted (prompt-injection surface, ADR 0009) |
 | display_name | text | After merchant cleanup and rename rules |
-| merchant_id | uuid FK null | |
+| merchant_id | uuid FK null | Planned |
+| merchant_logo_id | uuid FK null | The merchant's logo from the provider (#423), in `merchant_logos`; set by sync, never by a person; set null if the logo row goes |
 | category_id | uuid FK null | Null = uncategorized |
 | review_status | enum `needs_review`/`reviewed` | |
 | reviewer_member_id | uuid FK null | Assigned reviewer |
@@ -346,7 +349,7 @@ The effective date for ranges, budgets, and reports is `date_override` if set, e
 
 **`transaction_attributions`**: `(transaction_id, member_id)` PK, `share_bps`. **No rows = inherit** from `account_owners`. Split children carry their own rows. Σ = 10 000 is enforced like `account_owners`.
 
-**`merchants`**: `household_id`, `name`, `normalized_key` (UNIQUE per household), `logo_url`.
+**`merchants`** (planned): `household_id`, `name`, `normalized_key` (UNIQUE per household). Logos aren't kept here: they're global, in `merchant_logos`.
 
 **`category_groups`**: `household_id`, `name`, `kind` enum `income`/`fixed`/`flexible`/`non_monthly`/`savings`/`transfer`, `sort_order`.
 

@@ -55,6 +55,8 @@ export interface RunnerDeps {
   crypto: FieldCrypto;
   providers: ProviderRegistry;
   handlers: JobHandlers;
+  /** How merchants' logos are fetched (#423); the platform's `fetch` by default. */
+  fetchLogo?: typeof fetch;
   logger?: Pick<Logger, 'log' | 'warn' | 'error'>;
 }
 
@@ -224,7 +226,15 @@ export class Runner {
       kind = jobKind;
       const handler = handlers.get(jobKind);
       if (!handler) throw new JobFailure(FAILURE.providerUnavailable);
-      const outcome = await this.#withTimeout(handler.run({ ...target, db, crypto, providers }));
+      const outcome = await this.#withTimeout(
+        handler.run({
+          ...target,
+          db,
+          crypto,
+          providers,
+          ...(this.#deps.fetchLogo ? { fetchLogo: this.#deps.fetchLogo } : {}),
+        }),
+      );
       if (outcome === 'done') {
         await this.#finish(id, { outcome: 'done' });
         this.#logger.log(`${kind} ${id}: done`);

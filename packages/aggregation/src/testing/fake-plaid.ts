@@ -114,6 +114,8 @@ export function plaidTransaction(t: ProviderTransaction) {
     authorized_date: t.authorizedDate,
     name: t.description,
     merchant_name: t.merchantName ?? null,
+    merchant_entity_id: t.merchantLogo?.key ?? null,
+    logo_url: t.merchantLogo?.url ?? null,
     payment_channel: 'in store',
     personal_finance_category: {
       primary: 'GENERAL_MERCHANDISE',

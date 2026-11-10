@@ -30,6 +30,7 @@ import {
   refreshHold,
 } from './holds.js';
 import { type Arrival, matchExisting, reportedDate } from './match.js';
+import { linkMerchantLogos } from './merchant-logos.js';
 import { mergePosted, postedInWindow, postPending, removedByBank } from './pending.js';
 
 // Bringing a sync's pages into the ledger (#80, the bank connections walkthrough D5–D9), merged
@@ -312,6 +313,7 @@ export async function applyPage(
     result.balances = (await writeProviderBalances(tx, target.connectionId, page.balances)).written;
   }
   for (const accountId of touched) await recomputeBalances(tx, accountId);
+  await linkMerchantLogos(tx, target.connectionId, incoming.values());
   return result;
 }
 

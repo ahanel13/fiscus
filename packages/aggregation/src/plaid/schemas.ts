@@ -71,6 +71,19 @@ export const plaidTransactionSchema = z.object({
   original_description: nullishString,
   /** Use this, never `name`, for the merchant (TXN-023); often null (TXN-013). */
   merchant_name: nullishString,
+  /** The merchant's stable id at Plaid, and its logo on Plaid's CDN (#423); often null. */
+  merchant_entity_id: nullishString,
+  logo_url: nullishString,
+  /** Who else took part: the merchant, a marketplace, a payment app (TXN-023). */
+  counterparties: z
+    .array(
+      z.object({
+        type: nullishString,
+        entity_id: nullishString,
+        logo_url: nullishString,
+      }),
+    )
+    .nullish(),
 });
 export type PlaidTransaction = z.infer<typeof plaidTransactionSchema>;
 
