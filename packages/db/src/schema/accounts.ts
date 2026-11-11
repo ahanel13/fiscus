@@ -60,8 +60,8 @@ export const accounts = pgTable(
     /**
      * The bank connection it syncs from (#78); null = manual or import-only. Disconnecting clears
      * it but keeps `providerAccountId`, so reconnecting can suggest linking it back (D14).
-     * Its foreign key to connections `(household_id, id)` comes a release later (upgrades §3): the
-     * previous release's tests set connection ids that name no connection.
+     * Its foreign key to connections `(household_id, id)` is in migration 0093 (#409), which
+     * clears it when the connection is deleted.
      */
     connectionId: uuid(),
     providerAccountId: text(),

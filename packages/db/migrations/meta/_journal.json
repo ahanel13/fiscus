@@ -652,6 +652,13 @@
       "when": 1793984975265,
       "tag": "0092_goal_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1794292935070,
+      "tag": "0093_accounts_connection_fk",
+      "breakpoints": true
     }
   ]
 }
