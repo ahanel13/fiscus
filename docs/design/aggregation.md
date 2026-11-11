@@ -496,7 +496,9 @@ the line per connection at the top of Accounts (`apps/web/src/components/BankCon
   returning it or its new data. `staleAccounts` names the open accounts you see that have a
   stored error, or no balance from the bank in `STALE_ACCOUNT_DAYS` (4), with that balance's
   date. Accounts shows the connection, highlighted, with where to fix it (for SimpleFIN, a link
-  to the Bridge) and whose that is, and the account's row says **Not updating**.
+  to the Bridge) and whose that is, and the account's row says **Not updating**. Its **Choose
+  accounts** lists those accounts first, highlighted with **Not updating** and their balance's
+  date, under a line saying how many and where to fix them.
 - **Refresh now** (D10). `POST …/connections/:id/refresh`, its owner only (ACC-03): `next_sync_at`
   becomes now and `refresh_requested_at` is stamped. Another within the provider's limit
   (`REFRESH_LIMIT_MS`: Plaid 15 minutes, SimpleFIN 6 hours) is 429 `refresh_too_soon`, with
@@ -509,6 +511,11 @@ the line per connection at the top of Accounts (`apps/web/src/components/BankCon
   …/connections/:id/reauthed`, which sets it `ok`, clears its failures, and makes it due now. The
   sync that follows is what shows it's fixed: if the bank still refuses, the worker puts it back.
   Recorded as `connection.signed_in_again`, seen by whoever sees its accounts.
+- **Trying SimpleFIN again.** SimpleFIN has no sign-in to redo: it stops when the Bridge refuses
+  Fiscus (403) or wants its subscription paid (402). Either way it's `login_required` and stops
+  polling. The line says which (`paymentRequired`, with a **Needs payment** badge for a 402), and
+  its owner gets **Try again**, which calls `…/reauthed` once they've fixed it at the Bridge. The
+  sync that follows shows whether it worked, as above.
 - **Not working.** After 3 days of failures, the line says so, and its owner gets "Disconnect"
   beside "Refresh now".
 - **Still bringing in history.** Until Plaid says `HISTORICAL_UPDATE_COMPLETE` (TXN-008), the
