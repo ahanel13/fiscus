@@ -36,6 +36,7 @@ import {
   membersQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
+import { CategoryName } from '../components/CategoryName.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { GoalPicture, type GoalLook, goalPhotoUrl } from '../components/GoalPicture.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -1101,7 +1102,9 @@ function MonthBody({
                         className="min-w-0 py-1 text-left"
                         aria-label={`${c.name}: what came in, and its budget`}
                       >
-                        <span className="block truncate text-sm font-medium">{c.name}</span>
+                        <span className="block truncate text-sm font-medium">
+                          <CategoryName c={c} />
+                        </span>
                         <span className="block text-xs text-muted sm:hidden">
                           {money(r.receivedMinor)} received
                         </span>
@@ -1223,6 +1226,7 @@ function MonthBody({
                           <li key={c.id}>
                             <LimitRow
                               name={c.name}
+                              icon={c.icon}
                               row={r}
                               spentMinor={r?.spentMinor ?? unbudgeted.get(c.id) ?? 0}
                               currency={currency}
@@ -1770,6 +1774,7 @@ function ChartLine({
  */
 function LimitRow({
   name,
+  icon,
   row,
   spentMinor,
   currency,
@@ -1778,6 +1783,7 @@ function LimitRow({
   onOpen,
 }: {
   name: string;
+  icon: string | null;
   row: CategoryLimitRow | undefined;
   spentMinor: number;
   currency: string;
@@ -1846,7 +1852,7 @@ function LimitRow({
         aria-label={`${name}: its transactions and history`}
       >
         <p className="line-clamp-2 text-sm font-medium sm:truncate">
-          {name}
+          <CategoryName c={{ name, icon }} />
           {row?.rollover ? <Badge className="ml-2">Rollover</Badge> : null}
         </p>
         {row && row.rolledInMinor !== 0 ? (
@@ -2819,7 +2825,9 @@ function ZeroBasedBody({
                             className="block w-full min-w-0 py-1 text-left"
                             aria-label={`${c.name}: its transactions and history`}
                           >
-                            <span className="block truncate text-sm font-medium">{c.name}</span>
+                            <span className="block truncate text-sm font-medium">
+                              <CategoryName c={c} />
+                            </span>
                             <span className="block text-xs text-muted sm:hidden">
                               {fmt(r?.spentMinor ?? 0)} spent
                               {r?.rolledInMinor ? ` · ${fmt(r.rolledInMinor)} carried` : ''}
@@ -2990,8 +2998,8 @@ function MoveDialog({
             {categories
               .filter((c) => c.id !== from)
               .map((c) => (
-                <SelectItem key={c.id} id={c.id}>
-                  {c.name}
+                <SelectItem key={c.id} id={c.id} textValue={c.name}>
+                  <CategoryName c={c} />
                 </SelectItem>
               ))}
           </Select>

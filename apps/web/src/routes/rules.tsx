@@ -25,6 +25,7 @@ import {
   tagsQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
+import { CategoryName } from '../components/CategoryName.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { NameCleanupCard } from './name-cleanup.js';
 import {
@@ -655,8 +656,8 @@ export function RuleEditor({
       {g.categories
         .filter((c) => !c.archived)
         .map((c) => (
-          <SelectItem key={c.id} id={c.id}>
-            {c.name}
+          <SelectItem key={c.id} id={c.id} textValue={c.name}>
+            <CategoryName c={c} />
           </SelectItem>
         ))}
     </SelectSection>
