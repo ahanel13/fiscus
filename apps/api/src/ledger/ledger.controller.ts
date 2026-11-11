@@ -7,6 +7,7 @@ import {
   cashFlowQuerySchema,
   type Category,
   type CategoryGroup,
+  correctionsQuerySchema,
   createCategoryGroupSchema,
   createCategorySchema,
   createTagSchema,
@@ -30,6 +31,7 @@ import {
   type RangeMeta,
   type ReviewCount,
   type Transaction,
+  type TransactionCorrection,
   type TransactionHistoryEntry,
   type TransferReview,
   transactionsQuerySchema,
@@ -66,6 +68,7 @@ import {
 } from '../households/household-context.js';
 import { CashFlowService } from './cash-flow.service.js';
 import { CategoriesService } from './categories.service.js';
+import { CorrectionsService } from './corrections.service.js';
 import { DuplicatesService } from './duplicates.service.js';
 import { TransactionHistoryService } from './history.service.js';
 import { TransactionsService } from './transactions.service.js';
@@ -202,6 +205,7 @@ export class TransactionsController {
     private readonly transactions: TransactionsService,
     private readonly history: TransactionHistoryService,
     private readonly duplicates: DuplicatesService,
+    private readonly corrections: CorrectionsService,
   ) {}
 
   @Get()
@@ -268,6 +272,19 @@ export class TransactionsController {
     @Body(new ZodPipe(undoNameCleanupSchema)) body: z.infer<typeof undoNameCleanupSchema>,
   ): Promise<{ data: { restored: number } }> {
     return { data: await this.transactions.undoCleanNames(ctx, body) };
+  }
+
+  /**
+   * What people and files chose (#528): transactions whose name, category or tags a person or a
+   * file set, beside the bank's text, newest first. For suggesting rules.
+   */
+  @Get('corrections')
+  async listCorrections(
+    @Household() ctx: HouseholdContext,
+    @Query(new ZodPipe(correctionsQuerySchema)) query: z.infer<typeof correctionsQuerySchema>,
+  ): Promise<{ data: TransactionCorrection[]; meta: { nextCursor: string | null } }> {
+    const { data, nextCursor } = await this.corrections.list(ctx, query);
+    return { data, meta: { nextCursor } };
   }
 
   /** The review queue's size (#44), for the badge on Transactions. */
