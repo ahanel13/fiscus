@@ -1,5 +1,5 @@
 {
-  "id": "21b51ead-0f61-40e1-9239-1861cfd2c3d2",
+  "id": "6407d20f-4b4b-4714-9bb1-c11b19d7b8c6",
   "prevId": "27b2c494-691c-429a-95c1-a4637e3477f0",
   "version": "7",
   "dialect": "postgresql",
@@ -5288,12 +5288,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "merchant_logo_id": {
-          "name": "merchant_logo_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "import_batch_id": {
           "name": "import_batch_id",
           "type": "uuid",
@@ -5663,19 +5657,6 @@
         }
       },
       "foreignKeys": {
-        "transactions_merchant_logo_id_merchant_logos_id_fk": {
-          "name": "transactions_merchant_logo_id_merchant_logos_id_fk",
-          "tableFrom": "transactions",
-          "tableTo": "merchant_logos",
-          "columnsFrom": [
-            "merchant_logo_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "transactions_household_id_account_id_accounts_household_id_id_fk": {
           "name": "transactions_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "transactions",
@@ -5761,102 +5742,6 @@
         "transactions_nonzero": {
           "name": "transactions_nonzero",
           "value": "\"transactions\".\"amount_minor\" <> 0 OR \"transactions\".\"pending\""
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.merchant_logos": {
-      "name": "merchant_logos",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_key": {
-          "name": "provider_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_url": {
-          "name": "source_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "image": {
-          "name": "image",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "failures": {
-          "name": "failures",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "failed_at": {
-          "name": "failed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "merchant_logos_provider_key": {
-          "name": "merchant_logos_provider_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "provider",
-            "provider_key"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "merchant_logos_image": {
-          "name": "merchant_logos_image",
-          "value": "\"merchant_logos\".\"image\" IS NULL OR (octet_length(\"merchant_logos\".\"image\") <= 65536 AND \"merchant_logos\".\"content_type\" IN ('image/png', 'image/jpeg', 'image/webp'))"
         }
       },
       "isRLSEnabled": false

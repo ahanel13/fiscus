@@ -998,6 +998,9 @@ test('imports an OFX file, and finds its accounts by their last 4 digits the nex
 test('connects a bank through Plaid Link, on its own page, and chooses what to track (#79)', async ({
   page,
 }) => {
+  // A long journey (connect, sync, refresh, sign in again, choose again): it ran up to the default
+  // 30 seconds.
+  test.slow();
   // Link is stubbed at Plaid's real URL, and the api talks to the stack's fake Plaid: the
   // Riveras' Harbor Credit Union, with checking ••4410, savings ••8812, a Visa and an old savings.
   const link = await stubPlaidLink(page);

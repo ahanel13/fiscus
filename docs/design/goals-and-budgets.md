@@ -136,8 +136,9 @@ budget uses calendar months.
 
 Goal lines are built (#132): each goal's plan is its line in its scope's budget in every strategy,
 from `goal_plans` (G16), and its moved figure is worked out from transfers (G4, G13) or extra paid
-on a debt (G9). Still to come: putting a transfer toward one goal of two (G13's choice), and Move
-money and Cover with goal lines (zero-based).
+on a debt (G9). In zero-based, Move money and Cover take from or give to a goal line's to-move
+money (`budget_moves.from_goal_id`, `to_goal_id`, migration `0095`). Still to come: putting a
+transfer toward one goal of two (G13's choice).
 
 
 Nothing on goals' screens. Just enough that M5 adds goals without changing the budget engine:

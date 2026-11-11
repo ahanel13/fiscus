@@ -17,6 +17,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { id, money, timestamps, versioning } from '../columns.js';
+import { goals } from './goals.js';
 import { householdMembers, households } from './households.js';
 import { categories } from './ledger.js';
 
@@ -169,8 +170,9 @@ export const budgetCategories = pgTable(
 );
 
 /**
- * Money moved between categories in a month (zero-based, D9): **Move money** and **Cover**. Each
- * move is kept, so the month shows who moved what; a line's moves add up to its net.
+ * Money moved between lines in a month (zero-based, D9): **Move money** and **Cover**. A line is a
+ * category or a goal (goals and budgets §7): each side is one of the two. Each move is kept, so
+ * the month shows who moved what; a line's moves add up to its net.
  */
 export const budgetMoves = pgTable(
   'budget_moves',
@@ -179,8 +181,11 @@ export const budgetMoves = pgTable(
     householdId: uuid().notNull(),
     budgetId: uuid().notNull(),
     month: date({ mode: 'string' }).notNull(),
-    fromCategoryId: uuid().notNull(),
-    toCategoryId: uuid().notNull(),
+    fromCategoryId: uuid(),
+    toCategoryId: uuid(),
+    /** A goal line's to-move money (G5), never its claims. */
+    fromGoalId: uuid(),
+    toGoalId: uuid(),
     /** In the household's base currency. */
     amountMinor: money('amount_minor').notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -198,11 +203,26 @@ export const budgetMoves = pgTable(
       columns: [t.householdId, t.toCategoryId],
       foreignColumns: [categories.householdId, categories.id],
     }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.fromGoalId],
+      foreignColumns: [goals.householdId, goals.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.toGoalId],
+      foreignColumns: [goals.householdId, goals.id],
+    }).onDelete('cascade'),
     index().on(t.budgetId, t.month),
     index().on(t.fromCategoryId),
     index().on(t.toCategoryId),
+    index().on(t.fromGoalId),
+    index().on(t.toGoalId),
     check('budget_moves_month', firstOfMonth(t.month)),
     check('budget_moves_positive', sql`${t.amountMinor} > 0`),
-    check('budget_moves_two_categories', sql`${t.fromCategoryId} <> ${t.toCategoryId}`),
+    check('budget_moves_from', sql`num_nonnulls(${t.fromCategoryId}, ${t.fromGoalId}) = 1`),
+    check('budget_moves_to', sql`num_nonnulls(${t.toCategoryId}, ${t.toGoalId}) = 1`),
+    check(
+      'budget_moves_two_lines',
+      sql`coalesce(${t.fromCategoryId}, ${t.fromGoalId}) <> coalesce(${t.toCategoryId}, ${t.toGoalId})`,
+    ),
   ],
 );

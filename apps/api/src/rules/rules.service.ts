@@ -169,8 +169,9 @@ export class RulesService {
   }
 
   /**
-   * RULE-06: what a rule would change in the transactions you can see, as if you were its author.
-   * One of your own would change only the accounts you own. Changes nothing.
+   * RULE-06: what a rule would change in the transactions you can see, as if you were its author,
+   * applied to them: what a person set or a file supplied included. One of your own would change
+   * only the accounts you own. Changes nothing.
    */
   async preview(ctx: HouseholdContext, draft: Draft): Promise<RulePreview> {
     return this.scope.run(ctx, async (tx) => {
@@ -189,12 +190,16 @@ export class RulesService {
         ],
         ctx.role === 'viewer' ? new Map() : await accessLevels(tx),
         null,
+        true,
       );
       return { total: changes.length, changes: changes.slice(0, 200) };
     });
   }
 
-  /** RULE-06: applies a saved rule to the transactions you can see, within your reach and its author's. */
+  /**
+   * RULE-06: applies a saved rule to the transactions you can see, within your reach and its
+   * author's, changing what a person set or a file supplied too: you asked for it.
+   */
   async apply(ctx: HouseholdContext, id: string): Promise<{ changed: number }> {
     return this.scope.run(ctx, async (tx, activity) => {
       const [row] = await tx
@@ -218,6 +223,7 @@ export class RulesService {
         [rule],
         await accessLevels(tx),
         activity,
+        true,
       );
       if (changes.length) {
         await activity.record({
