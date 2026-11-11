@@ -173,7 +173,21 @@ export function plaidProviderTransaction(t: PlaidTransaction): ProviderTransacti
     authorizedDate,
     description: t.original_description?.trim() || t.name?.trim() || merchantName || '',
     ...(merchantName ? { merchantName } : {}),
+    ...merchantLogo(t),
   };
+}
+
+/**
+ * The merchant's logo (#423): the transaction's own, else its merchant counterparty's, keyed by
+ * Plaid's id for the merchant so one fetch serves every purchase there. Only an https address;
+ * where it may be fetched from is checked again before fetching.
+ */
+function merchantLogo(t: PlaidTransaction): Pick<ProviderTransaction, 'merchantLogo'> {
+  const merchant = t.counterparties?.find((c) => c.type === 'merchant' && c.logo_url);
+  const url = t.logo_url ?? merchant?.logo_url;
+  if (!url?.startsWith('https://')) return {};
+  const key = t.merchant_entity_id ?? merchant?.entity_id ?? url;
+  return { merchantLogo: { key, url } };
 }
 
 /** A removal, or null without the account it was on (ingest matches by account). */

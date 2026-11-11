@@ -11,6 +11,7 @@ export * from './identity.js';
 export * from './imports.js';
 export * from './instance-settings.js';
 export * from './ledger.js';
+export * from './merchants.js';
 export * from './notifications.js';
 export * from './preferences.js';
 export * from './recurring.js';

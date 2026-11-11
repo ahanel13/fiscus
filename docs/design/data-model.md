@@ -170,6 +170,8 @@ The provider interface these tables serve, and the conformance suite every adapt
 
 **`institutions`**: global reference data (**not** household-scoped, no RLS): `provider`, `provider_institution_id` (UNIQUE with `provider`), `name`, `url`, `logo_png` bytea null (a PNG of at most 64 KB, checked by its signature), `color` null (`#rrggbb`), `display_checked_at` (#423). Name, logo and color come from Plaid's `/institutions/get_by_id` with optional metadata when a bank is connected, and the worker asks again at most monthly after a sync, so banks connected earlier get theirs and rebrands show. The logo is served from Fiscus's own origin (`GET /api/v1/institutions/:id/logo`), so the Content-Security-Policy stays `img-src 'self'` and the provider never sees who looks. SimpleFIN has none.
 
+**`merchant_logos`** (#423, migration `0096`): global reference data like `institutions` (no household, no RLS): `provider`, `provider_key` (UNIQUE with `provider`: Plaid's `merchant_entity_id`, else the logo's address), `source_url` (the provider's CDN), `image` bytea null and `content_type` (PNG, JPEG or WebP by their first bytes, at most 64 KB, by a check constraint), `fetched_at`, `failures` and `failed_at`. Sync makes a row the first time a merchant is seen and points the transaction at it (`transactions.merchant_logo_id`); after each sync the worker fetches up to 25 not fetched yet, only from `https://plaid-*.plaid.com` with no redirects, giving up after 3 failures. The api offers a transaction's logo only once fetched, and serves it from Fiscus's own origin (`GET /api/v1/merchant-logos/:id`), so browsers never ask the provider's CDN. A row says nothing about who bought there; only a transaction you can see leads to it.
+
 **`aggregation_credentials`**: household-supplied Plaid keys (ADR 0008, #83): `household_id`, `provider` (`plaid` only), `client_id`, `secret_enc` (encrypted with the household key, bound to the row; emptied once no connection needs it), `env`, `created_by_member_id`, `revoked_at`. At most one active set (`revoked_at` null) per household, kept by the api under an advisory lock: replacing keys revokes the old set, which still serves the connections made with it. Rows stay for the connections that name them. Readable in the household (members connecting a bank use the household's keys; the api never returns the secret, HH-08), changed by household owners or the worker. See [aggregation](aggregation.md) §6a.
 
 **`connections`**: one per Plaid Item or SimpleFIN access URL. File imports and manual accounts don't need one.
@@ -200,7 +202,7 @@ The provider interface these tables serve, and the conformance suite every adapt
 
 **`connection_secrets`**: `connection_id` PK, `household_id` (composite FK to `connections`, cascading), `secret_enc`: the access token or access URL, encrypted with the household key, with associated data binding it to `connection_secrets.secret_enc` and the connection id. Kept apart from `connections` so that RLS can let only the connection's owner and the worker read it: other members, household owners included, can't read even the ciphertext. Never returned, logged, or in activity metadata.
 
-`accounts.sync_from` (date) is the first day sync asks for (D6). `accounts.connection_id` gets its foreign key to `connections` by `(household_id, connection_id)` a release later, as a new constraint ([upgrades](upgrades.md) §3): the previous release's api tests set connection ids that name no connection, and must still pass on this schema. Until then, an account pointing at a connection elsewhere shows nothing of it, since a connection is visible only in its own household.
+`accounts.sync_from` (date) is the first day sync asks for (D6). `accounts.connection_id` has a foreign key to `connections` by `(household_id, connection_id)` (migration `0093`, #409), so an account's connection is in its own household; deleting a connection sets only `connection_id` to null.
 
 **`sync_holds`** (#80, migrations `0049`, `0050`): synced transactions held as possible duplicates (bank connections walkthrough D7). One looks like a transaction already in its account without matching it exactly: the same amount and currency within 3 days, in one that isn't the provider's, where the exact one-to-one match didn't apply. It waits here, outside the ledger, so totals don't count it twice. Columns: `household_id`, `connection_id` and `account_id` (composite FKs, cascading), `provider_transaction_id` (UNIQUE with `account_id`), `provider_pending_id`, and the bank's transaction as sync would insert it (`amount_minor`, `currency`, `posted_date`, `authorized_date`, `original_description`, `display_name`, `foreign_amount_minor`, `foreign_currency`), plus `candidate_ids uuid[]` (the closest few when it was held; checked again when shown and decided). Later syncs keep it as the bank last said it and drop it when the bank removes it. Only the account's owners see or change it (TXN-13): "different" adds the transaction and rebuilds the account's balances, which only owners may do.
 
@@ -300,7 +302,8 @@ An account's current balance (`balance` in the api) is its latest snapshot; for 
 | pending | bool | |
 | original_description | text | Raw from provider/import. Untrusted (prompt-injection surface, ADR 0009) |
 | display_name | text | After merchant cleanup and rename rules |
-| merchant_id | uuid FK null | |
+| merchant_id | uuid FK null | Planned |
+| merchant_logo_id | uuid FK null | The merchant's logo from the provider (#423), in `merchant_logos`; set by sync, never by a person; set null if the logo row goes |
 | category_id | uuid FK null | Null = uncategorized |
 | review_status | enum `needs_review`/`reviewed` | |
 | reviewer_member_id | uuid FK null | Assigned reviewer |
@@ -346,11 +349,11 @@ The effective date for ranges, budgets, and reports is `date_override` if set, e
 
 **`transaction_attributions`**: `(transaction_id, member_id)` PK, `share_bps`. **No rows = inherit** from `account_owners`. Split children carry their own rows. Σ = 10 000 is enforced like `account_owners`.
 
-**`merchants`**: `household_id`, `name`, `normalized_key` (UNIQUE per household), `logo_url`.
+**`merchants`** (planned): `household_id`, `name`, `normalized_key` (UNIQUE per household). Logos aren't kept here: they're global, in `merchant_logos`.
 
 **`category_groups`**: `household_id`, `name`, `kind` enum `income`/`fixed`/`flexible`/`non_monthly`/`savings`/`transfer`, `sort_order`.
 
-**`categories`**: `household_id`, `group_id`, `name`, `icon`, `system_key` text null (`uncategorized`, `transfer`, `settlement`; these can't be deleted), `one_sided` bool (a transfer category whose transactions never have another side, like a brokerage's Buy and Sell: detection and the transfer review leave it alone, [transfers §2](transfers.md)), `archived_at`, `sort_order`.
+**`categories`**: `household_id`, `group_id`, `name`, `icon` null (one emoji, shown before the name as Monarch does, #423; the defaults come with one, from `fiscus_default_category_icon(name)`, which also knows Monarch's category names, migration `0094`), `system_key` text null (`uncategorized`, `transfer`, `settlement`; these can't be deleted), `one_sided` bool (a transfer category whose transactions never have another side, like a brokerage's Buy and Sell: detection and the transfer review leave it alone, [transfers §2](transfers.md)), `archived_at`, `sort_order`.
 
 **`tags`** (`household_id`, `name`, `color`) + **`transaction_tags`** (`transaction_id`, `tag_id`) PK.
 
@@ -382,6 +385,8 @@ Budgets (#98, migrations `0053`, `0054`; [budgeting walkthrough](walkthroughs/bu
 **`budget_amounts`**: `(budget_id, month, category_id)` PK, `household_id`, `amount_minor` (≥ 0, household currency), `version`, `updated_at`. One amount per category per month, whatever the strategy: a limit, an assignment, a fixed cost. A month with no rows repeats the last month that has some (`amountsFor`); changing an amount in such a month copies that month's amounts first. A change applies to all future months by default: later months with their own rows take the new amount too. "This month only" (`applyTo: month`) instead gives the next month its own rows, copied from before the change, so it keeps what it showed.
 
 **`budget_categories`**: `(budget_id, category_id)` PK, `household_id`, `rollover` bool, `bucket` text null (50/30/20, D10), `yearly_minor` null (non-monthly, D12), `excluded` bool ("Don't budget": left out of the budget's rows, totals, and spending without a limit; still in reports). How the budget treats a category in every month.
+
+**`budget_moves`** (#100, migrations `0085`, `0086`, `0095`; D9): **Move money** and **Cover** in zero-based months. `household_id`, `budget_id`, `month`, one source (`from_category_id` or `from_goal_id`) and one destination (`to_category_id` or `to_goal_id`), never the same line, and `amount_minor` (> 0). A goal side moves its line's to-move money, never its claims; a goal you can't see can't be named (restrictive policy `budget_moves_goal`). Each move is kept; a line's moves add up to its net for the month.
 
 All three tables under `budgets` have composite FKs to it and to `categories`, cascading, and are visible exactly when their budget is.
 

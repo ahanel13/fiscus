@@ -17,6 +17,15 @@ export type CategoryKind = z.infer<typeof categoryKindSchema>;
 
 const label = (max: number) => z.string().trim().min(1).max(max);
 
+/** One emoji, a flag or keycap included: a category's icon (#423), as Monarch has. */
+export function isEmoji(s: string): boolean {
+  const graphemes = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)];
+  return (
+    graphemes.length === 1 && /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(s)
+  );
+}
+const categoryIcon = z.string().max(32).refine(isEmoji, 'One emoji');
+
 export const createCategoryGroupSchema = z.object({ name: label(60), kind: categoryKindSchema });
 export const updateCategoryGroupSchema = z
   .object({ name: label(60), kind: categoryKindSchema, sortOrder: z.number().int().min(0) })
@@ -26,13 +35,13 @@ export const updateCategoryGroupSchema = z
 export const createCategorySchema = z.object({
   name: label(60),
   groupId: z.uuid(),
-  icon: z.string().max(40).optional(),
+  icon: categoryIcon.optional(),
 });
 export const updateCategorySchema = z
   .object({
     name: label(60),
     groupId: z.uuid(),
-    icon: z.string().max(40).nullable(),
+    icon: categoryIcon.nullable(),
     sortOrder: z.number().int().min(0),
     archived: z.boolean(),
     /** Its transactions never have another side; only for a transfer category. */
@@ -47,6 +56,7 @@ export interface Category {
   id: string;
   groupId: string;
   name: string;
+  /** An emoji, or null for none. */
   icon: string | null;
   systemKey: 'uncategorized' | 'transfer' | 'settlement' | null;
   archived: boolean;
@@ -207,6 +217,8 @@ export interface Transaction {
   currency: string;
   displayName: string;
   originalDescription: string;
+  /** The merchant's logo, at `/api/v1/merchant-logos/:id`, once fetched (#423); else null. */
+  merchantLogoId: string | null;
   categoryId: string | null;
   reviewStatus: 'needs_review' | 'reviewed';
   excluded: boolean;

@@ -53,7 +53,9 @@ import {
   transactionsQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
+import { CategoryName } from '../components/CategoryName.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { MerchantLogo } from '../components/MerchantLogo.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { RecurringDialog } from '../components/RecurringDialog.js';
 import {
@@ -179,8 +181,8 @@ export function CategorySelect({
           {g.categories
             .filter((c) => !c.archived || c.id === value)
             .map((c) => (
-              <SelectItem key={c.id} id={c.id}>
-                {c.name}
+              <SelectItem key={c.id} id={c.id} textValue={c.name}>
+                <CategoryName c={c} />
               </SelectItem>
             ))}
         </SelectSection>
@@ -304,7 +306,7 @@ export function TransactionList({
     // Re-sorting keeps the rows in place until the new order arrives.
     ...(wide ? { placeholderData: keepPreviousData } : {}),
   });
-  const { names, uncategorized } = categoryIndex(groups);
+  const { byId, uncategorized } = categoryIndex(groups);
   const reviewScope = useQuery(householdQuery(householdId)).data?.reviewScope;
   // As the queue counts it: reviewing only what's uncategorized leaves the rest alone (#508).
   const waiting = (t: Transaction) =>
@@ -350,7 +352,11 @@ export function TransactionList({
       />
     ) : (
       <span className="truncate text-xs text-muted">
-        {t.categoryId ? (names.get(t.categoryId) ?? 'Uncategorized') : 'Uncategorized'}
+        {t.categoryId && byId.has(t.categoryId) ? (
+          <CategoryName c={byId.get(t.categoryId)!} />
+        ) : (
+          'Uncategorized'
+        )}
       </span>
     );
   const badges = (t: Transaction) => (
@@ -428,6 +434,7 @@ export function TransactionList({
                   </Cell>
                   <Cell>
                     <span className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+                      <MerchantLogo t={t} size="sm" />
                       <span className="max-w-full shrink-0 truncate font-medium">
                         {t.displayName}
                       </span>
@@ -497,6 +504,7 @@ export function TransactionList({
                     />
                   </span>
                 ) : null}
+                <MerchantLogo t={t} />
                 <button
                   type="button"
                   {...(onLongPress && t.can.categorize ? longPress.handlers(t.id) : {})}

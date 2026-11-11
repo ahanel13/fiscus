@@ -75,6 +75,11 @@ export interface ProviderTransaction {
   /** As the bank reports it. Untrusted text (ADR 0009). */
   description: string;
   merchantName?: string;
+  /**
+   * The merchant's logo at the provider (#423): `key` names the merchant there, so purchases at
+   * one share a logo. Fetched by the worker and served from Fiscus's own origin, never linked to.
+   */
+  merchantLogo?: { key: string; url: string };
   /** The original amount when the bank converted a foreign purchase (€42.00 on a USD card). */
   foreignAmountMinor?: number;
   foreignCurrency?: string;

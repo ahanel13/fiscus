@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { CategoryGroup, HouseholdMember, Transaction } from '@fiscus/shared';
+import type { Category, CategoryGroup, HouseholdMember, Transaction } from '@fiscus/shared';
 import { ownerLabel } from './accounts.js';
 
 /** Who a transaction is for, from the viewer's side: "Mine", "Ours", "Bea's" (ADR 0006 naming). */
@@ -24,14 +24,16 @@ export function paidByLabel(
 /** Category id → name, and the system "uncategorized" id. */
 export function categoryIndex(groups: CategoryGroup[] | undefined) {
   const names = new Map<string, string>();
+  const byId = new Map<string, Category>();
   let uncategorized: string | undefined;
   for (const g of groups ?? []) {
     for (const c of g.categories) {
       names.set(c.id, c.name);
+      byId.set(c.id, c);
       if (c.systemKey === 'uncategorized') uncategorized = c.id;
     }
   }
-  return { names, uncategorized };
+  return { names, byId, uncategorized };
 }
 
 /** Groups transactions by day, keeping the server's newest-first order. */

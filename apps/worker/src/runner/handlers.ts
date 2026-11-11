@@ -13,6 +13,7 @@ import {
 import { guardActivity, type Actor } from '@fiscus/ledger';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { refreshInstitution } from '../sync/institution.js';
+import { fetchMerchantLogos } from '../sync/merchant-logos.js';
 import { readSyncState, syncConnection } from '../sync/sync.js';
 import { FAILURE, JobFailure, type JobContext, type JobHandler } from './jobs.js';
 
@@ -69,6 +70,10 @@ export const syncJob: JobHandler = {
       state,
     );
     await refreshInstitution(job, provider);
+    // Best effort: the sync has succeeded whatever happens to a logo (#423).
+    await fetchMerchantLogos(job.db, job.fetchLogo ? { fetchImpl: job.fetchLogo } : {}).catch(
+      () => undefined,
+    );
     return 'synced';
   },
 };
