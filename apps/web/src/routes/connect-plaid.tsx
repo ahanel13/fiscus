@@ -12,6 +12,7 @@ import type {
   HouseholdMember,
   OfferedAccount,
   PlaidLinkToken,
+  StaleAccount,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
@@ -50,6 +51,7 @@ import {
   TimeZoneProvider,
 } from '../components/ui.js';
 import { balanceKind, privateAllowed, TYPE_LABELS, VISIBILITY } from '../lib/accounts.js';
+import { BRIDGE } from '../components/SimpleFinDialog.js';
 import { leaveTo } from '../lib/flash.js';
 import {
   clearOAuthState,
@@ -732,6 +734,15 @@ export function ConnectSetupPage() {
   );
 }
 
+/** The bank's accounts, the tracked ones the connection isn't updating first (D12). */
+export function notUpdatingFirst(accounts: OfferedAccount[], staleAccounts: StaleAccount[]) {
+  const stale = new Map(staleAccounts.map((s) => [s.accountId, s] as const));
+  const staleOf = (a: OfferedAccount) =>
+    a.tracked?.accountId ? stale.get(a.tracked.accountId) : undefined;
+  const offered = [...accounts].sort((x, y) => Number(!!staleOf(y)) - Number(!!staleOf(x)));
+  return { offered, staleOf };
+}
+
 function ChooseAccounts({
   household,
   setup,
@@ -759,6 +770,11 @@ function ChooseAccounts({
       )
       .flatMap((c) => c.accountIds.map((id) => [id, c] as const)),
   );
+  // What this connection isn't updating (D12): its card's "Choose accounts" comes here, so they
+  // come first and say so.
+  const self = connections.find((c) => c.id === setup.connectionId);
+  const { offered, staleOf } = notUpdatingFirst(setup.accounts, self?.staleAccounts ?? []);
+  const staleCount = offered.filter(staleOf).length;
   const defaults: Choice = {
     providerAccountId: '',
     choice: 'new',
@@ -816,14 +832,32 @@ function ChooseAccounts({
         </Heading>
       )}
       {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+      {staleCount ? (
+        <Alert tone="warning">
+          {staleCount === 1 ? 'One account isn’t' : `${staleCount} accounts aren’t`} updating,
+          marked below.{' '}
+          {self?.provider === 'simplefin' ? (
+            <>
+              Check {staleCount === 1 ? 'it' : 'them'} at the{' '}
+              <a href={BRIDGE} target="_blank" rel="noreferrer" className="underline">
+                SimpleFIN Bridge
+              </a>
+              : the bank may want signing in to again there.
+            </>
+          ) : (
+            'If the bank closed one, stop tracking it here; its history stays.'
+          )}
+        </Alert>
+      ) : null}
       <ul
         aria-label="Accounts at the bank"
         className="divide-y divide-border rounded-xl border border-border bg-surface"
       >
-        {setup.accounts.map((a) => (
+        {offered.map((a) => (
           <OfferedRow
             key={a.providerAccountId}
             account={a}
+            stale={staleOf(a)}
             choice={choices.find((c) => c.providerAccountId === a.providerAccountId)!}
             choices={choices}
             yours={yours}
@@ -902,8 +936,9 @@ const connectionLabel = (c: Connection) =>
 const sameOwners = (a: string[], b: string[]) =>
   a.length === b.length && a.every((id) => b.includes(id));
 
-function OfferedRow({
+export function OfferedRow({
   account: a,
+  stale,
   choice: c,
   choices,
   yours,
@@ -913,6 +948,8 @@ function OfferedRow({
   onChange,
 }: {
   account: OfferedAccount;
+  /** Tracked, and this connection isn't updating it. */
+  stale?: StaleAccount | undefined;
   choice: Choice;
   choices: Choice[];
   yours: Account[];
@@ -1005,7 +1042,12 @@ function OfferedRow({
   }
 
   return (
-    <li className="grid gap-3 p-4 md:grid-cols-[1fr_18rem] md:items-start">
+    <li
+      className={clsx(
+        'grid gap-3 p-4 md:grid-cols-[1fr_18rem] md:items-start',
+        stale && 'bg-warning-soft first:rounded-t-xl last:rounded-b-xl',
+      )}
+    >
       <div className="flex min-w-0 gap-3">
         <span
           aria-hidden
@@ -1024,6 +1066,11 @@ function OfferedRow({
                 {a.mask}
               </span>
             ) : null}
+            {stale ? (
+              <Badge tone="warning" className="ml-1.5">
+                Not updating
+              </Badge>
+            ) : null}
           </p>
           <p className="text-muted">
             {kind ? `${kind} · ` : null}
@@ -1040,6 +1087,18 @@ function OfferedRow({
               'no balance yet'
             )}
           </p>
+          {stale ? (
+            <p className="text-xs text-fg">
+              {stale.asOf ? (
+                <>
+                  The latest balance from the bank is from{' '}
+                  <DateText value={stale.asOf} format="short" />.
+                </>
+              ) : (
+                'No balance has come from the bank for it.'
+              )}
+            </p>
+          ) : null}
           {c.choice === 'new' && members.length > 1 ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
               {owners.length > 1 ? (
