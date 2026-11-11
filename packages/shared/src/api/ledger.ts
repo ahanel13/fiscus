@@ -503,3 +503,40 @@ export const undoNameCleanupSchema = z.object({
     .array(z.object({ id: z.uuid(), from: z.string().max(500), to: z.string().max(500) }))
     .max(20_000),
 });
+
+/** The fields corrections are about: what a rule can set. */
+export const CORRECTED_FIELDS = ['displayName', 'categoryId', 'tagIds'] as const;
+export type CorrectedField = (typeof CORRECTED_FIELDS)[number];
+
+/** `GET …/transactions/corrections` (#528). */
+export const correctionsQuerySchema = z.object({
+  /** Only transactions on or after this day. */
+  since: isoDateSchema.optional(),
+  cursor: z.string().max(600).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+
+/**
+ * A transaction whose name, category or tags a person or a file chose (#528): what the bank said
+ * beside what it became, for suggesting rules. Newest first.
+ */
+export interface TransactionCorrection {
+  id: string;
+  accountId: string;
+  /** The day it counts on. */
+  date: string;
+  amountMinor: number;
+  currency: string;
+  /** As the bank or file had it: what a rule matches. Untrusted text (ADR 0009). */
+  originalDescription: string;
+  displayName: string;
+  categoryId: string | null;
+  tagIds: string[];
+  /**
+   * Which of them a person or a file set; the rest are the bank's or a rule's. Applying a rule
+   * to existing transactions can change these too, and leaves them marked.
+   */
+  set: CorrectedField[];
+  /** Where it came from: `import` for a file (Monarch's categories), `manual` for typed in. */
+  source: 'provider' | 'import' | 'manual';
+}
