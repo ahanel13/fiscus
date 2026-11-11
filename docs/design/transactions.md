@@ -162,6 +162,7 @@ All under `/api/v1/households/:householdId/`.
 | `PUT transactions/:id/attribution` | Owners (ATT-01) | `[{memberId, shareBps}]`, or `[]` to inherit |
 | `PUT`/`DELETE transactions/:id/notes/shared`, `…/notes/mine` | NOTE-02 / NOTE-03 | |
 | `GET transactions/:id/history` | Visible (TXN-11) | Newest first: actor (member, rule, import, later the bank), action, and field changes. Only events about accounts you can see; private-note changes to their author; 404 for a transaction you can't see (#46) |
+| `GET transactions/corrections?since&cursor&limit` | Visible (TXN-01) | What people and files chose, for suggesting rules (#528): transactions whose name, category or tags a person or a file set (`field_versions`; rules and sync never write it), with the bank's text, amount, date, account, tags, `set` (which of the three) and `source`. Newest first; split parents by their parts |
 | `GET`/`POST`/`PATCH`/`DELETE tags` | Read: all · write: OWN, MEM | |
 
 ## 8. Web

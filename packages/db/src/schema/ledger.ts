@@ -21,6 +21,7 @@ import { bytea, id, money, timestamps, versioning } from '../columns.js';
 import { accounts } from './accounts.js';
 import { householdMembers, households } from './households.js';
 import { importBatches } from './imports.js';
+import { merchantLogos } from './merchants.js';
 
 // Categories, tags, transactions, attribution, and notes (data model §3.5,
 // docs/design/transactions.md). Visibility is enforced by row-level security (migration 0012).
@@ -176,6 +177,8 @@ export const transactions = pgTable(
      * (#88); one a person deleted never does.
      */
     providerRemovedAt: timestamp({ withTimezone: true }),
+    /** The merchant's logo, from the provider (#423). Not a person's: sync keeps it current. */
+    merchantLogoId: uuid().references(() => merchantLogos.id, { onDelete: 'set null' }),
     importBatchId: uuid(),
     /**
      * The account an import put it in. Moving it to another account (TXN-12) keeps this, so

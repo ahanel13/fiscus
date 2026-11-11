@@ -101,6 +101,32 @@ describe('plaidProviderTransaction', () => {
     expect(noMerchant).not.toHaveProperty('merchantName');
   });
 
+  it('keeps the merchant’s logo, its own or its merchant counterparty’s (#423)', () => {
+    const logo = (extra: Parameters<typeof transaction>[0]) =>
+      plaidProviderTransaction(transaction(extra))?.merchantLogo;
+    expect(
+      logo({
+        merchant_entity_id: 'ent1',
+        logo_url: 'https://plaid-merchant-logos.plaid.com/a.png',
+      }),
+    ).toEqual({ key: 'ent1', url: 'https://plaid-merchant-logos.plaid.com/a.png' });
+    expect(
+      logo({
+        counterparties: [
+          { type: 'payment_app', entity_id: 'venmo', logo_url: 'https://x.plaid.com/v.png' },
+          { type: 'merchant', entity_id: 'ent2', logo_url: 'https://x.plaid.com/m.png' },
+        ],
+      }),
+    ).toEqual({ key: 'ent2', url: 'https://x.plaid.com/m.png' });
+    // Without an id, the address names it; never a plain-http one; often none at all (TXN-013).
+    expect(logo({ logo_url: 'https://x.plaid.com/b.png' })).toEqual({
+      key: 'https://x.plaid.com/b.png',
+      url: 'https://x.plaid.com/b.png',
+    });
+    expect(logo({ logo_url: 'http://x.plaid.com/b.png' })).toBeUndefined();
+    expect(logo({})).toBeUndefined();
+  });
+
   it('skips a row without a usable currency or date', () => {
     expect(
       plaidProviderTransaction(

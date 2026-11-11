@@ -17,6 +17,15 @@ export type CategoryKind = z.infer<typeof categoryKindSchema>;
 
 const label = (max: number) => z.string().trim().min(1).max(max);
 
+/** One emoji, a flag or keycap included: a category's icon (#423), as Monarch has. */
+export function isEmoji(s: string): boolean {
+  const graphemes = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)];
+  return (
+    graphemes.length === 1 && /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(s)
+  );
+}
+const categoryIcon = z.string().max(32).refine(isEmoji, 'One emoji');
+
 export const createCategoryGroupSchema = z.object({ name: label(60), kind: categoryKindSchema });
 export const updateCategoryGroupSchema = z
   .object({ name: label(60), kind: categoryKindSchema, sortOrder: z.number().int().min(0) })
@@ -26,13 +35,13 @@ export const updateCategoryGroupSchema = z
 export const createCategorySchema = z.object({
   name: label(60),
   groupId: z.uuid(),
-  icon: z.string().max(40).optional(),
+  icon: categoryIcon.optional(),
 });
 export const updateCategorySchema = z
   .object({
     name: label(60),
     groupId: z.uuid(),
-    icon: z.string().max(40).nullable(),
+    icon: categoryIcon.nullable(),
     sortOrder: z.number().int().min(0),
     archived: z.boolean(),
     /** Its transactions never have another side; only for a transfer category. */
@@ -47,6 +56,7 @@ export interface Category {
   id: string;
   groupId: string;
   name: string;
+  /** An emoji, or null for none. */
   icon: string | null;
   systemKey: 'uncategorized' | 'transfer' | 'settlement' | null;
   archived: boolean;
@@ -207,6 +217,8 @@ export interface Transaction {
   currency: string;
   displayName: string;
   originalDescription: string;
+  /** The merchant's logo, at `/api/v1/merchant-logos/:id`, once fetched (#423); else null. */
+  merchantLogoId: string | null;
   categoryId: string | null;
   reviewStatus: 'needs_review' | 'reviewed';
   excluded: boolean;
@@ -503,3 +515,40 @@ export const undoNameCleanupSchema = z.object({
     .array(z.object({ id: z.uuid(), from: z.string().max(500), to: z.string().max(500) }))
     .max(20_000),
 });
+
+/** The fields corrections are about: what a rule can set. */
+export const CORRECTED_FIELDS = ['displayName', 'categoryId', 'tagIds'] as const;
+export type CorrectedField = (typeof CORRECTED_FIELDS)[number];
+
+/** `GET …/transactions/corrections` (#528). */
+export const correctionsQuerySchema = z.object({
+  /** Only transactions on or after this day. */
+  since: isoDateSchema.optional(),
+  cursor: z.string().max(600).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+
+/**
+ * A transaction whose name, category or tags a person or a file chose (#528): what the bank said
+ * beside what it became, for suggesting rules. Newest first.
+ */
+export interface TransactionCorrection {
+  id: string;
+  accountId: string;
+  /** The day it counts on. */
+  date: string;
+  amountMinor: number;
+  currency: string;
+  /** As the bank or file had it: what a rule matches. Untrusted text (ADR 0009). */
+  originalDescription: string;
+  displayName: string;
+  categoryId: string | null;
+  tagIds: string[];
+  /**
+   * Which of them a person or a file set; the rest are the bank's or a rule's. Applying a rule
+   * to existing transactions can change these too, and leaves them marked.
+   */
+  set: CorrectedField[];
+  /** Where it came from: `import` for a file (Monarch's categories), `manual` for typed in. */
+  source: 'provider' | 'import' | 'manual';
+}
