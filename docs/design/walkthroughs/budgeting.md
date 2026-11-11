@@ -188,7 +188,9 @@ you have, the banner turns red and says by how much.
 **D9. Overspending is covered, or it comes out of next month.**
 - An overspent category shows its negative balance, with **Cover**. Cover moves money from
   another category, suggesting the one with the most left.
-- **Move money** works the same between any two categories, from either row's menu.
+- **Move money** works the same between any two categories, from either row's menu. A goal's
+  line is one too: what it still has to move can go to a category, or come from one (goals and
+  budgets §7), but never the money already in the goal.
 - Overspending still uncovered at the end of the month is taken from next month's Ready to
   assign, and the category starts the new month at $0.00. An envelope never carries debt
   silently, and the banner says this before it happens.

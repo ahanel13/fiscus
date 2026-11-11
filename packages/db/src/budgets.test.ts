@@ -283,4 +283,45 @@ describe('budgets (RLS)', () => {
       );
     });
   });
+
+  // Move money and Cover with goal lines (goals and budgets §7): each side is one category or one
+  // goal, never the same line, and a goal you can't see can't be named.
+  it('moves money to and from goal lines you can see', async () => {
+    const ours = randomUUID();
+    const bs = randomUUID();
+    await owner.query(
+      `INSERT INTO goals (id, household_id, member_id, name, target_minor) VALUES
+         ($1, $3, NULL, 'House', 6000000), ($2, $3, $4, 'Bike', 90000)`,
+      [ours, bs, H, people.B.member],
+    );
+    const insert = (q: pg.Client, sides: Record<string, string | null>, b = budget.ours) =>
+      q.query(
+        `INSERT INTO budget_moves (id, household_id, budget_id, month, from_category_id,
+           from_goal_id, to_category_id, to_goal_id, amount_minor)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 100)`,
+        [
+          H,
+          b,
+          MONTH,
+          sides.fromCategory ?? null,
+          sides.fromGoal ?? null,
+          sides.toCategory ?? null,
+          sides.toGoal ?? null,
+        ],
+      );
+    await asMember('A', async (q) => {
+      await insert(q, { fromCategory: groceries, toGoal: ours });
+      await insert(q, { fromGoal: ours, toCategory: dining });
+    });
+    await asMember('B', (q) => insert(q, { fromCategory: groceries, toGoal: bs }, budget.b));
+    expect(
+      await error(() => asMember('A', (q) => insert(q, { fromCategory: groceries, toGoal: bs }))),
+    ).toMatch(/row-level security/);
+    for (const [sides, check] of [
+      [{ fromCategory: groceries, fromGoal: ours, toCategory: dining }, 'budget_moves_from'],
+      [{ fromCategory: groceries }, 'budget_moves_to'],
+      [{ fromGoal: ours, toGoal: ours }, 'budget_moves_two_lines'],
+    ] as const)
+      expect(await error(() => asMember('A', (q) => insert(q, sides)))).toMatch(check);
+  });
 });
