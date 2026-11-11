@@ -254,6 +254,12 @@ export interface OfferedAccount {
    * one you can't see, which only its owners can stop tracking.
    */
   tracked: { accountId: string | null } | null;
+  /**
+   * Tracked, but the bank didn't send it this time (choosing again): SimpleFIN leaves out the
+   * accounts its bank connection can't reach right now. Described from your account, with no
+   * balance: keep tracking it, or stop.
+   */
+  absent?: boolean;
 }
 
 /** A connection being set up: only its owner sees it until they confirm (D4). */

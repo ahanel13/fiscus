@@ -204,6 +204,53 @@ describe('connecting the SimpleFIN Bridge (#91)', () => {
     expect(listed).toMatchObject({ provider: 'simplefin', institutionName: 'SimpleFIN Bridge' });
   });
 
+  it('choosing again, lists what it tracks that the Bridge left out, to keep or stop', async () => {
+    // The Bridge stops sending an account it can't reach (MX can't sign in to that bank).
+    await db.query(
+      `UPDATE accounts SET provider_account_id = 'gone-visa'
+        WHERE connection_id = $1 AND provider_account_id = $2`,
+      [connId, RIVERA.visa],
+    );
+    const setup = await A.get(url(`/connections/${connId}/setup`));
+    ok(setup);
+    const visa = (await db.query(`SELECT id FROM accounts WHERE provider_account_id = 'gone-visa'`))
+      .rows[0].id;
+    const gone = (setup.body.data.accounts as any[]).find(
+      (a) => a.providerAccountId === 'gone-visa',
+    );
+    expect(gone).toMatchObject({
+      absent: true,
+      type: 'credit',
+      balance: null,
+      suggestion: { choice: 'keep' },
+      tracked: { accountId: visa },
+    });
+    const others = [
+      { providerAccountId: RIVERA.checking, choice: 'keep' },
+      { providerAccountId: RIVERA.savings, choice: 'skip' },
+      { providerAccountId: RIVERA.oldSavings, choice: 'skip' },
+      // Its old id, now one the Bridge sends that nothing tracks.
+      { providerAccountId: RIVERA.visa, choice: 'skip' },
+    ];
+    // Left without a choice, it stays; it can only be kept or stopped.
+    ok(await A.post(url(`/connections/${connId}/confirm`), { accounts: others }));
+    refused(
+      await A.post(url(`/connections/${connId}/confirm`), {
+        accounts: [...others, { providerAccountId: 'gone-visa', choice: 'new' }],
+      }),
+      422,
+      'choices_mismatch',
+    );
+    ok(
+      await A.post(url(`/connections/${connId}/confirm`), {
+        accounts: [...others, { providerAccountId: 'gone-visa', choice: 'skip' }],
+      }),
+    );
+    const row = (await db.query('SELECT connection_id FROM accounts WHERE id = $1', [visa]))
+      .rows[0];
+    expect(row.connection_id).toBeNull();
+  });
+
   it('keeps a claimed token’s connection when the Bridge then fails, to come back to', async () => {
     const second = await startFakeSimpleFin({ user: 'kai-bridge-user' });
     try {

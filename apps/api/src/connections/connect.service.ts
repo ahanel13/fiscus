@@ -626,7 +626,12 @@ export class ConnectService {
 
     return this.scope.run(ctx, async (tx, activity) => {
       const [c] = await tx
-        .select({ status: connections.status, replaces: connections.replacesConnectionId })
+        .select({
+          status: connections.status,
+          replaces: connections.replacesConnectionId,
+          known: connections.knownAccountIds,
+          newAvailable: connections.newAccountsAvailable,
+        })
         .from(connections)
         .where(eq(connections.id, connectionId))
         .for('update');
@@ -647,7 +652,9 @@ export class ConnectService {
       const replacing = old && old.status !== 'disconnected' ? c.replaces : null;
 
       const choices = new Map(input.accounts.map((a) => [a.providerAccountId, a]));
-      const offeredIds = new Set(offered.map((a) => a.providerAccountId));
+      // What it tracks may be chosen about (kept or stopped) though the bank left it out this
+      // time, as SimpleFIN does with accounts it can't reach.
+      const offeredIds = new Set([...offered.map((a) => a.providerAccountId), ...tracking]);
       const errors: ProblemFieldError[] = [
         ...offered
           .filter((a) => !choices.has(a.providerAccountId))
@@ -757,7 +764,10 @@ export class ConnectService {
       );
 
       const tracked: ConnectionConfirmed['accounts'] = [];
-      const stopping: string[] = [];
+      const sent = new Set(offered.map((a) => a.providerAccountId));
+      const stopping = input.accounts
+        .filter((a) => a.choice === 'skip' && !sent.has(a.providerAccountId))
+        .map((a) => a.providerAccountId);
       for (const bank of offered) {
         const choice = choices.get(bank.providerAccountId)!;
         if (choice.choice === 'keep') continue;
@@ -916,11 +926,26 @@ export class ConnectService {
         }
       }
 
+      // Saved again with nothing added or stopped: nothing to write, unless the bank's new
+      // accounts were seen and left untracked, which is recorded as that.
+      const known = offered.map((a) => a.providerAccountId);
+      if (live && tracked.length === 0 && stopping.length === 0) {
+        const before = new Set(c.known ?? []);
+        if (!c.newAvailable && known.every((id) => before.has(id))) {
+          return { connectionId, accounts: tracked };
+        }
+        await activity.record({
+          action: 'connection.accounts_declined',
+          targetType: 'connection',
+          targetId: connectionId,
+          metadata: { provider: own.provider },
+        });
+      }
       await tx
         .update(connections)
         .set({
           // Every account it offers has been chosen about: none is new now.
-          knownAccountIds: offered.map((a) => a.providerAccountId),
+          knownAccountIds: known,
           newAccountsAvailable: false,
           // Due now: the runner (#81) claims it on its next pass, and the first sync starts. One
           // chosen again that adds accounts syncs from the start, so they bring their history.
@@ -1086,16 +1111,22 @@ export class ConnectService {
     // Choosing again: what it tracks stays (as your account, or one you can't see), and what you
     // chose not to track before is suggested so again.
     const tracked = live ? await trackedBy(tx, live) : new Set<string>();
-    const yoursTracked = new Map(
-      live
-        ? (
-            await tx
-              .select({ id: accounts.id, providerAccountId: accounts.providerAccountId })
-              .from(accounts)
-              .where(eq(accounts.connectionId, live))
-          ).map((a) => [a.providerAccountId!, a.id])
-        : [],
-    );
+    const yourRows = live
+      ? await tx
+          .select({
+            id: accounts.id,
+            providerAccountId: accounts.providerAccountId,
+            name: accounts.name,
+            officialName: accounts.officialName,
+            type: accounts.type,
+            subtype: accounts.subtype,
+            mask: accounts.maskLast4,
+            currency: accounts.currency,
+          })
+          .from(accounts)
+          .where(eq(accounts.connectionId, live))
+      : [];
+    const yoursTracked = new Map(yourRows.map((a) => [a.providerAccountId!, a.id]));
     const [known] = live
       ? await tx
           .select({ ids: connections.knownAccountIds })
@@ -1143,7 +1174,25 @@ export class ConnectService {
     // A bank's accounts start private to the person who connected them, whatever the household's
     // finance style: they choose who else sees each before anything syncs (D4).
     const visibility = 'private';
-    return offered.map((a): OfferedAccount => {
+    // What it tracks that the bank left out this time (SimpleFIN omits accounts it can't reach):
+    // listed too, so they can be kept or stopped, as yours describes them.
+    const sent = new Set(offered.map((a) => a.providerAccountId));
+    const absent = yourRows
+      .filter((y) => y.providerAccountId && !sent.has(y.providerAccountId))
+      .map((y): OfferedAccount => ({
+        providerAccountId: y.providerAccountId!,
+        name: y.name,
+        officialName: y.officialName,
+        type: y.type,
+        subtype: y.subtype,
+        mask: y.mask,
+        currency: y.currency,
+        balance: null,
+        suggestion: { choice: 'keep' },
+        tracked: { accountId: y.id },
+        absent: true,
+      }));
+    const fromBank = offered.map((a): OfferedAccount => {
       const match = matches.get(a.providerAccountId);
       const suggestion: ConnectSuggestion = tracked.has(a.providerAccountId)
         ? { choice: 'keep' }
@@ -1171,6 +1220,7 @@ export class ConnectService {
           : null,
       };
     });
+    return [...fromBank, ...absent];
   }
 }
 
