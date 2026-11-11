@@ -6,6 +6,7 @@ import {
   type Executor,
   householdMembers,
   households,
+  merchantLogos,
   syncHolds,
   tags,
   transactionAttributions,
@@ -69,6 +70,7 @@ import {
   gte,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   lte,
   or,
@@ -1778,6 +1780,18 @@ export class TransactionsService {
     }
     const tagIds = await this.#tagIds(tx, ids);
     const transfers = await this.#transfers(tx, access, rows);
+    // Merchants' logos the worker has fetched (#423): one not fetched yet isn't offered.
+    const logoIds = [...new Set(rows.flatMap((r) => (r.merchantLogoId ? [r.merchantLogoId] : [])))];
+    const logos = new Set(
+      logoIds.length
+        ? (
+            await tx
+              .select({ id: merchantLogos.id })
+              .from(merchantLogos)
+              .where(and(inArray(merchantLogos.id, logoIds), isNotNull(merchantLogos.fetchedAt)))
+          ).map((l) => l.id)
+        : [],
+    );
     const notes = new Map<string, { shared: string | null; mine: string | null }>();
     for (const n of await tx
       .select()
@@ -1813,6 +1827,7 @@ export class TransactionsService {
         currency: r.currency,
         displayName: r.displayName,
         originalDescription: r.originalDescription,
+        merchantLogoId: r.merchantLogoId && logos.has(r.merchantLogoId) ? r.merchantLogoId : null,
         categoryId: r.categoryId,
         reviewStatus: r.reviewStatus,
         excluded: r.excluded,

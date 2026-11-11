@@ -673,6 +673,13 @@
       "when": 1794417786206,
       "tag": "0095_budget_moves_goals",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1794418510280,
+      "tag": "0096_merchant_logos",
+      "breakpoints": true
     }
   ]
 }

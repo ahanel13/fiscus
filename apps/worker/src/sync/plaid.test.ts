@@ -84,9 +84,10 @@ describe('Plaid sync, end to end (#82)', { timeout: 60_000 }, () => {
   };
 
   /** One runner pass with the worker's own registry, pointed at the fake (sandbox only). */
-  const run = async (f: FakePlaid) => {
+  const run = async (f: FakePlaid, fetchLogo?: typeof fetch) => {
     const runner = new Runner(
       {
+        ...(fetchLogo ? { fetchLogo } : {}),
         db: h.worker.db,
         crypto: h.crypto,
         providers: new ProviderRegistry([
@@ -429,6 +430,71 @@ describe('Plaid sync, end to end (#82)', { timeout: 60_000 }, () => {
     expect(await h.row(b.connectionId)).toMatchObject({
       disconnectRequested: false,
       hasSecret: false,
+    });
+  });
+
+  it('keeps merchants’ logos, fetched once from Plaid’s CDN only (#423)', async () => {
+    const scenario = riveraScenario();
+    const slug = (name: string) => name.toLowerCase().replace(/[^a-z]+/g, '-');
+    scenario.updates = scenario.updates.map((update) =>
+      update.map((p) => ({
+        ...p,
+        added: (p.added ?? []).map((t) =>
+          t.merchantName === 'Green Basket Market'
+            ? {
+                ...t,
+                merchantLogo: { key: 'ent-green-basket', url: 'https://evil.example/basket.png' },
+              }
+            : t.merchantName
+              ? {
+                  ...t,
+                  merchantLogo: {
+                    key: `ent-${slug(t.merchantName)}`,
+                    url: `https://plaid-merchant-logos.plaid.com/${slug(t.merchantName)}.png`,
+                  },
+                }
+              : t,
+        ),
+      })),
+    );
+    fake = await startFakePlaid({ scenario });
+    const b = await connect(fake, [
+      [RIVERA.checking, 'depository'],
+      [RIVERA.savings, 'depository'],
+      [RIVERA.visa, 'credit'],
+    ]);
+    const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+    const asked: { url: string; redirect: string | undefined }[] = [];
+    const fetchLogo = (async (url: string, init?: RequestInit) => {
+      asked.push({ url, redirect: init?.redirect });
+      return new Response(PNG, { headers: { 'content-type': 'image/png' } });
+    }) as typeof fetch;
+
+    await run(fake, fetchLogo);
+    const rows = await sql<{ display_name: string; logo: string | null }>(
+      `SELECT t.display_name, l.provider_key AS logo FROM transactions t
+       LEFT JOIN merchant_logos l ON l.id = t.merchant_logo_id
+       WHERE t.household_id = $1 AND t.deleted_at IS NULL`,
+      [b.householdId],
+    );
+    expect(rows.find((r) => r.display_name === 'Corner Coffee')?.logo).toBe('ent-corner-coffee');
+    // Each merchant once, fetched from Plaid's logo host without following redirects; never the
+    // address a transaction pointed elsewhere.
+    expect(asked.every((a) => a.redirect === 'error')).toBe(true);
+    expect(asked.map((a) => a.url)).not.toContain('https://evil.example/basket.png');
+    expect(new Set(asked.map((a) => a.url)).size).toBe(asked.length);
+    const logos = await sql<{
+      provider_key: string;
+      content_type: string | null;
+      failures: number;
+    }>(`SELECT provider_key, content_type, failures FROM merchant_logos ORDER BY provider_key`);
+    expect(logos.find((l) => l.provider_key === 'ent-corner-coffee')).toMatchObject({
+      content_type: 'image/png',
+      failures: 0,
+    });
+    expect(logos.find((l) => l.provider_key === 'ent-green-basket')).toMatchObject({
+      content_type: null,
+      failures: 1,
     });
   });
 });

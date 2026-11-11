@@ -34,6 +34,8 @@ export interface JobContext extends JobTarget {
   db: Database;
   crypto: FieldCrypto;
   providers: ProviderRegistry;
+  /** How merchants' logos are fetched (#423): the platform's, or a stand-in in tests. */
+  fetchLogo?: typeof fetch;
 }
 
 /**
