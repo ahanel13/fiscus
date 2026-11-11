@@ -294,6 +294,23 @@ describe('a connection day to day (#81)', () => {
       );
     });
 
+    it('says when SimpleFIN wants paying, and tries again once it’s paid', async () => {
+      const id = await connection(member.A, [await account(A)], {
+        status: 'login_required',
+        provider: 'simplefin',
+        firstFailedAgo: '1 day',
+      });
+      expect(await listed(A, id)).toMatchObject({ paymentRequired: false });
+      await db.query(
+        `UPDATE connections SET last_error_code = 'SIMPLEFIN_PAYMENT_REQUIRED' WHERE id = $1`,
+        [id],
+      );
+      expect(await listed(A, id)).toMatchObject({ paymentRequired: true });
+      ok(await A.post(url(`/connections/${id}/reauthed`)));
+      expect(await listed(A, id)).toMatchObject({ status: 'ok', paymentRequired: false });
+      expect(dueNow(await row(id))).toBe(true);
+    });
+
     it('[ACC-03] is its owner’s only', async () => {
       const id = await connection(member.A, [await account(A)], { status: 'login_required' });
       refused(await B.post(url(`/connections/${id}/reauthed`)), 403);

@@ -65,7 +65,10 @@ export class ConnectionsController {
     return { data: await this.connections.refresh(ctx, id) };
   }
 
-  /** Signed in again through the provider (D11): it's `ok`, and syncs now. Its owner only. */
+  /**
+   * Signed in again through the provider, or fixed there ("Try again", D11): it's `ok`, and syncs
+   * now. Its owner only.
+   */
   @Post(':connectionId/reauthed')
   @HouseholdRoles('owner', 'member')
   @HttpCode(200)
