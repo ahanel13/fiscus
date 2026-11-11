@@ -79,6 +79,7 @@ export class ConnectionsService {
           lastSyncedAt: connections.lastSyncedAt,
           nextSyncAt: connections.nextSyncAt,
           firstFailedAt: connections.firstFailedAt,
+          lastErrorCode: connections.lastErrorCode,
           refreshRequestedAt: connections.refreshRequestedAt,
           historicalComplete: connections.historicalComplete,
           newAccountsAvailable: connections.newAccountsAvailable,
@@ -175,6 +176,8 @@ export class ConnectionsService {
             status !== 'setup' &&
             newKeys !== undefined &&
             r.credentialSetId !== newKeys,
+          paymentRequired:
+            status === 'login_required' && r.lastErrorCode === 'SIMPLEFIN_PAYMENT_REQUIRED',
           newAccountsAvailable: status !== 'setup' && r.newAccountsAvailable,
           staleAccounts,
         };
@@ -232,9 +235,9 @@ export class ConnectionsService {
   }
 
   /**
-   * Signed in again through the provider (Plaid Link's update mode, D11): its owner says so, and
-   * it syncs right away, which is what shows whether it's fixed. If it isn't, the sync puts it
-   * back as it was.
+   * Signed in again through the provider (Plaid Link's update mode, D11), or fixed there (a
+   * SimpleFIN Bridge payment, "Try again"): its owner says so, and it syncs right away, which is
+   * what shows whether it's fixed. If it isn't, the sync puts it back as it was.
    */
   async reauthed(ctx: HouseholdContext, id: string): Promise<Connection> {
     await this.scope.run(ctx, async (tx, activity) => {

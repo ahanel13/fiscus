@@ -51,6 +51,11 @@ export interface Connection {
    * and history (#83, D15). It keeps syncing meanwhile.
    */
   onOldKeys: boolean;
+  /**
+   * It stopped because the provider wants paying (SimpleFIN Bridge's subscription lapsed): fixed
+   * there, not by signing in, then "Try again".
+   */
+  paymentRequired: boolean;
   /** The bank offers accounts its owner hasn't chosen about yet: "Choose accounts" to add them. */
   newAccountsAvailable: boolean;
   /**

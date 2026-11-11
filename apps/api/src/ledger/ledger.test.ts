@@ -85,6 +85,23 @@ describe('ledger', () => {
     expect(system).toEqual(['settlement', 'transfer', 'uncategorized']);
   });
 
+  it('gives each default category an icon, which can be any one emoji or none (#423)', async () => {
+    type C = { id: string; name: string; icon: string | null };
+    const cats = (await A.get(url('/categories'))).body.data.flatMap(
+      (g: { categories: C[] }) => g.categories,
+    ) as C[];
+    expect(cats.every((c) => c.icon)).toBe(true);
+    const coffee = cats.find((c) => c.name === 'Coffee')!;
+    expect(coffee.icon).toBe('☕');
+    const set = (icon: unknown) => A.request('PATCH', url(`/categories/${coffee.id}`), { icon });
+    expect((await set('🫖')).body.data.icon).toBe('🫖');
+    expect((await set('🇺🇸')).body.data.icon).toBe('🇺🇸');
+    for (const bad of ['tea', '☕☕', '<b>', ''])
+      expect([bad, (await set(bad)).status]).toEqual([bad, 422]);
+    expect((await set(null)).body.data.icon).toBeNull();
+    expect((await set('☕')).status).toBe(200);
+  });
+
   it('moves a category to another group, but not a built-in one', async () => {
     type G = {
       id: string;

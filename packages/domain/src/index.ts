@@ -103,3 +103,19 @@ export {
   type PatchPlan,
   type VersionState,
 } from './versioned-patch.js';
+export {
+  everydaySpending,
+  firstDip,
+  forecast,
+  spreadEvenly,
+  type AccountForecast,
+  type ForecastAccount,
+  type ForecastCard,
+  type ForecastDip,
+  type ForecastEvent,
+  type ForecastInput,
+  type ForecastLine,
+  type ForecastSpending,
+  type PayStyle,
+  type SpendingCategory,
+} from './forecast.js';

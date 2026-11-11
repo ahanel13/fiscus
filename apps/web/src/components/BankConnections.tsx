@@ -36,17 +36,18 @@ const base = (householdId: string) => `/api/v1/households/${householdId}`;
 const PROVIDER: Record<Connection['provider'], string> = { plaid: 'Plaid', simplefin: 'SimpleFIN' };
 
 /** What's wrong with a connection, when something is that its accounts should say (D12, D13). */
-export type ConnectionTrouble = 'needs_sign_in' | 'not_working' | 'not_updating';
+export type ConnectionTrouble = 'needs_sign_in' | 'needs_payment' | 'not_working' | 'not_updating';
 
 export const TROUBLE: Record<ConnectionTrouble, { label: string; tone: BadgeTone }> = {
   needs_sign_in: { label: 'Needs sign-in', tone: 'warning' },
+  needs_payment: { label: 'Needs payment', tone: 'warning' },
   not_working: { label: 'Not working', tone: 'danger' },
   not_updating: { label: 'Not updating', tone: 'warning' },
 };
 
 /** A sign-in it needs, or 3 days of failures. A failure Fiscus is still retrying isn't one yet. */
 export function connectionTrouble(c: Connection): ConnectionTrouble | null {
-  if (c.status === 'login_required') return 'needs_sign_in';
+  if (c.status === 'login_required') return c.paymentRequired ? 'needs_payment' : 'needs_sign_in';
   if (c.status === 'error' && c.notWorking) return 'not_working';
   return null;
 }
@@ -206,6 +207,19 @@ function ConnectionLine({
     },
   });
 
+  // Fixed at SimpleFIN Bridge (a payment, or access allowed again): a sync shows whether it is.
+  const tryAgain = useMutation({
+    mutationFn: () =>
+      api<Data<Connection>>('POST', `${base(householdId)}/connections/${c.id}/reauthed`),
+    onSuccess: async () => {
+      toast(`Trying ${bank} again.`, {
+        description: 'If it still can’t sync, it says so here in a minute or two.',
+      });
+      await refetch();
+    },
+    onError: (e) => toast((e as ApiError).title, { tone: 'error' }),
+  });
+
   const signIn = () =>
     leaveTo(`/h/${householdId}/connect/plaid?connection=${encodeURIComponent(c.id)}`);
   // Connected again with the keys new banks use, keeping its accounts (#83, D15).
@@ -227,6 +241,14 @@ function ConnectionLine({
   let status: React.ReactNode;
   if (c.status === 'setup') {
     status = 'Being set up: choose its accounts to start syncing.';
+  } else if (c.status === 'login_required' && c.paymentRequired) {
+    status = yours
+      ? `${bank} wants a payment before it can sync. Update it at SimpleFIN Bridge, then try again.`
+      : `${bank} wants a payment before it can sync. ${c.owner.name} connected it, so ${c.owner.name} fixes it.`;
+  } else if (c.status === 'login_required' && c.provider === 'simplefin') {
+    status = yours
+      ? `${bank} stopped letting Fiscus in. If you fixed it at SimpleFIN Bridge, try again; otherwise disconnect it and connect it again with a new setup token.`
+      : `${bank} stopped letting Fiscus in. ${c.owner.name} connected it, so ${c.owner.name} fixes it.`;
   } else if (c.status === 'login_required') {
     status = yours
       ? `${bank} needs you to sign in again before it can sync.`
@@ -357,6 +379,11 @@ function ConnectionLine({
           {c.status === 'login_required' && c.provider === 'plaid' ? (
             <Button size="sm" onPress={signIn}>
               Sign in again
+            </Button>
+          ) : null}
+          {c.status === 'login_required' && c.provider === 'simplefin' ? (
+            <Button size="sm" isPending={tryAgain.isPending} onPress={() => tryAgain.mutate()}>
+              Try again
             </Button>
           ) : null}
           {movable ? (

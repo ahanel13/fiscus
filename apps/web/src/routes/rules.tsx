@@ -25,6 +25,7 @@ import {
   tagsQuery,
 } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
+import { CategoryName } from '../components/CategoryName.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { NameCleanupCard } from './name-cleanup.js';
 import {
@@ -141,7 +142,7 @@ export function RulesSettings() {
           <p className="min-w-0 flex-1 basis-64 text-sm text-muted">
             Rules tidy up transactions as they arrive: rename them, categorize them, tag them, and
             more. They run top to bottom, and a later rule wins when two set the same thing. They
-            never change something a person set, and act only where their author could by hand.
+            act only where their author could by hand.
           </p>
           {canEdit ? (
             <Button onPress={() => setEditing('new')}>
@@ -655,8 +656,8 @@ export function RuleEditor({
       {g.categories
         .filter((c) => !c.archived)
         .map((c) => (
-          <SelectItem key={c.id} id={c.id}>
-            {c.name}
+          <SelectItem key={c.id} id={c.id} textValue={c.name}>
+            <CategoryName c={c} />
           </SelectItem>
         ))}
     </SelectSection>
@@ -1156,14 +1157,14 @@ function ApplyDialog({
           </p>
         ) : p.total === 0 ? (
           <p className="text-sm" role="status">
-            Nothing to change: transactions this rule matches are already like this, were set by a
-            person, or are outside its reach.
+            Nothing to change: transactions this rule matches are already like this, or are outside
+            its reach.
           </p>
         ) : (
           <>
             <p className="text-sm" role="status">
               {p.total.toLocaleString('en-US')} {p.total === 1 ? 'transaction' : 'transactions'}{' '}
-              would change. Anything a person set stays as it is.
+              would change.
             </p>
             <ul className="max-h-80 divide-y divide-border overflow-auto rounded-lg border border-border text-sm">
               {rows.map((c) => (

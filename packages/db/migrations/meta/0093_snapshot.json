@@ -1,5 +1,5 @@
 {
-  "id": "9355a342-cb13-49be-b38c-8277be89ba4d",
+  "id": "6407d20f-4b4b-4714-9bb1-c11b19d7b8c6",
   "prevId": "27b2c494-691c-429a-95c1-a4637e3477f0",
   "version": "7",
   "dialect": "postgresql",
@@ -1220,25 +1220,13 @@
           "name": "from_category_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "to_category_id": {
           "name": "to_category_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "from_goal_id": {
-          "name": "from_goal_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "to_goal_id": {
-          "name": "to_goal_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "amount_minor": {
           "name": "amount_minor",
@@ -1305,36 +1293,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "budget_moves_from_goal_id_index": {
-          "name": "budget_moves_from_goal_id_index",
-          "columns": [
-            {
-              "expression": "from_goal_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "budget_moves_to_goal_id_index": {
-          "name": "budget_moves_to_goal_id_index",
-          "columns": [
-            {
-              "expression": "to_goal_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1382,36 +1340,6 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "budget_moves_household_id_from_goal_id_goals_household_id_id_fk": {
-          "name": "budget_moves_household_id_from_goal_id_goals_household_id_id_fk",
-          "tableFrom": "budget_moves",
-          "tableTo": "goals",
-          "columnsFrom": [
-            "household_id",
-            "from_goal_id"
-          ],
-          "columnsTo": [
-            "household_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "budget_moves_household_id_to_goal_id_goals_household_id_id_fk": {
-          "name": "budget_moves_household_id_to_goal_id_goals_household_id_id_fk",
-          "tableFrom": "budget_moves",
-          "tableTo": "goals",
-          "columnsFrom": [
-            "household_id",
-            "to_goal_id"
-          ],
-          "columnsTo": [
-            "household_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1426,17 +1354,9 @@
           "name": "budget_moves_positive",
           "value": "\"budget_moves\".\"amount_minor\" > 0"
         },
-        "budget_moves_from": {
-          "name": "budget_moves_from",
-          "value": "num_nonnulls(\"budget_moves\".\"from_category_id\", \"budget_moves\".\"from_goal_id\") = 1"
-        },
-        "budget_moves_to": {
-          "name": "budget_moves_to",
-          "value": "num_nonnulls(\"budget_moves\".\"to_category_id\", \"budget_moves\".\"to_goal_id\") = 1"
-        },
-        "budget_moves_two_lines": {
-          "name": "budget_moves_two_lines",
-          "value": "coalesce(\"budget_moves\".\"from_category_id\", \"budget_moves\".\"from_goal_id\") <> coalesce(\"budget_moves\".\"to_category_id\", \"budget_moves\".\"to_goal_id\")"
+        "budget_moves_two_categories": {
+          "name": "budget_moves_two_categories",
+          "value": "\"budget_moves\".\"from_category_id\" <> \"budget_moves\".\"to_category_id\""
         }
       },
       "isRLSEnabled": false

@@ -656,8 +656,22 @@
     {
       "idx": 93,
       "version": "7",
-      "when": 1794294748574,
-      "tag": "0093_budget_moves_goals",
+      "when": 1794292935070,
+      "tag": "0093_accounts_connection_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1794413862646,
+      "tag": "0094_category_icons",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1794417786206,
+      "tag": "0095_budget_moves_goals",
       "breakpoints": true
     }
   ]

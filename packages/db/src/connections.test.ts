@@ -245,19 +245,41 @@ describe('bank connections (RLS)', () => {
     ).toMatch(/connections_provider_item/);
   });
 
-  // accounts.connection_id gets its foreign key a release later (upgrades §3); until then,
-  // pointing an account at another household's connection shows nothing of it.
-  it("shows nothing of another household's connection an account points at", async () => {
+  // accounts.connection_id's foreign key (#409): a connection in the account's own household.
+  it("refuses pointing an account at another household's connection", async () => {
     const other = randomUUID();
     await owner.query(
       `INSERT INTO connections (id, household_id, owner_member_id, provider, provider_item_id, status)
        VALUES ($1, $2, $3, 'plaid', gen_random_uuid()::text, 'ok')`,
       [other, X, people.Z.member],
     );
-    await asMember('A', async (q) => {
-      await q.query('UPDATE accounts SET connection_id = $1 WHERE id = $2', [other, acct.a]);
-      expect((await q.query('SELECT 1 FROM connections WHERE id = $1', [other])).rowCount).toBe(0);
-    });
+    expect(
+      await error(() =>
+        asMember('A', (q) =>
+          q.query('UPDATE accounts SET connection_id = $1 WHERE id = $2', [other, acct.a]),
+        ),
+      ),
+    ).toMatch(/accounts_connection_fk/);
+  });
+
+  it('keeps the accounts of a deleted connection, without it', async () => {
+    await owner.query('BEGIN');
+    try {
+      await owner.query('DELETE FROM connections WHERE id = $1', [conn.a]);
+      const { rows } = await owner.query(
+        'SELECT id, household_id, connection_id, provider_account_id FROM accounts WHERE id = ANY($1)',
+        [[acct.a, acct.aOfB]],
+      );
+      expect(rows).toHaveLength(2);
+      for (const r of rows)
+        expect(r).toMatchObject({
+          household_id: H,
+          connection_id: null,
+          provider_account_id: `pa-${r.id}`,
+        });
+    } finally {
+      await owner.query('ROLLBACK');
+    }
   });
 
   describe('secrets', () => {
