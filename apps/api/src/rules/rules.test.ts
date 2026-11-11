@@ -161,7 +161,7 @@ describe('rules', () => {
     expect(both.status).toBe(422);
   });
 
-  it('never changes what a person set, by hand or in bulk', async () => {
+  it('applied to existing ones, changes what a person set too, by hand or in bulk', async () => {
     const acc = await account(A, 'Hand checking');
     const id = (
       await A.post(url('/transactions'), {
@@ -174,7 +174,7 @@ describe('rules', () => {
     const imported = await csv(acc, [['COSTCO WHSE #55', -8000]]);
     expect(imported.added).toBe(1);
     const other = (await txns(acc)).find((t) => t.id !== id)!;
-    // Categorized in bulk by a person: a rule mustn't undo it.
+    // Categorized in bulk by a person: applying a rule is asking to change it.
     await A.request('PATCH', url('/transactions'), {
       ids: [other.id],
       changes: { categoryId: dining },
@@ -187,16 +187,38 @@ describe('rules', () => {
       conditions: { description: { op: 'contains', value: 'costco' } },
       actions: { rename: 'Costco', categoryId: groceries },
     });
-    // The hand-entered one keeps its name; the imported one keeps its bulk category.
     expect(preview.body.data.changes).toEqual([
-      expect.objectContaining({ transactionId: id, changes: { categoryId: [null, groceries] } }),
+      expect.objectContaining({
+        transactionId: id,
+        changes: { displayName: ['COSTCO WHSE', 'Costco'], categoryId: [null, groceries] },
+      }),
       expect.objectContaining({
         transactionId: other.id,
-        changes: { displayName: ['Costco Whse', 'Costco'] },
+        changes: { displayName: ['Costco Whse', 'Costco'], categoryId: [dining, groceries] },
       }),
     ]);
     expect((await A.post(url(`/rules/${costco}/apply`))).body.data).toEqual({ changed: 2 });
     expect((await A.post(url(`/rules/${costco}/apply`))).body.data).toEqual({ changed: 0 });
+  });
+
+  it('recategorizes what a Monarch file categorized, applied to existing ones', async () => {
+    const acc = await account(A, 'Monarch card');
+    // As they arrive, the file's categories stay: a rule for them already exists.
+    const draft = {
+      conditions: { description: { op: 'equals', value: 'Redemption Credit' } },
+      actions: { categoryId: groceries },
+    };
+    const id = await rule(A, draft);
+    await csv(acc, [
+      ['REDEMPTION CREDIT', 3843, 'Restaurants'],
+      ['REDEMPTION CREDIT', 2500, 'Restaurants'],
+    ]);
+    expect((await txns(acc)).map((t) => t.categoryId)).toEqual([dining, dining]);
+    const preview = (await A.post(url('/rules/preview'), draft)).body.data;
+    expect(preview.total).toBe(2);
+    expect(preview.changes[0].changes).toEqual({ categoryId: [dining, groceries] });
+    expect((await A.post(url(`/rules/${id}/apply`))).body.data).toEqual({ changed: 2 });
+    expect((await txns(acc)).map((t) => t.categoryId)).toEqual([groceries, groceries]);
   });
 
   it('[RULE-05] [EDGE-10] reaches only as far as its author could by hand, re-checked each run', async () => {
