@@ -498,7 +498,11 @@ the line per connection at the top of Accounts (`apps/web/src/components/BankCon
   date. Accounts shows the connection, highlighted, with where to fix it (for SimpleFIN, a link
   to the Bridge) and whose that is, and the account's row says **Not updating**. Its **Choose
   accounts** lists those accounts first, highlighted with **Not updating** and their balance's
-  date, under a line saying how many and where to fix them.
+  date, under a line saying how many and where to fix them. SimpleFIN leaves out the accounts it
+  can't reach, so choosing again also lists what the connection tracks that the bank didn't send
+  (`absent`, described from the account here, with no balance): kept or stopped like the rest. A
+  save that adds and stops nothing writes nothing, or records `connection.accounts_declined` when
+  it only leaves new accounts untracked.
 - **Refresh now** (D10). `POST …/connections/:id/refresh`, its owner only (ACC-03): `next_sync_at`
   becomes now and `refresh_requested_at` is stamped. Another within the provider's limit
   (`REFRESH_LIMIT_MS`: Plaid 15 minutes, SimpleFIN 6 hours) is 429 `refresh_too_soon`, with

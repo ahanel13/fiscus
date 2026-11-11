@@ -1074,7 +1074,9 @@ export function OfferedRow({
           </p>
           <p className="text-muted">
             {kind ? `${kind} · ` : null}
-            {a.balance ? (
+            {a.absent ? (
+              'not sent by the bank this time'
+            ) : a.balance ? (
               <>
                 balance{' '}
                 <Amount

@@ -37,8 +37,8 @@ describe('notUpdatingFirst', () => {
 });
 
 describe('OfferedRow', () => {
-  const row = (stale?: { accountId: string; code: null; asOf: string | null }) => {
-    const a = offered('a', 'acc-a');
+  const row = (stale?: { accountId: string; code: null; asOf: string | null }, absent = false) => {
+    const a = { ...offered('a', 'acc-a'), ...(absent && { absent: true, balance: null }) };
     render(
       <TimeZoneProvider timeZone="UTC">
         <ul>
@@ -75,6 +75,12 @@ describe('OfferedRow', () => {
   it('says when no balance has come for it', () => {
     row({ accountId: 'acc-a', code: null, asOf: null });
     expect(screen.getByText('No balance has come from the bank for it.')).toBeTruthy();
+  });
+
+  it('says when the bank left it out, instead of a balance', () => {
+    row({ accountId: 'acc-a', code: null, asOf: '2026-10-14' }, true);
+    expect(screen.getByText(/not sent by the bank this time/)).toBeTruthy();
+    expect(screen.getByText('Not updating')).toBeTruthy();
   });
 
   it('shows nothing extra for one that updates', () => {
