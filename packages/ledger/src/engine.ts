@@ -34,7 +34,10 @@ import { linkTransfers, transferCategories } from './transfers.js';
 // - a field a person set (or a file they imported supplied) is never changed: field_versions
 //   records those (transactions.service.ts, markPersonSet);
 // - each action reaches only where the rule's author could act by hand, re-checked every run,
-//   and only where the person running it could too (applying to existing transactions).
+//   and only where the person running it could too (applying to existing transactions);
+// - except that applying a rule to existing transactions changes those fields too
+//   (`overwrite`): asking for it is the decision, as with a category from a Monarch file that
+//   someone now wants otherwise.
 
 export interface EngineRule {
   id: string;
@@ -137,7 +140,8 @@ export async function activeRules(tx: Executor, accountIds: string[] = []): Prom
  * Works out (and with `activity`, makes) the changes `ruleList` would make to `rows`. `caller` is
  * the access of whoever runs it: actions also need them to be allowed (null: an import, where the
  * importer owns the account anyway). Only an import (on arrival) records the other side of a
- * transfer; applying to existing transactions links and waits but never creates.
+ * transfer; applying to existing transactions links and waits but never creates. With
+ * `overwrite`, fields a person set (or a file supplied) are changed too.
  */
 export async function runRules(
   tx: Executor,
@@ -146,6 +150,7 @@ export async function runRules(
   ruleList: EngineRule[],
   caller: Map<string, AccessLevel> | null,
   activity: HouseholdActivity | null,
+  overwrite = false,
 ): Promise<RuleChange[]> {
   const candidates = rows.filter((r) => !r.deletedAt && !r.hasSplits && !r.parentId);
   if (candidates.length === 0 || ruleList.length === 0) return [];
@@ -251,7 +256,7 @@ export async function runRules(
 
   const plans: Plan[] = [];
   for (const row of candidates) {
-    const personSet = new Set(Object.keys(row.fieldVersions));
+    const personSet = new Set(overwrite ? [] : Object.keys(row.fieldVersions));
     const plan: Plan = {
       row,
       set: {},
