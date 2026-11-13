@@ -87,4 +87,39 @@ describe('OfferedRow', () => {
     row();
     expect(screen.queryByText('Not updating')).toBeNull();
   });
+
+  it('says a left-out account linked to its new id carries on there, and can’t stop', () => {
+    const a = { ...offered('a', 'acc-a'), absent: true, balance: null };
+    render(
+      <TimeZoneProvider timeZone="UTC">
+        <ul>
+          <OfferedRow
+            account={a}
+            choice={{
+              providerAccountId: a.providerAccountId,
+              choice: 'keep',
+              accountId: null,
+              owners: ['me'],
+              visibility: 'private',
+            }}
+            choices={[
+              {
+                providerAccountId: 'p-new',
+                choice: 'link',
+                accountId: 'acc-a',
+                owners: ['me'],
+                visibility: 'private',
+              },
+            ]}
+            yours={[]}
+            syncedBy={new Map()}
+            members={[]}
+            me="me"
+            onChange={() => {}}
+          />
+        </ul>
+      </TimeZoneProvider>,
+    );
+    expect(screen.getByText(/carries on there/)).toBeTruthy();
+  });
 });

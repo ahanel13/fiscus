@@ -789,9 +789,32 @@ function ChooseAccounts({
     ),
   );
   const [cancelling, setCancelling] = useState(false);
+  // What this connection tracks and the bank sent: not to link to. One it left out may be.
+  const trackedHere = new Set(
+    setup.accounts.flatMap((a) => (a.tracked?.accountId && !a.absent ? [a.tracked.accountId] : [])),
+  );
+  const leftOutHere = new Set(
+    setup.accounts.flatMap((a) => (a.tracked?.accountId && a.absent ? [a.tracked.accountId] : [])),
+  );
   const update = (id: string, patch: Partial<Choice>) =>
-    setChoices((all) => all.map((c) => (c.providerAccountId === id ? { ...c, ...patch } : c)));
-  const tracked = choices.filter((c) => c.choice !== 'skip').length;
+    setChoices((all) =>
+      all.map((c) => {
+        if (c.providerAccountId === id) return { ...c, ...patch };
+        // A left-out account linked to the bank's account under its new id carries on.
+        const left = setup.accounts.find((a) => a.providerAccountId === c.providerAccountId);
+        return patch.choice === 'link' &&
+          left?.absent &&
+          left.tracked?.accountId === patch.accountId
+          ? { ...c, choice: 'keep' }
+          : c;
+      }),
+    );
+  // A left-out account linked to its new id is one account, counted once.
+  const linkedTargets = new Set(choices.flatMap((c) => (c.choice === 'link' ? [c.accountId] : [])));
+  const tracked = choices.filter((c) => {
+    const a = setup.accounts.find((x) => x.providerAccountId === c.providerAccountId);
+    return c.choice !== 'skip' && !(a?.absent && linkedTargets.has(a.tracked?.accountId ?? null));
+  }).length;
   const bank = setup.institutionName ?? 'Your bank';
   const back = accountsUrl(household.id);
 
@@ -861,6 +884,8 @@ function ChooseAccounts({
             choice={choices.find((c) => c.providerAccountId === a.providerAccountId)!}
             choices={choices}
             yours={yours}
+            trackedHere={trackedHere}
+            leftOutHere={leftOutHere}
             syncedBy={syncedBy}
             members={members}
             me={me}
@@ -942,6 +967,8 @@ export function OfferedRow({
   choice: c,
   choices,
   yours,
+  trackedHere = new Set(),
+  leftOutHere = new Set(),
   syncedBy,
   members,
   me,
@@ -953,6 +980,10 @@ export function OfferedRow({
   choice: Choice;
   choices: Choice[];
   yours: Account[];
+  /** What this connection tracks and the bank sent this time: not to link to. */
+  trackedHere?: Set<string>;
+  /** What this connection tracks that the bank left out: linking moves it to the new id. */
+  leftOutHere?: Set<string>;
   /** Your accounts another connection syncs, to it: linking one of them moves it here. */
   syncedBy: Map<string, Connection>;
   members: HouseholdMember[];
@@ -971,6 +1002,7 @@ export function OfferedRow({
     (y) =>
       y.currency === a.currency &&
       !taken.has(y.id) &&
+      !trackedHere.has(y.id) &&
       (syncedBy.get(y.id)?.owner.memberId ?? me) === me,
   );
   const linked = yours.find((y) => y.id === c.accountId);
@@ -1010,8 +1042,17 @@ export function OfferedRow({
     .join(' · ');
 
   const from = c.choice === 'link' && c.accountId ? syncedBy.get(c.accountId) : undefined;
+  // Left out by the bank, and linked to one it sends under a new id.
+  const linkedTo = a.absent
+    ? choices.find((o) => o.choice === 'link' && o.accountId === a.tracked?.accountId)
+    : undefined;
   let reason: string | null = null;
-  if (from) {
+  if (linkedTo) {
+    reason = 'Linked to the bank’s account below, sent under a new id: it carries on there.';
+  } else if (c.choice === 'link' && c.accountId && leftOutHere.has(c.accountId)) {
+    const y = yours.find((x) => x.id === c.accountId);
+    reason = `The bank sends ${y?.name ?? 'it'} under a new id now. Keeps its history; sync fills in after it.`;
+  } else if (from) {
     // Its other accounts you see, all moving here too: it's left syncing nothing, and ends.
     const emptied = from.accountIds.every((id) =>
       choices.some((o) => o.choice === 'link' && o.accountId === id),
@@ -1143,8 +1184,8 @@ export function OfferedRow({
         {a.tracked ? (
           <Select
             aria-label={`Keep tracking ${a.name}${a.mask ? ` ending in ${a.mask}` : ''}`}
-            value={c.choice === 'skip' ? 'skip' : 'keep'}
-            isDisabled={a.tracked.accountId === null}
+            value={c.choice === 'skip' && !linkedTo ? 'skip' : 'keep'}
+            isDisabled={a.tracked.accountId === null || !!linkedTo}
             onChange={(v) => v && onChange({ choice: v as 'keep' | 'skip', accountId: null })}
           >
             <SelectItem id="keep">Keep tracking</SelectItem>

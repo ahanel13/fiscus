@@ -500,7 +500,11 @@ the line per connection at the top of Accounts (`apps/web/src/components/BankCon
   accounts** lists those accounts first, highlighted with **Not updating** and their balance's
   date, under a line saying how many and where to fix them. SimpleFIN leaves out the accounts it
   can't reach, so choosing again also lists what the connection tracks that the bank didn't send
-  (`absent`, described from the account here, with no balance): kept or stopped like the rest. A
+  (`absent`, described from the account here, with no balance): kept or stopped like the rest.
+  Once the Bridge reaches the bank again by another route (MX, say), it may send those accounts
+  under new ids: a left-out account you own is a link target for them, suggested by the usual
+  match (D5), and linking moves it to the new id, keeping its history; the sync then matches what
+  the bank sends again (D6, D7). Linked, it can't also be stopped (422 `linked_and_stopped`). A
   save that adds and stops nothing writes nothing, or records `connection.accounts_declined` when
   it only leaves new accounts untracked.
 - **Refresh now** (D10). `POST …/connections/:id/refresh`, its owner only (ACC-03): `next_sync_at`
