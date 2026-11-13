@@ -251,6 +251,59 @@ describe('connecting the SimpleFIN Bridge (#91)', () => {
     expect(row.connection_id).toBeNull();
   });
 
+  it('choosing again, links what the Bridge sends under a new id to the one it left out', async () => {
+    // The Bridge reaches the bank again through another route, and sends the card under a new id.
+    const visa = (await db.query(`SELECT id FROM accounts WHERE provider_account_id = 'gone-visa'`))
+      .rows[0].id;
+    await db.query(`UPDATE accounts SET connection_id = $1 WHERE id = $2`, [connId, visa]);
+    const before = Number(
+      (await db.query('SELECT count(*) AS n FROM accounts WHERE connection_id = $1', [connId]))
+        .rows[0].n,
+    );
+    const setup = await A.get(url(`/connections/${connId}/setup`));
+    ok(setup);
+    const offered = setup.body.data.accounts as any[];
+    expect(offered.find((a) => a.providerAccountId === RIVERA.visa).suggestion).toMatchObject({
+      choice: 'link',
+      accountId: visa,
+    });
+    const choices = offered.map((a) =>
+      a.providerAccountId === RIVERA.visa
+        ? { providerAccountId: a.providerAccountId, choice: 'link', accountId: visa }
+        : { providerAccountId: a.providerAccountId, choice: a.tracked ? 'keep' : 'skip' },
+    );
+    // Linked, it carries on: it can't stop too.
+    refused(
+      await A.post(url(`/connections/${connId}/confirm`), {
+        accounts: choices.map((c) =>
+          c.providerAccountId === 'gone-visa' ? { ...c, choice: 'skip' } : c,
+        ),
+      }),
+      422,
+      'linked_and_stopped',
+    );
+    const r = await A.post(url(`/connections/${connId}/confirm`), { accounts: choices });
+    ok(r);
+    expect(r.body.data.accounts).toMatchObject([
+      { providerAccountId: RIVERA.visa, accountId: visa, linked: true },
+    ]);
+    const row = (
+      await db.query('SELECT connection_id, provider_account_id FROM accounts WHERE id = $1', [
+        visa,
+      ])
+    ).rows[0];
+    expect(row).toEqual({ connection_id: connId, provider_account_id: RIVERA.visa });
+    const after = Number(
+      (await db.query('SELECT count(*) AS n FROM accounts WHERE connection_id = $1', [connId]))
+        .rows[0].n,
+    );
+    expect(after).toBe(before);
+    // Nothing left out now.
+    const again = await A.get(url(`/connections/${connId}/setup`));
+    ok(again);
+    expect((again.body.data.accounts as any[]).some((a) => a.absent)).toBe(false);
+  });
+
   it('keeps a claimed token’s connection when the Bridge then fails, to come back to', async () => {
     const second = await startFakeSimpleFin({ user: 'kai-bridge-user' });
     try {
