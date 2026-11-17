@@ -563,6 +563,19 @@ balance, is suggested in Review → Transfers as "A settle-up with Sam?", one cl
 As everywhere, the other side shows as the **person**, never their account (ADR 0006 F1):
 "Transfer from Sam", into **your** Everyday checking.
 
+**D30. Reminders and a monthly summary go to the two of you, each from your own side (#116).**
+- **You're not square with someone**: once a week, on your day, while your balance with someone
+  is at least your amount ($20 by default). "You owe Sam $42.10" to you, "Alex owes you $42.10"
+  to Sam.
+- **Monthly shared costs summary**: early each month, for the month before. "October with Sam:
+  Sam owes you $53.20", with the shared expenses that moved money between you, and what was
+  settled up.
+- Each is built from your own Shared costs, so it never says more than that page shows you. A
+  third person gets nothing about the two of you.
+- Each person chooses where they go, and the reminder's day and amount, in Settings →
+  Notifications. Combined households, and households of one, don't get them.
+- Details are in [Notifications](../notifications.md) §4.4.
+
 ---
 
 ## 10a. Funding joint accounts
@@ -695,6 +708,7 @@ real.
 | D27 | A zero-based month assigns afresh; Assign like last month copies the last one's amounts | #100 |
 | D28 | Funding targets are fixed amounts per period, tracked from contributions; a share of income waits for consent | #113 |
 | D29 | Filling a month (last month, 3-month average, a template) previews, then replaces the amounts the source has; the average counts only what you can see | #105 |
+| D30 | Settle-up reminders and a monthly summary go to the two people in a pair, each from their own side | #116 |
 | D32 | Budget months start on the household's day; changing it moves every month's edges and keeps the amounts | #71 |
 
 ## Open questions

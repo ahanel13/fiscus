@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { type Executor, incomeSplitConsents } from '@fiscus/db';
-import type { IncomeShares } from '@fiscus/domain';
-import { householdRanges } from '@fiscus/ledger';
+import { householdRanges, incomeShares } from '@fiscus/ledger';
 import type { IncomeSplit, IncomeSplitConsent } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import { desc, sql } from 'drizzle-orm';
@@ -122,27 +121,4 @@ async function write(
       ],
       set: { ...values, createdAt: sql`now()` },
     });
-}
-
-/**
- * The split by income on each of `dates`, between those who had agreed by then (F4): shares in
- * basis points from fiscus_income_split_shares(), never an income.
- */
-export async function incomeShares(tx: Executor, dates: readonly string[]): Promise<IncomeShares> {
-  const days = [...new Set(dates)];
-  const byDay = new Map<string, { memberId: string; shareBps: number }[]>();
-  if (days.length > 0) {
-    const { rows } = await tx.execute<{ day: string; member_id: string; share_bps: number }>(
-      sql`SELECT day::text AS day, member_id, share_bps
-          FROM fiscus_income_split_shares(${`{${days.join(',')}}`}::date[])
-          ORDER BY member_id`,
-    );
-    for (const r of rows) {
-      byDay.set(r.day, [
-        ...(byDay.get(r.day) ?? []),
-        { memberId: r.member_id, shareBps: r.share_bps },
-      ]);
-    }
-  }
-  return (date) => byDay.get(date) ?? null;
 }

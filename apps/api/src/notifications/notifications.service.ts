@@ -7,6 +7,8 @@ import {
   encryptChannelSecret,
   enqueueNotification,
   type Executor,
+  householdMembers,
+  households,
   notificationChannels,
   notificationDeliveries,
   notificationPreferences,
@@ -29,6 +31,8 @@ import {
   ruleChannels,
   ruleSettings,
   type SetChannel,
+  SETTLE_UP_KINDS,
+  settlesUp,
   type SetRule,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
@@ -184,10 +188,25 @@ export class NotificationsService {
     });
     const setUp = channels.filter((c) => c.configured).map((c) => c.kind);
     const prefs = new Map(prefRows.map((p) => [p.kind, p]));
+    // Settle-up reminders and summaries only where there's settling up (#116, ADR 0006 §8).
+    const [h] = await tx
+      .select({ financeStyle: households.financeStyle })
+      .from(households)
+      .where(eq(households.id, ctx.householdId));
+    const [active] = await tx
+      .select({ n: count() })
+      .from(householdMembers)
+      .where(
+        and(eq(householdMembers.householdId, ctx.householdId), isNull(householdMembers.leftAt)),
+      );
+    const settling = settlesUp(active?.n ?? 0, h?.financeStyle ?? 'hybrid');
+    const kinds = NOTIFICATION_KINDS.filter(
+      (k) => settling || !(SETTLE_UP_KINDS as readonly string[]).includes(k),
+    );
     return {
       emailAvailable,
       channels,
-      rules: NOTIFICATION_KINDS.map((kind) => {
+      rules: kinds.map((kind) => {
         const pref = prefs.get(kind);
         return {
           kind,

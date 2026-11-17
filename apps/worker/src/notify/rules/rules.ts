@@ -21,6 +21,7 @@ import {
 import { addDays, budgetMonthOf } from '@fiscus/shared';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { appLink, longDate, type MemberRun, money, weekOf, when } from './member.js';
+import { settleUpReminder, settleUpSummary } from './settle-up.js';
 
 // The rules (#127; bills walkthrough D18–D20). Each looks at one member's own view of the
 // household (their database context: SYS-02) and writes what's due for them. Each notification's
@@ -428,7 +429,6 @@ export async function bigTransactions(m: MemberRun, since: Date): Promise<number
   return sent;
 }
 
-/** The daily rules, in the order they run. */
 /**
  * A new subscription, or a price went up (D14, D18): once per change, to everyone who sees the
  * series (row-level security: their own context). A price rise is keyed by the payment it started
@@ -480,6 +480,7 @@ export async function subscriptionChange(m: MemberRun): Promise<number> {
   return sent;
 }
 
+/** The daily rules, in the order they run. */
 export const DAILY_RULES = [
   billDue,
   late,
@@ -487,4 +488,6 @@ export const DAILY_RULES = [
   lowBalance,
   budgetNearlySpent,
   subscriptionChange,
+  settleUpReminder,
+  settleUpSummary,
 ] as const;

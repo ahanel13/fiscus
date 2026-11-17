@@ -757,6 +757,34 @@ function RuleDialog({
             {numberSelect('Time', 'hour', HOURS, formatHour)}
           </div>
         ) : null}
+        {rule.kind === 'settle_up_reminder' ? (
+          <>
+            <Select
+              label="Day"
+              value={s.day as string}
+              onChange={(v) => v && set({ day: String(v) })}
+            >
+              {WEEKDAYS.map((d) => (
+                <SelectItem key={d} id={d}>
+                  {d[0]!.toUpperCase() + d.slice(1)}
+                </SelectItem>
+              ))}
+            </Select>
+            <AmountInput
+              label="When a balance is at least"
+              currency={currency}
+              value={s.overMinor as number}
+              onChange={(v) => v !== null && set({ overMinor: Math.abs(v) })}
+              description="Whoever owes, and whoever is owed, each hear about it from their side."
+            />
+          </>
+        ) : null}
+        {rule.kind === 'settle_up_summary' ? (
+          <p className="text-sm text-muted">
+            Early each month: what you shared with each person the month before, what was settled,
+            and where you stand. Only you and that person get it.
+          </p>
+        ) : null}
         <fieldset className="space-y-1">
           <legend className="mb-1 text-sm font-medium">Send it to</legend>
           {columns.map((c) => (

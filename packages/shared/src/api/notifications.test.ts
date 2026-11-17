@@ -33,6 +33,10 @@ describe('notification rules (D18)', () => {
     expect(ruleSettings('bill_due', { daysBefore: 5 })).toEqual({ daysBefore: 5 });
     expect(ruleSettings('bill_due', { daysBefore: 500 })).toEqual({ daysBefore: 3 });
     expect(ruleSettings('weekly_recap', { hour: 18 })).toEqual({ day: 'monday', hour: 18 });
+    expect(ruleSettings('settle_up_reminder', { overMinor: 5_000 })).toEqual({
+      day: 'monday',
+      overMinor: 5_000,
+    });
     for (const kind of NOTIFICATION_KINDS) expect(ruleSettings(kind, null)).toBeTruthy();
   });
 
@@ -58,6 +62,8 @@ describe('notification rules (D18)', () => {
     expect(t('weekly_recap')).toBe('Mondays at 8 am');
     expect(t('weekly_recap', { day: 'sunday', hour: 0 })).toBe('Sundays at midnight');
     expect(t('weekly_recap', { day: 'friday', hour: 17 })).toBe('Fridays at 5 pm');
+    expect(t('settle_up_reminder')).toBe('Mondays, when a balance is $20 or more');
+    expect(t('settle_up_summary')).toBe('On the 1st, for the month before');
   });
 });
 

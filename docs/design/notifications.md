@@ -19,7 +19,8 @@ are in the [bills walkthrough](walkthroughs/bills.md) §7 (D15–D20). The table
   send email yet; ask whoever runs it." and email can't be ticked.
 - **The rules** (#127, §4): a bill is due, a bill or paycheck is late, a card statement is due, a
   big transaction, low balance, a budget category nearly spent, transactions to review, and a bank
-  connection that needs you; and the weekly recap (#128, §4.3).
+  connection that needs you; the weekly recap (#128, §4.3); and settle-up reminders and the
+  monthly shared costs summary (#116, §4.4).
 
 ## 2. Channels
 
@@ -99,6 +100,8 @@ Sam's private card's purchases never reach Alex. It writes their notification th
 | Transactions to review | owners and members (not viewers) | once a day from their hour, if any wait in accounts they can review (and possible duplicates) | `review:<date>` |
 | A bank connection needs you | whoever linked it | when a sync leaves it needing a sign-in, or 3 days into failures (§1) | `connection_needs_you:<connection>:…` |
 | Weekly recap | each member | their day, from their hour (§4.3); a quiet week too | `weekly_recap:<week it covers>` |
+| You're not square with someone | the two people in a pair, each from their side (§4.4) | their day (Mondays by default), when their balance with the other is at least their amount ($20) | `settle_up_reminder:<other member>:<week>` |
+| Monthly shared costs summary | the two people in a pair, each from their side (§4.4) | the first daily run of a month, for the month before; up to the 7th, after a restart | `settle_up_summary:<other member>:<month>` |
 
 "A new subscription, or a price went up" isn't sent yet: detection (#119) doesn't record when a
 series first appeared or its amount moved and stayed (D14). It needs that first (#123, #129).
@@ -133,6 +136,26 @@ context, so it holds only what they can see (D21, SYS-02). One notification a we
 
 A quiet week still sends, so it's clear nothing broke.
 
+### 4.4 Settling up
+
+Settle-up reminders and the monthly summary (#116, budgeting walkthrough D30) are built from the
+recipient's own **Shared costs** (`buildSharedCosts()` in `@fiscus/ledger`, the same code the
+page uses), in their own context. It refuses system context. So a notification says only what
+that page shows them: their balance with one other person, from the expenses they're part of
+(ADR 0006 F1). Each goes to the two people in a pair, each written from their side. A third
+member gets nothing about them.
+- **Reminder**: "You owe Sam $42.10" to one, "Sam owes you $42.10" to the other, linking to
+  Shared costs. Once a week for each pair, on each person's day, while the balance is at least
+  their amount. Flagged changes are left out, as on the page (D18).
+- **Summary**: "October with Sam: Sam owes you $53.20", with how many shared expenses moved money
+  between the two of them, what they cost, and what was settled up. It links to that month on
+  Shared costs. It's sent only when something moved money between them, they settled up, or the
+  month ended with a balance. Expenses that evened out, or were between other people, don't count.
+- Both are for households that settle up: two or more members, not Combined (ADR 0006 §8).
+  Elsewhere they're not sent, and Settings doesn't list them.
+- A member who has left isn't reminded about, or sent a summary for.
+- At summary detail, neither names anyone or gives an amount.
+
 ## 5. What a webhook receives
 
 A `POST` with `Content-Type: application/json`:
@@ -152,7 +175,7 @@ A `POST` with `Content-Type: application/json`:
 
 - `kind` is one of the rules (`bill_due`, `late`, `statement_due`, `big_transaction`,
   `low_balance`, `budget_nearly_spent`, `subscription_change`, `connection_needs_you`, `review`,
-  `weekly_recap`), or `test`.
+  `weekly_recap`, `settle_up_reminder`, `settle_up_summary`), or `test`.
 - `title` and `body` are at the channel's detail level: `detail` says which. At `minimal`, `url`
   is the server's address only. `url` is null when the server's `PUBLIC_URL` isn't set for the
   worker.
