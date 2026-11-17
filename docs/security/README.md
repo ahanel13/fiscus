@@ -107,6 +107,7 @@ Every claim above has these exceptions:
 | Tamper-evident activity history | [ADR 0013](../adr/0013-tamper-evident-activity-history.md) |
 | No financial data in logs or errors (enforced by a test) | #308 |
 | Reproducible, signed releases with SBOMs | [verifying a release](verify-releases.md) |
+| Plaid webhooks (optional): only `POST /api/v1/webhooks/plaid` public, through your proxy | [exposing only Plaid's webhooks](plaid-webhooks.md) |
 
 ## Reporting a vulnerability
 
