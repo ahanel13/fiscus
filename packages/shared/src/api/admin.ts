@@ -107,6 +107,11 @@ export const bankConnectionsOverviewSchema = z.strictObject({
     configured: z.boolean(),
     /** Null when not configured. */
     environment: plaidEnvironmentSchema.nullable(),
+    /**
+     * Where Plaid sends webhooks (PLAID_WEBHOOK_URL with the receiver's path, #84), read-only:
+     * null when they're off and each bank is polled.
+     */
+    webhookUrl: z.string().nullable(),
   }),
   simplefin: z.strictObject({ enabled: z.boolean() }),
   settings: instanceSettingsSchema,

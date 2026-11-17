@@ -54,6 +54,9 @@ export async function readTarget(db: Database, claimed: Claimed): Promise<JobTar
         credentialSetId: connections.credentialSetId,
         providerEnv: connections.providerEnv,
         providerClientId: connections.providerClientId,
+        webhookEnabled: connections.webhookEnabled,
+        syncRequestedAt: connections.syncRequestedAt,
+        checkRequestedAt: connections.checkRequestedAt,
       })
       .from(connections)
       .where(eq(connections.id, claimed.connectionId)),

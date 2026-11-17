@@ -307,6 +307,43 @@ describe('PlaidProvider (#82)', () => {
     });
   });
 
+  it('checks the Item with /item/get: its own error is thrown, none is fine (#84)', async () => {
+    fake = await startFakePlaid();
+    const provider = new PlaidProvider(clientFor(fake));
+    await expect(provider.checkStatus(fake.accessToken)).resolves.toBeUndefined();
+    const get = (error: object | null) => ({
+      body: {
+        item: { item_id: fake.itemId, institution_id: fake.institutionId, webhook: null, error },
+        request_id: 'req-item-get',
+      },
+    });
+    fake.override(
+      '/item/get',
+      get({ error_type: 'ITEM_ERROR', error_code: 'ITEM_LOGIN_REQUIRED', error_message: 'x' }),
+    );
+    await expect(provider.checkStatus(fake.accessToken)).rejects.toMatchObject({
+      kind: 'login_required',
+      providerCode: 'ITEM_LOGIN_REQUIRED',
+      providerRequestId: 'req-item-get',
+    });
+  });
+
+  it('points the Item’s webhooks at a URL, or at none (#84)', async () => {
+    fake = await startFakePlaid();
+    const provider = new PlaidProvider(clientFor(fake));
+    await provider.setWebhook(fake.accessToken, 'https://fiscus.example/api/v1/webhooks/plaid');
+    expect(fake.webhookUrl).toBe('https://fiscus.example/api/v1/webhooks/plaid');
+    await provider.setWebhook(fake.accessToken, null);
+    expect(fake.webhookUrl).toBeNull();
+    const bodies = fake.requests
+      .filter((r) => r.path === '/item/webhook/update')
+      .map((r) => JSON.parse(r.body) as { webhook: unknown });
+    expect(bodies.map((b) => b.webhook)).toEqual([
+      'https://fiscus.example/api/v1/webhooks/plaid',
+      null,
+    ]);
+  });
+
   it('keeps Plaid’s request id with a failure, and never its message or the token', async () => {
     fake = await startFakePlaid();
     fake.failNext('/transactions/sync', {

@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { ProviderRegistry } from '@fiscus/aggregation';
 import type { FieldCrypto } from '@fiscus/crypto';
-import type { Database } from '@fiscus/db';
+import {
+  type Database,
+  plaidWebhookHealth,
+  plaidWebhookMoves,
+  unrelaxPlaidConnections,
+} from '@fiscus/db';
 import { describeError } from '@fiscus/env';
 import { Logger } from '@nestjs/common';
 import { notifyConnectionTrouble } from '../notify/connection-trouble.js';
+import { moveWebhook } from './handlers.js';
 import { failureOf, FAILURE, JobFailure, jobKindFor, type JobHandlers } from './jobs.js';
 import {
   abandonSetups,
@@ -31,6 +37,15 @@ export interface RunnerOptions {
   abandonSetupsAfterMs: number;
   /** How often a pass looks for abandoned setups. */
   abandonCheckEveryMs: number;
+  /**
+   * Where Plaid sends webhooks (PLAID_WEBHOOK_URL with the receiver's path, #84); unset, they're
+   * off, and Items that have one are moved off it.
+   */
+  plaidWebhookUrl?: string;
+  /** How often a pass checks webhook health and moves Items to the current URL. */
+  webhookCheckEveryMs: number;
+  /** Items moved to the current webhook URL per check, at most. */
+  webhookMovesPerCheck: number;
   /** Overrides `sync.intervalHours` (SYNC_INTERVAL_HOURS). */
   intervalHours?: number;
   random?: () => number;
@@ -48,7 +63,15 @@ export const DEFAULT_RUNNER_OPTIONS: RunnerOptions = {
   shutdownTimeoutMs: 30_000,
   abandonSetupsAfterMs: 24 * 60 * 60_000,
   abandonCheckEveryMs: 60 * 60_000,
+  webhookCheckEveryMs: 60_000,
+  webhookMovesPerCheck: 20,
 };
+
+/**
+ * While webhooks are healthy, a Plaid connection that has them is polled this often at most, as
+ * a safety net (ADR 0008 §Sync 2): webhooks bring updates sooner.
+ */
+export const RELAXED_INTERVAL_HOURS = 12;
 
 export interface RunnerDeps {
   db: Database;
@@ -98,6 +121,9 @@ export class Runner {
   #loop: Promise<void> | undefined;
   #lastPassAt: Date | null = null;
   #lastAbandonCheckAt: Date | null = null;
+  #lastWebhookCheckAt: Date | null = null;
+  /** Webhooks are on and healthy (#84): polling relaxes for connections that have them. */
+  #webhooksHealthy = false;
 
   constructor(deps: RunnerDeps, options: Partial<RunnerOptions> = {}) {
     this.#deps = deps;
@@ -148,8 +174,9 @@ export class Runner {
     if (this.stopping) return;
     await this.#abandonSetups();
     const free = this.#options.concurrency - this.#running.size;
+    const intervalHours = this.#options.intervalHours ?? (await syncIntervalHours(this.#deps.db));
+    await this.#webhookUpkeep(intervalHours);
     if (free > 0) {
-      const intervalHours = this.#options.intervalHours ?? (await syncIntervalHours(this.#deps.db));
       const claimed = await claimDue(this.#deps.db, free, this.#options.leaseMs);
       for (const c of claimed) {
         const job = this.#run(c, intervalHours).finally(() => this.#running.delete(c.connectionId));
@@ -173,6 +200,56 @@ export class Runner {
       if (n) this.#logger.log(`Ended ${n} abandoned setup${n === 1 ? '' : 's'}`);
     } catch (error) {
       this.#logger.error(`Ending abandoned setups failed: ${describeError(error)}`);
+    }
+  }
+
+  /**
+   * Now and then (#84): whether webhooks are healthy, which is what relaxes polling; while they
+   * aren't (or are off), connections relaxed before are brought back to the normal interval. Then
+   * Items whose webhook URL isn't the current one are moved (household-key Items included), a
+   * few at a time. A failure here doesn't stop syncing.
+   */
+  async #webhookUpkeep(intervalHours: number): Promise<void> {
+    const now = this.#now;
+    const last = this.#lastWebhookCheckAt;
+    if (last && now.getTime() - last.getTime() < this.#options.webhookCheckEveryMs) return;
+    this.#lastWebhookCheckAt = now;
+    const { db } = this.#deps;
+    const url = this.#options.plaidWebhookUrl ?? null;
+    try {
+      const healthy = url !== null && (await plaidWebhookHealth(db)).healthy;
+      if (healthy !== this.#webhooksHealthy) {
+        this.#logger.log(
+          healthy
+            ? `Plaid webhooks are healthy: polling relaxes to every ${RELAXED_INTERVAL_HOURS} h`
+            : 'Plaid webhooks aren’t healthy: polling is back to normal',
+        );
+      }
+      this.#webhooksHealthy = healthy;
+      if (!healthy) await unrelaxPlaidConnections(db, intervalHours * 60 * 60_000);
+    } catch (error) {
+      this.#webhooksHealthy = false;
+      this.#logger.error(`Checking Plaid webhooks failed: ${describeError(error)}`);
+    }
+    let moves: Awaited<ReturnType<typeof plaidWebhookMoves>> = [];
+    try {
+      moves = await plaidWebhookMoves(db, url, this.#options.webhookMovesPerCheck);
+    } catch (error) {
+      this.#logger.error(`Listing webhook moves failed: ${describeError(error)}`);
+    }
+    for (const m of moves) {
+      try {
+        await moveWebhook(this.#deps, m, url);
+        this.#logger.log(
+          `${m.connectionId}: webhook ${url ? 'moved to the current URL' : 'removed'}`,
+        );
+      } catch (error) {
+        const failure = failureOf(error);
+        const request = failure.requestId ? `, request ${failure.requestId}` : '';
+        this.#logger.warn(
+          `${m.connectionId}: moving its webhook failed (${failure.code}${request}), retry in 1 h`,
+        );
+      }
     }
   }
 
@@ -239,11 +316,12 @@ export class Runner {
         await this.#finish(id, { outcome: 'done' });
         this.#logger.log(`${kind} ${id}: done`);
       } else {
-        const nextInMs = nextSyncDelayMs(
-          intervalHours,
-          this.#options.random,
-          scheduleFloor(provider),
-        );
+        // Polling relaxes for an Item that sends webhooks here, while they're healthy (#84).
+        const relaxed =
+          provider === 'plaid' && target.webhookEnabled && this.#webhooksHealthy
+            ? Math.max(intervalHours, RELAXED_INTERVAL_HOURS)
+            : intervalHours;
+        const nextInMs = nextSyncDelayMs(relaxed, this.#options.random, scheduleFloor(provider));
         await this.#finish(id, { outcome: 'synced', nextInMs });
         this.#logger.log(`${kind} ${id}: ok, next in ${minutes(nextInMs)}`);
       }

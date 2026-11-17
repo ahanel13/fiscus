@@ -5,6 +5,8 @@ import {
   instanceSimpleFinConfig,
   plaidProviderSource,
   plaidStatus,
+  plaidWebhookStatus,
+  plaidWebhookUrl,
   ProviderRegistry,
   SimpleFinProvider,
 } from '@fiscus/aggregation';
@@ -33,6 +35,7 @@ const plaid = instancePlaidConfigOrExit(env, {
   warn: (message) => plaidLogger.warn(message),
   fatal: (message) => plaidLogger.fatal(message),
 });
+const webhookUrl = plaidWebhookUrl(env);
 const db = createDb(env.DATABASE_URL, { max: 5 });
 const crypto = new FieldCrypto(new HouseholdKeyStore(db.db, master), master);
 // The adapters this worker has. Plaid serves each connection with the keys it was made with
@@ -57,7 +60,12 @@ const app = await NestFactory.createApplicationContext(
     db: db.db,
     crypto,
     providers,
-    options: { pollMs: env.SYNC_POLL_SECONDS * 1000, intervalHours: env.SYNC_INTERVAL_HOURS },
+    options: {
+      pollMs: env.SYNC_POLL_SECONDS * 1000,
+      intervalHours: env.SYNC_INTERVAL_HOURS,
+      // Webhooks (#84): Items are moved to this URL, or off webhooks when it's unset.
+      ...(webhookUrl && { plaidWebhookUrl: webhookUrl }),
+    },
     notify: {
       channels: {
         // SMTP_URL and MAIL_FROM, else the Server page's settings, read as they change.
@@ -83,6 +91,7 @@ const logger = new Logger('Worker');
 logger.log(`Worker ready (health on :${env.HEALTH_PORT})`);
 // Only whether, and which environment: never the keys.
 plaidLogger.log(plaidStatus(plaid));
+plaidLogger.log(plaidWebhookStatus(webhookUrl));
 logger.log(
   mail
     ? 'Notification email: SMTP_URL'

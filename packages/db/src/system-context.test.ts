@@ -576,26 +576,34 @@ describe('system context belongs to the worker', () => {
                           'fiscus_unrouted_notifications', 'fiscus_claim_notification_deliveries',
                           'fiscus_notification_households',
                           'fiscus_households_with_new_transactions',
-                          'fiscus_clear_owner_reviewer', 'fiscus_clear_member_reviewer')
+                          'fiscus_clear_owner_reviewer', 'fiscus_clear_member_reviewer',
+                          'fiscus_find_plaid_item', 'fiscus_plaid_webhook_key_set',
+                          'fiscus_queue_plaid_webhook', 'fiscus_record_plaid_webhook',
+                          'fiscus_plaid_webhook_moves', 'fiscus_unrelax_connections')
       ORDER BY 1`);
-    expect(owners.map((o) => o.rolname)).toEqual(Array(13).fill('fiscus_steward'));
+    expect(owners.map((o) => o.rolname)).toEqual(Array(19).fill('fiscus_steward'));
     const { rows } = await owner.query(`
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
                                     'categories', 'household_keys', 'audit_events', 'users',
                                     'instance_settings', 'accounts', 'connections',
                                     'connection_secrets', 'budget_amounts',
                                     'budget_categories', 'notifications',
-                                    'notification_deliveries']) t,
+                                    'notification_deliveries', 'plaid_webhook_stats']) t,
                        unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) p
       WHERE has_table_privilege('fiscus_steward', t, p)`);
     // A category merging into another adds its budget amounts into the other's (0065).
-    expect(rows.map((r) => `${r.p} ${r.t}`).sort()).toEqual([
-      'INSERT budget_amounts',
-      'INSERT budget_categories',
-      'INSERT household_members',
-      'INSERT households',
-      'INSERT instance_settings',
-    ]);
+    expect(rows.map((r) => `${r.p} ${r.t}`).sort()).toEqual(
+      [
+        'INSERT budget_amounts',
+        'INSERT budget_categories',
+        'INSERT household_members',
+        'INSERT households',
+        'INSERT instance_settings',
+        // Webhook counts: a bucket per hour, those older than 8 days let go (#84).
+        'INSERT plaid_webhook_stats',
+        'DELETE plaid_webhook_stats',
+      ].sort(),
+    );
     const { rows: columns } = await owner.query(`
       SELECT table_name || '.' || column_name AS c FROM information_schema.column_privileges
       WHERE grantee = 'fiscus_steward' AND privilege_type = 'UPDATE' ORDER BY 1`);
@@ -610,6 +618,8 @@ describe('system context belongs to the worker', () => {
       // A merged category's moves follow it (0086).
       'budget_moves.from_category_id',
       'budget_moves.to_category_id',
+      // What a verified webhook asks for (#84).
+      'connections.check_requested_at',
       'connections.consecutive_failures',
       'connections.disconnect_requested',
       'connections.first_failed_at',
@@ -618,7 +628,9 @@ describe('system context belongs to the worker', () => {
       'connections.lease_until',
       'connections.next_sync_at',
       'connections.status',
+      'connections.sync_requested_at',
       'connections.updated_at',
+      'connections.webhook_enabled',
       'instance_settings.updated_at',
       'instance_settings.updated_by_user_id',
       'instance_settings.value',
@@ -627,6 +639,8 @@ describe('system context belongs to the worker', () => {
       // Claiming a delivery leases it (0079).
       'notification_deliveries.lease_until',
       'notification_deliveries.updated_at',
+      'plaid_webhook_stats.count',
+      'plaid_webhook_stats.last_at',
       // Who looks after a bill: handed over, or passed on when someone leaves (0077).
       'recurring_series.responsible_member_id',
       'recurring_series.updated_at',

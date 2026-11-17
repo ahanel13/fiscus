@@ -192,7 +192,10 @@ The provider interface these tables serve, and the conformance suite every adapt
 | last_synced_at, next_sync_at | timestamptz null | `next_sync_at` is when the worker next syncs it; null = never |
 | lease_until | timestamptz null | Held by a worker until then (`fiscus_claim_due_connections`) |
 | historical_complete | bool | The provider says all older history has arrived |
-| webhook_enabled | bool | Plaid (#82, #84) |
+| webhook_enabled | bool | Plaid confirmed the Item sends webhooks to this server's current URL: set at the exchange when Plaid shows it, or by `WEBHOOK_UPDATE_ACKNOWLEDGED`; cleared when the Item is moved (#84). Polling relaxes for it while webhooks are healthy |
+| webhook_url | text null | The webhook URL Plaid has for the Item, as far as Fiscus knows; null = none. The worker moves Items whose URL isn't the current one (#84) |
+| webhook_move_failed_at | timestamptz null | Moving it to another webhook URL last failed then: retried an hour later |
+| sync_requested_at, check_requested_at | timestamptz null | A verified webhook asked for a sync, or a check (`/item/get`, then a sync), which the runner claims at once (#84) |
 | new_accounts_available | bool | A sync saw an account the bank offers that isn't tracked and isn't in known_account_ids: its owner is asked to choose (bank-sync D19) |
 | known_account_ids | text[] | The provider's ids of every account its owner chose about, tracked or not; set by confirming |
 | account_errors | jsonb | Accounts the provider couldn't update on the last sync (SimpleFIN's `errlist`): provider account id → `{code, since}`; cleared once they update (aggregation §7) |
@@ -211,6 +214,9 @@ The provider interface these tables serve, and the conformance suite every adapt
 - `connection_secrets`: the connection's owner and the worker only, for reads and writes.
 - **Disconnecting** (D14, ACC-03) goes through `fiscus_disconnect_connection(id)` (steward): its owner may, or a household owner once its owner has left. It sets `disconnected` and `disconnect_requested`, and clears `connection_id` on its accounts, including ones the caller doesn't own, which keep their history and `provider_account_id` for relinking. The worker then calls the provider's `remove` and deletes the secret.
 - **Scheduling** is in Postgres: the worker claims due connections with `fiscus_claim_due_connections(limit, lease)` (§4.3c).
+- **Webhooks** (#84) come with no session, so the api has no household context for them: it finds the Item with `fiscus_find_plaid_item(item_id)` (ids only), reads a household-key Item's set with `fiscus_plaid_webhook_key_set(item_id)` (the secret still encrypted), and queues work with `fiscus_queue_plaid_webhook(connection, action, url)`, which sets only `sync_requested_at`, `check_requested_at` or `webhook_enabled`. The worker lists Items to move with `fiscus_plaid_webhook_moves(url, limit)` and brings relaxed connections back with `fiscus_unrelax_connections(interval)` (both the worker's only).
+
+**`plaid_webhook_stats`** (#84): instance-level counts of what reached the webhook receiver, by `hour`, `credential_set_id` (null = the server's keys, or no Item found) and `outcome` (`verified`, `unknown_item`, or a refusal's reason: `missing`, `malformed`, `algorithm`, `stale`, `body_hash`, `unknown_key`, `signature`), with `count` and `last_at`. Never a body or an item id. Written only through `fiscus_record_plaid_webhook(set, outcome)`; the app may only read it. Buckets older than 8 days go. Webhook health (polling relaxes while it's good) and the admin's health panel (#85) read it.
 
 ### 3.3 Accounts and ownership
 

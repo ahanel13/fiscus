@@ -40,10 +40,13 @@ export {
   plaidCreditLiability,
   plaidLoanLiability,
   plaidTransaction,
+  signPlaidWebhook,
   startFakePlaid,
   type FakePlaid,
   type FakePlaidError,
   type FakePlaidOptions,
+  type SignedWebhook,
+  type SignWebhookOptions,
 } from './testing/fake-plaid.js';
 export {
   simpleFinAccount,

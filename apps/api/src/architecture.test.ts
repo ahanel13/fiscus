@@ -29,6 +29,8 @@ const DIRECT_DB_ALLOWED: Record<string, string> = {
     'server invites (ADM-08) are instance-level, before any household',
   'admin/instance-settings.service.ts':
     'instance settings are instance-level; writes through a definer function (#400)',
+  'webhooks/plaid-webhook.service.ts':
+    'a webhook has no member, so no household context: definer functions only (#84)',
   'audit/audit.service.ts': 'moves into the household transaction with #263',
 };
 

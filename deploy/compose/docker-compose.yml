@@ -111,6 +111,8 @@ services:
         PLAID_SECRET: ${PLAID_SECRET:-}
         PLAID_ENV: ${PLAID_ENV:-}
         PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI:-}
+        # Plaid webhooks (README, Plaid keys): the public https base URL. Unset: banks are polled.
+        PLAID_WEBHOOK_URL: ${PLAID_WEBHOOK_URL:-}
         # Notification email (docs/design/notifications.md): both or neither. Unset: no email.
         SMTP_URL: ${SMTP_URL:-}
         MAIL_FROM: ${MAIL_FROM:-}

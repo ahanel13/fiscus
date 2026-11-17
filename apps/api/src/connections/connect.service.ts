@@ -300,6 +300,9 @@ export class ConnectService {
         products: LINK_PRODUCTS,
         additional_consented_products: LINK_CONSENTED_PRODUCTS,
         transactions: { days_requested: LINK_DAYS_REQUESTED },
+        // Only when the admin turned webhooks on (#84, WEBHOOK-002), household keys included.
+        // Update mode leaves the Item's as it is: the worker moves Items when the URL changes.
+        ...(this.config.plaidWebhookUrl && { webhook: this.config.plaidWebhookUrl }),
       };
     } else {
       const own = await this.#ownConnection(ctx, connectionId, { update: true });
@@ -338,9 +341,12 @@ export class ConnectService {
 
     let offered: BankAccount[];
     let institution: ProviderInstitution | null = null;
+    let webhookUrl: string | null = null;
     try {
       const got = await client.accountsGet(secret);
       offered = got.accounts.map(fromPlaid);
+      // What Plaid has for the Item, from Plaid (#84): the worker moves it if it isn't ours now.
+      webhookUrl = got.item.webhook || null;
       if (got.item.institution_id) {
         const { institution: i } = await client.institutionsGetById(
           got.item.institution_id,
@@ -398,6 +404,8 @@ export class ConnectService {
           status: 'setup',
           nextSyncAt: null,
           replacesConnectionId: replaced?.id ?? null,
+          webhookUrl,
+          webhookEnabled: webhookUrl !== null && webhookUrl === this.config.plaidWebhookUrl,
         });
         await saveConnectionSecret(tx, this.crypto, ctx.householdId, id, secret);
         // Only its owner sees it until they confirm (D4): "connection added" is recorded then.

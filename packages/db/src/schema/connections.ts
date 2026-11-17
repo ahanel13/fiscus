@@ -128,7 +128,22 @@ export const connections = pgTable(
     consecutiveFailures: integer().notNull().default(0),
     /** The provider says all older history has arrived. */
     historicalComplete: boolean().notNull().default(false),
+    /**
+     * Plaid confirmed this Item sends its webhooks to this server's current URL (#84): set by the
+     * exchange when Plaid shows it, or by WEBHOOK_UPDATE_ACKNOWLEDGED; cleared when the URL moves.
+     */
     webhookEnabled: boolean().notNull().default(false),
+    /** The webhook URL Plaid has for this Item, as far as Fiscus knows; null = none (#84). */
+    webhookUrl: text(),
+    /** The last time moving it to another webhook URL failed: retried an hour later (#84). */
+    webhookMoveFailedAt: timestamp({ withTimezone: true }),
+    /** A verified webhook said new data is ready (#84): the runner syncs it on its next pass. */
+    syncRequestedAt: timestamp({ withTimezone: true }),
+    /**
+     * A verified webhook said the Item changed (an error, a login fixed, new accounts; #84): the
+     * runner asks the provider (`/item/get`), then syncs. Even while it needs signing in again.
+     */
+    checkRequestedAt: timestamp({ withTimezone: true }),
     /**
      * The bank offers accounts nobody chose about yet: a sync saw one that isn't tracked and isn't
      * in `knownAccountIds` (a SimpleFIN account added at the Bridge later). Its owner is asked.
@@ -178,6 +193,9 @@ export const connections = pgTable(
     index('connections_due')
       .on(t.nextSyncAt)
       .where(sql`${t.nextSyncAt} IS NOT NULL`),
+    index('connections_requested')
+      .on(t.id)
+      .where(sql`${t.syncRequestedAt} IS NOT NULL OR ${t.checkRequestedAt} IS NOT NULL`),
     check('connections_provider', sql`${t.provider} IN (${inList(CONNECTION_PROVIDERS)})`),
     check('connections_status', sql`${t.status} IN (${inList(CONNECTION_STATUSES)})`),
   ],
@@ -201,5 +219,46 @@ export const connectionSecrets = pgTable(
       columns: [t.householdId, t.connectionId],
       foreignColumns: [connections.householdId, connections.id],
     }).onDelete('cascade'),
+  ],
+);
+
+/** What a request to the webhook receiver came to (#84): counted, never its body. */
+export const PLAID_WEBHOOK_OUTCOMES = [
+  /** Verified, and its Item found: queued (or ignored, for a webhook Fiscus doesn't act on). */
+  'verified',
+  /** Verified with the server's keys, for an Item no connection here has. */
+  'unknown_item',
+  // Refused with 401, by reason (PlaidWebhookRejection in @fiscus/aggregation).
+  'missing',
+  'malformed',
+  'algorithm',
+  'stale',
+  'body_hash',
+  'unknown_key',
+  'signature',
+] as const;
+export type PlaidWebhookOutcome = (typeof PLAID_WEBHOOK_OUTCOMES)[number];
+
+/**
+ * Webhook receiver counts (#84), by hour, credential set and outcome: what webhook health is
+ * judged by (polling relaxes only while it's good), and what the admin's health panel shows
+ * (#85). Instance-level: no household's data, only which key set a webhook was for (null = the
+ * server's keys, or no Item found). Written only through fiscus_record_plaid_webhook(); kept for
+ * 8 days.
+ */
+export const plaidWebhookStats = pgTable(
+  'plaid_webhook_stats',
+  {
+    hour: timestamp({ withTimezone: true }).notNull(),
+    credentialSetId: uuid(),
+    outcome: text().notNull(),
+    count: integer().notNull().default(0),
+    lastAt: timestamp({ withTimezone: true }).notNull(),
+  },
+  (t) => [
+    unique('plaid_webhook_stats_bucket')
+      .on(t.hour, t.credentialSetId, t.outcome)
+      .nullsNotDistinct(),
+    check('plaid_webhook_stats_outcome', sql`${t.outcome} IN (${inList(PLAID_WEBHOOK_OUTCOMES)})`),
   ],
 );

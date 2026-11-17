@@ -20,6 +20,11 @@ export interface AppConfig {
    * connection's keys with `resolvePlaidCredentials`, never from here directly.
    */
   plaid?: PlaidInstanceConfig | undefined;
+  /**
+   * Where Plaid sends webhooks (#84): PLAID_WEBHOOK_URL with the receiver's path, or undefined
+   * when webhooks are off (the default). Off, the receiver answers 404 and link tokens carry none.
+   */
+  plaidWebhookUrl?: string | undefined;
   /** Where SimpleFIN setup tokens may point (#91). Defaults to the Bridge's hosts. */
   simplefin?: SimpleFinInstanceConfig | undefined;
   /**

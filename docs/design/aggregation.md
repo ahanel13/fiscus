@@ -198,11 +198,12 @@ The worker's scheduling loop (#81, `apps/worker/src/runner/`). Scheduling lives 
 - **Claiming.** Every few seconds (`SYNC_POLL_SECONDS`, default 5) a pass claims up to its free
   job slots through `fiscus_claim_due_connections(limit, lease)`: `ok` and `error` connections
   whose `next_sync_at` has come, and disconnected ones still owed to their provider; never `setup`
-  or `login_required`. Claims are leased (15 minutes, longer than a job may take) with `SKIP
+  or `login_required`. A verified webhook's request (§6b) makes one due at once: a sync for `ok`
+  and `error`, and a check even for `login_required`. Claims are leased (15 minutes, longer than a job may take) with `SKIP
   LOCKED`, so two workers never run one connection at once. The claim returns ids only; the runner
   then reads each connection in its household's system context.
 - **Jobs**, by kind, from a handler registry: `sync` for a polled connection, `remove` for a
-  disconnected one with `disconnect_requested`. `sync` brings in transactions and balances (§5).
+  disconnected one with `disconnect_requested`, `check` for one a webhook said changed (§6b). `sync` brings in transactions and balances (§5).
   `remove` calls `provider.remove(secret)`, then, in
   one transaction recorded as activity by the system, deletes the secret and clears
   `disconnect_requested`. If remove fails, or this server has no adapter for the provider, the
@@ -357,7 +358,8 @@ up in Plaid's dashboard.
    `redirect_uri` only when `PLAID_REDIRECT_URI` is set (on every token, update mode's too). It
    must be the server's https origin followed by `/connect/plaid/oauth`, the web app's one
    return page: Plaid matches it exactly, so it can't name a household. Without it, OAuth banks
-   sign in in a pop-up, which works except in phone browsers that block them. No webhook until #84. `client_user_id` is
+   sign in in a pop-up, which works except in phone browsers that block them. `webhook` only
+   when the admin turned webhooks on (§6b), household keys included. `client_user_id` is
    a hash of the member id: stable, and neither an email nor the id itself.
    With `?connection=<id>` it's update mode, for signing in again (ACC-03, #81): only the
    connection's owner, only once its setup is done, with the Item's own access token and no
@@ -478,6 +480,72 @@ server, including a failure whose message names an account and its balance.
   accounts not linked stop syncing, and the worker removes the old Item at Plaid with the old
   keys, shredding them once no connection needs them. What the new connection sends again of the
   overlap is matched (§6, step 4).
+
+## 6b. Plaid webhooks
+
+ADR 0008 §Sync 2, #84. Off by default: polling is how every connection stays current, and many
+servers are on a home network, reached by IP over plain HTTP, where Plaid can't reach them.
+Webhooks only make updates sooner.
+
+- **Turning them on.** The admin sets `PLAID_WEBHOOK_URL` to the public `https` base URL Plaid
+  reaches the server at (env only for now; Server → Bank connections shows it, read-only).
+  `/api/v1/webhooks/plaid` is added to it, and that path alone needs to be public. Unset, the
+  receiver answers 404 and link tokens carry no `webhook`.
+- **New Items** get the URL on their link token (WEBHOOK-002). The exchange records what Plaid
+  shows for the Item (`webhook_url`), and `webhook_enabled` when that's this server's URL.
+- **Existing Items move.** About once a minute the worker lists Plaid connections whose
+  `webhook_url` isn't the current one (`fiscus_plaid_webhook_moves`), 20 at a time, and calls
+  `/item/webhook/update` with each one's own keys, household-key Items included. It records the
+  new URL and turns `webhook_enabled` off until Plaid's `WEBHOOK_UPDATE_ACKNOWLEDGED` arrives at
+  the new URL. Unsetting `PLAID_WEBHOOK_URL` moves every Item off webhooks the same way (`webhook`
+  null). A failed move is retried an hour later.
+- **The receiver**, `POST /api/v1/webhooks/plaid`: no session and no CSRF token; 16 KB at most
+  (413), read as raw bytes for this route only; 120 requests a minute per client address (429,
+  which Plaid retries). Then the `Plaid-Verification` JWT, in this order:
+  1. Its shape, and `alg` exactly `ES256` (`none` and HS256 refused before any key is looked up).
+  2. `iat` at most 5 minutes old (30 seconds ahead allowed, for clocks that differ).
+  3. `request_body_sha256` equal to the SHA-256 of the raw body, compared in constant time
+     (WEBHOOK-004). These three need no key and are only a quick refusal.
+  4. The Item from the body's `item_id`, through `fiscus_find_plaid_item`: the api has no
+     household context for a webhook, so it uses definers only. Its credential set's keys (a
+     household's, read and decrypted through `fiscus_plaid_webhook_key_set`; else the server's,
+     which also check webhooks for Items no connection has).
+  5. The key for the token's `kid`, from `/webhook_verification_key/get` with those keys, cached by
+     (set, `kid`) until Plaid's `expired_at`, and a day at most. A `kid` Plaid doesn't have is
+     remembered for 10 minutes. Fetches are capped at 10 a minute per set: past that, or when
+     Plaid can't be reached, the answer is 503 and Plaid sends the webhook again (WEBHOOK-007).
+  6. The ES256 signature, checked with `node:crypto`.
+  Any refusal is 401 `webhook_unverified`, counted by reason, logged by reason only, and not acted
+  on. Verified for an unknown Item: 200, counted as `unknown_item`. Otherwise 200 once queued.
+- **Triggers, not data** (WEBHOOK-005). `fiscus_queue_plaid_webhook` sets only scheduling columns:
+  - `TRANSACTIONS: SYNC_UPDATES_AVAILABLE` and `LIABILITIES: DEFAULT_UPDATE` ask for a sync
+    (`sync_requested_at`), for `ok` and `error` connections. Repeats before it runs merge into one.
+  - `ITEM: ERROR`, `LOGIN_REPAIRED`, `PENDING_DISCONNECT`, `PENDING_EXPIRATION`,
+    `USER_PERMISSION_REVOKED`, `USER_ACCOUNT_REVOKED` and `NEW_ACCOUNTS_AVAILABLE` ask for a check
+    (`check_requested_at`), for `login_required` connections too. The webhook's own error code is
+    never read.
+  - `ITEM: WEBHOOK_UPDATE_ACKNOWLEDGED` sets `webhook_enabled`, when the Item was moved to this
+    server's current URL.
+  - Anything else: 200, ignored.
+- **The check** (`check` job) asks Plaid with `/item/get`. The Item's own error, if it has one, is
+  the job's failure: `ITEM_LOGIN_REQUIRED` asks its owner to sign in again, as a failed sync would,
+  and only then. No error: a `login_required` connection is `ok` again, recorded as
+  `connection.repaired_at_bank` (seen by whoever sees its accounts), and it syncs, which reads its
+  accounts and so notices new ones. A job clears the requests it saw when it starts; one that
+  arrives while it runs stays, and the connection syncs again after.
+- **Polling relaxes** to every 12 hours, for a connection with `webhook_enabled`, only while
+  webhooks are healthy: on, a verified webhook in the last 48 hours, and no refused request in
+  the last 24 (from `plaid_webhook_stats`). The worker checks about once a minute. While they
+  aren't healthy, relaxed connections are brought back to the normal interval after their last
+  sync (`fiscus_unrelax_connections`). One refused request is enough, so a forged request can
+  only make polling normal again, never stop it.
+- **Logs** carry the refusal's reason and connection ids only: never a body, a token, or an item
+  id (`plaid-webhooks.test.ts`).
+- **For the health panel (#85).** `plaid_webhook_stats` keeps, per hour and credential set, each
+  outcome's count and when it was last seen, for 8 days: the last verified webhook (overall and
+  per set), refusals in the last 24 hours and 7 days by reason, and unknown Items.
+  `plaidWebhookHealth` (`@fiscus/db`) says whether polling is relaxed. Connections without a
+  webhook are those whose `webhook_url` isn't the current URL, or without `webhook_enabled`.
 
 ## 7. A connection day to day
 

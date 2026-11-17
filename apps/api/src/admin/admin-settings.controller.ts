@@ -56,7 +56,11 @@ export class AdminSettingsController {
     const plaid = this.config.plaid;
     return {
       data: bankConnectionsOverviewSchema.parse({
-        plaid: { configured: !!plaid, environment: plaid?.env ?? null },
+        plaid: {
+          configured: !!plaid,
+          environment: plaid?.env ?? null,
+          webhookUrl: this.config.plaidWebhookUrl ?? null,
+        },
         simplefin: { enabled: settings['simplefin.enabled'] },
         settings,
         stats,

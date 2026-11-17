@@ -51,7 +51,7 @@ recurring_transactions; no redirect URIs; no webhooks; Link customization `defau
 | Accept the latest Plaid MSA | PNC requires it (OAUTH-008) | Dashboard → Settings (https://dashboard.plaid.com) | cannot_verify |
 | Finish Data Transparency Messaging / the Link use case for production | INVALID_LINK_CUSTOMIZATION at `/link/token/create` otherwise (PITFALL-002) | Dashboard → Link → Data Transparency Messaging (https://dashboard.plaid.com) | cannot_verify |
 | Register the redirect URI, for an instance served over HTTPS | OAuth on mobile browsers that block pop-ups needs it. It must be HTTPS (http://localhost only in sandbox). Desktop OAuth works without one, through Link's pop-up (OAUTH-001, CONV-004) | Dashboard → API → Allowed redirect URIs (https://dashboard.plaid.com); set `PLAID_REDIRECT_URI` to the same value, `https://<host>/connect/plaid/oauth` | needs_human (the user's instance: once it has HTTPS; other instances: optional) |
-| A public HTTPS webhook receiver | Plaid's update webhooks need one; a LAN-only instance can't have it, so Fiscus polls (see Decisions) (WEBHOOK-001, WEBHOOK-005) | the instance's reverse proxy, then `PLAID_WEBHOOK_URL` (#84) | needs_human (optional; #84) |
+| A public HTTPS webhook receiver | Plaid's update webhooks need one; a LAN-only instance can't have it, so Fiscus polls (see Decisions) (WEBHOOK-001, WEBHOOK-005). The receiver is built (#84) | expose only `POST /api/v1/webhooks/plaid` through the instance's reverse proxy (guide: #85), then set `PLAID_WEBHOOK_URL` to the public https base URL | needs_human (optional: the user's instance is plain HTTP by IP, so it polls) |
 | Put sandbox keys in the env file | The api and worker read `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` (GUIDE-021, TASK-010) | `plaid keys write --env sandbox --gitignore`, or copy from https://dashboard.plaid.com/developers/keys | needs_human |
 | Sandbox keys as repository secrets | The nightly real-sandbox job (`.github/workflows/plaid-sandbox.yml`, #79) runs only with them, and passes with a notice without them. Sandbox keys only, never production (GUIDE-001) | GitHub → the repository's Settings → Secrets and variables → Actions: `PLAID_SANDBOX_CLIENT_ID`, `PLAID_SANDBOX_SECRET`, from https://dashboard.plaid.com/developers/keys | needs_human |
 | Fidelity, once investments are read | Not immediate after production approval (INV-014) | Dashboard → OAuth institutions (https://dashboard.plaid.com) | not_applicable (investments not read yet) |
@@ -120,10 +120,25 @@ Sync (worker, #80, #88):
 
 Webhooks (#84, #85), only for instances Plaid can reach:
 
-- [ ] `webhook` on the link token when `PLAID_WEBHOOK_URL` is set (WEBHOOK-002)
-- [ ] Verified by its ES256 JWT, body hash, and age (WEBHOOK-003, WEBHOOK-004)
-- [ ] Triggers, not data: SYNC_UPDATES_AVAILABLE, LIABILITIES DEFAULT_UPDATE, and the ITEM
-      webhooks (WEBHOOK-005, WEBHOOK-006, TXN-003, LIAB-004)
+- [x] `webhook` on the link token when `PLAID_WEBHOOK_URL` is set, household keys included; none
+      when it isn't, and the receiver answers 404 (WEBHOOK-002) (#84)
+- [x] Existing Items moved with `/item/webhook/update` when the URL changes, each with its own
+      keys, and off webhooks when it's unset; `webhook_enabled` once Plaid's
+      WEBHOOK_UPDATE_ACKNOWLEDGED arrives (WEBHOOK-002, WEBHOOK-008) (#84)
+- [x] Verified by its ES256 JWT (`alg` exactly ES256, the key from
+      `/webhook_verification_key/get` for the Item's own credential set, cached by `kid` until
+      `expired_at`), raw-body SHA-256 in constant time, and `iat` at most 5 minutes old; the
+      header read case-insensitively (WEBHOOK-003, WEBHOOK-004) (#84)
+- [x] Answers at once and only queues; 5xx (503) when the key can't be fetched now, so Plaid
+      retries; polling stays as the fallback (WEBHOOK-001, WEBHOOK-007) (#84)
+- [x] Triggers, not data: SYNC_UPDATES_AVAILABLE and LIABILITIES DEFAULT_UPDATE queue a sync;
+      ITEM ERROR, LOGIN_REPAIRED, PENDING_DISCONNECT, PENDING_EXPIRATION, USER_PERMISSION_REVOKED,
+      USER_ACCOUNT_REVOKED and NEW_ACCOUNTS_AVAILABLE queue a check (`/item/get`, then a sync),
+      so ITEM_LOGIN_REQUIRED changes nothing until Plaid confirms it; repeats merge into one sync
+      (WEBHOOK-001, WEBHOOK-005, WEBHOOK-006, TXN-003, LIAB-004) (#84)
+- [ ] PENDING_DISCONNECT and PENDING_EXPIRATION only re-check the Item today; prompting update
+      mode a week ahead, before the Item breaks, is a follow-up (WEBHOOK-006, OAUTH-009)
+- [ ] The health panel and the guide to exposing only the webhook path (#85)
 
 ## Acceptance
 
@@ -142,6 +157,13 @@ Webhooks (#84, #85), only for instances Plaid can reach:
   010–014; 006 not applicable. Failed: 007 (no redirect URI: plain HTTP), 008 and 015 (the job
   that makes, syncs, breaks and removes Items for two personas is built, but hasn't run: no
   sandbox keys in the repository's secrets yet), 009 (needs_human and cannot_verify tasks remain).
+
+- Round 3 (2026-11-17, webhooks, #84): FAIL, on the same four. Passed 001–006, 010–014; 006
+  now applies (the receiver verifies the ES256 JWT, body hash and age, and only queues; run live
+  against a fake Plaid: unsigned 401, signed 200, changed body 401, 17 KB 413, off 404). Failed:
+  007 (no redirect URI: plain HTTP), 008 and 015 (no sandbox keys, so no real sandbox run or
+  second persona; webhooks tested with locally made ES256 keys only), 009 (needs_human and
+  cannot_verify tasks remain).
 
 ## Maintenance
 
@@ -188,6 +210,12 @@ it's skipped.
 - Route and api surface: the connect page at `/h/:householdId/connect/plaid`, and the api's
   `/api/v1/households/:householdId/plaid/*` endpoints (`link-token`, `exchange`), as designed in the walkthrough (D2) and
   approved by the user.
+- Webhooks (#84): `PLAID_WEBHOOK_URL` (env only for now) turns them on; polling still runs, and
+  relaxes to every 12 hours for an Item with webhooks only while they're healthy (a verified one
+  in 48 hours, no refusal in 24). Verification uses `node:crypto` (ES256 with `ieee-p1363`
+  signatures) rather than a JWT library, as the issue decided: Node's own ECDSA, with every claim
+  checked by hand and tested against forged tokens (`alg` none, HS256, another key, an unknown
+  `kid`, a stale `iat`, a changed body).
 - Polling instead of webhooks by default: a self-hosted instance is often LAN-only, with no public
   HTTPS receiver, so each connection syncs on a schedule (`next_sync_at`, every 4 hours by default) and webhooks are opt-in (#84). This
   is a stated stopgap, not a silent default (WEBHOOK-005). Accepted by the user on 2026-10-22:

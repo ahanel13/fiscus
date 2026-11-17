@@ -153,7 +153,8 @@ export class PlaidClient {
     return this.#post('/item/remove', { access_token: accessToken }, emptyResponseSchema);
   }
 
-  itemWebhookUpdate(accessToken: string, webhook: string) {
+  /** Points the Item's webhooks at `webhook`; null removes it (#84). */
+  itemWebhookUpdate(accessToken: string, webhook: string | null) {
     return this.#post(
       '/item/webhook/update',
       { access_token: accessToken, webhook },
