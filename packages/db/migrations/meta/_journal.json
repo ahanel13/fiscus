@@ -680,6 +680,20 @@
       "when": 1794418510280,
       "tag": "0096_merchant_logos",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794950450534,
+      "tag": "0108_settle_up_simplify",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1794950463787,
+      "tag": "0109_settle_up_simplify_rls",
+      "breakpoints": true
     }
   ]
 }

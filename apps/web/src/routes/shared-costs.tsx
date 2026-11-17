@@ -2,13 +2,14 @@
 import type {
   HouseholdMember,
   SettlementCandidate,
+  SettleUpPlan,
   SharedCosts,
   SharedExpenseLine,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { clsx } from 'clsx';
-import { ChevronLeft, ChevronRight, Flag, Scale } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flag, Route, Scale } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import { categoriesQuery, householdQuery, membersQuery } from '../api/queries.js';
@@ -80,9 +81,7 @@ export function SharedCostsPage() {
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const categoryName = useCategoryNames(householdId);
   const [open, setOpen] = useState<string | null>(null);
-  const [settling, setSettling] = useState<{ member: HouseholdMember; balance: number } | null>(
-    null,
-  );
+  const [settling, setSettling] = useState<Settling | null>(null);
   const go = (m: string) =>
     void navigate({
       to: '.',
@@ -151,8 +150,11 @@ export function SharedCostsPage() {
           <Alert>Couldn’t load shared costs. Try again in a moment.</Alert>
         ) : (
           <Body
+            householdId={householdId}
             data={data.data}
             others={others}
+            planFirst={household.financeStyle === 'roommates'}
+            canAgree={canEdit}
             name={name}
             groups={categoryName}
             onSettle={canEdit ? setSettling : undefined}
@@ -174,12 +176,28 @@ export function SharedCostsPage() {
           householdId={householdId}
           member={settling.member}
           balance={settling.balance}
+          fromPlan={settling.fromPlan ?? false}
           currency={data.data.currency}
           onClose={() => setSettling(null)}
         />
       ) : null}
     </>
   );
+}
+
+/** Who to settle with, and the amount from your side: positive, they pay you. */
+interface Settling {
+  member: HouseholdMember;
+  balance: number;
+  /** A payment in the plan with fewer transfers (#262), not a balance between the two of you. */
+  fromPlan?: boolean;
+}
+
+/** "you, Sam and Jo": names in a sentence, with "you" first. */
+export function namesList(names: string[]): string {
+  const sorted = [...names].sort((a, b) => (a === 'you' ? -1 : b === 'you' ? 1 : 0));
+  if (sorted.length <= 1) return sorted.join('');
+  return `${sorted.slice(0, -1).join(', ')} and ${sorted.at(-1)}`;
 }
 
 function useCategoryNames(householdId: string) {
@@ -189,18 +207,25 @@ function useCategoryNames(householdId: string) {
 }
 
 function Body({
+  householdId,
   data,
   others,
+  planFirst,
+  canAgree,
   name,
   groups: categoryName,
   onSettle,
   onOpen,
 }: {
+  householdId: string;
   data: SharedCosts;
   others: HouseholdMember[];
+  /** Roommates put the plan first (ADR 0006 §8). */
+  planFirst: boolean;
+  canAgree: boolean;
   name: (id: string) => string;
   groups: (id: string | null) => string;
-  onSettle: ((s: { member: HouseholdMember; balance: number }) => void) | undefined;
+  onSettle: ((s: Settling) => void) | undefined;
   /** Opens a transaction, to see it or flag who it's for (#60). */
   onOpen: (transactionId: string) => void;
 }) {
@@ -215,8 +240,22 @@ function Body({
   const evens = data.expenses.filter((e) => e.effect.length === 0);
 
   const flagged = data.disputed.length;
+  // With three or more who settle up (you and two others), fewer transfers can help (#262).
+  const plan =
+    others.length >= 2 ? (
+      <FewerTransfers
+        householdId={householdId}
+        plan={data.simplify}
+        others={others}
+        name={name}
+        money={money}
+        canAgree={canAgree}
+        onSettle={onSettle}
+      />
+    ) : null;
   return (
     <>
+      {planFirst ? plan : null}
       {flagged ? (
         <Alert tone="warning">
           {flagged === 1 ? 'A flagged change is' : `${flagged} flagged changes are`} left out of
@@ -266,6 +305,7 @@ function Body({
           );
         })}
       </div>
+      {planFirst ? null : plan}
 
       <Card className="space-y-1 text-sm">
         <h2 className="font-semibold">{monthName(month)}</h2>
@@ -382,6 +422,141 @@ function Body({
   );
 }
 
+/**
+ * Fewer transfers (#262, D31): the payments you make or receive in a plan that squares up everyone
+ * who agreed. Off until you turn it on, and it says what the others may learn first.
+ */
+function FewerTransfers({
+  householdId,
+  plan,
+  others,
+  name,
+  money,
+  canAgree,
+  onSettle,
+}: {
+  householdId: string;
+  plan: SettleUpPlan;
+  others: HouseholdMember[];
+  name: (id: string) => string;
+  money: (minor: number) => React.ReactNode;
+  canAgree: boolean;
+  onSettle: ((s: Settling) => void) | undefined;
+}) {
+  const queryClient = useQueryClient();
+  const you = plan.agreed.some((id) => !others.some((o) => o.id === id));
+  const agreedNames = plan.agreed.map(name);
+  const set = useMutation({
+    mutationFn: (agreed: boolean) =>
+      api('PUT', `${base(householdId)}/shared-costs/simplify`, { body: { agreed } }),
+    onSuccess: async (_d, agreed) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'shared-costs'],
+      });
+      toast(agreed ? 'Fewer transfers is on for you.' : 'Fewer transfers is off for you.');
+    },
+  });
+  const err = set.error as ApiError | null;
+  // The example uses two of the people you share with.
+  const [x, y] = others.map((o) => o.displayName) as [string, string];
+  return (
+    <Card className="space-y-3">
+      <h2 className="flex items-center gap-2 font-semibold">
+        <Route aria-hidden className="size-4 text-muted" />
+        Fewer transfers
+      </h2>
+      {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+      {plan.transfers ? (
+        <>
+          {plan.transfers.length === 0 ? (
+            <p className="text-lg font-semibold">You’re square with everyone in the plan</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {plan.transfers.map((t) => {
+                const fromYou = !others.some((o) => o.id === t.fromMemberId);
+                const other = others.find(
+                  (o) => o.id === (fromYou ? t.toMemberId : t.fromMemberId),
+                );
+                if (!other) return null;
+                return (
+                  <li
+                    key={`${t.fromMemberId}-${t.toMemberId}`}
+                    className="flex flex-wrap items-center gap-3 py-2"
+                  >
+                    <Avatar name={other.displayName} color={other.color} size="sm" />
+                    <span className="min-w-0 flex-1 text-lg font-semibold">
+                      {fromYou ? (
+                        <>
+                          You pay {other.displayName} {money(t.amountMinor)}
+                        </>
+                      ) : (
+                        <>
+                          {other.displayName} pays you {money(t.amountMinor)}
+                        </>
+                      )}
+                    </span>
+                    {onSettle ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onPress={() =>
+                          onSettle({
+                            member: other,
+                            balance: fromYou ? -t.amountMinor : t.amountMinor,
+                            fromPlan: true,
+                          })
+                        }
+                      >
+                        Settle up
+                      </Button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="text-xs text-muted">
+            Worked out between {namesList(agreedNames)}, who turned it on. It squares up everyone in
+            it in the fewest payments, so your balances with each person can look uneven while
+            you’re square overall. Anyone else settles up with you as usual.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm">
+            Fiscus can work out the fewest payments that square everyone up. If you owe {x} and {x}{' '}
+            owes {y}, you pay {y}: one payment instead of two.
+          </p>
+          <p className="text-sm text-muted">
+            It includes only people who turn it on, and you see only the payments you make or
+            receive. Those hint at balances between the others: if you’re asked to pay {y}, you know
+            someone owes {y}. Everyone else who turns it on can learn the same about you.
+          </p>
+          <p className="text-sm">
+            {plan.agreed.length === 0
+              ? 'No one has turned it on yet.'
+              : you
+                ? `On for ${namesList(agreedNames)}. It starts once one more person turns it on.`
+                : `On for ${namesList(agreedNames)}.`}
+          </p>
+        </>
+      )}
+      {canAgree ? (
+        <div>
+          <Button
+            variant={you ? 'ghost' : 'primary'}
+            size="sm"
+            isPending={set.isPending}
+            onPress={() => set.mutate(!you)}
+          >
+            {you ? 'Turn off for me' : 'Turn on for me'}
+          </Button>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 function ExpenseRow({
   e,
   name,
@@ -434,12 +609,15 @@ function SettleDialog({
   householdId,
   member,
   balance,
+  fromPlan,
   currency,
   onClose,
 }: {
   householdId: string;
   member: HouseholdMember;
   balance: number;
+  /** A payment in the plan with fewer transfers, rather than the balance between you. */
+  fromPlan: boolean;
   currency: string;
   onClose: () => void;
 }) {
@@ -499,7 +677,17 @@ function SettleDialog({
       <div className="space-y-4">
         {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
         <p className="text-sm text-muted">
-          {theyPay ? (
+          {fromPlan ? (
+            theyPay ? (
+              <>
+                In the plan, {member.displayName} pays you {owed}.
+              </>
+            ) : (
+              <>
+                In the plan, you pay {member.displayName} {owed}.
+              </>
+            )
+          ) : theyPay ? (
             <>
               {member.displayName} owes you {owed}.
             </>

@@ -8,6 +8,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -172,5 +173,29 @@ export const attributionFlags = pgTable(
       'attribution_flags_resolved',
       sql`(${t.resolvedAt} IS NULL) = (${t.resolvedByMemberId} IS NULL)`,
     ),
+  ],
+);
+
+/**
+ * Who has agreed to settle with the fewest transfers (#262, walkthrough D31). A plan is worked out
+ * only between people who have all agreed, since it can hint at balances between others: if you
+ * pay Jo for Sam, you know Sam owed Jo. Each member adds or removes their own row; everyone in the
+ * household sees who has agreed. Row-level security: migration 0109.
+ */
+export const settleUpSimplifyConsents = pgTable(
+  'settle_up_simplify_consents',
+  {
+    householdId: uuid()
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    memberId: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.householdId, t.memberId] }),
+    foreignKey({
+      columns: [t.householdId, t.memberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }).onDelete('cascade'),
   ],
 );
