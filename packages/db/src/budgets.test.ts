@@ -125,6 +125,11 @@ describe('budgets (RLS)', () => {
            to_category_id, amount_minor) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 4130)`,
         [H, id, MONTH, groceries, dining],
       );
+      await owner.query(
+        `INSERT INTO budget_templates (id, household_id, budget_id, name, amounts)
+         VALUES (gen_random_uuid(), $1, $2, 'Usual', $3)`,
+        [H, id, JSON.stringify({ [groceries]: 70000 })],
+      );
     }
   }, 120_000);
 
@@ -158,6 +163,7 @@ describe('budgets (RLS)', () => {
           'budget_amounts',
           'budget_categories',
           'budget_moves',
+          'budget_templates',
         ]) {
           expect(await ids(q, `SELECT budget_id AS id FROM ${table}`), table).toEqual(
             new Set(VISIBLE[a]),
@@ -216,6 +222,23 @@ describe('budgets (RLS)', () => {
         ),
       ),
     ).toMatch(/row-level security/);
+    // …nor a template.
+    expect(
+      await error(() =>
+        asMember('A', (q) =>
+          q.query(
+            `INSERT INTO budget_templates (id, household_id, budget_id, name)
+             VALUES (gen_random_uuid(), $1, $2, 'Mine now')`,
+            [H, budget.b],
+          ),
+        ),
+      ),
+    ).toMatch(/row-level security/);
+    await asMember('A', async (q) => {
+      expect(
+        (await q.query(`DELETE FROM budget_templates WHERE budget_id = $1`, [budget.b])).rowCount,
+      ).toBe(0);
+    });
     // …nor a budget made for someone else, nor yours handed to them.
     expect(
       await error(() =>

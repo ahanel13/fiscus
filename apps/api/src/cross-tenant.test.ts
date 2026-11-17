@@ -130,6 +130,17 @@ describe('cross-tenant isolation (generated from routes)', () => {
         })
       ).body.data;
       const budget = (await c.post(`${base}/budgets`, { amounts: [] })).body.data;
+      await c.request(
+        'PUT',
+        `${base}/budgets/${budget.id}/months/${budget.startsMonth}/amounts/${custom.id}`,
+        { amountMinor: 1000 },
+      );
+      const template = (
+        await c.post(`${base}/budgets/${budget.id}/templates`, {
+          name: tag,
+          month: budget.startsMonth,
+        })
+      ).body.data;
       const goal = (await c.post(`${base}/goals`, { name: tag, targetMinor: 100000 })).body.data;
       const series = (
         await c.post(`${base}/recurring`, {
@@ -145,6 +156,7 @@ describe('cross-tenant isolation (generated from routes)', () => {
         seriesId: series.id,
         splitRuleId: splitRule.id,
         budgetId: budget.id,
+        templateId: template.id,
         goalId: goal.id,
         transactionId: txn.id,
         categoryId: custom.id,

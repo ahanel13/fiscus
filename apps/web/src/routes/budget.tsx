@@ -8,6 +8,8 @@ import {
   type CategoryGroup,
   type CategoryLimitRow,
   type CategoryLimitsMonth,
+  type FillMonth,
+  type FillPreview,
   type FlexMonth,
   type HouseholdMember,
   type IncomeRow,
@@ -30,6 +32,7 @@ import {
   budgetMonthQuery,
   budgetsQuery,
   budgetSuggestionQuery,
+  budgetTemplatesQuery,
   categoriesQuery,
   goalsQuery,
   householdQuery,
@@ -52,6 +55,7 @@ import {
   LoadingRegion,
   Menu,
   MenuItem,
+  MenuSeparator,
   MenuTrigger,
   Radio,
   RadioCard,
@@ -675,6 +679,8 @@ function MonthView({
   const [switching, setSwitching] = useState(false);
   const [moving, setMoving] = useState<MoveStart | null>(null);
   const [splitting, setSplitting] = useState(false);
+  const [filling, setFilling] = useState<FillMonth['source'] | null>(null);
+  const [saving, setSaving] = useState(false);
   const [showAll, setShowAll] = useShowUnbudgeted();
   const goTo = useGoToView();
   const strategy = data.data?.view.strategy ?? budget.strategy;
@@ -687,9 +693,19 @@ function MonthView({
           <Badge>{STRATEGY_NAMES[strategy as StrategyName] ?? 'Category limits'}</Badge>
           <ViewLink view="year">Annual view</ViewLink>
           {data.data?.canEdit ? (
-            <Button variant="ghost" size="sm" onPress={() => setSwitching(true)}>
-              Change how you budget
-            </Button>
+            <>
+              <MenuTrigger>
+                <Button variant="ghost" size="sm">
+                  Fill amounts
+                </Button>
+                <Menu placement="bottom end">
+                  <FillItems month={shown} onFill={setFilling} onSave={() => setSaving(true)} />
+                </Menu>
+              </MenuTrigger>
+              <Button variant="ghost" size="sm" onPress={() => setSwitching(true)}>
+                Change how you budget
+              </Button>
+            </>
           ) : null}
         </div>
         {/* On a phone, the same in a menu, so the month starts right below. */}
@@ -700,9 +716,13 @@ function MonthView({
           <Menu placement="bottom end">
             <MenuItem onAction={() => goTo('year')}>Annual view</MenuItem>
             {data.data?.canEdit ? (
-              <MenuItem onAction={() => setSwitching(true)}>
-                Change how you budget ({STRATEGY_NAMES[strategy as StrategyName]})
-              </MenuItem>
+              <>
+                <MenuItem onAction={() => setSwitching(true)}>
+                  Change how you budget ({STRATEGY_NAMES[strategy as StrategyName]})
+                </MenuItem>
+                <MenuSeparator />
+                <FillItems month={shown} onFill={setFilling} onSave={() => setSaving(true)} />
+              </>
             ) : null}
           </Menu>
         </MenuTrigger>
@@ -788,6 +808,22 @@ function MonthView({
           groups={groups}
           start={moving}
           onClose={() => setMoving(null)}
+        />
+      ) : null}
+      {filling && data.data ? (
+        <FillDialog
+          householdId={household.id}
+          month={data.data}
+          groups={groups}
+          initial={filling}
+          onClose={() => setFilling(null)}
+        />
+      ) : null}
+      {saving && data.data ? (
+        <TemplatesDialog
+          householdId={household.id}
+          month={data.data}
+          onClose={() => setSaving(false)}
         />
       ) : null}
       {switching && data.data ? (
@@ -3772,6 +3808,293 @@ function StrategyDialog({
           </Button>
         </DialogActions>
       </div>
+    </Dialog>
+  );
+}
+
+// ── Fill amounts: copy last month, 3-month average, templates (#105) ────────────────────────
+
+/** The fill actions, in the header's menu and the phone's. */
+function FillItems({
+  month,
+  onFill,
+  onSave,
+}: {
+  month: string;
+  onFill: (source: FillMonth['source']) => void;
+  onSave: () => void;
+}) {
+  return (
+    <>
+      <MenuItem onAction={() => onFill('last_month')}>
+        {`Copy ${monthName(addMonths(month, -1))}`}
+      </MenuItem>
+      <MenuItem onAction={() => onFill('average')}>Use 3-month average</MenuItem>
+      <MenuItem onAction={() => onFill('template')}>Use a template</MenuItem>
+      <MenuItem onAction={onSave}>Save as a template</MenuItem>
+    </>
+  );
+}
+
+/**
+ * Fills a month's amounts from last month, the 3-month average or a template, with a preview of
+ * what changes first. The source's amounts replace the month's; categories it doesn't mention
+ * keep theirs.
+ */
+function FillDialog({
+  householdId,
+  month,
+  groups,
+  initial,
+  onClose,
+}: {
+  householdId: string;
+  month: BudgetMonth;
+  groups: CategoryGroup[];
+  initial: FillMonth['source'];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const budgetId = month.budget.id;
+  const templates = useQuery(budgetTemplatesQuery(householdId, budgetId));
+  const [source, setSource] = useState<FillMonth['source']>(initial);
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const chosenTemplate = templateId ?? templates.data?.[0]?.id ?? null;
+  const ready = source !== 'template' || chosenTemplate !== null;
+  const query = `source=${source}${source === 'template' && chosenTemplate ? `&templateId=${chosenTemplate}` : ''}`;
+  const preview = useQuery({
+    queryKey: ['households', householdId, 'budgets', budgetId, 'fill', month.month, query],
+    queryFn: async () =>
+      (
+        await api<{ data: FillPreview }>(
+          'GET',
+          `${base(householdId)}/budgets/${budgetId}/months/${month.month}/fill-preview?${query}`,
+        )
+      ).data,
+    enabled: ready,
+    retry: false,
+  });
+  const save = useMutation({
+    mutationFn: () =>
+      api('POST', `${base(householdId)}/budgets/${budgetId}/months/${month.month}/fill`, {
+        body: source === 'template' ? { source, templateId: chosenTemplate } : { source },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'budgets', budgetId],
+      });
+      toast(`${monthName(month.month)}’s amounts are filled.`);
+      onClose();
+    },
+  });
+  const err = save.error as ApiError | null;
+  const previewErr = preview.error as ApiError | null;
+  const p = preview.data;
+  const order = new Map(groups.flatMap((g) => g.categories).map((c, i) => [c.id, i]));
+  const changes = [...(p?.changes ?? [])].sort(
+    (a, b) => (order.get(a.categoryId) ?? 0) - (order.get(b.categoryId) ?? 0),
+  );
+  const money = (minor: number) => (
+    <Amount minor={minor} currency={month.currency} kind="balance" />
+  );
+  const last = addMonths(month.month, -1);
+  const nothing = p !== undefined && changes.length === 0 && p.flexible === null;
+  return (
+    <Dialog
+      title={`Fill ${monthName(month.month)}`}
+      size="lg"
+      isOpen
+      onOpenChange={(open) => (open ? null : onClose())}
+    >
+      <div className="space-y-4">
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <RadioGroup
+          label="Fill with"
+          value={source}
+          onChange={(v) => setSource(v as FillMonth['source'])}
+        >
+          <RadioCard
+            value="last_month"
+            title={`Copy ${monthName(last)}`}
+            description="Its amounts, as they were."
+          />
+          <RadioCard
+            value="average"
+            title="3-month average"
+            description="What was spent in the last three full months, rounded to $5. Only spending you can see counts."
+          />
+          <RadioCard value="template" title="A template" description="Amounts you saved." />
+        </RadioGroup>
+        {source === 'template' ? (
+          templates.data && templates.data.length > 0 ? (
+            <Select
+              label="Template"
+              value={chosenTemplate}
+              onChange={(v) => setTemplateId(v ? String(v) : null)}
+            >
+              {templates.data.map((t) => (
+                <SelectItem key={t.id} id={t.id} textValue={t.name}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </Select>
+          ) : templates.isPending ? (
+            <Skeleton className="h-10" />
+          ) : (
+            <p className="text-sm text-muted">
+              No templates yet. Save a month as a template from the Fill amounts menu.
+            </p>
+          )
+        ) : null}
+        {!ready ? null : preview.isPending ? (
+          <Skeleton className="h-24" />
+        ) : previewErr ? (
+          <p className="rounded-xl border border-border p-3 text-sm text-muted">
+            {previewErr.title}. {previewErr.detail ?? ''}
+          </p>
+        ) : p ? (
+          <div className="space-y-2 rounded-xl border border-border p-3 text-sm">
+            <p className="font-medium">
+              {nothing
+                ? 'Nothing would change: the amounts already match.'
+                : p.source === 'average' && p.months.length < 3
+                  ? `What changes (averaged over ${p.months.length === 1 ? '1 month' : `${p.months.length} months`} with spending)`
+                  : 'What changes'}
+            </p>
+            {changes.length ? (
+              <ul className="divide-y divide-border">
+                {changes.map((c) => (
+                  <li key={c.categoryId} className="flex items-center justify-between gap-3 py-1.5">
+                    <span className="min-w-0 truncate">{categoryName(groups, c.categoryId)}</span>
+                    <span className="shrink-0 tabular-nums">
+                      <span className="text-muted">{money(c.beforeMinor)}</span> →{' '}
+                      <span className="font-medium">{money(c.afterMinor)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {p.flexible ? (
+              <p className="flex items-center justify-between gap-3">
+                <span>Flexible spending</span>
+                <span className="tabular-nums">
+                  <span className="text-muted">{money(p.flexible.beforeMinor)}</span> →{' '}
+                  <span className="font-medium">{money(p.flexible.afterMinor)}</span>
+                </span>
+              </p>
+            ) : null}
+            {nothing ? null : (
+              <p className="text-muted">
+                {month.view.strategy === 'percentage'
+                  ? '50/30/20 splits by bucket, so it doesn’t use these amounts. They’re kept for if you switch back. '
+                  : ''}
+                Categories not listed keep their amounts.
+                {month.view.strategy === 'zero_based'
+                  ? ''
+                  : ' Later months without amounts of their own follow this one.'}
+              </p>
+            )}
+          </div>
+        ) : null}
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button
+            isPending={save.isPending}
+            isDisabled={!p || nothing || previewErr !== null}
+            onPress={() => save.mutate()}
+          >
+            Fill {monthName(month.month)}
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Saves the month's amounts as a template, and lists the budget's templates to delete. */
+function TemplatesDialog({
+  householdId,
+  month,
+  onClose,
+}: {
+  householdId: string;
+  month: BudgetMonth;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const budgetId = month.budget.id;
+  const templates = useQuery(budgetTemplatesQuery(householdId, budgetId));
+  const [name, setName] = useState('');
+  const refresh = () =>
+    queryClient.invalidateQueries({
+      queryKey: ['households', householdId, 'budgets', budgetId, 'templates'],
+    });
+  const save = useMutation({
+    mutationFn: () =>
+      api('POST', `${base(householdId)}/budgets/${budgetId}/templates`, {
+        body: { name: name.trim(), month: month.month },
+      }),
+    onSuccess: async () => {
+      await refresh();
+      toast(`Saved ${monthName(month.month)} as “${name.trim()}”.`);
+      onClose();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      api('DELETE', `${base(householdId)}/budgets/${budgetId}/templates/${id}`),
+    onSuccess: refresh,
+    onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
+  });
+  const err = save.error as ApiError | null;
+  return (
+    <Dialog title="Save as a template" isOpen onOpenChange={(open) => (open ? null : onClose())}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) save.mutate();
+        }}
+      >
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <p className="text-sm text-muted">
+          Saves {monthName(month.month)}’s amounts under a name, to fill a month with later.
+          {month.budget.scope === 'household'
+            ? ' Everyone who sees this budget sees its templates.'
+            : ' Only you see them.'}
+        </p>
+        <TextField label="Name" value={name} onChange={setName} isRequired maxLength={60} />
+        {templates.data && templates.data.length > 0 ? (
+          <section className="space-y-1">
+            <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">Templates</h3>
+            <ul className="divide-y divide-border text-sm">
+              {templates.data.map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 py-1">
+                  <span className="min-w-0 truncate">{t.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    isPending={remove.isPending && remove.variables === t.id}
+                    onPress={() => remove.mutate(t.id)}
+                  >
+                    Delete
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" isPending={save.isPending} isDisabled={!name.trim()}>
+            Save
+          </Button>
+        </DialogActions>
+      </form>
     </Dialog>
   );
 }

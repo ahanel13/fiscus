@@ -14,6 +14,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { id, money, timestamps, versioning } from '../columns.js';
@@ -267,5 +268,38 @@ export const allowances = pgTable(
     index().on(t.categoryId),
     check('allowances_month', firstOfMonth(t.month)),
     check('allowances_amount', sql`${t.amountMinor} >= 0`),
+  ],
+);
+
+/**
+ * A budget's templates (#105): a set of amounts, saved from a month and given a name, to fill a
+ * month with later. Under a budget, so they're seen exactly as it is (0054): the household's
+ * budget's by its members, your own budget's by you alone. Amounts are by category id, and a
+ * category that's gone since is skipped when one is used. Row-level security: migration 0108.
+ */
+export const budgetTemplates = pgTable(
+  'budget_templates',
+  {
+    id: id(),
+    householdId: uuid().notNull(),
+    budgetId: uuid().notNull(),
+    name: text().notNull(),
+    /** Category id to amount, in the household's base currency. */
+    amounts: jsonb()
+      .$type<Record<string, number>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    /** Flex's flexible number, when it was saved from a month that ran flex. */
+    flexibleMinor: money('flexible_minor'),
+    ...timestamps(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.householdId, t.budgetId],
+      foreignColumns: [budgets.householdId, budgets.id],
+    }).onDelete('cascade'),
+    uniqueIndex('budget_templates_name').on(t.budgetId, sql`lower(${t.name})`),
+    check('budget_templates_name_length', sql`length(btrim(${t.name})) BETWEEN 1 AND 60`),
+    check('budget_templates_flexible', sql`${t.flexibleMinor} IS NULL OR ${t.flexibleMinor} >= 0`),
   ],
 );
