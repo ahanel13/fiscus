@@ -107,7 +107,27 @@ export interface SharedCosts {
   /** Shared spending you can see this month, and how much of it evens out. */
   sharedSpendingMinor: number;
   evensOutMinor: number;
+  /** Settling with the fewest transfers (#262, D31). */
+  simplify: SettleUpPlan;
 }
+
+/**
+ * Settling with the fewest transfers (#262, D31): one payment from you to Jo instead of yours to
+ * Sam and Sam's to Jo. Worked out only between people who have all agreed, since a plan can hint
+ * at balances between others, and you see only the payments you're part of.
+ */
+export interface SettleUpPlan {
+  /** Everyone who has agreed (current members, not viewers), you among them if you have. */
+  agreed: string[];
+  /**
+   * Your payments in the plan, at the end of the month: `from` pays `to`. Empty when you're
+   * square with everyone who agreed. Null until you and at least two others have agreed.
+   */
+  transfers: { fromMemberId: string; toMemberId: string; amountMinor: number }[] | null;
+}
+
+/** Agrees, or stops agreeing, to settle with the fewest transfers (SHR-09). */
+export const setSettleUpSimplifySchema = z.object({ agreed: z.boolean() });
 
 /** A settle-up between you and someone else (#112, D20). */
 export interface Settlement {

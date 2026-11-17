@@ -119,3 +119,10 @@ export {
   type PayStyle,
   type SpendingCategory,
 } from './forecast.js';
+export {
+  consentedDebts,
+  netPositions,
+  simplifyDebts,
+  transfersFor,
+  type Debt,
+} from './simplify.js';

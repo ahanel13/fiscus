@@ -2,6 +2,7 @@
 import {
   budgetMonthSchema,
   recordSettlementSchema,
+  setSettleUpSimplifySchema,
   type Settlement,
   type SettlementCandidate,
   type SharedCosts,
@@ -14,6 +15,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -44,6 +46,20 @@ export class SharedCostsController {
     @Query(new ZodPipe(z.object({ month: budgetMonthSchema }))) q: { month: string },
   ): Promise<{ data: SharedCosts }> {
     return { data: await this.costs.get(ctx, q.month) };
+  }
+
+  /**
+   * SHR-09: you agree, or stop agreeing, to settle with the fewest transfers (#262, D31). A plan
+   * is worked out only between people who have all agreed.
+   */
+  @Put('simplify')
+  @HouseholdRoles('owner', 'member')
+  @HttpCode(204)
+  async setSimplify(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(setSettleUpSimplifySchema)) body: { agreed: boolean },
+  ): Promise<void> {
+    await this.costs.setSimplify(ctx, body.agreed);
   }
 
   /** SHR-04: one of the two people records a settle-up between them. */

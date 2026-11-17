@@ -53,6 +53,7 @@ describe('row-level security', () => {
     'recurring_marks',
     'recurring_series',
     'rules',
+    'settle_up_simplify_consents',
     'settlements',
     'split_policies',
     'sync_holds',

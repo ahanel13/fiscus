@@ -183,6 +183,7 @@ caller can't see ("Transfer to Anthony").
 | SHR-02 | Change the default split or a category's rule, or cancel one not yet started | ✅ | ✅ | ❌ | From this month on, never earlier: a month that has started keeps its rule. Each change is in the household's activity. Split by income needs every affected member's consent (#110) |
 | SHR-03 | Read your balance with each person, and the month's shared expenses | own | own | own | Only balances that involve you, from shared expenses you're for or paid. Someone else's payment shows as them, never their account (F1) |
 | SHR-04 | Record or remove a settle-up between you and someone else | own | own | ❌ | Only the two people it's between see or remove it. A transfer that paid it must be in an account you own; it's then marked a settle-up |
+| SHR-09 | Agree, or stop agreeing, to settle with the fewest transfers, and see your payments in the plan | own | own | ❌ | Everyone sees who has agreed. A plan is worked out only between people who have all agreed, three or more, from their balances with each other; balances with anyone else never reach it. You see only the payments you make or receive. Each change is in the household's activity (#262, D31) |
 
 ### 4.10 Bills and recurring (bills walkthrough §1–§3, §6)
 | ID | Action | OWN | MEM | VIEW | Notes |

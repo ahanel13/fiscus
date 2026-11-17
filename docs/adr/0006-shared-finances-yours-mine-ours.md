@@ -125,6 +125,11 @@ Per account, set by its owners:
    `settlement_entries`, recomputed idempotently when transactions change. A running balance
    is kept per member pair. Transfers between members' accounts can be marked, or
    auto-detected, as **settlements**. Manual adjustments are allowed.
+   With three or more members, settling can take **fewer transfers** (#262): Ada pays Jo instead
+   of Ada paying Sam and Sam paying Jo. A member's part of such a plan hints at balances between
+   others, so, like F4, it needs consent: it's worked out only between members who have all
+   agreed, from their balances with each other, and each sees only the payments they're part of
+   (budgeting walkthrough D31).
 3. **Joint-account funding targets**: `funding_targets(account_id, member_id, method: percent_of_income | fixed, amount, cadence)`.
    Inbound transfers from each member's accounts are matched against the target: on track, behind, or ahead.
 4. **Allowances / fun money**: a shared-budget line that funds a member's personal budget each
@@ -170,7 +175,8 @@ first-class experience. It is chosen at onboarding and can be changed any time.
 - Transfers between a visible and a private account reveal only the visible side. The
   counterpart shows as the **member** ("Transfer to Anthony"), never as an account (F1).
 - Shared-math leakage is inherent and disclosed, not prevented: income ratios (F4), joint-account
-  activity (F5), and attributed purchases (F1).
+  activity (F5), attributed purchases (F1), and, for those who agree to it, a settle-up plan with
+  fewer transfers (§7.2).
 - The worker must handle member-targeted notifications and filtering.
 - There is more schema up front: `account_owners`, `transaction_attributions`,
   `split_policies`, `settlement_entries`, `funding_targets`, and budget/goal scopes. This is

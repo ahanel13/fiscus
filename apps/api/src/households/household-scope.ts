@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { FieldCrypto } from '@fiscus/crypto';
-import { type DbHandle, type Executor, setContext, withContext } from '@fiscus/db';
+import {
+  type DbHandle,
+  type Executor,
+  householdMembers,
+  setContext,
+  settleUpSimplifyConsents,
+  withContext,
+} from '@fiscus/db';
 import { guardActivity, type HouseholdActivity } from '@fiscus/ledger';
 import { Inject, Injectable } from '@nestjs/common';
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { DB } from '../database/database.module.js';
 import type { HouseholdContext } from './household-context.js';
 
@@ -72,6 +80,52 @@ export class HouseholdScope {
           this.crypto,
           (tx, activity) => fn(tx, activity, { memberId: who.memberId }),
         );
+      },
+    );
+  }
+
+  /**
+   * Reads what another member sees, for the one thing they agreed to: settling with the fewest
+   * transfers (#262, D31). A plan between three or more people needs everyone's balances with each
+   * other, and no one person can see them all. So this runs `fn` in `memberId`'s own context, as
+   * the worker does for their notifications, and only when both of you have agreed. It's read-only:
+   * nothing can be written as them. What comes back stays on the server; the caller returns only
+   * the payments you're part of.
+   */
+  readAsAgreed<T>(
+    ctx: HouseholdContext,
+    memberId: string,
+    fn: (tx: Executor) => Promise<T>,
+  ): Promise<T> {
+    return withContext(
+      this.db.db,
+      { householdId: ctx.householdId, memberId: ctx.memberId, userId: ctx.userId, system: false },
+      async (tx) => {
+        await tx.execute(sql`SET TRANSACTION READ ONLY`);
+        const rows = await tx
+          .select({ memberId: householdMembers.id, userId: householdMembers.userId })
+          .from(householdMembers)
+          .innerJoin(
+            settleUpSimplifyConsents,
+            and(
+              eq(settleUpSimplifyConsents.householdId, householdMembers.householdId),
+              eq(settleUpSimplifyConsents.memberId, householdMembers.id),
+            ),
+          )
+          .where(
+            and(
+              inArray(householdMembers.id, [ctx.memberId, memberId]),
+              isNull(householdMembers.leftAt),
+              isNotNull(householdMembers.userId),
+              ne(householdMembers.role, 'viewer'),
+            ),
+          );
+        const them = rows.find((r) => r.memberId === memberId);
+        if (memberId === ctx.memberId || rows.length !== 2 || !them?.userId) {
+          throw new Error('Both members must have agreed to settle with the fewest transfers');
+        }
+        await setContext(tx, { userId: them.userId, memberId });
+        return fn(tx);
       },
     );
   }
