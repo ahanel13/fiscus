@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
   accounts,
+  allowances,
   budgetAmounts,
   budgetCategories,
   budgetMoves,
@@ -9,10 +10,17 @@ import {
   categories,
   categoryGroups,
   type Executor,
+  householdMembers,
   households,
   transactions,
 } from '@fiscus/db';
-import { addMonths, type BudgetCategory, firstDayOf, type MonthActivity } from '@fiscus/domain';
+import {
+  addMonths,
+  type BudgetAllowance,
+  type BudgetCategory,
+  firstDayOf,
+  type MonthActivity,
+} from '@fiscus/domain';
 import type { BudgetScope } from '@fiscus/shared';
 import { and, asc, eq, gte, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import { budgetGoalLines, goalMoved } from './goal-lines.js';
@@ -362,6 +370,7 @@ export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
   return {
     scope: (row.memberId ? 'mine' : 'household') as BudgetScope,
     goals: await budgetGoalLines(tx, row.householdId, row.memberId),
+    allowances: await budgetAllowances(tx, row.householdId, row.memberId),
     startsMonth: monthOfDate(row.startsMonth),
     periods: periods.map((p) => ({
       fromMonth: monthOfDate(p.fromMonth),
@@ -382,4 +391,45 @@ export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
     amounts,
     moves,
   };
+}
+
+/**
+ * The allowances a budget has (D15): every member's in the household's, and only the member's
+ * own in theirs. Each ends with the month its member left in.
+ */
+export async function budgetAllowances(
+  tx: Executor,
+  householdId: string,
+  memberId: string | null,
+): Promise<BudgetAllowance[]> {
+  const rows = await tx
+    .select({
+      memberId: allowances.memberId,
+      month: allowances.month,
+      categoryId: allowances.categoryId,
+      amountMinor: allowances.amountMinor,
+      leftAt: householdMembers.leftAt,
+    })
+    .from(allowances)
+    .innerJoin(
+      householdMembers,
+      and(
+        eq(householdMembers.householdId, allowances.householdId),
+        eq(householdMembers.id, allowances.memberId),
+      ),
+    )
+    .where(
+      and(
+        eq(allowances.householdId, householdId),
+        memberId ? eq(allowances.memberId, memberId) : undefined,
+      ),
+    )
+    .orderBy(asc(allowances.month));
+  return rows.map((r) => ({
+    memberId: r.memberId,
+    month: monthOfDate(r.month),
+    categoryId: r.categoryId,
+    amountMinor: r.amountMinor,
+    untilMonth: r.leftAt ? r.leftAt.toISOString().slice(0, 7) : null,
+  }));
 }

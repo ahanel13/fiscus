@@ -149,6 +149,82 @@ const monthGoal = (g: BudgetGoalLine, month: Month): MonthGoal => ({
   ended: month < g.fromMonth || (g.untilMonth !== null && month > g.untilMonth),
 });
 
+/**
+ * An allowance, or fun money (#114, D15): a line in the household's budget that funds one
+ * member's own each month, from a month on. A month without a row of its own has the last one
+ * before it; an amount of zero stops it.
+ */
+export interface BudgetAllowance {
+  memberId: string;
+  /** The month it's set from. */
+  month: Month;
+  categoryId: string;
+  amountMinor: number;
+  /** The month its member left in, or null: none after it. */
+  untilMonth: Month | null;
+}
+
+/** An allowance in one month: whose, which category, and how much. */
+export interface MonthAllowance {
+  memberId: string;
+  categoryId: string;
+  amountMinor: number;
+}
+
+/** The allowances running in `month`: each member's last row on or before it, unless stopped. */
+export function allowancesIn(
+  month: Month,
+  allowances: readonly BudgetAllowance[],
+): MonthAllowance[] {
+  const latest = new Map<string, BudgetAllowance>();
+  for (const a of allowances) {
+    if (a.month > month) continue;
+    const seen = latest.get(a.memberId);
+    if (!seen || a.month > seen.month) latest.set(a.memberId, a);
+  }
+  return [...latest.values()]
+    .filter((a) => a.amountMinor > 0 && (a.untilMonth === null || month <= a.untilMonth))
+    .map(({ memberId, categoryId, amountMinor }) => ({ memberId, categoryId, amountMinor }));
+}
+
+/**
+ * A month as allowances make it (D15). Each allowance's category has the allowances in it as its
+ * amount, whatever the budget had there. In the household's budget the whole amount is spent, as
+ * it's handed over that month: the budget never shows how it was spent (ADR 0006 §7.4). In the
+ * member's own it arrives as money in, and what they spend in its category counts against it.
+ */
+export function withAllowances(
+  scope: BudgetScopeKind,
+  amounts: ReadonlyMap<string, number>,
+  activity: MonthActivity,
+  allowances: readonly MonthAllowance[],
+): {
+  amounts: ReadonlyMap<string, number>;
+  activity: MonthActivity;
+  /** The allowances' categories, and their amounts. */
+  byCategory: ReadonlyMap<string, number>;
+} {
+  const byCategory = new Map<string, number>();
+  for (const a of allowances) {
+    byCategory.set(a.categoryId, (byCategory.get(a.categoryId) ?? 0) + a.amountMinor);
+  }
+  if (byCategory.size === 0) return { amounts, activity, byCategory };
+  const total = [...byCategory.values()].reduce((s, v) => s + v, 0);
+  const spent = new Map(activity.spentMinor);
+  if (scope === 'household') {
+    for (const [id, v] of byCategory) spent.set(id, (spent.get(id) ?? 0) + v);
+  }
+  return {
+    amounts: new Map([...amounts, ...byCategory]),
+    activity: {
+      ...activity,
+      spentMinor: spent,
+      incomeMinor: activity.incomeMinor + (scope === 'mine' ? total : 0),
+    },
+    byCategory,
+  };
+}
+
 /** Everything a strategy is given for one month. */
 export interface StrategyMonth<S> {
   month: Month;
@@ -160,6 +236,11 @@ export interface StrategyMonth<S> {
   amounts: ReadonlyMap<string, number>;
   /** Whether the month has amounts of its own, rather than repeating an earlier month's. */
   ownAmounts: boolean;
+  /**
+   * Allowances' categories and their amounts (D15), already in `amounts`. They're set every
+   * month, so zero-based assigns them whether or not the month has amounts of its own.
+   */
+  allowances?: ReadonlyMap<string, number>;
   /** Money moved between lines this month (zero-based, D9): net per line, in is positive. */
   moves: ReadonlyMap<string, number>;
   activity: MonthActivity;
@@ -200,6 +281,8 @@ export interface BudgetDefinition {
   moves?: ReadonlyMap<Month, ReadonlyMap<string, number>>;
   /** Goals with a line in this budget (G4): its scope's, Ours or Mine. */
   goals?: readonly BudgetGoalLine[];
+  /** Allowances (D15): every member's in the household's budget, the member's own in theirs. */
+  allowances?: readonly BudgetAllowance[];
 }
 
 export type StrategyRegistry = Partial<Record<BudgetStrategyKind, BudgetStrategy>>;
@@ -288,16 +371,24 @@ export function computeBudgetMonth(
     const strategy = strategies[period.kind];
     if (!strategy) throw new Error(`The ${period.kind} strategy isn't available`);
     if (!settings.has(period)) settings.set(period, strategy.settings(period.settings));
+    const scope = budget.scope ?? 'household';
+    const allowed = withAllowances(
+      scope,
+      amountsFor(month, budget.amounts),
+      activity.get(month) ?? NO_ACTIVITY,
+      allowancesIn(month, budget.allowances ?? []),
+    );
     const out = strategy.month({
       month,
       settings: settings.get(period),
-      scope: budget.scope ?? 'household',
+      scope,
       categories: budget.categories,
       goals: (budget.goals ?? []).map((g) => monthGoal(g, month)),
-      amounts: amountsFor(month, budget.amounts),
+      amounts: allowed.amounts,
       ownAmounts: budget.amounts.has(month),
+      allowances: allowed.byCategory,
       moves: budget.moves?.get(month) ?? new Map(),
-      activity: activity.get(month) ?? NO_ACTIVITY,
+      activity: allowed.activity,
       carry,
     });
     if (month === target) return { kind: period.kind, view: out.view, carry: out.carry };

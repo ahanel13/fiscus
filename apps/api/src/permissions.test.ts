@@ -81,6 +81,27 @@ const ownBudget = async (c: TestClient) => {
   const list = (await c.get(url('/budgets'))).body.data as { id: string; scope: string }[];
   return list.find((b) => b.scope === 'mine')!.id;
 };
+/** Sets `memberId`'s allowance as `c`, in a category of its own, once the shared budget is there. */
+const allowanceFor = async (memberId: string, amountMinor: number, c: TestClient = f.A) => {
+  await householdBudget();
+  if (!allowanceCategory) {
+    const groups = (await f.A.get(url('/categories'))).body.data as {
+      name: string;
+      id: string;
+    }[];
+    allowanceCategory = (
+      await f.A.post(url('/categories'), {
+        name: 'Fun money',
+        groupId: groups.find((g) => g.name === 'Fun')!.id,
+      })
+    ).body.data.id;
+  }
+  return c.request('PUT', url(`/allowances/${memberId}`), {
+    categoryId: allowanceCategory,
+    amountMinor,
+  });
+};
+let allowanceCategory = '';
 const account = async (c: TestClient, visibility = 'full') =>
   (await c.post(url('/accounts'), { name: 'Extra', type: 'depository', visibility })).body.data
     .id as string;
@@ -983,6 +1004,21 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
     refused(
       await f.V.request('PUT', url(`/budgets/${await householdBudget()}/scope`), { scope: 'mine' }),
     ),
+
+  // Allowances (#114, D15): everyone reads the amounts; owners and members set them.
+  'BUD-07/OWN': async () => {
+    await allowanceFor(f.member.B, 5000);
+    const r = await f.A.get(url('/allowances'));
+    ok(r);
+    expect(r.body.data).toEqual(
+      expect.arrayContaining([expect.objectContaining({ memberId: f.member.B })]),
+    );
+  },
+  'BUD-07/MEM': async () => ok(await f.B.get(url('/allowances'))),
+  'BUD-07/VIEW': async () => ok(await f.V.get(url('/allowances'))),
+  'BUD-08/OWN': async () => ok(await allowanceFor(f.member.B, 6000)),
+  'BUD-08/MEM': async () => ok(await allowanceFor(f.member.A, 6000, f.B)),
+  'BUD-08/VIEW': async () => refused(await allowanceFor(f.member.B, 1, f.V)),
 
   // ── 4.9 Shared costs ──
   'SHR-01/OWN': async () => ok(await f.A.get(url('/split-rules'))),

@@ -58,7 +58,11 @@ export {
 } from './split.js';
 export {
   addMonths,
+  allowancesIn,
   amountsFor,
+  type BudgetAllowance,
+  type MonthAllowance,
+  withAllowances,
   BUDGET_STRATEGIES,
   BudgetSettingsError,
   computeBudgetMonth,

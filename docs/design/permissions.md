@@ -175,6 +175,8 @@ caller can't see ("Transfer to Anthony").
 | BUD-04 | Set up or change your own budget | own | own | ❌ | Viewers own no accounts, so have no budget of their own |
 | BUD-05 | A member's own budget when they leave | — | — | — | Deleted, with everything under it, as their rules are (RULE-07). Moving out with their history (ADR 0012, #253) takes it with them first |
 | BUD-06 | Change a budget's scope: **Share my budget**, **Make it mine** | own | own | ❌ | Your own budget, shared by you once there are two or more of you; the household's becomes yours only when you're its one member. The same budget, its history kept (D25) |
+| BUD-07 | Read the household's allowances | ✅ | ✅ | ✅ | Each member's amount only, as the shared budget shows it. Never how it was spent: that's only in the member's own budget (D15, ADR 0006 §7.4) |
+| BUD-08 | Set, change or stop a member's allowance | ✅ | ✅ | ❌ | A line in the shared budget, so the same people as BUD-03, from this month on. Each change goes into the household's activity |
 
 ### 4.9 Shared costs (ADR 0006 §7)
 | ID | Action | OWN | MEM | VIEW | Notes |

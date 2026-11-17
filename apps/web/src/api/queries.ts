@@ -2,6 +2,7 @@
 import type {
   Account,
   AccountLayout,
+  Allowance,
   AuthStatus,
   BalancePoint,
   BankConnectionsOverview,
@@ -247,6 +248,13 @@ export const budgetSuggestionQuery = (id: string, scope?: BudgetScope) =>
           `${hh(id)}/budgets/suggestion${scope ? `?scope=${scope}` : ''}`,
         )
       ).data,
+  });
+
+/** The household's allowances (#114, D15): amounts only. */
+export const allowancesQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'allowances'],
+    queryFn: async () => (await api<Data<Allowance[]>>('GET', `${hh(id)}/allowances`)).data,
   });
 
 /** A month of a budget, computed when read (D13). */

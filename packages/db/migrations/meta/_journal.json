@@ -736,6 +736,20 @@
       "when": 1795130108701,
       "tag": "0104_funding_targets_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1795130110201,
+      "tag": "0105_allowances",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1795130111701,
+      "tag": "0106_allowances_rls",
+      "breakpoints": true
     }
   ]
 }

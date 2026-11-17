@@ -24,6 +24,7 @@ describe('row-level security', () => {
     'account_owner_periods',
     'activity_transactions',
     'aggregation_credentials',
+    'allowances',
     'account_placements',
     'accounts',
     'account_owners',
