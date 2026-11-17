@@ -23,8 +23,9 @@ const memberShares = z
  *   of them, their shares are scaled to add up to 100% between them.
  * - `fixed_amount`: some members pay a fixed amount a month for the category; whatever's left is
  *   split equally between the others ("You $400 · Sam the rest").
- *
- * Split by income (`income_proportional`) comes with members' consent (#110).
+ * - `income_proportional`: in proportion to their incomes (F4, #110). It counts for an expense
+ *   only once everyone it's for has agreed (`IncomeSplit`); until then, the household default
+ *   applies, or an equal split for the default itself.
  */
 export const splitRuleSchema = z.discriminatedUnion('method', [
   z.object({ method: z.literal('equal') }),
@@ -37,9 +38,10 @@ export const splitRuleSchema = z.discriminatedUnion('method', [
       .max(19)
       .refine((s) => new Set(s.map((x) => x.memberId)).size === s.length, 'Each member once'),
   }),
+  z.object({ method: z.literal('income_proportional') }),
 ]);
 export type SplitRule = z.infer<typeof splitRuleSchema>;
-export type SplitMethod = SplitRule['method'] | 'income_proportional';
+export type SplitMethod = SplitRule['method'];
 
 /** Sets the household's default from a month on. */
 export const setDefaultSplitSchema = z.object({
@@ -69,6 +71,32 @@ export interface SplitPolicies {
   earliestMonth: string;
   /** Every rule, oldest first: what applies now, what applied before, and what's scheduled. */
   policies: SplitPolicy[];
+}
+
+/**
+ * Agreeing to a split by income (F4, #110, walkthrough D19), from today: with a monthly figure you
+ * enter, or with your actual income, the income attributed to you over the 3 months before each
+ * month. Nobody else sees either, only the split it makes.
+ */
+export const incomeSplitConsentSchema = z.discriminatedUnion('basis', [
+  z.object({ basis: z.literal('declared'), declaredMonthlyMinor: minorUnitsSchema.min(0) }),
+  z.object({ basis: z.literal('actual') }),
+]);
+export type IncomeSplitConsent = z.infer<typeof incomeSplitConsentSchema>;
+
+/** Where a split by income stands today (F4, #110). */
+export interface IncomeSplit {
+  /** Today, in the household's time zone: consent counts from the day it's given. */
+  today: string;
+  /** Each current member who isn't a viewer, and whether they've agreed. Never their income. */
+  members: { memberId: string; consented: boolean }[];
+  /**
+   * Today's split between those who've agreed, in basis points; empty when nobody has. It counts
+   * for an expense only when everyone it's for is in it.
+   */
+  shares: { memberId: string; shareBps: number }[];
+  /** Your own consent: the income you chose. Null when you haven't agreed. */
+  yours: IncomeSplitConsent | null;
 }
 
 /** One shared expense in a month's statement (walkthrough §8). */

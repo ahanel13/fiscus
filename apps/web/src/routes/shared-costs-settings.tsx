@@ -2,6 +2,8 @@
 import {
   formatMoney,
   type HouseholdMember,
+  type IncomeSplit,
+  type IncomeSplitConsent,
   type SplitPolicy,
   type SplitRule,
 } from '@fiscus/shared';
@@ -10,7 +12,13 @@ import { useParams } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
-import { categoriesQuery, householdQuery, membersQuery, splitRulesQuery } from '../api/queries.js';
+import {
+  categoriesQuery,
+  householdQuery,
+  incomeSplitQuery,
+  membersQuery,
+  splitRulesQuery,
+} from '../api/queries.js';
 import {
   Alert,
   AmountInput,
@@ -30,7 +38,8 @@ import {
 } from '../components/ui.js';
 
 // Household settings → Shared costs (#109, budgeting walkthrough §9): how a shared expense is
-// split, by default and for particular categories, each from a month on.
+// split, by default and for particular categories, each from a month on. A split by income waits
+// for everyone's agreement, and shows only the split, never an income (F4, #110, D19).
 
 type Method = SplitRule['method'];
 
@@ -46,6 +55,40 @@ const nextMonthOf = (month: string) => {
   return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
 };
 
+const nameOf = (members: HouseholdMember[], id: string) => {
+  const m = members.find((x) => x.id === id);
+  return m ? (m.isYou ? 'you' : m.displayName) : 'someone who left';
+};
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** "Sam 57% · you 43%": shares in basis points, largest first. */
+const describeShares = (
+  shares: readonly { memberId: string; shareBps: number }[],
+  members: HouseholdMember[],
+) =>
+  cap(
+    [...shares]
+      .sort((a, b) => b.shareBps - a.shareBps)
+      .map((s) => `${nameOf(members, s.memberId)} ${Math.round(s.shareBps / 10) / 10}%`)
+      .join(' · '),
+  );
+
+/**
+ * Where a split by income stands, for the people in it: "Waiting for Sam", or today's split once
+ * everyone has agreed.
+ */
+export function describeIncomeSplit(split: IncomeSplit, members: HouseholdMember[]): string {
+  const waiting = split.members.filter((m) => !m.consented).map((m) => nameOf(members, m.memberId));
+  if (waiting.length > 0) {
+    const you = waiting.indexOf('you');
+    const names = you >= 0 ? ['you', ...waiting.filter((_, i) => i !== you)] : waiting;
+    const list =
+      names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names.at(-1)!}`;
+    return `Waiting for ${list}`;
+  }
+  return describeShares(split.shares, members);
+}
+
 /** "Equal", "Sam 70% · you 30%", "You $400.00 a month · the rest equally". */
 export function describeRule(
   rule: SplitRule | null,
@@ -53,12 +96,9 @@ export function describeRule(
   currency: string,
 ): string {
   if (!rule) return 'The household default';
-  const name = (id: string) => {
-    const m = members.find((x) => x.id === id);
-    return m ? (m.isYou ? 'you' : m.displayName) : 'someone who left';
-  };
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const name = (id: string) => nameOf(members, id);
   if (rule.method === 'equal') return 'Equal';
+  if (rule.method === 'income_proportional') return 'By income';
   if (rule.method === 'fixed_percent') {
     return cap(
       [...rule.shares]
@@ -88,6 +128,7 @@ export function SharedCostsSettings() {
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const rules = useQuery(splitRulesQuery(householdId));
+  const income = useQuery(incomeSplitQuery(householdId));
   const queryClient = useQueryClient();
   const canEdit = household.you.role !== 'viewer';
   const [editing, setEditing] = useState<{ categoryId: string | null; isNew: boolean } | null>(
@@ -119,6 +160,16 @@ export function SharedCostsSettings() {
     groups.flatMap((g) => g.categories).find((c) => c.id === id)?.name ?? 'A deleted category';
   const def = timeline(policies, null, earliestMonth);
   const withRules = [...new Set(policies.flatMap((p) => (p.categoryId ? [p.categoryId] : [])))];
+  // Policies in effect now or later: a split by income among them asks for everyone's income.
+  const current = policies.filter(
+    (p) =>
+      p.effectiveFrom > earliestMonth || timeline(policies, p.categoryId, earliestMonth).now === p,
+  );
+  const byIncome = current.some((p) => p.rule?.method === 'income_proportional');
+  const incomeStatus = (rule: SplitRule | null | undefined) =>
+    rule?.method === 'income_proportional' && income.data ? (
+      <p className="text-sm text-muted">{describeIncomeSplit(income.data, members)}</p>
+    ) : null;
 
   const scheduled = (rows: SplitPolicy[]) =>
     rows.map((p) => (
@@ -160,8 +211,13 @@ export function SharedCostsSettings() {
         <p className="text-lg font-medium">
           {describeRule(def.now?.rule ?? { method: 'equal' }, members, currency)}
         </p>
+        {incomeStatus(def.now?.rule)}
         {scheduled(def.scheduled)}
       </Card>
+
+      {income.data && (byIncome || income.data.yours) && household.you.role !== 'viewer' ? (
+        <IncomeCard householdId={householdId} split={income.data} currency={currency} />
+      ) : null}
 
       <Card className="space-y-3">
         <div className="flex flex-wrap items-start gap-3">
@@ -198,6 +254,7 @@ export function SharedCostsSettings() {
                         ? describeRule(t.now.rule, members, currency)
                         : 'The household default'}
                     </p>
+                    {incomeStatus(t.now?.rule)}
                     {scheduled(t.scheduled)}
                   </div>
                   {canEdit ? (
@@ -295,7 +352,7 @@ function RuleDialog({
   const percentTotal = Object.values(percent).reduce((s, v) => s + (Number(v) || 0), 0);
   const rule = (): SplitRule | null => {
     if (method === 'default') return null;
-    if (method === 'equal') return { method };
+    if (method === 'equal' || method === 'income_proportional') return { method };
     if (method === 'fixed_percent') {
       return {
         method,
@@ -382,6 +439,11 @@ function RuleDialog({
           ) : null}
           <RadioCard value="equal" title="Equally" description="The same share each." />
           <RadioCard
+            value="income_proportional"
+            title="By income"
+            description="In proportion to each person’s income, once everyone it’s for agrees. Until then, the household default."
+          />
+          <RadioCard
             value="fixed_percent"
             title="Fixed percentages"
             description="Each person’s share, adding up to 100%."
@@ -394,6 +456,13 @@ function RuleDialog({
             />
           ) : null}
         </RadioGroup>
+        {method === 'income_proportional' ? (
+          <Alert tone="info">
+            Each person chooses the income it uses, and the others see only the split, such as 57% /
+            43%. {forCategory ? 'This category' : 'A shared expense'} is split this way once
+            everyone it’s for has agreed.
+          </Alert>
+        ) : null}
         {method === 'fixed_percent' ? (
           <div className="space-y-2">
             {people.map((m) => (
@@ -445,6 +514,171 @@ function RuleDialog({
           </Button>
           <Button isDisabled={!valid} isPending={save.isPending} onPress={() => save.mutate()}>
             Save
+          </Button>
+        </DialogActions>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Your income for a split by income (D19): agree, choosing what it uses; change it; or withdraw.
+ * Only you see what you chose. The others see that you agreed, and the split.
+ */
+function IncomeCard({
+  householdId,
+  split,
+  currency,
+}: {
+  householdId: string;
+  split: IncomeSplit;
+  currency: string;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: ['households', householdId, 'income-split'] });
+  const withdraw = useMutation({
+    mutationFn: () => api('DELETE', `/api/v1/households/${householdId}/income-split/consent`),
+    onSuccess: async () => {
+      await refresh();
+      toast('You’ve stopped sharing your income. From today, the household default applies.');
+    },
+    onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
+  });
+  const yours = split.yours;
+  return (
+    <Card className="space-y-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="mr-auto">
+          <h2 className="font-semibold">Your income, for splits by income</h2>
+          <p className="text-sm text-muted">
+            {yours
+              ? yours.basis === 'actual'
+                ? 'You’ve agreed, using your paychecks over the last 3 months.'
+                : `You’ve agreed, using ${formatMoney(yours.declaredMonthlyMinor, currency)} a month.`
+              : 'A split by income needs your agreement. Until you agree, it uses the household default.'}
+          </p>
+        </div>
+        {yours ? (
+          <div className="flex gap-2">
+            <Button variant="secondary" onPress={() => setOpen(true)}>
+              Change
+            </Button>
+            <Button
+              variant="ghost"
+              isPending={withdraw.isPending}
+              onPress={() => withdraw.mutate()}
+            >
+              Stop sharing
+            </Button>
+          </div>
+        ) : (
+          <Button onPress={() => setOpen(true)}>Review and agree</Button>
+        )}
+      </div>
+      <p className="text-xs text-muted">Only you see the income you choose.</p>
+      {open ? (
+        <ConsentDialog
+          householdId={householdId}
+          initial={yours}
+          currency={currency}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
+function ConsentDialog({
+  householdId,
+  initial,
+  currency,
+  onClose,
+}: {
+  householdId: string;
+  initial: IncomeSplitConsent | null;
+  currency: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [basis, setBasis] = useState<IncomeSplitConsent['basis']>(initial?.basis ?? 'actual');
+  const [figure, setFigure] = useState<number | null>(
+    initial?.basis === 'declared' ? initial.declaredMonthlyMinor : null,
+  );
+  const save = useMutation({
+    mutationFn: () =>
+      api('PUT', `/api/v1/households/${householdId}/income-split/consent`, {
+        body:
+          basis === 'declared' ? { basis, declaredMonthlyMinor: figure ?? 0 } : { basis: 'actual' },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'income-split'],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['households', householdId, 'shared-costs'],
+      });
+      toast(initial ? 'Your income for splits is changed, from today.' : 'Agreed, from today.');
+      onClose();
+    },
+  });
+  const err = save.error as ApiError | null;
+  return (
+    <Dialog
+      title={initial ? 'Change the income your split uses' : 'Split by income'}
+      isOpen
+      onOpenChange={(o) => (o ? null : onClose())}
+    >
+      <div className="space-y-4">
+        {err ? <Alert>{err.detail ?? err.title}</Alert> : null}
+        <p className="text-sm">
+          Shared costs split by income are paid in proportion to each person’s income. To work out
+          your share, Fiscus needs yours.
+        </p>
+        <RadioGroup
+          label="The income to use"
+          value={basis}
+          onChange={(v) => setBasis(v as IncomeSplitConsent['basis'])}
+        >
+          <RadioCard
+            value="actual"
+            title="Use what comes in"
+            description="Your paychecks over the last 3 months, a month on average."
+          />
+          <RadioCard
+            value="declared"
+            title="Enter a figure"
+            description="A monthly amount you choose."
+          />
+        </RadioGroup>
+        {basis === 'declared' ? (
+          <AmountInput
+            label="Your income, a month"
+            currency={currency}
+            value={figure}
+            onChange={setFigure}
+          />
+        ) : null}
+        <Alert tone="info">
+          <b>The others see the split, not your income.</b> But a split like 57% / 43% says roughly
+          how your incomes compare, and anyone who knows their own income can work out yours from
+          it.
+        </Alert>
+        <p className="text-sm text-muted">
+          You can stop sharing your income any time. From that day, the household default applies
+          again.
+        </p>
+        <DialogActions>
+          <Button variant="secondary" onPress={onClose}>
+            Not now
+          </Button>
+          <Button
+            isDisabled={basis === 'declared' && figure === null}
+            isPending={save.isPending}
+            onPress={() => save.mutate()}
+          >
+            {initial ? 'Save' : 'Agree'}
           </Button>
         </DialogActions>
       </div>

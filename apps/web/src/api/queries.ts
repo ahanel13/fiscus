@@ -19,6 +19,7 @@ import type {
   HouseholdPlaidKeys,
   ImportBatch,
   ImportProfile,
+  IncomeSplit,
   InvitePreview,
   Lens,
   MailStatus,
@@ -268,6 +269,13 @@ export const splitRulesQuery = (id: string) =>
   queryOptions({
     queryKey: ['households', id, 'split-rules'],
     queryFn: async () => (await api<Data<SplitPolicies>>('GET', `${hh(id)}/split-rules`)).data,
+  });
+
+/** Where a split by income stands: who has agreed, and the split (#110). */
+export const incomeSplitQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'income-split'],
+    queryFn: async () => (await api<Data<IncomeSplit>>('GET', `${hh(id)}/income-split`)).data,
   });
 
 export const tagsQuery = (id: string) =>

@@ -179,9 +179,7 @@ const paramsOf = (rule: SplitRule): Record<string, unknown> => {
 };
 
 const ruleOf = (row: Row): SplitRule | null =>
-  row.method === null || row.method === 'income_proportional'
-    ? null
-    : splitRuleSchema.parse({ method: row.method, ...row.params });
+  row.method === null ? null : splitRuleSchema.parse({ method: row.method, ...row.params });
 
 const toPolicy = (row: Row): SplitPolicy => ({
   id: row.id,

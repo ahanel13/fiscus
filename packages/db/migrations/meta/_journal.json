@@ -694,6 +694,20 @@
       "when": 1794897673016,
       "tag": "0098_plaid_webhooks_access",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1794900186272,
+      "tag": "0099_income_split_consents",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794900187862,
+      "tag": "0100_income_split_consents_rls",
+      "breakpoints": true
     }
   ]
 }

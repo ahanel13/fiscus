@@ -19,7 +19,7 @@ import { SplitPoliciesService } from './split-policies.service.js';
 
 /**
  * Split rules for shared costs (SHR-01/02): everyone reads them; owners and members change them.
- * Split by income needs members' consent first (#110), so it isn't accepted here yet.
+ * A split by income can be set at any time, and counts once the people it's for agree (#110).
  */
 @Controller('api/v1/households/:householdId/split-rules')
 @UseGuards(HouseholdGuard)

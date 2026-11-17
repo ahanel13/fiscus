@@ -37,6 +37,7 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
+import { incomeShares } from './income-split.service.js';
 import { spendingLensFilter } from '../visibility/visibility-scope.js';
 
 type RecordSettlement = z.infer<typeof recordSettlementSchema>;
@@ -77,6 +78,13 @@ export class SharedCostsService {
         (e) =>
           e.forMembers.some((f) => f.memberId === me) || e.paidBy.some((p) => p.memberId === me),
       );
+      // Shares for a split by income, on the days it might count (F4, #110).
+      const income = await incomeShares(
+        tx,
+        policies.some((p) => p.rule?.method === 'income_proportional')
+          ? involving.map((e) => e.date)
+          : [],
+      );
       // Flagged changes wait outside the balance until they're resolved (#60, D18).
       const flags = new Map(
         (await tx.select().from(attributionFlags).where(isNull(attributionFlags.resolvedAt))).map(
@@ -90,7 +98,7 @@ export class SharedCostsService {
         .from(settlements)
         .where(sql`${settlements.date} < ${end}::date`);
       const effects = [
-        ...expenseEffects(mine, policies),
+        ...expenseEffects(mine, policies, income),
         ...settled.map((x) => settlementEffect(x.id, x.fromMemberId, x.toMemberId, x.amountMinor)),
       ];
       const beforeSet = new Set([
@@ -126,7 +134,7 @@ export class SharedCostsService {
       const disputed = flagged
         .map((e) => {
           const f = flags.get(e.id)!;
-          const { evensOut: _e, ...l } = line(e, expenseEffects([e], policies)[0]!);
+          const { evensOut: _e, ...l } = line(e, expenseEffects([e], policies, income)[0]!);
           return {
             ...l,
             flag: {
@@ -430,7 +438,7 @@ async function loadPolicies(tx: Executor): Promise<SplitPolicyRow[]> {
     categoryId: r.categoryId,
     effectiveFrom: r.effectiveFrom,
     rule:
-      r.method === null || r.method === 'income_proportional'
+      r.method === null
         ? null
         : (splitRuleSchema.parse({ method: r.method, ...r.params }) as SplitRule),
   }));

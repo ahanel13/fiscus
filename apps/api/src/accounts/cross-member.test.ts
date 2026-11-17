@@ -518,4 +518,174 @@ describe('cross-member visibility (generated)', () => {
       }
     });
   });
+
+  /**
+   * A split by income (F4, #110): nobody's income reaches anyone else. A agrees with their actual
+   * income, from paychecks in their private account; B with a declared figure; C never agrees.
+   * The others see who has agreed and the split, and nothing that gives away a figure.
+   */
+  describe('income for a split by income (F4)', () => {
+    const PAYCHECK = 777_331; // A's, last month, in A's private account
+    const A_MONTHLY = Math.round(PAYCHECK / 3); // what A's actual income works out at
+    const DECLARED = 512_347; // B's
+    const C_PAYCHECK = 654_529; // C's, never used: C hasn't agreed
+    const today = new Date().toISOString().slice(0, 10);
+    const lastMonth = (() => {
+      const d = new Date();
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 15))
+        .toISOString()
+        .slice(0, 10);
+    })();
+    const figures = [PAYCHECK, A_MONTHLY, DECLARED, C_PAYCHECK].map(String);
+    const cat: Record<string, string> = {};
+    /** Figures `actor` must never see: everyone else's income, and whose basis is which. */
+    const incomeLeaks = (actor: Actor, body: unknown) => {
+      const text = JSON.stringify(body ?? '');
+      const own =
+        actor === 'A'
+          ? [String(PAYCHECK)]
+          : actor === 'B'
+            ? [String(DECLARED)]
+            : actor === 'C'
+              ? [String(C_PAYCHECK)]
+              : [];
+      return figures.filter((f) => !own.includes(f) && text.includes(f));
+    };
+    const routes = (month: string) => [
+      '/income-split',
+      '/split-rules',
+      `/shared-costs?month=${month}`,
+      '/activity?limit=200',
+      '/members',
+    ];
+
+    beforeAll(async () => {
+      for (const g of (await client.A.get(`${base()}/categories`)).body.data as {
+        categories: { id: string; name: string }[];
+      }[]) {
+        for (const c of g.categories) cat[c.name] = c.id;
+      }
+      const post = async (c: TestClient, body: Record<string, unknown>) => {
+        const r = await c.post(`${base()}/transactions`, body);
+        expect(r.status, JSON.stringify(r.body)).toBe(201);
+        return r.body.data.id as string;
+      };
+      await post(client.A, {
+        accountId: fixtures.find((f) => f.key === 'A-private')!.id,
+        date: lastMonth,
+        amountMinor: PAYCHECK,
+        displayName: 'Payroll',
+        categoryId: cat.Paychecks,
+      });
+      // C's paycheck on an account only C owns.
+      const cAccount = (
+        await client.C.post(`${base()}/accounts`, {
+          name: 'Cal checking',
+          type: 'depository',
+          visibility: 'private',
+        })
+      ).body.data.id as string;
+      await post(client.C, {
+        accountId: cAccount,
+        date: lastMonth,
+        amountMinor: C_PAYCHECK,
+        displayName: 'Payroll',
+        categoryId: cat.Paychecks,
+      });
+      // Rent today from A and B's joint account, for them both, split by income.
+      await post(client.A, {
+        accountId: fixtures.find((f) => f.key === 'AB-full')!.id,
+        date: today,
+        amountMinor: -300000,
+        displayName: 'Rent',
+        categoryId: cat['Rent or mortgage'],
+      });
+      const rule = await client.A.request(
+        'PUT',
+        `${base()}/split-rules/categories/${cat['Rent or mortgage']}`,
+        { rule: { method: 'income_proportional' }, effectiveFrom: `${today.slice(0, 7)}-01` },
+      );
+      expect(rule.status, JSON.stringify(rule.body)).toBe(200);
+    });
+
+    it('uses no income before anyone agrees', async () => {
+      for (const actor of ACTORS) {
+        const s = (await client[actor].get(`${base()}/income-split`)).body.data;
+        expect([actor, s.shares, s.yours]).toEqual([actor, [], null]);
+      }
+    });
+
+    it('shows nobody the split until everyone it’s for has agreed', async () => {
+      const r = await client.A.request('PUT', `${base()}/income-split/consent`, {
+        basis: 'actual',
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      // A alone: a split of one, which says nothing about A's income.
+      for (const actor of ACTORS) {
+        const s = (await client[actor].get(`${base()}/income-split`)).body.data;
+        expect([actor, s.shares]).toEqual([actor, [{ memberId: member.A, shareBps: 10000 }]]);
+      }
+      // The rent is still split equally between A and B.
+      const lines = (await client.B.get(`${base()}/shared-costs?month=${today.slice(0, 7)}`)).body
+        .data.expenses as { displayName: string; effect: unknown[] }[];
+      expect(lines.find((l) => l.displayName === 'Rent')?.effect).toEqual([]);
+    });
+
+    it('shows everyone the split between those who agreed, never an income', async () => {
+      const r = await client.B.request('PUT', `${base()}/income-split/consent`, {
+        basis: 'declared',
+        declaredMonthlyMinor: DECLARED,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const total = A_MONTHLY + DECLARED;
+      for (const actor of ACTORS) {
+        const s = (await client[actor].get(`${base()}/income-split`)).body.data;
+        const shares = new Map(
+          s.shares.map((x: { memberId: string; shareBps: number }) => [x.memberId, x.shareBps]),
+        );
+        // C's income never counts: C hasn't agreed.
+        expect([actor, [...shares.keys()].sort()]).toEqual([actor, [member.A, member.B].sort()]);
+        expect(
+          Math.abs((shares.get(member.A) as number) - (A_MONTHLY * 10000) / total),
+        ).toBeLessThan(1);
+        expect(s.members).toContainEqual({ memberId: member.C, consented: false });
+      }
+    });
+
+    it.each(ACTORS)('as %s, sees no one else’s income or choice anywhere', async (actor) => {
+      for (const route of routes(today.slice(0, 7))) {
+        const res = await client[actor].get(`${base()}${route}`);
+        expect([route, res.status]).toEqual([route, 200]);
+        expect([route, incomeLeaks(actor, res.body)]).toEqual([route, []]);
+      }
+      const s = (await client[actor].get(`${base()}/income-split`)).body.data;
+      const yours =
+        actor === 'A'
+          ? { basis: 'actual' }
+          : actor === 'B'
+            ? { basis: 'declared', declaredMonthlyMinor: DECLARED }
+            : null;
+      expect([actor, s.yours]).toEqual([actor, yours]);
+      if (actor !== 'B') expect(JSON.stringify(s)).not.toContain('declared');
+    });
+
+    it('records agreeing in the activity with no figure, and a changed one for its owner alone', async () => {
+      const r = await client.B.request('PUT', `${base()}/income-split/consent`, {
+        basis: 'declared',
+        declaredMonthlyMinor: DECLARED + 1,
+      });
+      expect(r.status).toBe(200);
+      for (const actor of ACTORS) {
+        const feed = (await client[actor].get(`${base()}/activity?limit=200`)).body.data as {
+          action: string;
+        }[];
+        const actions = feed.map((e) => e.action).filter((a) => a.startsWith('income_split.'));
+        expect([actor, actions.sort()]).toEqual([
+          actor,
+          ['income_split.consented', 'income_split.consented'],
+        ]);
+        expect(JSON.stringify(feed)).not.toContain(String(DECLARED + 1));
+      }
+    });
+  });
 });
