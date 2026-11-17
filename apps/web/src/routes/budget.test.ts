@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
+import { budgetMonthRange } from '@fiscus/shared';
 import { addMonths, fiscalYearOf, monthProgress } from './budget.js';
 
 describe('budget months', () => {
@@ -10,10 +11,19 @@ describe('budget months', () => {
   });
 
   it('says how far through the current month today is, and nothing for other months', () => {
-    const today = new Date(2026, 9, 26); // October 26
-    expect(monthProgress('2026-10', today)).toBeCloseTo(26 / 31);
-    expect(monthProgress('2026-09', today)).toBeNull();
-    expect(monthProgress('2026-02', new Date(2026, 1, 28))).toBe(1);
+    const month = (m: string, startDay = 1) => budgetMonthRange(m, startDay);
+    expect(monthProgress(month('2026-10'), '2026-10-26')).toBeCloseTo(26 / 31);
+    expect(monthProgress(month('2026-09'), '2026-10-26')).toBeNull();
+    expect(monthProgress(month('2026-11'), '2026-10-26')).toBeNull();
+    expect(monthProgress(month('2026-02'), '2026-02-28')).toBe(1);
+  });
+
+  it('counts progress from the start day (#71)', () => {
+    const month = (m: string, startDay: number) => budgetMonthRange(m, startDay);
+    // November from the 15th: Nov 15 – Dec 14, 30 days. Nov 29 is day 15.
+    expect(monthProgress(month('2026-11', 15), '2026-11-29')).toBeCloseTo(15 / 30);
+    expect(monthProgress(month('2026-11', 15), '2026-12-14')).toBe(1);
+    expect(monthProgress(month('2026-11', 15), '2026-11-14')).toBeNull();
   });
 });
 

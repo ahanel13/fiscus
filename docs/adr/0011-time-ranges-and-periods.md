@@ -62,8 +62,25 @@ type Comparison  = 'none' | 'previous_period' | 'same_period_last_year';
 - Household: **timezone**, **week start** (Sun/Mon), **fiscal year start month** (affects YTD
   and quarters; default January).
 - Member: **default range per page** (e.g. reports open on "Last 6 months, Monthly").
-- *(P2)* Household: **budget month start day** (e.g. the 15th for mid-month paydays). This
-  changes how `this_month`/`last_month` resolve for budget views only.
+- Household: **budget month start day** (#71, budgeting D32), e.g. the 15th for mid-month
+  paydays. Default 1, the calendar month. It changes the months of budget views only: the
+  budget, its annual view, allowances, filling a month (last month's amounts and the 3-month
+  average), goal lines, the weekly recap's budgets, the "nearly spent" notification, and a newer
+  member's first budget month under the history window (#256). Reports, cash flow, the range
+  presets, shared costs' statements and joint-account funding targets keep calendar months: a
+  funding target is a commitment between owners, not a budget, and its weeks don't follow the
+  budget either.
+  - A budget month is **named for the month it starts in**: with the 15th, "November" runs from
+    Nov 15 to Dec 14.
+  - A start day a month doesn't have (29–31) falls on **its last day**: with the 31st,
+    February's month starts on the 28th (29th in a leap year) and runs to Mar 30. Months never
+    overlap or leave a gap.
+  - It's a calendar date in the household's time zone, like every other boundary here, so
+    daylight saving never moves it.
+  - `budgetMonthStart()`, `budgetMonthOf()` and `budgetMonthRange()` in `packages/shared` work
+    them out, beside `resolveRange()`, and are tested for the same edge cases. In SQL,
+    `budgetMonthSql()` (`packages/ledger`) buckets dates the same way, and
+    `fiscus_budget_window()` (0109) finds the history window's budget month.
 
 ### 5. State and sharing
 - The current range/granularity/compare are in the **URL query string**, so views are bookmarkable and shareable within the household.

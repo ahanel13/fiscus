@@ -20,6 +20,8 @@ import {
 } from '@fiscus/domain';
 import {
   addDays,
+  budgetMonthOf,
+  budgetMonthRange,
   type RecapComingUp,
   type RecapWorthALook,
   type WeeklyRecap,
@@ -121,13 +123,9 @@ export async function buildWeeklyRecap(
   const worth: RecapWorthALook[] = [];
 
   // ── This month's budgets you can see: the household's, and your own.
-  const month = today.slice(0, 7);
-  const monthEnd = addDays(
-    new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1))
-      .toISOString()
-      .slice(0, 10),
-    -1,
-  );
+  // Budget months, from the household's start day (#71).
+  const month = budgetMonthOf(today, ranges.budgetStartDay);
+  const monthEnd = budgetMonthRange(month, ranges.budgetStartDay).periodEnd;
   const names = new Map(
     (await tx.select({ id: categories.id, name: categories.name }).from(categories)).map((c) => [
       c.id,

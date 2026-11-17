@@ -18,14 +18,13 @@ import {
   addMonths,
   type BudgetAllowance,
   type BudgetCategory,
-  firstDayOf,
   type MonthActivity,
 } from '@fiscus/domain';
-import type { BudgetScope } from '@fiscus/shared';
+import { budgetMonthOf, budgetMonthStart, type BudgetScope } from '@fiscus/shared';
 import { and, asc, eq, gte, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import { budgetGoalLines, goalMoved } from './goal-lines.js';
 import { ownersOnDates } from './owners.js';
-import { householdRanges, transactionDate } from './ranges.js';
+import { budgetMonthSql, householdRanges, transactionDate } from './ranges.js';
 
 // What a budget counts, month by month (budgeting walkthrough D1, D2, D13), for the api's budget
 // pages and the weekly recap (#128). Runs in the reader's context: row-level security limits it
@@ -57,7 +56,8 @@ export type BudgetDefinitionRows = Awaited<ReturnType<typeof loadBudgetDefinitio
 
 /**
  * What happened in a scope each month from `from` to `to` (D1): spending per category, net of
- * refunds, and income, in the household's currency. Transfers, settle-ups, excluded
+ * refunds, and income, in the household's currency. Months are budget months, from the
+ * household's start day (#71). Transfers, settle-ups, excluded
  * transactions and split parents don't count; uncategorized ones count as Uncategorized.
  */
 export async function budgetActivity(
@@ -78,10 +78,13 @@ export async function budgetActivity(
     .from(categories)
     .where(eq(categories.systemKey, 'uncategorized'));
   const lens = scope === 'mine' ? attributedTo(ctx.memberId) : attributedToTwoOrMore;
-  const end = firstDayOf(addMonths(to, 1));
+  const startDay = ranges.budgetStartDay;
+  const first = budgetMonthStart(from, startDay);
+  const end = budgetMonthStart(addMonths(to, 1), startDay);
+  const month = budgetMonthSql(date, startDay);
   const rows = await tx
     .select({
-      month: sql<string>`to_char(${date}, 'YYYY-MM')`,
+      month,
       categoryId: transactions.categoryId,
       kind: categoryGroups.kind,
       total: sql<string>`sum(${transactions.amountMinor})::text`,
@@ -96,7 +99,7 @@ export async function budgetActivity(
         eq(transactions.excluded, false),
         eq(transactions.currency, h!.currency),
         sql`coalesce(${categoryGroups.kind}::text, '') <> 'transfer'`,
-        gte(date, firstDayOf(from)),
+        gte(date, first),
         sql`${date} < ${end}::date`,
         lens,
       ),
@@ -128,8 +131,8 @@ export async function budgetActivity(
     }
     out.set(r.month, m);
   }
-  const contributed = await contributions(tx, ctx, scope, date, from, end, h!.currency);
-  const saved = await savingsMoved(tx, ctx, scope, date, from, end, h!.currency);
+  const contributed = await contributions(tx, ctx, scope, date, month, first, end, h!.currency);
+  const saved = await savingsMoved(tx, ctx, scope, date, month, first, end, h!.currency);
   const owner = scope === 'mine' ? ctx.memberId : null;
   const toGoals = await goalMoved(
     tx,
@@ -139,6 +142,7 @@ export async function budgetActivity(
     from,
     end,
     h!.currency,
+    startDay,
   );
   const months = new Set([
     ...out.keys(),
@@ -173,6 +177,7 @@ async function contributions(
   ctx: BudgetReader,
   scope: BudgetScope,
   date: ReturnType<typeof transactionDate>,
+  month: SQL<string>,
   from: string,
   end: string,
   currency: string,
@@ -184,7 +189,7 @@ async function contributions(
       amountMinor: transactions.amountMinor,
       group: transactions.transferGroupId,
       effectiveDate: transactions.effectiveDate,
-      month: sql<string>`to_char(${date}, 'YYYY-MM')`,
+      month,
     })
     .from(transactions)
     .where(
@@ -194,7 +199,7 @@ async function contributions(
         eq(transactions.excluded, false),
         eq(transactions.isSettlement, false),
         eq(transactions.currency, currency),
-        gte(date, firstDayOf(from)),
+        gte(date, from),
         sql`${date} < ${end}::date`,
         scope === 'household'
           ? sql`${transactions.amountMinor} > 0`
@@ -249,6 +254,7 @@ async function savingsMoved(
   ctx: BudgetReader,
   scope: BudgetScope,
   date: ReturnType<typeof transactionDate>,
+  month: SQL<string>,
   from: string,
   end: string,
   currency: string,
@@ -260,7 +266,7 @@ async function savingsMoved(
       amountMinor: transactions.amountMinor,
       group: transactions.transferGroupId,
       effectiveDate: transactions.effectiveDate,
-      month: sql<string>`to_char(${date}, 'YYYY-MM')`,
+      month,
     })
     .from(transactions)
     .innerJoin(accounts, eq(accounts.id, transactions.accountId))
@@ -277,7 +283,7 @@ async function savingsMoved(
         // Counted already when filed under a spending category (a savings one, say).
         sql`coalesce(${categoryGroups.kind}::text, 'transfer') = 'transfer'`,
         savingsAccount,
-        gte(date, firstDayOf(from)),
+        gte(date, from),
         sql`${date} < ${end}::date`,
       ),
     );
@@ -310,20 +316,24 @@ async function savingsMoved(
 
 /**
  * Budgets as the reader sees them (#256, ADR 0012): a member who joined later sees the household's
- * budget from their history window's month on, so it starts there for them. Row-level security
- * already hides the earlier months' amounts and moved money (0102); this keeps the pages from
- * offering those months, or carrying anything from them into the first one they see.
+ * budget from the budget month their history window starts in (#71), so it starts there for
+ * them. Row-level security already hides the earlier months' amounts and moved money (0102,
+ * 0109); this keeps the pages from offering those months, or carrying anything from them into
+ * the first one they see.
  */
 export async function budgetsInWindow<T extends Pick<BudgetRow, 'memberId' | 'startsMonth'>>(
   tx: Executor,
   rows: T[],
 ): Promise<T[]> {
   if (!rows.some((r) => r.memberId === null)) return rows;
-  const { rows: w } = await tx.execute<{ from: string | null }>(
-    sql`SELECT date_trunc('month', fiscus_history_from())::date::text AS "from"`,
+  // The budget month the window's first day falls in (#71), as fiscus_budget_window() has it.
+  const { rows: w } = await tx.execute<{ day: string | null; startDay: number | null }>(
+    sql`SELECT fiscus_history_from()::text AS "day",
+      (SELECT budget_month_start_day FROM households WHERE id = fiscus_household()) AS "startDay"`,
   );
-  const from = w[0]?.from;
-  if (!from) return rows;
+  const day = w[0]?.day;
+  if (!day) return rows;
+  const from = `${budgetMonthOf(day, w[0]?.startDay ?? 1)}-01`;
   return rows.map((r) =>
     r.memberId === null && r.startsMonth < from ? { ...r, startsMonth: from } : r,
   );
@@ -395,7 +405,7 @@ export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
 
 /**
  * The allowances a budget has (D15): every member's in the household's, and only the member's
- * own in theirs. Each ends with the month its member left in.
+ * own in theirs. Each ends with the budget month its member left in.
  */
 export async function budgetAllowances(
   tx: Executor,
@@ -408,7 +418,11 @@ export async function budgetAllowances(
       month: allowances.month,
       categoryId: allowances.categoryId,
       amountMinor: allowances.amountMinor,
-      leftAt: householdMembers.leftAt,
+      // The day they left in the household's time zone, and the budget month it's in (#71).
+      leftOn: sql<
+        string | null
+      >`(${householdMembers.leftAt} AT TIME ZONE ${households.timezone})::date::text`,
+      startDay: households.budgetMonthStartDay,
     })
     .from(allowances)
     .innerJoin(
@@ -418,6 +432,7 @@ export async function budgetAllowances(
         eq(householdMembers.id, allowances.memberId),
       ),
     )
+    .innerJoin(households, eq(households.id, allowances.householdId))
     .where(
       and(
         eq(allowances.householdId, householdId),
@@ -430,6 +445,6 @@ export async function budgetAllowances(
     month: monthOfDate(r.month),
     categoryId: r.categoryId,
     amountMinor: r.amountMinor,
-    untilMonth: r.leftAt ? r.leftAt.toISOString().slice(0, 7) : null,
+    untilMonth: r.leftOn ? budgetMonthOf(r.leftOn, r.startDay) : null,
   }));
 }

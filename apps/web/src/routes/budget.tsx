@@ -19,6 +19,8 @@ import {
   type Household,
   type Transaction,
   type ZeroBasedMonth,
+  budgetMonthOf,
+  dayCount,
   formatMoney,
   minorUnitExponent,
 } from '@fiscus/shared';
@@ -43,6 +45,7 @@ import { CategoryName } from '../components/CategoryName.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { GoalPicture, type GoalLook, goalPhotoUrl } from '../components/GoalPicture.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { longDate, monthDates, ordinal, thisBudgetMonth } from '../lib/budget-months.js';
 import {
   Alert,
   AmountInput,
@@ -82,10 +85,8 @@ export function addMonths(month: string, n: number): string {
   return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7);
 }
 
-const thisMonth = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
+/** The budget month today is in, from the household's start day (#71). */
+const thisMonth = thisBudgetMonth;
 
 const monthName = (month: string) =>
   new Date(`${month}-01T00:00:00Z`).toLocaleDateString(undefined, {
@@ -94,12 +95,20 @@ const monthName = (month: string) =>
     timeZone: 'UTC',
   });
 
-/** How far through `month` today is, 0–1; null for any other month. */
-export function monthProgress(month: string, today = new Date()): number | null {
-  const current = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-  if (month !== current) return null;
-  const days = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  return today.getDate() / days;
+/** Today on this device, `YYYY-MM-DD`. */
+const localToday = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * How far through a month today is, 0–1, from the dates the api resolved for it (ADR 0011, #71):
+ * null for any other month.
+ */
+export function monthProgress(
+  m: Pick<BudgetMonth, 'from' | 'periodEnd'>,
+  today = localToday(),
+): number | null {
+  if (today < m.from || today > m.periodEnd) return null;
+  return dayCount(m.from, today) / dayCount(m.from, m.periodEnd);
 }
 
 export function BudgetPage() {
@@ -115,7 +124,7 @@ export function BudgetPage() {
   const household = useSuspenseQuery(householdQuery(householdId)).data;
   const members = useQuery(membersQuery(householdId)).data ?? [];
   const list = useQuery(budgetsQuery(householdId));
-  const month = /^\d{4}-\d{2}$/.test(search.month ?? '') ? search.month! : thisMonth();
+  const month = /^\d{4}-\d{2}$/.test(search.month ?? '') ? search.month! : thisMonth(household);
 
   if (list.isPending) {
     return (
@@ -610,7 +619,15 @@ function StartingAmounts({
 
 // ── A month (§3, §3.1) ───────────────────────────────────────────────────────────────────────
 
-function MonthStepper({ month, startsMonth }: { month: string; startsMonth: string }) {
+function MonthStepper({
+  household,
+  month,
+  startsMonth,
+}: {
+  household: Household;
+  month: string;
+  startsMonth: string;
+}) {
   const navigate = useNavigate();
   const go = (m: string) =>
     void navigate({
@@ -618,7 +635,8 @@ function MonthStepper({ month, startsMonth }: { month: string; startsMonth: stri
       search: (prev: Record<string, unknown>) => ({ ...prev, month: m }),
       replace: true,
     });
-  const current = thisMonth();
+  const current = thisMonth(household);
+  const dates = monthDates(month, household.budgetMonthStartDay);
   return (
     <div className="flex items-center gap-1" role="group" aria-label="Month">
       <Button
@@ -632,6 +650,7 @@ function MonthStepper({ month, startsMonth }: { month: string; startsMonth: stri
       </Button>
       <span className="min-w-36 text-center text-sm font-medium" aria-live="polite">
         {monthName(month)}
+        {dates ? <span className="block text-xs font-normal text-muted">{dates}</span> : null}
       </span>
       <Button
         variant="ghost"
@@ -688,7 +707,7 @@ function MonthView({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <MonthStepper month={shown} startsMonth={budget.startsMonth} />
+        <MonthStepper household={household} month={shown} startsMonth={budget.startsMonth} />
         <div className="hidden flex-wrap items-center gap-2 sm:flex">
           <Badge>{STRATEGY_NAMES[strategy as StrategyName] ?? 'Category limits'}</Badge>
           <ViewLink view="year">Annual view</ViewLink>
@@ -828,7 +847,7 @@ function MonthView({
       ) : null}
       {switching && data.data ? (
         <StrategyDialog
-          householdId={household.id}
+          household={household}
           month={data.data}
           onClose={() => setSwitching(false)}
         />
@@ -1010,7 +1029,7 @@ function MonthBody({
   onOpen: (e: { categoryId: string; row?: CategoryLimitRow; income?: boolean }) => void;
 }) {
   const { view, currency, month } = data;
-  const progress = monthProgress(month);
+  const progress = monthProgress(data);
   const [collapsed, toggle] = useCollapsed();
   const [shownIn, setShownIn] = useState<ReadonlySet<string>>(new Set());
   const rows = new Map(view.rows.map((r) => [r.categoryId, r]));
@@ -2081,10 +2100,9 @@ function CategoryDrawer({
         )
       ).data,
   });
-  const from = `${month.month}-01`;
-  const lastDay = new Date(Date.parse(`${addMonths(month.month, 1)}-01T00:00:00Z`) - 86_400_000)
-    .toISOString()
-    .slice(0, 10);
+  // The month's own days, from the household's start day (#71).
+  const from = month.from;
+  const lastDay = month.periodEnd;
   const txns = useQuery({
     queryKey: ['households', householdId, 'transactions', 'budget', scope, categoryId, month.month],
     queryFn: async () => {
@@ -2393,7 +2411,8 @@ export function CountsIn({ householdId, t }: { householdId: string; t: Transacti
   const me = household?.you.memberId;
   const scope = ids.length >= 2 ? 'household' : ids[0] === me ? 'mine' : null;
   const budget = budgets.find((b) => b.scope === scope);
-  const month = t.date.slice(0, 7);
+  // The budget month it counts in (#71), from the household's start day.
+  const month = budgetMonthOf(t.date, household?.budgetMonthStartDay ?? 1);
   const kind = groups.find((g) => g.categories.some((c) => c.id === t.categoryId))?.kind;
   const counted =
     !!budget && !t.hasSplits && !t.excluded && kind !== 'transfer' && month >= budget.startsMonth;
@@ -2512,8 +2531,8 @@ function FlexBody({
   onYearly: ((e: { categoryId: string; yearlyMinor: number | null }) => void) | undefined;
   onFlexible: (() => void) | undefined;
 }) {
-  const { view, currency, month } = data;
-  const progress = monthProgress(month);
+  const { view, currency } = data;
+  const progress = monthProgress(data);
   const money = (minor: number, className?: string) => (
     <Amount minor={minor} currency={currency} kind="balance" className={className} />
   );
@@ -3132,7 +3151,7 @@ function PercentageBody({
 }) {
   const { view, currency } = data;
   const queryClient = useQueryClient();
-  const progress = monthProgress(data.month);
+  const progress = monthProgress(data);
   const shared = data.budget.scope === 'household';
   const money = (minor: number) => (
     <Amount minor={minor} currency={currency} kind="balance" whole />
@@ -3637,11 +3656,11 @@ function YearlyDialog({
 
 /** Switches strategy from this month or next, with a preview of the first month (D14). */
 function StrategyDialog({
-  householdId,
+  household,
   month,
   onClose,
 }: {
-  householdId: string;
+  household: Household;
   month: BudgetMonth;
   onClose: () => void;
 }) {
@@ -3649,7 +3668,8 @@ function StrategyDialog({
   const current = month.view.strategy;
   const choices = SWITCHABLE.filter((s) => s !== current);
   const [target, setTarget] = useState<StrategyName>(choices[0]!);
-  const now = thisMonth();
+  const householdId = household.id;
+  const now = thisMonth(household);
   const next = addMonths(now, 1);
   const [from, setFrom] = useState(next);
   const preview = useQuery({
@@ -4178,7 +4198,7 @@ function YearView({
       search: (prev: Record<string, unknown>) => ({ ...prev, view: 'year', year: String(y) }),
       replace: true,
     });
-  const current = thisMonth();
+  const current = thisMonth(household);
   const currency = household.baseCurrency;
   const short = (m: string) =>
     new Date(`${m}-01T00:00:00Z`).toLocaleDateString(undefined, {
@@ -4233,6 +4253,9 @@ function YearView({
       <p className="text-sm text-muted">
         Spent each month, to the dollar. Months ahead show what’s budgeted. Red is over that month’s
         limit.
+        {y && household.budgetMonthStartDay !== 1
+          ? ` Months start on the ${ordinal(household.budgetMonthStartDay)}, so this year runs ${longDate(y.from)} – ${longDate(y.to)}.`
+          : null}
       </p>
       {data.isPending ? (
         <Skeleton className="h-64" />
@@ -4258,6 +4281,7 @@ function YearView({
                     key={m}
                     scope="col"
                     data-current={m === current ? '' : undefined}
+                    title={monthDates(m, household.budgetMonthStartDay) ?? undefined}
                     className={clsx('px-2 py-2 text-right font-medium', m === current && 'text-fg')}
                   >
                     {short(m)}

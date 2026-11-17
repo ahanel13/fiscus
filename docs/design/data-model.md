@@ -107,6 +107,7 @@ erDiagram
 | timezone | text | IANA tz, e.g. `America/Chicago` (ADR 0011) |
 | week_start | smallint | 0 = Sunday, 1 = Monday |
 | fiscal_year_start_month | smallint | 1–12 |
+| budget_month_start_day | smallint | 1–31, default 1. Budget views only (#71, ADR 0011 §4) |
 | date_basis | enum `posted`/`authorized` | |
 | finance_style | enum `combined`/`hybrid`/`separate` | ADR 0006 §8. Drives defaults and which shared-cost screens show. Never rewrites data |
 | status | enum `active`/`disabled`/`deleting` | `deleting` = crypto-shred in progress |

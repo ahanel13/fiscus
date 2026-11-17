@@ -31,6 +31,8 @@ const householdSettings = {
   timezone: timeZoneSchema,
   weekStart: z.number().int().min(0).max(6),
   fiscalYearStartMonth: z.number().int().min(1).max(12),
+  /** The day budget months start on (#71): 1–31, the last day in shorter months. */
+  budgetMonthStartDay: z.number().int().min(1).max(31),
   dateBasis: dateBasisSchema,
   financeStyle: financeStyleSchema,
   /** Setting a transaction's category marks it reviewed. */
@@ -44,6 +46,7 @@ export const createHouseholdSchema = z.object({
   ...householdSettings,
   weekStart: householdSettings.weekStart.default(1),
   fiscalYearStartMonth: householdSettings.fiscalYearStartMonth.default(1),
+  budgetMonthStartDay: householdSettings.budgetMonthStartDay.default(1),
   dateBasis: householdSettings.dateBasis.default('posted'),
   financeStyle: householdSettings.financeStyle.default('hybrid'),
   categorizeMarksReviewed: householdSettings.categorizeMarksReviewed.default(true),
@@ -90,6 +93,8 @@ export interface Household {
   timezone: string;
   weekStart: number;
   fiscalYearStartMonth: number;
+  /** The day budget months start on (#71): 1–31, the last day in shorter months. */
+  budgetMonthStartDay: number;
   dateBasis: 'posted' | 'authorized';
   financeStyle: 'combined' | 'hybrid' | 'separate' | 'roommates';
   /** Setting a transaction's category marks it reviewed. */

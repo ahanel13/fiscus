@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
 import {
+  addDays,
   addMonths,
   autoGranularity,
+  budgetMonthOf,
+  budgetMonthRange,
+  budgetMonthStart,
   averageOf,
   buckets,
   comparisonRange,
@@ -243,5 +247,93 @@ describe('granularity and averages', () => {
       ]),
     ).toBe(200);
     expect(averageOf([{ value: 10, partial: true }])).toBeNull();
+  });
+});
+
+describe('budget months (#71)', () => {
+  const dates = (month: string, day: number) => {
+    const r = budgetMonthRange(month, day);
+    return [r.from, r.to];
+  };
+
+  it('are calendar months from day 1, as before', () => {
+    expect(dates('2026-11', 1)).toEqual(['2026-11-01', '2026-11-30']);
+    expect(dates('2026-02', 1)).toEqual(['2026-02-01', '2026-02-28']);
+    expect(budgetMonthOf('2026-11-01', 1)).toBe('2026-11');
+    expect(budgetMonthOf('2026-10-31', 1)).toBe('2026-10');
+  });
+
+  it('are named for the month they start in', () => {
+    expect(dates('2026-11', 15)).toEqual(['2026-11-15', '2026-12-14']);
+    expect(dates('2026-12', 15)).toEqual(['2026-12-15', '2027-01-14']); // across the year
+    expect(budgetMonthOf('2026-11-14', 15)).toBe('2026-10');
+    expect(budgetMonthOf('2026-11-15', 15)).toBe('2026-11');
+    expect(budgetMonthOf('2027-01-14', 15)).toBe('2026-12');
+    expect(budgetMonthOf('2027-01-15', 15)).toBe('2027-01');
+  });
+
+  it('start on the last day of months too short for the start day', () => {
+    // 31: February's starts on the 28th, and January's ends the day before.
+    expect(dates('2026-01', 31)).toEqual(['2026-01-31', '2026-02-27']);
+    expect(dates('2026-02', 31)).toEqual(['2026-02-28', '2026-03-30']);
+    expect(dates('2026-03', 31)).toEqual(['2026-03-31', '2026-04-29']);
+    expect(dates('2026-04', 31)).toEqual(['2026-04-30', '2026-05-30']);
+    // 30 and 29 in February, leap year or not.
+    expect(dates('2026-02', 30)).toEqual(['2026-02-28', '2026-03-29']);
+    expect(dates('2028-02', 30)).toEqual(['2028-02-29', '2028-03-29']);
+    expect(dates('2026-02', 29)).toEqual(['2026-02-28', '2026-03-28']);
+    expect(dates('2028-02', 29)).toEqual(['2028-02-29', '2028-03-28']);
+    expect(dates('2028-01', 29)).toEqual(['2028-01-29', '2028-02-28']);
+    // The day a short month's starts on belongs to it; the day before, to the month before.
+    expect(budgetMonthOf('2026-02-28', 31)).toBe('2026-02');
+    expect(budgetMonthOf('2026-02-27', 31)).toBe('2026-01');
+    expect(budgetMonthOf('2026-03-01', 31)).toBe('2026-02');
+    expect(budgetMonthOf('2026-03-30', 31)).toBe('2026-02');
+    expect(budgetMonthOf('2026-03-31', 31)).toBe('2026-03');
+    expect(budgetMonthOf('2028-02-29', 30)).toBe('2028-02');
+    expect(budgetMonthOf('2028-02-28', 30)).toBe('2028-01');
+  });
+
+  it('cover every day once, for every start day', () => {
+    for (let day = 1; day <= 31; day++) {
+      let d = '2027-12-01';
+      let month = budgetMonthOf(d, day);
+      while (d < '2029-02-01') {
+        const r = budgetMonthRange(month, day);
+        expect(d >= r.from && d <= r.to).toBe(true);
+        const next = addDays(d, 1);
+        const m = budgetMonthOf(next, day);
+        if (m !== month) {
+          expect(r.to).toBe(d); // the month ends where the next starts: no gap, no overlap
+          expect(budgetMonthStart(m, day)).toBe(next);
+          month = m;
+        }
+        d = next;
+      }
+    }
+  });
+
+  it('are partial until they end', () => {
+    expect(budgetMonthRange('2026-11', 15, '2026-11-20')).toEqual({
+      from: '2026-11-15',
+      to: '2026-11-20',
+      periodEnd: '2026-12-14',
+      partial: true,
+    });
+    expect(budgetMonthRange('2026-11', 15, '2026-12-14').partial).toBe(false);
+  });
+
+  it('turn over at midnight in the household time zone, across daylight saving', () => {
+    // Denver falls back on 2026-11-01. With a start day of 1, Nov starts at local midnight.
+    const at = (instant: string, day: number) =>
+      budgetMonthOf(todayIn('America/Denver', new Date(instant)), day);
+    expect(at('2026-11-01T05:59:00Z', 1)).toBe('2026-10'); // 23:59 MDT, Oct 31
+    expect(at('2026-11-01T06:01:00Z', 1)).toBe('2026-11'); // 00:01 MDT, Nov 1
+    // After the change, a start day of 15: Nov 15 starts at 07:00 UTC (MST).
+    expect(at('2026-11-15T06:59:00Z', 15)).toBe('2026-10');
+    expect(at('2026-11-15T07:01:00Z', 15)).toBe('2026-11');
+    // Spring forward (2027-03-14 at 2:00): the 14th starts at 07:00 UTC, still MST.
+    expect(at('2027-03-14T06:59:00Z', 14)).toBe('2027-02');
+    expect(at('2027-03-14T07:01:00Z', 14)).toBe('2027-03');
   });
 });

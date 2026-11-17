@@ -127,8 +127,8 @@ aren't, and mixing them up is how the same dollars get counted twice.
 ## 6. Month boundaries
 
 **G10. A goal's months are its budget's months.** Monthly amounts, moved figures and "on track"
-use the budget month, including a mid-month start day once there is one (#71). A goal in no
-budget uses calendar months.
+use the budget month, including the household's mid-month start day (#71, budgeting D32). The
+start day is the household's, so a goal in no budget uses the same months.
 
 ---
 

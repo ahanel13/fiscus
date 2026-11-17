@@ -34,8 +34,8 @@ export class AllowancesService {
   /** Each member's allowance this month, and a change set for later. */
   async list(ctx: HouseholdContext): Promise<Allowance[]> {
     return this.scope.run(ctx, async (tx) => {
-      const { today } = await householdRanges(tx, ctx.householdId);
-      return listAllowances(tx, ctx.householdId, monthOfDate(today));
+      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
+      return listAllowances(tx, ctx.householdId, budgetMonth);
     });
   }
 
@@ -97,8 +97,8 @@ export class AllowancesService {
           ),
         );
       if (!category) throw problems.notFound();
-      const { today } = await householdRanges(tx, ctx.householdId);
-      const thisMonth = monthOfDate(today);
+      // Budget months (#71): an allowance starts in the budget month today is in, or later.
+      const { budgetMonth: thisMonth } = await householdRanges(tx, ctx.householdId);
       const month = input.fromMonth ?? thisMonth;
       if (month < thisMonth) {
         throw new Problem(

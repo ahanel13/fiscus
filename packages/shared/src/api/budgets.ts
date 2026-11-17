@@ -319,6 +319,15 @@ export type BudgetMonthView = CategoryLimitsMonth | FlexMonth | ZeroBasedMonth |
 export interface BudgetMonth {
   budget: BudgetSummary;
   month: string;
+  /**
+   * Its dates (ADR 0011): the household's budget month start day sets them (#71), so with the
+   * 15th, November runs from Nov 15 to Dec 14. `to` is today in the month that's running.
+   */
+  from: string;
+  to: string;
+  periodEnd: string;
+  /** The month isn't over yet. */
+  partial: boolean;
   currency: string;
   /** Whether you can change it: owners and members for the household's, you for your own. */
   canEdit: boolean;
@@ -406,6 +415,9 @@ export interface BudgetYear {
   year: number;
   /** The twelve months, `YYYY-MM`. */
   months: string[];
+  /** The year's first and last days, from the budget month start day (#71). */
+  from: string;
+  to: string;
   rows: BudgetYearRow[];
   /** Flex's flexible number in each month it ran, else null. */
   flexible: (number | null)[];

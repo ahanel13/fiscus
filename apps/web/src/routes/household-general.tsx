@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { Household } from '@fiscus/shared';
+import { type Household, todayIn } from '@fiscus/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
@@ -17,6 +17,7 @@ import {
   TextField,
   toast,
 } from '../components/ui.js';
+import { ordinal, startDayHint } from '../lib/budget-months.js';
 
 // The browser's list leaves out plain "UTC", which is a valid household time zone.
 const TIME_ZONES = ['UTC', ...Intl.supportedValuesOf('timeZone').filter((z) => z !== 'UTC')];
@@ -26,6 +27,8 @@ const MONTHS = Array.from({ length: 12 }, (_, i) =>
     new Date(Date.UTC(2026, i, 1)),
   ),
 );
+const START_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
+
 const STYLES: [Household['financeStyle'], string][] = [
   ['hybrid', 'Yours, mine, and ours'],
   ['combined', 'It’s all ours'],
@@ -34,8 +37,9 @@ const STYLES: [Household['financeStyle'], string][] = [
 ];
 
 /**
- * The household's name and time settings (HH-01/02, ADR 0011 §4, #69). Owners edit; everyone
- * else sees them. Changing them re-dates every view at once: ranges, quarters, and YTD follow.
+ * The household's name and time settings (HH-01/02, ADR 0011 §4, #69, #71). Owners edit;
+ * everyone else sees them. Changing them re-dates every view at once: ranges, quarters, YTD, and
+ * budget months follow.
  */
 export function HouseholdGeneral({
   household,
@@ -51,6 +55,7 @@ export function HouseholdGeneral({
     timezone: household.timezone,
     weekStart: household.weekStart,
     fiscalYearStartMonth: household.fiscalYearStartMonth,
+    budgetMonthStartDay: household.budgetMonthStartDay,
     dateBasis: household.dateBasis,
     financeStyle: household.financeStyle,
     categorizeMarksReviewed: household.categorizeMarksReviewed,
@@ -143,7 +148,26 @@ export function HouseholdGeneral({
               </SelectItem>
             ))}
           </Select>
+          <Select
+            label="Budget months start on"
+            value={String(form.budgetMonthStartDay)}
+            onChange={(v) => v !== null && set({ budgetMonthStartDay: Number(v) })}
+            isDisabled={!owner}
+            description={startDayHint(form.budgetMonthStartDay, todayIn(form.timezone))}
+          >
+            {START_DAYS.map((d) => (
+              <SelectItem key={d} id={String(d)}>
+                {d === 1 ? '1st (calendar months)' : ordinal(d)}
+              </SelectItem>
+            ))}
+          </Select>
         </div>
+        {form.budgetMonthStartDay !== initial.budgetMonthStartDay ? (
+          <Alert tone="info">
+            Every budget month, past ones too, moves to the new days. Amounts stay with their month,
+            and spending and rollover are counted again from the new dates.
+          </Alert>
+        ) : null}
         <RadioGroup
           label="Date transactions by"
           value={form.dateBasis}
