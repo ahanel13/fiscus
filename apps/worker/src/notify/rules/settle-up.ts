@@ -24,7 +24,7 @@ async function others(m: MemberRun): Promise<Map<string, string>> {
   return new Map(rows.filter((r) => r.id !== m.memberId).map((r) => [r.id, r.name]));
 }
 
-const balanceWith = (costs: SharedCosts, memberId: string) =>
+const balanceWith = (costs: Pick<SharedCosts, 'balances'>, memberId: string) =>
   costs.balances.find((b) => b.memberId === memberId)?.amountMinor ?? 0;
 
 /** "Sam owes you $42.10", "you owe Sam $42.10", "you’re square". */

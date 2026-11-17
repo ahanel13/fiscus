@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { accounts, categories, householdMembers, settlements, transactions } from '@fiscus/db';
+import {
+  accounts,
+  categories,
+  type Executor,
+  householdMembers,
+  settlements,
+  settleUpSimplifyConsents,
+  transactions,
+} from '@fiscus/db';
+import { consentedDebts, type Debt, simplifyDebts, transfersFor } from '@fiscus/domain';
 import { accessLevels, buildSharedCosts, householdRanges } from '@fiscus/ledger';
 import {
   type recordSettlementSchema,
+  type SettleUpPlan,
   type SharedCosts,
   type Settlement,
   type SettlementCandidate,
@@ -10,7 +20,7 @@ import {
 import type { z } from 'zod';
 import { Problem, problems } from '../common/problem.js';
 import { Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
 
@@ -27,7 +37,82 @@ export class SharedCostsService {
   constructor(private readonly scope: HouseholdScope) {}
 
   async get(ctx: HouseholdContext, month: string): Promise<SharedCosts> {
-    return this.scope.run(ctx, (tx) => buildSharedCosts(tx, { memberId: ctx.memberId, month }));
+    const costs = await this.scope.run(ctx, (tx) =>
+      buildSharedCosts(tx, { memberId: ctx.memberId, month }),
+    );
+    return { ...costs, simplify: await this.#simplify(ctx, month, costs.balances) };
+  }
+
+  /**
+   * Your payments in a plan with the fewest transfers (#262, D31), from everyone's balances with
+   * each other among those who agreed. Your own come from what you see; each other pair's from
+   * what one of them sees: their own Shared costs (`buildSharedCosts`), read in their context
+   * (HouseholdScope.readAsAgreed), so with their income shares for a split by income too. Balances
+   * with anyone who hasn't agreed never reach the plan, and only the payments you make or receive
+   * leave here.
+   */
+  async #simplify(
+    ctx: HouseholdContext,
+    month: string,
+    mine: SharedCosts['balances'],
+  ): Promise<SettleUpPlan> {
+    const agreed = await this.scope.run(ctx, (tx) => agreedMembers(tx));
+    const me = ctx.memberId;
+    if (!agreed.includes(me) || agreed.length < 3) return { agreed, transfers: null };
+    const set = new Set(agreed);
+    const debts: Debt[] = [];
+    const add = (
+      member: string,
+      balances: SharedCosts['balances'],
+      take: (o: string) => boolean,
+    ) => {
+      for (const b of balances) {
+        if (!set.has(b.memberId) || !take(b.memberId)) continue;
+        debts.push(
+          b.amountMinor > 0
+            ? { from: b.memberId, to: member, amountMinor: b.amountMinor }
+            : { from: member, to: b.memberId, amountMinor: -b.amountMinor },
+        );
+      }
+    };
+    add(me, mine, () => true);
+    for (const other of agreed.filter((m) => m !== me)) {
+      const theirs = await this.scope.readAsAgreed(ctx, other, (tx) =>
+        buildSharedCosts(tx, { memberId: other, month }),
+      );
+      // Each pair once, from the first of the two by id; yours are already in.
+      add(other, theirs.balances, (o) => o !== me && other < o);
+    }
+    return {
+      agreed,
+      transfers: transfersFor(me, simplifyDebts(consentedDebts(debts, set))).map((t) => ({
+        fromMemberId: t.from,
+        toMemberId: t.to,
+        amountMinor: t.amountMinor,
+      })),
+    };
+  }
+
+  /** Agrees, or stops agreeing, to settle with the fewest transfers (SHR-09, D31). */
+  async setSimplify(ctx: HouseholdContext, agreed: boolean): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const changed = agreed
+        ? await tx
+            .insert(settleUpSimplifyConsents)
+            .values({ householdId: ctx.householdId, memberId: ctx.memberId })
+            .onConflictDoNothing()
+            .returning()
+        : await tx
+            .delete(settleUpSimplifyConsents)
+            .where(eq(settleUpSimplifyConsents.memberId, ctx.memberId))
+            .returning();
+      if (changed.length === 0) return;
+      await activity.record({
+        action: agreed ? 'settle_up.simplify_agreed' : 'settle_up.simplify_withdrawn',
+        targetType: 'household_member',
+        targetId: ctx.memberId,
+      });
+    });
   }
 
   /**
@@ -205,4 +290,26 @@ export class SharedCostsService {
         }));
     });
   }
+}
+
+/** Who has agreed to the fewest transfers: current members with a login, not viewers, by id. */
+async function agreedMembers(tx: Executor): Promise<string[]> {
+  const rows = await tx
+    .select({ id: householdMembers.id })
+    .from(settleUpSimplifyConsents)
+    .innerJoin(
+      householdMembers,
+      and(
+        eq(householdMembers.householdId, settleUpSimplifyConsents.householdId),
+        eq(householdMembers.id, settleUpSimplifyConsents.memberId),
+      ),
+    )
+    .where(
+      and(
+        isNull(householdMembers.leftAt),
+        isNotNull(householdMembers.userId),
+        ne(householdMembers.role, 'viewer'),
+      ),
+    );
+  return rows.map((r) => r.id).sort();
 }

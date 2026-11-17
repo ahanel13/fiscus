@@ -189,6 +189,7 @@ caller can't see ("Transfer to Anthony").
 | SHR-06 | Read where a split by income stands | ✅ | ✅ | ✅ | Who has agreed, and today's split between them in percentages. Never anyone's income, or which income they chose; your own choice shows only to you |
 | SHR-07 | Read the funding targets of joint accounts, and how each is going | ✅ | ✅ | ✅ | Only on joint accounts whose transactions you see (owner, full or view-only access): what each owner moved in from their own accounts shows as them, never the account (F1) |
 | SHR-08 | Set, change or remove a funding target for an owner of a joint account | acct-own | acct-own | ❌ | Only the account's owners, for any of its owners. A fixed amount a week, every two weeks or a month; a share of income isn't offered yet, as it would need that member's consent (SHR-05, F4). Each change is in the activity of those who see the account |
+| SHR-09 | Agree, or stop agreeing, to settle with the fewest transfers, and see your payments in the plan | own | own | ❌ | Everyone sees who has agreed. A plan is worked out only between people who have all agreed, three or more, from their balances with each other; balances with anyone else never reach it. You see only the payments you make or receive. Each change is in the household's activity (#262, D31) |
 
 ### 4.10 Bills and recurring (bills walkthrough §1–§3, §6)
 | ID | Action | OWN | MEM | VIEW | Notes |

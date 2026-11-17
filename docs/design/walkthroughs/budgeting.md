@@ -509,7 +509,7 @@ spending on someone's own card, and splits that don't match ownership.
 **More than two members.**
 - With three or more, the card shows a balance with each person.
 - Roommates households get Shared costs first in the navigation (information architecture §5).
-- Settling with the fewest transfers (#262) comes later.
+- With three or more, settling can take fewer transfers (§10, D31).
 
 ---
 
@@ -575,6 +575,34 @@ As everywhere, the other side shows as the **person**, never their account (ADR 
 - Each person chooses where they go, and the reminder's day and amount, in Settings →
   Notifications. Combined households, and households of one, don't get them.
 - Details are in [Notifications](../notifications.md) §4.4.
+
+### Fewer transfers, with three or more
+
+With three or more people, paying each balance can take more payments than it needs. If Ada
+owes Sam $40 and Sam owes Jo $40, Ada can pay Jo $40, and everyone is square in one payment
+instead of two (#262).
+
+**D31. Fewer transfers only between people who all agree, and you see only your part.**
+- A plan needs everyone's balances with each other, and no one can see them all. Today you see
+  only your own balances (SHR-03).
+- Your part of a plan says something about the others. If you're asked to pay Jo, you learn
+  someone owes Jo. So it isn't on by default, even for Roommates (ADR 0006 §8); each person turns
+  it on for themselves on Shared costs. The card says what the others may learn.
+- A plan is worked out only between the people who've agreed, once there are at least three of
+  them, from their balances with each other. Balances with anyone who hasn't agreed never reach
+  it, so the plan says nothing about them. They settle pair by pair, as before.
+- You see only the payments you make or receive: "You pay Jo $40", or "Kim pays you $12". Never
+  the whole plan, other people's payments, or the balances behind it.
+- Everyone sees who has agreed, so they can see who it's waiting for. Anyone can stop agreeing,
+  and the plan leaves them out from then on (or ends, with fewer than three left). Both are in
+  the household's activity.
+- The plan is shown alongside each balance, not instead of it. **Settle up** on a payment in the
+  plan records a settle-up between the two people who paid, as usual. Your balances with each
+  person can then look uneven (you owe Sam, Jo owes you) while you're square overall: the plan
+  says "You're square with everyone in the plan".
+- The plan is the fewest payments possible. It's worked out when read, like the balances, so it
+  changes as soon as a shared expense does.
+- With Roommates, the card comes first on Shared costs.
 
 ---
 
@@ -709,6 +737,7 @@ real.
 | D28 | Funding targets are fixed amounts per period, tracked from contributions; a share of income waits for consent | #113 |
 | D29 | Filling a month (last month, 3-month average, a template) previews, then replaces the amounts the source has; the average counts only what you can see | #105 |
 | D30 | Settle-up reminders and a monthly summary go to the two people in a pair, each from their own side | #116 |
+| D31 | Fewer transfers only between people who all agree, and each sees only their part | #262 |
 | D32 | Budget months start on the household's day; changing it moves every month's edges and keeps the amounts | #71 |
 
 ## Open questions
