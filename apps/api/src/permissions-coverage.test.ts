@@ -16,7 +16,6 @@ const NOT_BUILT: Record<string, string> = {
   'HH-09': 'Household AI settings (M10)',
   'HH-11': 'Owner audit log, separate from the activity feed',
   'HH-13': 'Data export (M11, #254)',
-  'HH-14': 'History window for household-level records (#256, with budgets and settle-up)',
   'HH-15': 'Departure protection (#62)',
   'HH-16': 'Departure package (#62)',
   'HH-17': 'Ownership claims (#62)',

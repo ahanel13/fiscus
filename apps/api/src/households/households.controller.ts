@@ -9,6 +9,7 @@ import {
   type HouseholdMember,
   type InviteSummary,
   updateHouseholdSchema,
+  widenHistorySchema,
 } from '@fiscus/shared';
 import {
   Body,
@@ -20,6 +21,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -124,6 +126,18 @@ export class HouseholdsController {
     @Body(new ZodPipe(changeRoleSchema)) body: z.infer<typeof changeRoleSchema>,
   ): Promise<void> {
     await this.members.changeRole(ctx, memberId, body.role);
+  }
+
+  /** HH-14 (#256): owners widen a member's history window, never narrow it. */
+  @Put(':householdId/members/:memberId/history')
+  @HouseholdRoles('owner')
+  @HttpCode(204)
+  async widenHistory(
+    @HouseholdCtx() ctx: HouseholdContext,
+    @Param('memberId', UuidPipe) memberId: string,
+    @Body(new ZodPipe(widenHistorySchema)) body: z.infer<typeof widenHistorySchema>,
+  ): Promise<void> {
+    await this.members.widenHistory(ctx, memberId, body.historyFrom);
   }
 
   /** HH-04: owners remove other members. */

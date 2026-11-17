@@ -13,8 +13,24 @@ const HH = '00000000-0000-7000-8000-0000000000aa';
 const ALEX = '00000000-0000-7000-8000-00000000000a';
 const SAM = '00000000-0000-7000-8000-00000000000b';
 const members: HouseholdMember[] = [
-  { id: ALEX, displayName: 'Alex', color: '#2f6f4f', role: 'owner', joinedAt: '', isYou: true },
-  { id: SAM, displayName: 'Sam', color: '#7a4f9a', role: 'member', joinedAt: '', isYou: false },
+  {
+    id: ALEX,
+    displayName: 'Alex',
+    color: '#2f6f4f',
+    role: 'owner',
+    joinedAt: '',
+    historyFrom: null,
+    isYou: true,
+  },
+  {
+    id: SAM,
+    displayName: 'Sam',
+    color: '#7a4f9a',
+    role: 'member',
+    joinedAt: '',
+    historyFrom: null,
+    isYou: false,
+  },
 ];
 
 beforeEach(() => {

@@ -74,10 +74,11 @@ describe('budgets (RLS)', () => {
         `${k.toLowerCase()}-${p.user}@budgets.test`,
         k,
       ]);
+      // Everyone was there before the budget's month (their history window, #256).
       await owner.query(
-        `INSERT INTO household_members (id, household_id, user_id, role, display_name, color)
-         VALUES ($1, $2, $3, $4, $5, '#000')`,
-        [p.member, H, p.user, ROLES[k as Actor], k],
+        `INSERT INTO household_members (id, household_id, user_id, role, display_name, color,
+           joined_at) VALUES ($1, $2, $3, $4, $5, '#000', $6)`,
+        [p.member, H, p.user, ROLES[k as Actor], k, MONTH],
       );
     }
     const group = randomUUID();

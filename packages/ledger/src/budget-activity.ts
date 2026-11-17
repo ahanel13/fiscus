@@ -300,6 +300,27 @@ async function savingsMoved(
   return out;
 }
 
+/**
+ * Budgets as the reader sees them (#256, ADR 0012): a member who joined later sees the household's
+ * budget from their history window's month on, so it starts there for them. Row-level security
+ * already hides the earlier months' amounts and moved money (0102); this keeps the pages from
+ * offering those months, or carrying anything from them into the first one they see.
+ */
+export async function budgetsInWindow<T extends Pick<BudgetRow, 'memberId' | 'startsMonth'>>(
+  tx: Executor,
+  rows: T[],
+): Promise<T[]> {
+  if (!rows.some((r) => r.memberId === null)) return rows;
+  const { rows: w } = await tx.execute<{ from: string | null }>(
+    sql`SELECT date_trunc('month', fiscus_history_from())::date::text AS "from"`,
+  );
+  const from = w[0]?.from;
+  if (!from) return rows;
+  return rows.map((r) =>
+    r.memberId === null && r.startsMonth < from ? { ...r, startsMonth: from } : r,
+  );
+}
+
 /** A budget's categories, amounts, strategies and goals, as computeBudgetMonth() reads them. */
 export async function loadBudgetDefinition(tx: Executor, row: BudgetRow) {
   const cats = await tx

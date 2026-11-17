@@ -12,6 +12,7 @@ import { CategoriesSettings } from './categories-settings.js';
 import { HouseholdGeneral } from './household-general.js';
 import { InviteButton, InviteDialog, PendingInvites } from './invites.js';
 import { MakeJointOffer } from './make-joint.js';
+import { MemberHistory } from './member-history.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
 import {
   Avatar,
@@ -283,6 +284,7 @@ export function MembersSettings() {
                   {m.isYou ? ' (you)' : ''}
                 </span>
                 {m.email ? <span className="block truncate text-muted">{m.email}</span> : null}
+                <MemberHistory householdId={householdId} member={m} isOwner={isOwner} />
               </span>
               <Badge tone={m.role === 'owner' ? 'accent' : 'neutral'}>{ROLE_LABELS[m.role]}</Badge>
             </li>

@@ -53,6 +53,7 @@ export class MembersService {
       color: member.color,
       role: member.role,
       joinedAt: member.joinedAt.toISOString(),
+      historyFrom: member.historyFrom,
       isYou: member.id === access.memberId,
       // Emails are visible to owners only (permissions HH-03).
       ...(access.role === 'owner' && email ? { email } : {}),
@@ -134,6 +135,54 @@ export class MembersService {
         });
       })
       .catch(ownsAccounts);
+  }
+
+  /**
+   * HH-14 (#256, ADR 0012): an owner widens a member's history window, to an earlier date or to
+   * all of it (null). It never narrows: what a member could see stays theirs (the database checks
+   * this too, 0102).
+   */
+  async widenHistory(
+    access: HouseholdContext,
+    memberId: string,
+    historyFrom: string | null,
+  ): Promise<void> {
+    await this.scope.run(access, async (tx, activity) => {
+      const [target] = await tx
+        .select()
+        .from(householdMembers)
+        .where(
+          and(
+            eq(householdMembers.id, memberId),
+            eq(householdMembers.householdId, access.householdId),
+            isNull(householdMembers.leftAt),
+          ),
+        )
+        .for('update');
+      if (!target) throw problems.notFound();
+      const before = target.historyFrom;
+      if (before === historyFrom) return;
+      if (before === null || (historyFrom !== null && historyFrom > before)) {
+        throw new Problem(
+          409,
+          'would_narrow',
+          'A member’s history can only be widened',
+          before === null
+            ? 'They already see all of the household’s history.'
+            : `They already see it from ${before}. Choose an earlier date.`,
+        );
+      }
+      await tx
+        .update(householdMembers)
+        .set({ historyFrom })
+        .where(eq(householdMembers.id, memberId));
+      await activity.record({
+        action: 'member.history_widened',
+        targetType: 'household_member',
+        targetId: memberId,
+        metadata: { from: before, to: historyFrom },
+      });
+    });
   }
 
   async remove(access: HouseholdContext, memberId: string): Promise<void> {

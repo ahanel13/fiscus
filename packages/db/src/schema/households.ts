@@ -2,6 +2,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  date,
   index,
   pgEnum,
   pgTable,
@@ -72,6 +73,13 @@ export const householdMembers = pgTable(
     avatarUrl: text(),
     joinedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     leftAt: timestamp({ withTimezone: true }),
+    /**
+     * The earliest date of household-shared records this member sees (#256, ADR 0012): the
+     * household budget's months, household goals' history, and the activity feed. Set to the join
+     * date when they join (0102); owners can move it earlier, never later. Null: all of it (the
+     * household's first member, members from before #256, or an owner widened it to everything).
+     */
+    historyFrom: date({ mode: 'string' }),
   },
   (t) => [
     // Target of composite foreign keys (account_owners): owners can't cross households.
