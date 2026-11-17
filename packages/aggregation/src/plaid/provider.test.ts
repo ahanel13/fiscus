@@ -308,12 +308,12 @@ describe('PlaidProvider (#82)', () => {
   });
 
   it('checks the Item with /item/get: its own error is thrown, none is fine (#84)', async () => {
-    fake = await startFakePlaid();
-    const provider = new PlaidProvider(clientFor(fake));
-    await expect(provider.checkStatus(fake.accessToken)).resolves.toBeUndefined();
+    const plaid = (fake = await startFakePlaid());
+    const provider = new PlaidProvider(clientFor(plaid));
+    await expect(provider.checkStatus(plaid.accessToken)).resolves.toBeUndefined();
     const get = (error: object | null) => ({
       body: {
-        item: { item_id: fake.itemId, institution_id: fake.institutionId, webhook: null, error },
+        item: { item_id: plaid.itemId, institution_id: plaid.institutionId, webhook: null, error },
         request_id: 'req-item-get',
       },
     });
