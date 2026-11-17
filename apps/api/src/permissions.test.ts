@@ -84,6 +84,28 @@ const ownBudget = async (c: TestClient) => {
 const account = async (c: TestClient, visibility = 'full') =>
   (await c.post(url('/accounts'), { name: 'Extra', type: 'depository', visibility })).body.data
     .id as string;
+/** A's and B's joint account (full), made the first time it's needed. */
+let jointId = '';
+const jointAccount = async () => {
+  if (!jointId) {
+    const r = await f.A.post(url('/accounts'), {
+      name: 'Joint',
+      type: 'depository',
+      visibility: 'full',
+      owners: [{ memberId: f.member.A }, { memberId: f.member.B }],
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    jointId = r.body.data.id;
+  }
+  return jointId;
+};
+/** Sets `memberId`'s funding target for an account, as `c`. */
+const fund = (c: TestClient, accountId: string, memberId: string) =>
+  c.request('PUT', url(`/funding-targets/${accountId}/${memberId}`), {
+    method: 'fixed',
+    amountMinor: 50_000,
+    cadence: 'monthly',
+  });
 /** A bank connection owned by `memberId`, syncing these accounts. */
 const connection = async (memberId: string, accountIds: string[]) => {
   const id = crypto.randomUUID();
@@ -1056,6 +1078,26 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'SHR-06/OWN': async () => ok(await f.A.get(url('/income-split'))),
   'SHR-06/MEM': async () => ok(await f.B.get(url('/income-split'))),
   'SHR-06/VIEW': async () => ok(await f.V.get(url('/income-split'))),
+  'SHR-07/OWN': async () => ok(await f.A.get(url('/funding-targets'))),
+  'SHR-07/MEM': async () => ok(await f.B.get(url('/funding-targets'))),
+  'SHR-07/VIEW': async () => {
+    const joint = await jointAccount();
+    ok(await fund(f.A, joint, f.member.B));
+    const r = await f.V.get(url('/funding-targets'));
+    ok(r);
+    // The viewer sees the joint account in full, so sees its targets.
+    expect(r.body.data.accounts.map((a: { accountId: string }) => a.accountId)).toContain(joint);
+  },
+  'SHR-08/OWN': async () => {
+    ok(await fund(f.A, await jointAccount(), f.member.A));
+    // Only on joint accounts the actor owns: B's own account isn't joint, nor A's.
+    refused(await fund(f.A, f.accB, f.member.B), 403);
+  },
+  'SHR-08/MEM': async () => {
+    ok(await fund(f.B, await jointAccount(), f.member.A));
+    refused(await fund(f.B, f.accA, f.member.A), 403);
+  },
+  'SHR-08/VIEW': async () => refused(await fund(f.V, await jointAccount(), f.member.A)),
 
   // ── 4.11 Sessions ──
   'TOK-04/OWN': async () => ok(await f.A.get('/api/v1/me/sessions')),

@@ -722,6 +722,20 @@
       "when": 1795128278404,
       "tag": "0102_member_history_window_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1795130107201,
+      "tag": "0103_funding_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1795130108701,
+      "tag": "0104_funding_targets_rls",
+      "breakpoints": true
     }
   ]
 }

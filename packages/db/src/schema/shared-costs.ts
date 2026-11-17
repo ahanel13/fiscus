@@ -5,6 +5,7 @@ import {
   date,
   foreignKey,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -15,6 +16,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { id, money } from '../columns.js';
+import { accounts } from './accounts.js';
 import { householdMembers, households } from './households.js';
 import { categories, transactions } from './ledger.js';
 
@@ -215,6 +217,74 @@ export const attributionFlags = pgTable(
     check(
       'attribution_flags_resolved',
       sql`(${t.resolvedAt} IS NULL) = (${t.resolvedByMemberId} IS NULL)`,
+    ),
+  ],
+);
+
+/** How a funding target is set: an amount each period, or a share of the member's income. */
+export const fundingMethod = pgEnum('funding_method', [
+  'fixed',
+  // Needs the member's consent first (F4, #110); not accepted by the api until then.
+  'percent_of_income',
+]);
+
+/** How often a funding target is due. Monthly ones follow calendar months. */
+export const fundingCadence = pgEnum('funding_cadence', ['weekly', 'every_two_weeks', 'monthly']);
+
+/**
+ * Joint-account funding targets (ADR 0006 §7.3, #113): what a member has agreed to move into a
+ * joint account each period, from accounts of their own. What they've sent is read from the
+ * transfers into the account (contributions, budgeting walkthrough D2), so nothing is stored but
+ * the target. One per member and account. Seen by whoever sees the account's transactions, and
+ * set or changed only by its owners.
+ * Row-level security: migration 0104.
+ */
+export const fundingTargets = pgTable(
+  'funding_targets',
+  {
+    id: id(),
+    householdId: uuid()
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    accountId: uuid().notNull(),
+    memberId: uuid().notNull(),
+    method: fundingMethod().notNull(),
+    /** For `fixed`: the amount each period, in the account's currency. */
+    amountMinor: money('amount_minor'),
+    /** For `percent_of_income`: the share of the member's income, in basis points. */
+    percentBps: integer(),
+    cadence: fundingCadence().notNull(),
+    /** Counting starts here: the first period starts on it (for monthly, the first of a month). */
+    startsOn: date({ mode: 'string' }).notNull(),
+    createdByMemberId: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('funding_targets_household_id_id').on(t.householdId, t.id),
+    unique('funding_targets_account_member').on(t.accountId, t.memberId),
+    foreignKey({
+      columns: [t.householdId, t.accountId],
+      foreignColumns: [accounts.householdId, accounts.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.memberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    foreignKey({
+      columns: [t.householdId, t.createdByMemberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    index().on(t.memberId),
+    check(
+      'funding_targets_amount',
+      sql`(${t.method} = 'fixed' AND ${t.amountMinor} > 0 AND ${t.percentBps} IS NULL)
+        OR (${t.method} = 'percent_of_income' AND ${t.amountMinor} IS NULL
+          AND ${t.percentBps} BETWEEN 1 AND 10000)`,
+    ),
+    check(
+      'funding_targets_monthly_start',
+      sql`${t.cadence} <> 'monthly' OR extract(day from ${t.startsOn}) = 1`,
     ),
   ],
 );

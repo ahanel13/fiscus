@@ -31,6 +31,7 @@ import {
   toast,
 } from '../components/ui.js';
 import { addMonths } from './budget.js';
+import { FundingSection } from './funding-targets.js';
 import { TransactionDrawer } from './transactions.js';
 
 // Shared costs (#115, budgeting walkthrough §8–§10): where you stand with each person, what
@@ -159,6 +160,7 @@ export function SharedCostsPage() {
             onOpen={setOpen}
           />
         )}
+        <FundingSection householdId={householdId} members={members} canEdit={canEdit} />
       </div>
       {open ? (
         <TransactionDrawer

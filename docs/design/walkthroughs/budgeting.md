@@ -498,6 +498,31 @@ As everywhere, the other side shows as the **person**, never their account (ADR 
 
 ---
 
+## 10a. Funding joint accounts
+
+The Riveras agreed that Alex moves $2,600 a month into Joint checking and Sam $1,800. Shared
+costs has a **Funding joint accounts** section with a card for each joint account: each owner's
+target, this period's money in, and whether they're **on track**, **behind** or **ahead**.
+
+**D28. A funding target is a fixed amount a week, every two weeks or a month, tracked from the
+contributions (D2).**
+- Any owner of the account sets a target for any of its owners: "Sam · $1,800.00 a month".
+- What counts is the same as the budget's contributions: transfers into the joint account from an
+  account that owner has alone. A move from another joint account counts for no one. Settle-ups
+  don't count.
+- Targets count from when they start. Months are calendar months; weeks and fortnights run from
+  the day the target starts. Changing a target starts counting again from this period.
+- **Behind** is less than was due by the end of the last period that's over: "Behind $300.00".
+  **Ahead** is more than this period needs. Otherwise it's **on track**, so the money can arrive
+  any day in the period. A short month is made up by the next.
+- Whoever sees the account's transactions sees its targets, since they see the transfers anyway.
+  The money shows as the person, never their account (F1). Only the account's owners change them,
+  and each change is in the activity.
+- **A share of income** ("10% of what I earn") isn't offered yet. It would show the others that
+  member's income, so it would need their split-by-income consent first (D19, F4).
+
+---
+
 ## 11. On a phone
 
 | Budget | Shared costs |
@@ -539,7 +564,7 @@ the screens.
 | | First | Later |
 |---|---|---|
 | Budgets | Category limits (#99), the month view (#103), annual view (#106), budgets by finance style (#107), **Change how you budget** with the preview (#104), flex (#102) | Zero-based (#100), 50/30/20 (#101), templates (#105), budget month start day (#71) |
-| Shared costs | Who owes whom (#111), settling up (#112), equal and fixed splits with rules per category (#109), the Shared costs page (#115), flagged changes (#60) | Split by income and its consent (#110, #265), allowances (#114), funding targets (#113), reminders (#116) |
+| Shared costs | Who owes whom (#111), settling up (#112), equal and fixed splits with rules per category (#109), the Shared costs page (#115), flagged changes (#60), fixed funding targets (#113) | Split by income and its consent (#110, #265), allowances (#114), funding targets by share of income (#113), reminders (#116) |
 
 Flex comes first among the other strategies because it's Monarch's, and the one people switching
 from Monarch will look for. Zero-based and 50/30/20 follow once the first two have been used for
@@ -600,6 +625,7 @@ real.
 | D25 | Share my budget, Make it mine and Combine budgets change scope and keep history | #107 |
 | D26 | Ownership changes count from the day they're made, unless you include the history | #447 |
 | D27 | A zero-based month assigns afresh; Assign like last month copies the last one's amounts | #100 |
+| D28 | Funding targets are fixed amounts per period, tracked from contributions; a share of income waits for consent | #113 |
 
 ## Open questions
 
