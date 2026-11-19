@@ -101,6 +101,38 @@ describe('matchAccounts (#74, #79)', () => {
     ).toEqual([null]);
   });
 
+  it('matches by name first when differently named accounts share last 4s', () => {
+    // MX sends every account at the bank with the member's number.
+    const at = (name: string, type: 'depository' | 'credit' = 'depository') => ({
+      names: [name],
+      type,
+      mask: '7001',
+      currency: 'USD',
+    });
+    expect(
+      matchAccounts(
+        [
+          at('Rainy Day (7001)'),
+          at('Cabin (7001)'),
+          at('Savings - 7001 (7001)'),
+          { names: ['Checking - 3300'], type: 'depository', mask: '3300', currency: 'USD' },
+        ],
+        [
+          candidate('savings', 'Main Savings', { mask: '7001' }),
+          candidate('rainy', 'Rainy Day', { mask: '7012' }),
+          // Another type: matched by its whole name, as ever.
+          candidate('cabin', 'Cabin', { mask: '7014', type: 'property' }),
+          candidate('checking', 'Checking', { mask: '3300' }),
+        ],
+      ),
+    ).toEqual([
+      { accountId: 'rainy', by: 'name' },
+      { accountId: 'cabin', by: 'name' },
+      { accountId: 'savings', by: 'mask' },
+      { accountId: 'checking', by: 'mask' },
+    ]);
+  });
+
   it('finds last 4s at the end of a name, only after a marker or in brackets', () => {
     for (const name of [
       'SOFI (...8884)',

@@ -50,8 +50,12 @@ export const nameWithoutMask = (name: string): string =>
 /**
  * For each wanted account, one of the candidates with the same last 4 digits and the same type
  * (a candidate without them may have them at the end of its name), else one with one of its
- * names, compared without such last 4s, else null. Each candidate is matched once at most, in order,
- * and never across currencies; an open account is preferred to a closed one.
+ * names, compared without such last 4s, else null. Each candidate is matched once at most, and
+ * never across currencies; an open account is preferred to a closed one.
+ *
+ * Last 4s that several differently named wanted accounts share don't tell them apart (MX gives
+ * every account at a bank the member's number): those match by name first, and by last 4 only
+ * among the candidates left after that.
  */
 export function matchAccounts(
   wanted: MatchWanted[],
@@ -60,33 +64,52 @@ export function matchAccounts(
   // An open account first; a closed one only when no open one matches.
   const sorted = [...candidates].sort((a, b) => Number(!!a.closedAt) - Number(!!b.closedAt));
   const taken = new Set<string>();
-  return wanted.map((w) => {
-    const fits = (c: MatchCandidate) =>
-      !taken.has(c.id) && (!w.currency || !c.currency || c.currency === w.currency);
-    // Its last 4, or else the ones written in its name.
-    const byMask = w.mask
+  const named = (w: MatchWanted) => lower(nameWithoutMask(w.names[0] ?? ''));
+  const namesByMask = new Map<string, Set<string>>();
+  for (const w of wanted) {
+    if (w.mask) namesByMask.set(w.mask, (namesByMask.get(w.mask) ?? new Set()).add(named(w)));
+  }
+  const shared = (w: MatchWanted) => !!w.mask && namesByMask.get(w.mask)!.size > 1;
+  const fits = (w: MatchWanted, c: MatchCandidate) =>
+    !taken.has(c.id) && (!w.currency || !c.currency || c.currency === w.currency);
+  // Its last 4, or else the ones written in its name.
+  const byMask = (w: MatchWanted) =>
+    w.mask
       ? sorted.find(
-          (c) => fits(c) && (c.mask ?? maskInName(c.name)) === w.mask && c.type === w.type,
+          (c) => fits(w, c) && (c.mask ?? maskInName(c.name)) === w.mask && c.type === w.type,
         )
       : undefined;
-    const names = new Set(w.names.map(lower).filter(Boolean));
-    // By name: the same name, or, for one of the same type, the same once the last 4 its name
-    // ends with are left out ("SOFI (...8884)" is "SOFI"). Never two accounts whose last 4 say
-    // they're different ones.
-    const byName = byMask
-      ? undefined
-      : sorted.find((c) => {
-          if (!fits(c)) return false;
-          const cMask = c.mask ?? maskInName(c.name);
-          if (w.mask && cMask && cMask !== w.mask) return false;
-          return (
-            names.has(lower(c.name)) ||
-            (c.type === w.type && names.has(lower(nameWithoutMask(c.name))))
-          );
-        });
-    const match = byMask ?? byName;
-    if (!match) return null;
-    taken.add(match.id);
-    return { accountId: match.id, by: byMask ? 'mask' : 'name' };
-  });
+  // By name: the same name, or, for one of the same type, the same once the last 4 a name ends
+  // with are left out ("SOFI (...8884)" is "SOFI"). Never two accounts whose last 4 say they're
+  // different ones, unless its last 4 are shared ones, which don't say.
+  const byName = (w: MatchWanted) => {
+    const names = new Set(
+      w.names.flatMap((n) => [lower(n), lower(nameWithoutMask(n))]).filter(Boolean),
+    );
+    return sorted.find((c) => {
+      if (!fits(w, c)) return false;
+      const cMask = c.mask ?? maskInName(c.name);
+      if (w.mask && cMask && cMask !== w.mask && !shared(w)) return false;
+      return (
+        names.has(lower(c.name)) || (c.type === w.type && names.has(lower(nameWithoutMask(c.name))))
+      );
+    });
+  };
+  const result: (AccountMatch | null)[] = wanted.map(() => null);
+  const pass = (
+    by: AccountMatch['by'],
+    find: (w: MatchWanted) => MatchCandidate | undefined,
+    only: (w: MatchWanted) => boolean,
+  ) =>
+    wanted.forEach((w, i) => {
+      if (result[i] || !only(w)) return;
+      const match = find(w);
+      if (!match) return;
+      taken.add(match.id);
+      result[i] = { accountId: match.id, by };
+    });
+  pass('mask', byMask, (w) => !shared(w));
+  pass('name', byName, () => true);
+  pass('mask', byMask, shared);
+  return result;
 }

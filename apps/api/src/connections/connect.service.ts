@@ -768,6 +768,22 @@ export class ConnectService {
       const stopping = input.accounts
         .filter((a) => a.choice === 'skip' && !sent.has(a.providerAccountId))
         .map((a) => a.providerAccountId);
+      // A left-out account linked to its new id carries on: it can't also stop.
+      if (
+        linkRows.some(
+          (r) =>
+            r.connectionId === connectionId &&
+            r.providerAccountId !== null &&
+            stopping.includes(r.providerAccountId),
+        )
+      ) {
+        throw new Problem(
+          422,
+          'linked_and_stopped',
+          'An account can’t be linked and stopped at once',
+          'Keep tracking the one you link to the bank’s account.',
+        );
+      }
       for (const bank of offered) {
         const choice = choices.get(bank.providerAccountId)!;
         if (choice.choice === 'keep') continue;
@@ -787,10 +803,17 @@ export class ConnectService {
           }
           const row = linkRows.find((r) => r.id === choice.accountId);
           if (!row) throw new Problem(422, 'invalid_account', 'That account doesn’t exist');
+          // One this connection tracks that the bank left out, now sent under a new id.
+          const leftOut =
+            live &&
+            row.connectionId === connectionId &&
+            row.providerAccountId !== null &&
+            !sent.has(row.providerAccountId);
           if (
             row.connectionId !== null &&
             row.connectionId !== replacing &&
-            !movable.has(row.connectionId)
+            !movable.has(row.connectionId) &&
+            !leftOut
           ) {
             throw new Problem(
               409,
@@ -1122,6 +1145,7 @@ export class ConnectService {
             subtype: accounts.subtype,
             mask: accounts.maskLast4,
             currency: accounts.currency,
+            closedAt: accounts.closedAt,
           })
           .from(accounts)
           .where(eq(accounts.connectionId, live))
@@ -1135,7 +1159,11 @@ export class ConnectService {
       : [];
     const declined = new Set(known?.ids ?? []);
     const untracked = offered.filter((a) => !tracked.has(a.providerAccountId));
-    const candidates = ownedIds.length
+    // What it tracks that the bank left out this time (SimpleFIN omits accounts it can't reach,
+    // and sends them under new ids once the bank is reached again through another route).
+    const sent = new Set(offered.map((a) => a.providerAccountId));
+    const leftOut = yourRows.filter((y) => y.providerAccountId && !sent.has(y.providerAccountId));
+    const found = ownedIds.length
       ? await tx
           .select({
             id: accounts.id,
@@ -1157,6 +1185,15 @@ export class ConnectService {
             ),
           )
       : [];
+    // One of yours it left out is what a new account the bank sends may be: linking moves it to
+    // that id, keeping its history, rather than tracking it twice.
+    const owned = new Set(ownedIds);
+    const candidates = [
+      ...found,
+      ...leftOut
+        .filter((y) => owned.has(y.id))
+        .map((y) => ({ ...y, connectionId: null as string | null })),
+    ];
     const closed = new Set(candidates.filter((c) => c.closedAt).map((c) => c.id));
     const synced = new Set(
       candidates.filter((c) => c.connectionId && c.connectionId !== replaces).map((c) => c.id),
@@ -1174,24 +1211,20 @@ export class ConnectService {
     // A bank's accounts start private to the person who connected them, whatever the household's
     // finance style: they choose who else sees each before anything syncs (D4).
     const visibility = 'private';
-    // What it tracks that the bank left out this time (SimpleFIN omits accounts it can't reach):
-    // listed too, so they can be kept or stopped, as yours describes them.
-    const sent = new Set(offered.map((a) => a.providerAccountId));
-    const absent = yourRows
-      .filter((y) => y.providerAccountId && !sent.has(y.providerAccountId))
-      .map((y): OfferedAccount => ({
-        providerAccountId: y.providerAccountId!,
-        name: y.name,
-        officialName: y.officialName,
-        type: y.type,
-        subtype: y.subtype,
-        mask: y.mask,
-        currency: y.currency,
-        balance: null,
-        suggestion: { choice: 'keep' },
-        tracked: { accountId: y.id },
-        absent: true,
-      }));
+    // Listed too, so they can be kept or stopped, as yours describes them.
+    const absent = leftOut.map((y): OfferedAccount => ({
+      providerAccountId: y.providerAccountId!,
+      name: y.name,
+      officialName: y.officialName,
+      type: y.type,
+      subtype: y.subtype,
+      mask: y.mask,
+      currency: y.currency,
+      balance: null,
+      suggestion: { choice: 'keep' },
+      tracked: { accountId: y.id },
+      absent: true,
+    }));
     const fromBank = offered.map((a): OfferedAccount => {
       const match = matches.get(a.providerAccountId);
       const suggestion: ConnectSuggestion = tracked.has(a.providerAccountId)
