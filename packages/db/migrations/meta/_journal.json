@@ -708,6 +708,20 @@
       "when": 1794900187862,
       "tag": "0100_income_split_consents_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1795128276904,
+      "tag": "0101_member_history_window",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1795128278404,
+      "tag": "0102_member_history_window_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -26,7 +26,7 @@ import {
 } from '@fiscus/shared';
 import { and, asc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import { accessLevels } from './access.js';
-import { budgetActivity, loadBudgetDefinition } from './budget-activity.js';
+import { budgetActivity, budgetsInWindow, loadBudgetDefinition } from './budget-activity.js';
 import { householdRanges, transactionDate } from './ranges.js';
 import { cardStatements, seriesOccurrences } from './recurring.js';
 import { waitingForReview } from './review.js';
@@ -136,7 +136,10 @@ export async function buildWeeklyRecap(
   );
   let left: number | null = null;
   const over = new Map<string, number>();
-  for (const row of await tx.select().from(budgets).orderBy(asc(budgets.createdAt))) {
+  for (const row of await budgetsInWindow(
+    tx,
+    await tx.select().from(budgets).orderBy(asc(budgets.createdAt)),
+  )) {
     const starts = row.startsMonth.slice(0, 7);
     if (starts > month) continue;
     const scope = row.memberId ? 'mine' : 'household';

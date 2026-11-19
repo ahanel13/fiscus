@@ -62,6 +62,12 @@ export const createInviteSchema = z.object({
 
 export const changeRoleSchema = z.object({ role: memberRoleSchema });
 
+/**
+ * HH-14 (#256): an owner widens a member's history window, to an earlier date or to all of the
+ * household's history (null). Never later than it is.
+ */
+export const widenHistorySchema = z.object({ historyFrom: z.iso.date().nullable() }).strict();
+
 /** HH-18: how you appear in this household. Colors come from the accessible member palette. */
 export const updateMeSchema = z
   .object({
@@ -103,6 +109,11 @@ export interface HouseholdMember {
   color: string;
   role: MemberRole;
   joinedAt: string;
+  /**
+   * The earliest date of household-shared records they see: the household budget's months,
+   * household goals' history, and activity (#256, HH-14). Null: all of it.
+   */
+  historyFrom: string | null;
   isYou: boolean;
   /** Only shown to household owners (permissions HH-03). */
   email?: string;

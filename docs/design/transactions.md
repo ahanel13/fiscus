@@ -143,9 +143,33 @@ and one activity event records the batch with the ids and fields changed.
 the accounts shared with them, whatever the date, plus anything attributed to them (ADR 0012:
 "…or if someone shares an account with them").
 
-The new-member **history window** (`history_from`) limits *household-level* shared records:
-shared budgets, settle-up between other members, and household reports. Those arrive in M3 and
-M7, so the window is built with them; it doesn't apply to transactions.
+The new-member **history window** (`household_members.history_from`, #256) limits
+*household-level* shared records. It's the day you joined, in the household's time zone. The
+household's first member has none.
+
+| Record | Before your window |
+|---|---|
+| Transactions on accounts shared with you, their balances, and the events on them | Visible: sharing an account shares its history |
+| Transactions attributed to you (F1) | Visible: you're part of them |
+| Others' "ours" purchases on accounts you can't see | Never visible, whatever the date |
+| The household budget | Starts at your window's month for you. Earlier months' amounts and moved money are hidden, and nothing carries into your first month from them. The amounts your first month runs on (the last ones set before it) stay visible |
+| Household goals' claim history (G17) | Hidden, except what you did yourself. The goals and their current claims are visible |
+| The activity feed and audit log | Household events hidden, except your own and those about your membership. Events about an account follow the account |
+| Settle-ups | Only ever seen by the two people they're between |
+| Split rules, budget strategies, categories, rules | Visible: they're settings, not history |
+| Reports and totals (cash flow, net worth, the recap) | Computed from what you can see, so they follow the rows above |
+
+**Enforced in the database** (migration 0102): `fiscus_history_from()` gives the caller's window,
+and restrictive policies on `budget_amounts`, `budget_moves`, `goal_claim_events` and
+`audit_events` apply it. Writes to the household budget before your window fail too. The api
+starts the household budget at your window's month (`budgetsInWindow`), so its pages and
+notifications don't offer earlier months.
+
+**Widening** (HH-14): an owner opens Settings → Members, chooses **Show earlier** next to a
+member, and picks an earlier date or all of the household's history
+(`PUT /households/:id/members/:memberId/history`). It can't be narrowed again, by anyone: a
+trigger rejects a later date, and a change by anyone but an owner. The change is in the activity
+feed (`member.history_widened`).
 
 ## 7. API
 

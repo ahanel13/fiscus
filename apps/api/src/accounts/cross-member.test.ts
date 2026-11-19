@@ -689,3 +689,307 @@ describe('cross-member visibility (generated)', () => {
     });
   });
 });
+
+/**
+ * The member history window (#256, ADR 0012 §Joining, HH-14). A and B run the household this
+ * month: accounts, purchases, a household budget, a settle-up between them. C (a member) and V (a
+ * viewer) join at the start of next month. They see the accounts shared with them whatever the
+ * date, and what's attributed to them; the household's own records (its budget's months, its
+ * activity, settle-ups between others) only from the day they joined. Every route is checked
+ * against B, who was there.
+ */
+describe('history window for newer members (#256)', () => {
+  let tdb: TestDatabase;
+  let app: NestFastifyApplication;
+  const client = {} as Record<'A' | 'B' | 'C' | 'V', TestClient>;
+  const member = {} as Record<'A' | 'B' | 'C' | 'V', string>;
+  let hid = '';
+  const url = (p = '') => `/api/v1/households/${hid}${p}`;
+  const month = (n: number) => {
+    const d = new Date();
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1)).toISOString().slice(0, 7);
+  };
+  const THIS = month(0);
+  const NEXT = month(1);
+  const acct = { card: '', checking: '' };
+  const tx = { oursOnCard: '', onChecking: '', forC: '' };
+  let budgetId = '';
+  const BUDGETED = 43_217;
+  type Newer = 'C' | 'V';
+
+  const signup = async (name: string) => {
+    const c = new TestClient(app);
+    await c.post('/api/v1/auth/signup', {
+      email: `${name.toLowerCase()}@window.test`,
+      password: 'history window Password1!',
+      displayName: name,
+    });
+    return c;
+  };
+  const join = async (actor: 'B' | 'C' | 'V', name: string, role: 'member' | 'viewer') => {
+    client[actor] = await signup(name);
+    const invite = await client.A.post(url('/invites'), {
+      email: `${name.toLowerCase()}@window.test`,
+      role,
+    });
+    const token = new URLSearchParams(new URL(invite.body.data.url).hash.slice(1)).get('token')!;
+    expect((await client[actor].post('/api/v1/invites/accept', { token })).status).toBe(200);
+    const me = (await client[actor].get(url('/members'))).body.data.find(
+      (m: { isYou: boolean }) => m.isYou,
+    );
+    member[actor] = me.id;
+  };
+
+  beforeAll(async () => {
+    tdb = await startTestDatabase();
+    app = await createTestApp(tdb.appUrl, { signupMode: 'open' });
+    client.A = await signup('Ada');
+    const hh = (
+      await client.A.post('/api/v1/households', {
+        name: 'Home',
+        baseCurrency: 'USD',
+        timezone: 'UTC',
+        financeStyle: 'hybrid',
+      })
+    ).body.data;
+    hid = hh.id;
+    member.A = hh.you.memberId;
+    await join('B', 'Bea', 'member');
+
+    const categories = (await client.A.get(url('/categories'))).body.data.flatMap(
+      (g: { categories: { id: string; name: string }[] }) => g.categories,
+    );
+    const groceries = categories.find((c: { name: string }) => c.name === 'Groceries').id;
+    const account = async (name: string, visibility: string) => {
+      const r = await client.A.post(url('/accounts'), { name, type: 'depository', visibility });
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+      return r.body.data.id as string;
+    };
+    acct.card = await account('Card zqw1', 'private');
+    acct.checking = await account('Checking zqw2', 'view_only');
+    const spend = async (accountId: string, name: string, amountMinor: number) => {
+      const r = await client.A.post(url('/transactions'), {
+        accountId,
+        date: `${THIS}-02`,
+        amountMinor,
+        displayName: name,
+        categoryId: groceries,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+      return r.body.data.id as string;
+    };
+    const attribute = async (id: string, to: string[]) => {
+      const r = await client.A.request('PUT', url(`/transactions/${id}/attribution`), {
+        attribution: to.map((memberId) => ({ memberId })),
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(204);
+    };
+    // Ours between A and B, on A's private card; on A's checking, shared with everyone; and one
+    // C will be part of.
+    tx.oursOnCard = await spend(acct.card, 'Ours zqt1', -1_101);
+    await attribute(tx.oursOnCard, [member.A, member.B]);
+    tx.onChecking = await spend(acct.checking, 'Checking buy zqt2', -2_203);
+    tx.forC = await spend(acct.card, 'For Cal zqt3', -4_409);
+
+    const budget = await client.A.post(url('/budgets'), {
+      scope: 'household',
+      amounts: [{ categoryId: groceries, amountMinor: BUDGETED }],
+    });
+    expect(budget.status, JSON.stringify(budget.body)).toBe(201);
+    budgetId = budget.body.data.id;
+    const settled = await client.A.post(url('/shared-costs/settlements'), {
+      memberId: member.B,
+      direction: 'you_paid',
+      amountMinor: 777,
+      date: `${THIS}-03`,
+      kind: 'paid',
+      note: 'Settled zqs1',
+    });
+    expect(settled.status, JSON.stringify(settled.body)).toBe(201);
+
+    await join('C', 'Cal', 'member');
+    await join('V', 'Vic', 'viewer');
+    await attribute(tx.forC, [member.C]);
+    // They joined next month: as the database would have set it then.
+    const db = new pg.Client({ connectionString: tdb.ownerUrl });
+    await db.connect();
+    try {
+      await db.query(`SET session_replication_role = replica`);
+      await db.query(
+        `UPDATE household_members SET history_from = $1::date, joined_at = $1::date WHERE id = ANY($2)`,
+        [`${NEXT}-01`, [member.C, member.V]],
+      );
+    } finally {
+      await db.end();
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    await app?.close();
+    await tdb?.stop();
+  });
+
+  /** The fixtures' markers a response mentions, each once. */
+  const names = (body: unknown) => [...new Set(JSON.stringify(body).match(/zq[a-z]\d/g))].sort();
+
+  it('lists each member’s window: B’s from their join date, C’s and V’s from next month', async () => {
+    const list = (await client.C.get(url('/members'))).body.data as {
+      id: string;
+      historyFrom: string | null;
+    }[];
+    const by = Object.fromEntries(list.map((m) => [m.id, m.historyFrom]));
+    expect(by[member.A]).toBeNull(); // the household's first member
+    expect(by[member.B]).toBe(new Date().toISOString().slice(0, 10));
+    expect(by[member.C]).toBe(`${NEXT}-01`);
+    expect(by[member.V]).toBe(`${NEXT}-01`);
+  });
+
+  describe.each(['C', 'V'] as Newer[])('as %s, who joined later', (actor) => {
+    it('sees shared accounts’ whole history and what’s theirs, never others’ ours from before', async () => {
+      const list = await client[actor].get(url('/transactions?limit=100'));
+      expect(list.status).toBe(200);
+      const want = actor === 'C' ? ['zqt2', 'zqt3', 'zqw2'] : ['zqt2', 'zqw2'];
+      expect(names(list.body)).toEqual(want);
+      // B, who was there, sees ours (and not what's C's alone).
+      expect(names((await client.B.get(url('/transactions?limit=100'))).body)).toEqual([
+        'zqt1',
+        'zqt2',
+        'zqw2',
+      ]);
+      // Search, and the transactions themselves.
+      const search = await client[actor].get(url('/transactions?q=zqt'));
+      expect(names(search.body).filter((n) => n.startsWith('zqt'))).toEqual(
+        want.filter((n) => n.startsWith('zqt')),
+      );
+      expect((await client[actor].get(url(`/transactions/${tx.oursOnCard}`))).status).toBe(404);
+      expect((await client[actor].get(url(`/transactions/${tx.onChecking}`))).status).toBe(200);
+    });
+
+    it('counts only those in aggregates', async () => {
+      const flow = await client[actor].get(
+        url(`/cash-flow?range=custom&from=${THIS}-01&to=${THIS}-28`),
+      );
+      expect(flow.status, JSON.stringify(flow.body)).toBe(200);
+      const b = await client.B.get(url(`/cash-flow?range=custom&from=${THIS}-01&to=${THIS}-28`));
+      // B sees ours and the checking purchase; C also their own; V only the checking one.
+      expect(b.body.data.totals.spendingMinor).toBe(1_101 + 2_203);
+      expect(flow.body.data.totals.spendingMinor).toBe(actor === 'C' ? 2_203 + 4_409 : 2_203);
+    });
+
+    it('[HH-14/MEM] [HH-14/VIEW] sees the household budget from their first month', async () => {
+      const list = await client[actor].get(url('/budgets'));
+      expect(list.body.data).toEqual([
+        expect.objectContaining({ id: budgetId, scope: 'household', startsMonth: NEXT }),
+      ]);
+      const before = await client[actor].get(url(`/budgets/${budgetId}/months/${THIS}`));
+      expect([before.status, before.body.code]).toEqual([404, 'before_budget']);
+      const year = await client[actor].get(url(`/budgets/${budgetId}/years/${THIS.slice(0, 4)}`));
+      expect(year.status).toBe(200);
+      // Next month runs on the amounts set before it, which carry forward.
+      const first = await client[actor].get(url(`/budgets/${budgetId}/months/${NEXT}`));
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      expect(JSON.stringify(first.body)).toContain(String(BUDGETED));
+      // B, who was there, sees this month.
+      expect((await client.B.get(url(`/budgets/${budgetId}/months/${THIS}`))).status).toBe(200);
+      expect((await client.B.get(url('/budgets'))).body.data[0].startsMonth).toBe(THIS);
+    });
+
+    it('sees no settle-up between others', async () => {
+      const costs = await client[actor].get(url(`/shared-costs?month=${THIS}`));
+      expect(costs.status).toBe(200);
+      expect(costs.body.data.settlements).toEqual([]);
+      expect(JSON.stringify(costs.body)).not.toContain('zqs1');
+      expect(costs.body.data.balances.map((b: { memberId: string }) => b.memberId)).not.toContain(
+        member.B,
+      );
+      expect(
+        JSON.stringify((await client.B.get(url(`/shared-costs?month=${THIS}`))).body),
+      ).toContain('zqs1');
+    });
+
+    it('sees household activity from their join date, and events on shared accounts', async () => {
+      const feed = async (c: TestClient) =>
+        (await c.get(url('/activity?limit=200'))).body.data as {
+          action: string;
+          targetId: string | null;
+        }[];
+      const theirs = await feed(client[actor]);
+      const bs = await feed(client.B);
+      const actions = (f: typeof theirs) => new Set(f.map((e) => e.action));
+      // B sees the household being set up; the newer member doesn't.
+      for (const a of ['household.created', 'settlement.recorded']) {
+        if (actions(bs).has(a)) expect(actions(theirs)).not.toContain(a);
+      }
+      expect(actions(bs)).toContain('household.created');
+      expect(theirs.some((e) => e.action.startsWith('budget.'))).toBe(false);
+      expect(bs.some((e) => e.action.startsWith('budget.'))).toBe(true);
+      // The checking account is shared with them, so its history is theirs too; the card isn't.
+      const created = theirs.filter((e) => e.action === 'account.created').map((e) => e.targetId);
+      expect(created).toEqual([acct.checking]);
+      // Their own joining is theirs.
+      expect(theirs.some((e) => e.targetId === member[actor])).toBe(true);
+    });
+
+    it('[HH-14/MEM] [HH-14/VIEW] can’t widen anyone’s window, their own included', async () => {
+      for (const target of [member[actor], member.B]) {
+        const r = await client[actor].request('PUT', url(`/members/${target}/history`), {
+          historyFrom: null,
+        });
+        expect(r.status).toBe(403);
+      }
+    });
+  });
+
+  describe('[HH-14/OWN] an owner widening a window', () => {
+    it('never narrows it', async () => {
+      const later = await client.A.request('PUT', url(`/members/${member.C}/history`), {
+        historyFrom: month(2) + '-01',
+      });
+      expect([later.status, later.body.code]).toEqual([409, 'would_narrow']);
+      const ofFirst = await client.A.request('PUT', url(`/members/${member.A}/history`), {
+        historyFrom: `${THIS}-01`,
+      });
+      expect([ofFirst.status, ofFirst.body.code]).toEqual([409, 'would_narrow']);
+      const bad = await client.A.request('PUT', url(`/members/${member.C}/history`), {
+        historyFrom: 'soon',
+      });
+      expect(bad.status).toBe(422);
+    });
+
+    it('shows the member what was before, and records it', async () => {
+      const r = await client.A.request('PUT', url(`/members/${member.C}/history`), {
+        historyFrom: `${THIS}-01`,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(204);
+      expect((await client.C.get(url(`/budgets/${budgetId}/months/${THIS}`))).status).toBe(200);
+      const actions = (await client.C.get(url('/activity?limit=200'))).body.data.map(
+        (e: { action: string }) => e.action,
+      );
+      expect(actions).toContain('household.created');
+      expect(actions).toContain('member.history_widened');
+      // To all of it.
+      expect(
+        (
+          await client.A.request('PUT', url(`/members/${member.C}/history`), {
+            historyFrom: null,
+          })
+        ).status,
+      ).toBe(204);
+      const c = (await client.A.get(url('/members'))).body.data.find(
+        (m: { id: string }) => m.id === member.C,
+      );
+      expect(c.historyFrom).toBeNull();
+      // V's is still where it was.
+      expect((await client.V.get(url(`/budgets/${budgetId}/months/${THIS}`))).status).toBe(404);
+    });
+
+    it('is the owner’s alone, and for current members only', async () => {
+      const r = await client.A.request(
+        'PUT',
+        url(`/members/00000000-0000-4000-8000-000000000000/history`),
+        { historyFrom: null },
+      );
+      expect(r.status).toBe(404);
+    });
+  });
+});

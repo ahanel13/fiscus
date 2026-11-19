@@ -121,7 +121,7 @@ erDiagram
 | role | enum `owner`/`member`/`viewer` | Must be `member` when `user_id` is null |
 | display_name, color, avatar_url | | Viewer-relative labels use these (ADR 0006 naming) |
 | joined_at, left_at | timestamptz | `left_at` set by the separation flow. Rows are kept for history |
-| history_from | date | Earliest date of household-shared records this member can see (default: join date). Owners can move it earlier, never later ([ADR 0012](../adr/0012-member-lifecycle.md)) |
+| history_from | date **null** | Earliest date of household-shared records this member can see ([ADR 0012](../adr/0012-member-lifecycle.md), #256). Set to the join date, in the household's time zone, when they join. Null means all of it: the household's first member, members from before #256, or an owner widened it that far. Owners can move it earlier, never later; a trigger enforces both rules |
 
 UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
 

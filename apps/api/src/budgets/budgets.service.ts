@@ -33,6 +33,7 @@ import {
 import {
   budgetActivity,
   type BudgetDefinitionRows,
+  budgetsInWindow,
   householdRanges,
   loadBudgetDefinition,
 } from '@fiscus/ledger';
@@ -77,10 +78,13 @@ export class BudgetsService {
   /** The budgets you can see: the household's, and your own. */
   async list(ctx: HouseholdContext): Promise<BudgetSummary[]> {
     return this.scope.run(ctx, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(budgets)
-        .orderBy(sql`${budgets.memberId} IS NOT NULL`);
+      const rows = await budgetsInWindow(
+        tx,
+        await tx
+          .select()
+          .from(budgets)
+          .orderBy(sql`${budgets.memberId} IS NOT NULL`),
+      );
       const { today } = await householdRanges(tx, ctx.householdId);
       return Promise.all(rows.map((b) => this.#summary(tx, ctx, b, monthOfDate(today))));
     });
@@ -856,9 +860,15 @@ function checkCanEdit(ctx: HouseholdContext, scope: BudgetScope): void {
   }
 }
 
-/** Row-level security hides another member's budget: it's simply not found (D3). */
+/**
+ * Row-level security hides another member's budget: it's simply not found (D3). The household's
+ * starts at your history window (#256).
+ */
 async function findBudget(tx: Executor, id: string): Promise<BudgetRow> {
-  const [row] = await tx.select().from(budgets).where(eq(budgets.id, id));
+  const [row] = await budgetsInWindow(
+    tx,
+    await tx.select().from(budgets).where(eq(budgets.id, id)),
+  );
   if (!row) throw problems.notFound();
   return row;
 }

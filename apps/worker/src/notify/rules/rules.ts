@@ -11,6 +11,7 @@ import { computeBudgetMonth, STRATEGY_REGISTRY } from '@fiscus/domain';
 import {
   accessLevels,
   budgetActivity,
+  budgetsInWindow,
   cardStatementsDue,
   loadBudgetDefinition,
   seriesOccurrences,
@@ -221,7 +222,7 @@ export async function budgetNearlySpent(m: MemberRun): Promise<number> {
   if (!m.on('budget_nearly_spent')) return 0;
   const { percent } = m.settings('budget_nearly_spent');
   const month = m.today.slice(0, 7);
-  const rows = await m.tx.select().from(budgets);
+  const rows = await budgetsInWindow(m.tx, await m.tx.select().from(budgets));
   const names = new Map(
     (await m.tx.select({ id: categories.id, name: categories.name }).from(categories)).map((c) => [
       c.id,
