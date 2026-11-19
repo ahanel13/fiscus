@@ -274,8 +274,9 @@ export const allowances = pgTable(
 /**
  * A budget's templates (#105): a set of amounts, saved from a month and given a name, to fill a
  * month with later. Under a budget, so they're seen exactly as it is (0054): the household's
- * budget's by its members, your own budget's by you alone. Amounts are by category id, and a
- * category that's gone since is skipped when one is used. Row-level security: migration 0108.
+ * budget's by its members, your own budget's by you alone. Amounts are by category id: a
+ * category that's gone since is skipped when one is used, and merging one adds its amount into the
+ * other's (0108). Row-level security: migration 0108.
  */
 export const budgetTemplates = pgTable(
   'budget_templates',

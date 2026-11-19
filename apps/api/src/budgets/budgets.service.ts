@@ -865,6 +865,9 @@ export class BudgetsService {
       const definition = await loadBudgetDefinition(tx, row);
       const period = periodFor(input.month, definition.periods);
       const allowed = fillable(definition, period.kind);
+      // An allowance's category has the allowance as its amount (D15), not one typed in.
+      for (const a of allowancesIn(input.month, definition.allowances))
+        allowed.delete(a.categoryId);
       const amounts = Object.fromEntries(
         [...budgetedFor(definition, input.month)].filter(([id, v]) => v > 0 && allowed.has(id)),
       );
@@ -1387,6 +1390,8 @@ async function fillPlan(
     for (const [id, v] of amounts) if (flexibleIds.has(id)) total = (total ?? 0) + v;
     return total;
   };
+  // For a member who joined later, the household's budget starts at their history window (#256):
+  // nothing from before it is copied (startsMonth) or averaged (below).
   const startsMonth = monthOfDate(row.startsMonth);
   let source: ReadonlyMap<string, number>;
   let months: string[];
@@ -1413,9 +1418,19 @@ async function fillPlan(
     const { today } = await householdRanges(tx, ctx.householdId);
     const thisMonth = monthOfDate(today);
     const end = addMonths(month < thisMonth ? month : thisMonth, -1);
-    const span = [-2, -1, 0].map((n) => addMonths(end, n));
+    // The average reads spending from before the budget began, as setup's does, but not from
+    // before the reader's history window: their shared accounts' transactions aren't windowed.
+    const { rows: w } = await tx.execute<{ m: string | null }>(
+      sql`SELECT to_char(fiscus_budget_window(${row.id}), 'YYYY-MM') AS m`,
+    );
+    const window = w[0]?.m ?? null;
+    const span = [-2, -1, 0]
+      .map((n) => addMonths(end, n))
+      .filter((m) => window === null || m >= window);
     const scope: BudgetScope = row.memberId ? 'mine' : 'household';
-    const activity = await budgetActivity(tx, ctx, scope, span[0]!, span[2]!);
+    const activity = span.length
+      ? await budgetActivity(tx, ctx, scope, span[0]!, span.at(-1)!)
+      : new Map<string, MonthActivity>();
     const byMonth = span.map((m) => {
       const a = activity.get(m);
       const out = new Map<string, number>();
@@ -1444,9 +1459,13 @@ async function fillPlan(
     months = [];
     flexibleMinor = template.flexibleMinor ?? flexibleOf(source);
   }
+  // An allowance's category keeps its amount: it's the allowance, set in the shared budget (D15),
+  // and can't be typed over (allowance_category).
+  const allowanceIds = new Set(allowancesIn(month, definition.allowances).map((a) => a.categoryId));
+  const allowances = [...source.keys()].filter((id) => allowed.has(id) && allowanceIds.has(id));
   const current = budgetedFor(definition, month);
   const changes = [...source]
-    .filter(([id, v]) => allowed.has(id) && (current.get(id) ?? 0) !== v)
+    .filter(([id, v]) => allowed.has(id) && !allowanceIds.has(id) && (current.get(id) ?? 0) !== v)
     .map(([categoryId, afterMinor]) => ({
       categoryId,
       beforeMinor: current.get(categoryId) ?? 0,
@@ -1459,7 +1478,14 @@ async function fillPlan(
   }
   return {
     period,
-    preview: { month, source: fill.source, months, changes, flexible } satisfies FillPreview,
+    preview: {
+      month,
+      source: fill.source,
+      months,
+      changes,
+      flexible,
+      allowances,
+    } satisfies FillPreview,
   };
 }
 

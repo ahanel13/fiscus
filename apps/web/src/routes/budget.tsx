@@ -3994,6 +3994,16 @@ function FillDialog({
                   : ' Later months without amounts of their own follow this one.'}
               </p>
             )}
+            {p.allowances.length ? (
+              <p className="text-muted">
+                {p.allowances.map((id) => categoryName(groups, id)).join(', ')}{' '}
+                {p.allowances.length === 1
+                  ? 'keeps its amount: it’s'
+                  : 'keep their amounts: they’re'}{' '}
+                {p.allowances.length === 1 ? 'an allowance' : 'allowances'}, set in the shared
+                budget.
+              </p>
+            ) : null}
           </div>
         ) : null}
         <DialogActions>

@@ -269,7 +269,11 @@ amounts in one go (#105):
 - **The average counts only spending you can see.** It reads the budget's scope (D1) the way the
   month does, so a purchase shared by Sam and Jo isn't in Alex's average of Ours. Months with no
   spending are left out, and amounts are rounded to $5. Expected income is averaged too, for
-  category limits.
+  category limits. For someone who joined later, Ours starts at their history window (#256), so
+  nothing from before it is copied or averaged.
+- **An allowance's category keeps its amount.** Its amount is the allowance (D15), set in the
+  shared budget, so a fill leaves it alone and the preview says so. A template saved from a month
+  with an allowance leaves its category out.
 - **In each strategy.** Category limits fills limits and expected income. Zero-based fills
   what's assigned (D27 is the one-click version). Flex fills its fixed costs, and sets the
   flexible number to what the flexible categories add up to, or to the flexible number copied or
@@ -278,7 +282,8 @@ amounts in one go (#105):
 - **Templates belong to their budget.** Ours' templates are the household's, seen by everyone
   who sees Ours and changed by owners and members (D4). Yours are yours alone (D3). A template
   keeps each category's amount, leaving out zeros, and flex's flexible number when saved from a
-  flex month. A category deleted since is skipped.
+  flex month. A category deleted since is skipped; one merged into another adds its amount into
+  the other's, as the budget's amounts do.
 - Each fill, and each template saved or deleted, goes into the household's activity for Ours.
 
 ---

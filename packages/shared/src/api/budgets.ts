@@ -460,4 +460,9 @@ export interface FillPreview {
   changes: { categoryId: string; beforeMinor: number; afterMinor: number }[];
   /** Flex's flexible number, when it changes. */
   flexible: { beforeMinor: number; afterMinor: number } | null;
+  /**
+   * Categories the source has an amount for that keep theirs, because their amount is an allowance
+   * (D15), set in the shared budget.
+   */
+  allowances: string[];
 }

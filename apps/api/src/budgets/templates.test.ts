@@ -18,6 +18,7 @@ describe('budgets: templates, copy last month, 3-month average', () => {
   let hh = '';
   let checking = '';
   let mine = '';
+  let ours = '';
   const member: Record<string, string> = {};
   const cat: Record<string, string> = {};
   const url = (p = '') => `/api/v1/households/${hh}${p}`;
@@ -304,9 +305,9 @@ describe('budgets: templates, copy last month, 3-month average', () => {
   });
 
   it('averages only the spending you can see, in the shared budget', async () => {
-    const ours = await A.post(url('/budgets'), { scope: 'household', amounts: [] });
-    expect(ours.status, JSON.stringify(ours.body)).toBe(201);
-    const id = ours.body.data.id as string;
+    const created = await A.post(url('/budgets'), { scope: 'household', amounts: [] });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const id = (ours = created.body.data.id as string);
     // Bea's own card, for something she and Cy share: theirs to see, not Ada's (F1).
     const card = (
       await B.post(url('/accounts'), { name: 'Bea card', type: 'credit', visibility: 'private' })
@@ -317,6 +318,19 @@ describe('budgets: templates, copy last month, 3-month average', () => {
     });
     expect(a.status, JSON.stringify(a.body)).toBe(204);
 
+    // Bea and Cy joined this month, so the shared budget starts there for them (#256): nothing
+    // from before it is averaged, though the purchase is theirs to see.
+    for (const c of [B, C]) {
+      const early = await preview(c, id, month(0), 'source=average');
+      expect([early.status, early.body.code]).toEqual([409, 'no_history']);
+      const copy = await preview(c, id, month(0), 'source=last_month');
+      expect([copy.status, copy.body.code]).toEqual([409, 'nothing_to_copy']);
+    }
+    for (const m of [member.Bea, member.Cy]) {
+      const w = await A.request('PUT', url(`/members/${m}/history`), { historyFrom: null });
+      expect(w.status, JSON.stringify(w.body)).toBe(204);
+    }
+
     const bea = await preview(B, id, month(0), 'source=average');
     expect(changes(bea.body)).toEqual({
       Groceries: { categoryId: cat.Groceries, beforeMinor: 0, afterMinor: 30000 },
@@ -326,5 +340,82 @@ describe('budgets: templates, copy last month, 3-month average', () => {
     ]);
     const ada = await preview(A, id, month(0), 'source=average');
     expect([ada.status, ada.body.code]).toEqual([409, 'no_history']);
+  });
+
+  it('leaves an allowance’s category alone, in the preview, the fill and a template', async () => {
+    const put = (m: string, category: string, amountMinor: number) =>
+      A.request('PUT', url(`/budgets/${ours}/months/${m}/amounts/${cat[category]}`), {
+        amountMinor,
+        applyTo: 'month',
+      });
+    expect((await put(month(0), 'Groceries', 30000)).status).toBe(204);
+    expect((await put(month(0), 'Restaurants', 9000)).status).toBe(204);
+    const saved = await A.post(url(`/budgets/${ours}/templates`), {
+      name: 'Ours usual',
+      month: month(0),
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+    // From next month, Restaurants is Bea's allowance: its amount is the allowance (D15).
+    const al = await A.request('PUT', url(`/allowances/${member.Bea}`), {
+      categoryId: cat.Restaurants,
+      amountMinor: 15000,
+      fromMonth: month(1),
+    });
+    expect(al.status, JSON.stringify(al.body)).toBe(200);
+    expect((await put(month(1), 'Groceries', 10000)).status).toBe(204);
+    const typed = await put(month(1), 'Restaurants', 9000);
+    expect([typed.status, typed.body.code]).toEqual([409, 'allowance_category']);
+
+    for (const q of ['source=last_month', `source=template&templateId=${saved.body.data.id}`]) {
+      const p = await preview(A, ours, month(1), q);
+      expect(p.status, JSON.stringify(p.body)).toBe(200);
+      expect(changes(p.body)).toEqual({
+        Groceries: { categoryId: cat.Groceries, beforeMinor: 10000, afterMinor: 30000 },
+      });
+      expect(p.body.data.allowances).toEqual([cat.Restaurants]);
+    }
+    expect((await fill(A, ours, month(1), { source: 'last_month' })).status).toBe(204);
+    const v = await view(A, ours, month(1));
+    expect(budgeted(v)).toMatchObject({ Groceries: 30000, Restaurants: 15000 });
+
+    // Bea's purchase last month averages into Groceries; Restaurants stays the allowance.
+    const avg = await preview(B, ours, month(1), 'source=average');
+    expect(avg.body.data.allowances).toEqual([]);
+    expect(Object.keys(changes(avg.body))).not.toContain('Restaurants');
+
+    // A template saved from a month with an allowance leaves its category out.
+    const t = await A.post(url(`/budgets/${ours}/templates`), { name: 'Later', month: month(1) });
+    expect(t.status, JSON.stringify(t.body)).toBe(201);
+    expect(t.body.data.amounts.map((a: { categoryId: string }) => a.categoryId)).toEqual([
+      cat.Groceries,
+    ]);
+  });
+
+  it('adds a merged category’s template amounts into the other’s', async () => {
+    const saved = await A.post(url(`/budgets/${mine}/templates`), {
+      name: 'Before the merge',
+      month: month(0),
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+    const of = (t: { amounts: { categoryId: string; amountMinor: number }[] }) =>
+      Object.fromEntries(t.amounts.map((a) => [a.categoryId, a.amountMinor]));
+    const before = of(saved.body.data);
+    expect(before[cat.Restaurants!]).toBe(15000);
+    expect(before[cat.Groceries!]).toBe(65000);
+    const r = await A.request(
+      'DELETE',
+      url(`/categories/${cat.Restaurants}?replaceWith=${cat.Groceries}`),
+    );
+    expect(r.status, JSON.stringify(r.body)).toBeLessThan(300);
+    const after = (
+      (await A.get(url(`/budgets/${mine}/templates`))).body.data as {
+        id: string;
+        amounts: { categoryId: string; amountMinor: number }[];
+      }[]
+    ).find((t) => t.id === saved.body.data.id)!;
+    expect(of(after)).toEqual({
+      ...Object.fromEntries(Object.entries(before).filter(([id]) => id !== cat.Restaurants)),
+      [cat.Groceries!]: 80000,
+    });
   });
 });
