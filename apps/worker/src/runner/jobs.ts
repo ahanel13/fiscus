@@ -11,8 +11,11 @@ import { ProviderError } from '@fiscus/domain';
 // What the runner does with a claimed connection: one job, chosen by the connection's state and
 // run by the handler registered for that kind.
 
-/** `sync` for a connection that's polled; `remove` to end a disconnected one at its provider. */
-export type JobKind = 'sync' | 'remove';
+/**
+ * `sync` for a connection that's polled; `remove` to end a disconnected one at its provider;
+ * `check` when a verified webhook said its Item changed (#84): the provider is asked first.
+ */
+export type JobKind = 'sync' | 'remove' | 'check';
 
 /** The connection a job runs for, as the runner read it in its household's system context. */
 export interface JobTarget {
@@ -27,6 +30,11 @@ export interface JobTarget {
   credentialSetId: string | null;
   providerEnv: string | null;
   providerClientId: string | null;
+  /** The Item sends webhooks here (#84): polling relaxes for it while they're healthy. */
+  webhookEnabled: boolean;
+  /** When a verified webhook asked for a sync, or a check (#84); null when none did. */
+  syncRequestedAt: Date | null;
+  checkRequestedAt: Date | null;
 }
 
 export interface JobContext extends JobTarget {
@@ -51,10 +59,13 @@ export interface JobHandler {
 
 /** The job a claimed connection gets, or null when there's nothing left to do for it. */
 export function jobKindFor(
-  target: Pick<JobTarget, 'status' | 'disconnectRequested'>,
+  target: Pick<JobTarget, 'status' | 'disconnectRequested'> &
+    Partial<Pick<JobTarget, 'checkRequestedAt'>>,
 ): JobKind | null {
   if (target.status === 'disconnected') return target.disconnectRequested ? 'remove' : null;
-  return target.status === 'ok' || target.status === 'error' ? 'sync' : null;
+  const live = target.status === 'ok' || target.status === 'error';
+  if (target.checkRequestedAt && (live || target.status === 'login_required')) return 'check';
+  return live ? 'sync' : null;
 }
 
 /** The handlers this worker runs, by kind. */

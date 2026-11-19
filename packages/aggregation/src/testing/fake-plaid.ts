@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { generateKeyPairSync, type KeyObject } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import type {
   ProviderAccount,
   ProviderBalance,
@@ -59,6 +59,13 @@ export interface FakePlaid {
   requests: StubRequest[];
   /** The key webhooks would be signed with; `/webhook_verification_key/get` serves its public half. */
   webhookKey: { kid: string; privateKey: KeyObject };
+  /** The Item's webhook URL, as the last link token or `/item/webhook/update` set it. */
+  readonly webhookUrl: string | null;
+  /**
+   * A webhook as Plaid would send it (#84): the exact body, and its `Plaid-Verification` JWT
+   * signed with `webhookKey` (ES256), unless `options` changes something for a test.
+   */
+  signWebhook(body: object | string, options?: SignWebhookOptions): SignedWebhook;
   /** Makes the scenario's next update visible to `/transactions/sync`. */
   release(): void;
   /** The next `times` requests to `path` (e.g. `/transactions/sync`) fail with `error`. */
@@ -66,6 +73,41 @@ export interface FakePlaid {
   /** Answers `path` with anything, for malformed and unexpected responses. */
   override(path: string, response: StubResponse | ((request: StubRequest) => StubResponse)): void;
   close(): Promise<void>;
+}
+
+export interface SignWebhookOptions {
+  /** Defaults to the fake's key. */
+  kid?: string;
+  privateKey?: KeyObject;
+  /** Seconds since the epoch; defaults to now. */
+  iat?: number;
+  /** Signed over this body's hash instead of the one sent. */
+  hashOf?: string;
+}
+
+export interface SignedWebhook {
+  body: string;
+  headers: Record<string, string>;
+}
+
+/** A JWT as Plaid signs webhooks: ES256, `kid` in the header, the body's SHA-256 in the payload. */
+export function signPlaidWebhook(
+  body: string,
+  options: { kid: string; privateKey: KeyObject; iat?: number; hashOf?: string },
+): string {
+  const part = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const header = part({ alg: 'ES256', kid: options.kid, typ: 'JWT' });
+  const payload = part({
+    iat: options.iat ?? Math.floor(Date.now() / 1000),
+    request_body_sha256: createHash('sha256')
+      .update(options.hashOf ?? body)
+      .digest('hex'),
+  });
+  const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+    key: options.privateKey,
+    dsaEncoding: 'ieee-p1363',
+  }).toString('base64url');
+  return `${header}.${payload}.${signature}`;
 }
 
 const STATUS_BY_TYPE: Record<string, number> = {
@@ -274,13 +316,17 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
 
   const routes: Record<string, Handler | [Handler, { token: boolean }]> = {
     '/link/token/create': [
-      (body, request_id) => ({
-        body: {
-          link_token: `link-sandbox-${String((body.user as Body | undefined)?.client_user_id ?? 'user')}`,
-          expiration: '2026-10-20T16:00:00Z',
-          request_id,
-        },
-      }),
+      (body, request_id) => {
+        // Made with a webhook, the Item has it from the start (WEBHOOK-002).
+        if (typeof body.webhook === 'string') webhook = body.webhook;
+        return {
+          body: {
+            link_token: `link-sandbox-${String((body.user as Body | undefined)?.client_user_id ?? 'user')}`,
+            expiration: '2026-10-20T16:00:00Z',
+            request_id,
+          },
+        };
+      },
       { token: false },
     ],
     '/item/public_token/exchange': [
@@ -451,6 +497,24 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
     institutionId,
     requests: server.requests,
     webhookKey: { kid, privateKey },
+    get webhookUrl() {
+      return webhook;
+    },
+    signWebhook(body, options = {}) {
+      const text = typeof body === 'string' ? body : JSON.stringify(body);
+      return {
+        body: text,
+        headers: {
+          'content-type': 'application/json',
+          'plaid-verification': signPlaidWebhook(text, {
+            kid: options.kid ?? kid,
+            privateKey: options.privateKey ?? privateKey,
+            ...(options.iat !== undefined && { iat: options.iat }),
+            ...(options.hashOf !== undefined && { hashOf: options.hashOf }),
+          }),
+        },
+      };
+    },
     release() {
       if (released >= scenario.updates.length) throw new Error('No more updates to release');
       released++;

@@ -33,6 +33,7 @@
   "dependencies": {
     "@fiscus/domain": "workspace:*",
     "@fiscus/shared": "workspace:*",
+    "jose": "catalog:",
     "zod": "catalog:"
   }
 }

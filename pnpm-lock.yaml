@@ -269,6 +269,9 @@ catalogs:
     ioredis:
       specifier: 6.0.0
       version: 6.0.0
+    jose:
+      specifier: 6.2.12
+      version: 6.2.12
     lucide-react:
       specifier: 1.48.0
       version: 1.48.0
@@ -644,6 +647,9 @@ importers:
       '@fiscus/shared':
         specifier: workspace:*
         version: link:../shared
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.12
       zod:
         specifier: 'catalog:'
         version: 4.6.5

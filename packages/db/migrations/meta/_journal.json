@@ -680,6 +680,20 @@
       "when": 1794418510280,
       "tag": "0096_merchant_logos",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1794897671279,
+      "tag": "0097_plaid_webhooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1794897673016,
+      "tag": "0098_plaid_webhooks_access",
+      "breakpoints": true
     }
   ]
 }

@@ -20,6 +20,7 @@ import { RulesModule } from './rules/rules.module.js';
 import { SharedCostsModule } from './shared-costs/shared-costs.module.js';
 import { MeController } from './me/me.controller.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { WebhooksModule } from './webhooks/webhooks.module.js';
 
 @Global()
 @Module({})
@@ -55,6 +56,7 @@ export class AppModule {
         NotificationsModule,
         RulesModule,
         SharedCostsModule,
+        WebhooksModule,
       ],
       controllers: [HealthController, MeController],
       providers: [{ provide: APP_FILTER, useClass: ProblemFilter }],

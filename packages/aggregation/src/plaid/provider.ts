@@ -15,6 +15,7 @@ import { ProviderUnavailableError, type ConnectionRef, type ProviderSource } fro
 import { PlaidClient } from './client.js';
 import type { PlaidInstanceConfig } from './config.js';
 import { credentialsChanged, resolvePlaidCredentials } from './credentials.js';
+import { plaidProviderError } from './errors.js';
 import {
   hasLiabilityAccounts,
   PLAID_COUNTRY_CODES,
@@ -73,6 +74,7 @@ export interface PlaidProviderOptions {
  *   `HISTORICAL_UPDATE_COMPLETE` is `historicalComplete` (TXN-008); an empty first sync is normal.
  * - `liabilities` calls `/liabilities/get` only when the Item has a card or loan (LIAB-008).
  * - `remove` is `/item/remove` (ITEM-005); an Item already gone at Plaid counts as removed.
+ * - `checkStatus` is `/item/get`, and `setWebhook` `/item/webhook/update` (#84).
  * - No `refresh`: `/transactions/refresh` is a separately billed add-on (TXN-010).
  */
 export class PlaidProvider implements AggregationProvider {
@@ -137,6 +139,20 @@ export class PlaidProvider implements AggregationProvider {
       PLAID_COUNTRY_CODES,
     );
     return plaidInstitution(institution);
+  }
+
+  /**
+   * `/item/get` (#84): the Item's own error, if it has one, thrown as Plaid's error, so a webhook
+   * saying the login broke changes nothing until Plaid itself says so (WEBHOOK-005).
+   */
+  async checkStatus(secret: ProviderSecret): Promise<void> {
+    const { item, request_id } = await this.#client.itemGet(secret);
+    if (item.error) throw plaidProviderError({ ...item.error, request_id }, null);
+  }
+
+  /** `/item/webhook/update` (WEBHOOK-002): Plaid confirms with WEBHOOK_UPDATE_ACKNOWLEDGED. */
+  async setWebhook(secret: ProviderSecret, url: string | null): Promise<void> {
+    await this.#client.itemWebhookUpdate(secret, url);
   }
 
   async remove(secret: ProviderSecret): Promise<void> {

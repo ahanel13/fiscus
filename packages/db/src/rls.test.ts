@@ -236,6 +236,14 @@ describe('row-level security', () => {
     ]);
   });
 
+  it('keeps instance-level tables without household data read-only to the app (#84)', async () => {
+    // Plaid webhook counts: no household's rows, written only by fiscus_record_plaid_webhook.
+    const { rows } = await owner.query(`
+      SELECT p, has_table_privilege('fiscus_app', 'plaid_webhook_stats', p) AS granted
+      FROM unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) p`);
+    expect(rows.filter((r) => r.granted).map((r) => r.p)).toEqual(['SELECT']);
+  });
+
   describe('maintenance role', () => {
     it('runs only allow-listed jobs, records each run, and bypasses RLS', async () => {
       await expect(

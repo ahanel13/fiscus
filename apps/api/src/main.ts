@@ -4,6 +4,8 @@ import {
   instancePlaidConfigOrExit,
   instanceSimpleFinConfig,
   plaidStatus,
+  plaidWebhookStatus,
+  plaidWebhookUrl,
 } from '@fiscus/aggregation';
 import { masterKeysOrExit } from '@fiscus/crypto';
 import { exitOnUnhandled, loadEnvOrExit, toNestLogLevels } from '@fiscus/env';
@@ -38,6 +40,7 @@ const config: AppConfig = {
   cookieSecure: env.COOKIE_SECURE,
   valkeyUrl: env.VALKEY_URL,
   plaid,
+  plaidWebhookUrl: plaidWebhookUrl(env),
   simplefin: instanceSimpleFinConfig(env),
   // One of SMTP_URL and MAIL_FROM without the other stops the api, as it does the worker.
   mail: mailConfigOrExit(env, (message) => new Logger('Mail').fatal(message)) ?? undefined,
@@ -55,5 +58,6 @@ const app = await NestFactory.create<NestFastifyApplication>(
 await configureApp(app);
 // Only whether, and which environment: never the keys.
 plaidLogger.log(plaidStatus(plaid));
+plaidLogger.log(plaidWebhookStatus(config.plaidWebhookUrl));
 app.enableShutdownHooks();
 await app.listen({ port: env.PORT, host: env.HOST });

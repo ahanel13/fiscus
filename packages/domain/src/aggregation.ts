@@ -178,6 +178,13 @@ export interface AggregationProvider {
   liabilities?(secret: ProviderSecret): Promise<ProviderLiability[]>;
   /** Ends the connection at the provider (Plaid's `/item/remove`, D14). */
   remove(secret: ProviderSecret): Promise<void>;
+  /**
+   * Whether the login still works, asked of the provider (Plaid's `/item/get`, #84): throws the
+   * provider's error when it doesn't. A webhook saying something changed is checked this way.
+   */
+  checkStatus?(secret: ProviderSecret): Promise<void>;
+  /** Points the provider's webhooks for this connection at `url`, or at none (#84). */
+  setWebhook?(secret: ProviderSecret, url: string | null): Promise<void>;
   /** A bank's name, logo and color, for providers that have them (#423); needs no connection. */
   institution?(providerInstitutionId: string): Promise<ProviderInstitution>;
 }

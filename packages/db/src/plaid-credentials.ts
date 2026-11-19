@@ -10,7 +10,11 @@ import { aggregationCredentials, connections } from './schema/connections.js';
 // the old one, which keeps serving the connections made with it until each is connected again or
 // ended; then its secret is shredded (emptied), and the row stays for the connections that name it.
 
-const secretContext = (householdId: string, id: string): HouseholdFieldContext => ({
+/** What a set's secret is bound to (associated data): its household and row. */
+export const plaidKeySetSecretContext = (
+  householdId: string,
+  id: string,
+): HouseholdFieldContext => ({
   householdId,
   table: 'aggregation_credentials',
   column: 'secret_enc',
@@ -38,7 +42,10 @@ export async function savePlaidKeySet(
     clientId: input.clientId,
     env: input.env,
     createdByMemberId: input.createdByMemberId,
-    secretEnc: await crypto.encrypt(secretContext(input.householdId, input.id), input.secret),
+    secretEnc: await crypto.encrypt(
+      plaidKeySetSecretContext(input.householdId, input.id),
+      input.secret,
+    ),
   });
 }
 
@@ -68,7 +75,7 @@ export async function readPlaidKeySet(
     return {
       clientId: row.clientId,
       env: row.env,
-      secret: await crypto.decrypt(secretContext(householdId, id), row.secretEnc),
+      secret: await crypto.decrypt(plaidKeySetSecretContext(householdId, id), row.secretEnc),
     };
   } catch (err) {
     if (err instanceof DecryptionError) return null;

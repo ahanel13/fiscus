@@ -38,6 +38,18 @@ export {
   savePlaidKeySet,
   shredPlaidKeySet,
 } from './plaid-credentials.js';
+export {
+  findPlaidItem,
+  plaidWebhookHealth,
+  plaidWebhookKeySet,
+  plaidWebhookMoves,
+  queuePlaidWebhook,
+  recordPlaidWebhook,
+  unrelaxPlaidConnections,
+  WEBHOOK_HEALTHY_NO_FAILURES_MS,
+  WEBHOOK_HEALTHY_RECEIVED_MS,
+  type PlaidWebhookHealth,
+} from './plaid-webhooks.js';
 export { setContext, systemContext, userContext, withContext, type DbContext } from './context.js';
 export {
   encryptMailPassword,

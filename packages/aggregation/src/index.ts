@@ -22,6 +22,8 @@ export {
   PlaidConfigError,
   plaidEnvVars,
   plaidStatus,
+  plaidWebhookStatus,
+  plaidWebhookUrl,
   type PlaidEnv,
   type PlaidEnvironment,
   type PlaidInstanceConfig,
@@ -36,6 +38,24 @@ export {
   type PlaidCredentialsResult,
 } from './plaid/credentials.js';
 export { plaidErrorKind } from './plaid/errors.js';
+export {
+  PLAID_WEBHOOK_BODY_LIMIT,
+  PLAID_WEBHOOK_CLOCK_SKEW_MS,
+  PLAID_WEBHOOK_MAX_AGE_MS,
+  PLAID_WEBHOOK_PATH,
+  PLAID_WEBHOOK_REJECTIONS,
+  plaidWebhookAction,
+  plaidWebhookBodySchema,
+  PlaidWebhookKeys,
+  readPlaidWebhookToken,
+  verifyPlaidWebhookToken,
+  type PlaidWebhookAction,
+  type PlaidWebhookBody,
+  type PlaidWebhookKeyResult,
+  type PlaidWebhookKeysOptions,
+  type PlaidWebhookRejection,
+  type PlaidWebhookToken,
+} from './plaid/webhook.js';
 export {
   hasLiabilityAccounts,
   MAX_LOGO_BYTES,

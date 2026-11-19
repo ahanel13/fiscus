@@ -60,6 +60,7 @@ describe('instance settings (ADM-05, in part)', () => {
     // After setup: on startup an app issues a new setup token while setup is still required.
     sandboxApp = await createTestApp(tdb.appUrl, {
       plaid: { clientId: 'test-client', secret: 'test-secret', env: 'sandbox' },
+      plaidWebhookUrl: 'https://fiscus.example/api/v1/webhooks/plaid',
     });
   }, 120_000);
 
@@ -179,7 +180,7 @@ describe('instance settings (ADM-05, in part)', () => {
     const res = await admin.get('/api/v1/admin/bank-connections');
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
-      plaid: { configured: false, environment: null },
+      plaid: { configured: false, environment: null, webhookUrl: null },
       simplefin: { enabled: false },
       settings: { ...DEFAULTS, 'sync.intervalHours': 6, 'simplefin.enabled': false },
       stats: {
@@ -196,6 +197,8 @@ describe('instance settings (ADM-05, in part)', () => {
       [
         'data/plaid/configured',
         'data/plaid/environment',
+        // The webhook URL, read-only (ADM-05, #84).
+        'data/plaid/webhookUrl',
         'data/simplefin/enabled',
         'data/settings/plaid.allowHouseholdKeys',
         'data/settings/simplefin.enabled',
@@ -325,10 +328,14 @@ describe('instance settings (ADM-05, in part)', () => {
     }
   });
 
-  it('show the Plaid environment when its keys are set', async () => {
+  it('show the Plaid environment when its keys are set, and the webhook URL (#84)', async () => {
     const c = new TestClient(sandboxApp);
     expect((await c.post('/api/v1/auth/login', ADMIN)).status).toBe(200);
     const res = await c.get('/api/v1/admin/bank-connections');
-    expect(res.body.data.plaid).toEqual({ configured: true, environment: 'sandbox' });
+    expect(res.body.data.plaid).toEqual({
+      configured: true,
+      environment: 'sandbox',
+      webhookUrl: 'https://fiscus.example/api/v1/webhooks/plaid',
+    });
   });
 });
