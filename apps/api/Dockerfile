@@ -39,7 +39,7 @@ ENV NODE_ENV=production
 # the Postgres 18 server, and age to encrypt them; /backups is where they go, as the node user.
 # Versions are pinned so a commit always installs the same packages (ADR 0014); when Alpine replaces
 # one, the build fails until Renovate bumps it here.
-RUN apk add --no-cache --no-logfile postgresql18-client=18.6-r0 age=1.3.2-r1 \
+RUN apk add --no-cache --no-logfile postgresql18-client=18.7-r0 age=1.3.2-r1 \
   && mkdir /backups && chown node:node /backups
 WORKDIR /app
 # Files stay root-owned; the app runs as the unprivileged node user and can't modify itself.
