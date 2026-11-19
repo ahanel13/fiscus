@@ -331,9 +331,20 @@ Alex sees Ours and Alex's own Mine. Sam sees Ours and Sam's own Mine. Neither se
 
 **D15. Allowances are a line in Ours that funds a Mine.**
 - An allowance, or fun money (#114), is a category in the Ours budget with one line per member:
-  "Fun money · Alex, $150.00".
-- Others see the amount, and never how it was spent (ADR 0006 §7.4). In the member's own
-  budget, it arrives as money in.
+  "Fun money · Alex, $150.00". **Allowances**, under the Ours month, lists them, with **Add an
+  allowance** and **Change** for owners and members. Viewers see the amounts.
+- Setting one up picks who it's for, the amount each month, its category (**Fun money**,
+  created the first time if the household doesn't have it), and whether it starts this month or
+  next. A change applies from that month on, and earlier months keep what they had. **Stop it**
+  ends it from the month chosen.
+- In Ours, the category's amount is the allowances in it, and all of it counts as spent each
+  month: the money has been handed over. Others see the amount, and never how it was spent (ADR
+  0006 §7.4).
+- In the member's own budget, it arrives as money in, and the same category's limit is the
+  allowance. What they spend in it, for them alone, counts against it. Whether what's left rolls
+  over is theirs to choose, with the category's rollover switch, since only they see it.
+- In either budget, the category's amount isn't typed in: it shows **Allowance**, and changes
+  under Allowances.
 - **Setting one up says plainly what it can't hide.** Spending from a joint account stays
   visible to its co-owners, wherever the money came from (F5). For real privacy, pay the
   allowance into your own account, which can be a funding target (#113), and spend it from

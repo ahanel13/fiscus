@@ -15,6 +15,7 @@ import {
 } from '@fiscus/db';
 import {
   addMonths,
+  allowancesIn,
   amountsFor,
   type BudgetStrategyKind,
   type CategoryLimitsView,
@@ -23,15 +24,19 @@ import {
   flex,
   flexibleFor,
   type FlexView,
+  type MonthActivity,
+  NO_ACTIVITY,
   percentage,
   type PercentageView,
   periodFor,
   STRATEGY_REGISTRY,
   suggestAmounts,
+  withAllowances,
   type ZeroBasedView,
 } from '@fiscus/domain';
 import {
   budgetActivity,
+  budgetAllowances,
   type BudgetDefinitionRows,
   budgetsInWindow,
   householdRanges,
@@ -202,6 +207,7 @@ export class BudgetsService {
           tx,
           definition.goals.map((g) => g.id),
         ),
+        allowances: allowancesIn(month, definition.allowances),
         view: viewOf(out.kind, out.view, definition, month),
       };
     });
@@ -456,6 +462,7 @@ export class BudgetsService {
       checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
       if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
       if (!(await budgetedCategories(tx)).has(categoryId)) throw problems.notFound();
+      await checkNotAllowance(tx, row, month, categoryId);
       const day = firstDayOf(month);
       const next = firstDayOf(addMonths(month, 1));
       // Zero-based assigns each month afresh (D8): nothing's copied in, or on to later months.
@@ -695,12 +702,14 @@ export class BudgetsService {
       const ledger = await budgetActivity(tx, ctx, scope, months[0]!, to);
       const definition = await loadBudgetDefinition(tx, row);
       const startsMonth = monthOfDate(row.startsMonth);
-      const out = months.map((month) => ({
-        month,
-        budgetedMinor:
-          month < startsMonth ? null : (budgetedFor(definition, month).get(categoryId) ?? null),
-        spentMinor: ledger.get(month)?.spentMinor.get(categoryId) ?? 0,
-      }));
+      const out = months.map((month) => {
+        const allowed = withAllowedIn(definition, month, ledger);
+        return {
+          month,
+          budgetedMinor: month < startsMonth ? null : (allowed.amounts.get(categoryId) ?? null),
+          spentMinor: allowed.activity.spentMinor.get(categoryId) ?? 0,
+        };
+      });
       // The average of the full months shown with any spending (as setup's suggestion counts).
       const full = out.filter((m) => m.month < to && m.spentMinor !== 0);
       return {
@@ -724,6 +733,7 @@ export class BudgetsService {
       const row = await findBudget(tx, budgetId);
       const scope: BudgetScope = row.memberId ? 'mine' : 'household';
       const ranges = await householdRanges(tx, ctx.householdId);
+      const thisMonth = monthOfDate(ranges.today);
       const first = `${year}-${String(ranges.settings.fiscalYearStartMonth).padStart(2, '0')}`;
       const months = Array.from({ length: 12 }, (_, i) => addMonths(first, i));
       const ledger = await budgetActivity(tx, ctx, scope, months[0]!, months[11]!);
@@ -741,14 +751,19 @@ export class BudgetsService {
           if (c.kind === 'non_monthly')
             return c.yearlyMinor === null ? null : Math.round(c.yearlyMinor / 12);
         }
-        return budgetedFor(definition, month).get(categoryId) ?? null;
+        return withAllowedIn(definition, month, ledger).amounts.get(categoryId) ?? null;
       };
       const spending = await spendingCategories(tx);
       const rows: BudgetYearRow[] = definition.categories
         .filter((c) => spending.has(c.id))
         .map((c) => {
           const cells = months.map((m) => ({
-            spentMinor: ledger.get(m)?.spentMinor.get(c.id) ?? 0,
+            // An allowance is handed over in its month: months to come haven't spent it yet.
+            spentMinor:
+              (m <= thisMonth
+                ? withAllowedIn(definition, m, ledger)
+                : { activity: ledger.get(m) }
+              ).activity?.spentMinor.get(c.id) ?? 0,
             budgetedMinor: budgetedIn(m, c.id),
           }));
           return {
@@ -1077,6 +1092,49 @@ function budgetedFor(definition: BudgetDefinitionRows, month: string): ReadonlyM
   return periodFor(month, definition.periods).kind === 'zero_based'
     ? (definition.amounts.get(month) ?? new Map<string, number>())
     : amountsFor(month, definition.amounts);
+}
+
+/**
+ * A month's amounts and activity as its allowances make them (D15), as computeBudgetMonth() sees
+ * them: an allowance's category has it as its amount, and the household's budget spends it.
+ */
+function withAllowedIn(
+  definition: BudgetDefinitionRows,
+  month: string,
+  ledger: ReadonlyMap<string, MonthActivity>,
+) {
+  // Before the budget there are no amounts, nor a strategy to read them, nor allowances: for a
+  // member who joined later, the household's budget starts at their history window (#256).
+  const before = month < definition.startsMonth;
+  return withAllowances(
+    definition.scope,
+    before ? new Map<string, number>() : budgetedFor(definition, month),
+    ledger.get(month) ?? NO_ACTIVITY,
+    before ? [] : allowancesIn(month, definition.allowances),
+  );
+}
+
+/**
+ * An allowance's category has the allowance as its amount (D15): it's set from the household's
+ * allowances, in both the household's budget and its member's own, not typed into either.
+ */
+async function checkNotAllowance(
+  tx: Executor,
+  row: BudgetRow,
+  month: string,
+  categoryId: string,
+): Promise<void> {
+  const running = allowancesIn(month, await budgetAllowances(tx, row.householdId, row.memberId));
+  if (running.some((a) => a.categoryId === categoryId)) {
+    throw new Problem(
+      409,
+      'allowance_category',
+      'This category’s amount is an allowance',
+      row.memberId
+        ? 'It’s set in the shared budget.'
+        : 'Change it under Allowances, in the shared budget.',
+    );
+  }
 }
 
 /** The last month before `month` with amounts of its own, and what it assigned to spending. */

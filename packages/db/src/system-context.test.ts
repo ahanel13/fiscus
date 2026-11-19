@@ -612,6 +612,8 @@ describe('system context belongs to the worker', () => {
       // A reviewer who loses the account, or leaves, stops reviewing it (0083).
       'accounts.reviewer_member_id',
       'accounts.updated_at',
+      // A merged category's allowances follow it (0106).
+      'allowances.category_id',
       'budget_amounts.amount_minor',
       'budget_amounts.updated_at',
       'budget_amounts.version',

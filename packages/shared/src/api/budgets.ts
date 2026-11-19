@@ -326,8 +326,41 @@ export interface BudgetMonth {
   excluded: string[];
   /** The goals with a line in it (G4): its scope's, Ours or Mine, in priority order. */
   goals: BudgetGoal[];
+  /**
+   * Allowances this month (D15): every member's in the household's budget, as amounts only; in
+   * your own, yours. An allowance's category has it as its amount, set in the household's budget.
+   */
+  allowances: AllowanceLine[];
   view: BudgetMonthView;
 }
+
+/** One member's allowance in a month (D15). */
+export interface AllowanceLine {
+  memberId: string;
+  categoryId: string;
+  amountMinor: number;
+}
+
+/**
+ * The household's allowances (D15, ADR 0006 §7.4): each member's amount this month, and a change
+ * already set for a later month. Never how any of it was spent.
+ */
+export interface Allowance extends AllowanceLine {
+  /** The month this amount runs from. */
+  fromMonth: string;
+  /** A change set for a later month: a new amount, or 0 for stopping. */
+  next: { month: string; amountMinor: number } | null;
+}
+
+/**
+ * Sets a member's allowance from a month on (D15): this month, the default, or a later one.
+ * Earlier months keep what they had. An amount of zero stops it.
+ */
+export const setAllowanceSchema = z.object({
+  categoryId: z.uuid(),
+  amountMinor: z.number().int().min(0).max(1_000_000_000_00),
+  fromMonth: budgetMonthSchema.optional(),
+});
 
 /** What a switch would show in its first month (#104): now, and under the new strategy. */
 export interface StrategyPreview {

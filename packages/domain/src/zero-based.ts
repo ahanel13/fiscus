@@ -79,8 +79,10 @@ export type ZeroBasedSettings = Record<string, never>;
 export const zeroBased: BudgetStrategy<ZeroBasedSettings, ZeroBasedView> = {
   kind: 'zero_based',
   settings: () => ({}),
-  month({ scope, categories, goals, amounts, ownAmounts, moves, activity, carry }) {
-    const assignedOf = (id: string) => (ownAmounts ? (amounts.get(id) ?? 0) : 0);
+  month({ scope, categories, goals, amounts, ownAmounts, allowances, moves, activity, carry }) {
+    // An allowance is assigned every month (D15): it's set in the household's budget.
+    const assignedOf = (id: string) =>
+      ownAmounts || allowances?.has(id) ? (amounts.get(id) ?? 0) : 0;
     // Last month's lines: what's left carries; what's overspent comes out of Ready to assign.
     let overspent = 0;
     const rolledIn = (id: string) => {

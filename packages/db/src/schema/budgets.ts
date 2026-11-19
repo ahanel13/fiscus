@@ -226,3 +226,46 @@ export const budgetMoves = pgTable(
     ),
   ],
 );
+
+/**
+ * Allowances, or fun money (#114, budgeting walkthrough D15; ADR 0006 §7.4): a line in the
+ * household's budget that funds one member's own, each month. One row per member per month it
+ * changed from: a month without one has the last one before it, as amounts do, so changing an
+ * allowance never rewrites the months before. An amount of zero stops it. Everyone in the
+ * household sees the amounts; how the money was spent is only ever in the member's own budget.
+ * Row-level security: migration 0106.
+ */
+export const allowances = pgTable(
+  'allowances',
+  {
+    householdId: uuid()
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    /** Whose allowance it is. */
+    memberId: uuid().notNull(),
+    month: date({ mode: 'string' }).notNull(),
+    /** The category it's a line in: in the household's budget, and in the member's own. */
+    categoryId: uuid().notNull(),
+    /** Each month, in the household's base currency. Zero: stopped from this month. */
+    amountMinor: money('amount_minor').notNull(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.householdId, t.memberId, t.month] }),
+    foreignKey({
+      columns: [t.householdId, t.memberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.householdId, t.categoryId],
+      foreignColumns: [categories.householdId, categories.id],
+    }).onDelete('cascade'),
+    index().on(t.memberId),
+    index().on(t.categoryId),
+    check('allowances_month', firstOfMonth(t.month)),
+    check('allowances_amount', sql`${t.amountMinor} >= 0`),
+  ],
+);

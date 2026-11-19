@@ -65,6 +65,7 @@ import {
   TextField,
   toast,
 } from '../components/ui.js';
+import { AllowanceAmount, allowanceIn, Allowances } from './budget-allowances.js';
 
 // Budget (#103, budgeting walkthrough §2–§3.1): the one-step start, then a month of category
 // limits. One budget shows no scope at all (D21); with two, an Ours · Mine switch (D16).
@@ -658,6 +659,7 @@ function MonthView({
   const shown = month < budget.startsMonth ? budget.startsMonth : month;
   const data = useQuery(budgetMonthQuery(household.id, budget.id, shown));
   const groups = useQuery(categoriesQuery(household.id)).data ?? [];
+  const members = useQuery(membersQuery(household.id)).data ?? [];
   const [editing, setEditing] = useState<{ categoryId: string; row?: CategoryLimitRow } | null>(
     null,
   );
@@ -751,6 +753,9 @@ function MonthView({
           onOpen={setOpen}
         />
       )}
+      {data.data ? (
+        <Allowances householdId={household.id} data={data.data} members={members} groups={groups} />
+      ) : null}
       {yearly && data.data ? (
         <YearlyDialog
           householdId={household.id}
@@ -1376,6 +1381,8 @@ function BudgetAmount({
       toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' });
     },
   });
+  // An allowance's category has the allowance as its amount (D15), set under Allowances.
+  if (allowanceIn(data, categoryId)) return <AllowanceAmount data={data} value={value} />;
   return (
     <AmountInput
       aria-label={`${name}: budget for ${monthName(data.month)}`}
