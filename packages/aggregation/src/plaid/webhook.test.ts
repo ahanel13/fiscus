@@ -8,8 +8,8 @@ import {
   PLAID_WEBHOOK_PATH,
   plaidWebhookAction,
   PlaidWebhookKeys,
-  plaidWebhookSignatureValid,
   readPlaidWebhookToken,
+  verifyPlaidWebhookToken,
   type PlaidWebhookRejection,
 } from './webhook.js';
 
@@ -46,7 +46,8 @@ async function verify(
   if (!read.ok) return read.reason;
   const key = await keys.get('server', read.token.kid, () => client);
   if (!key.found) return key.reason;
-  return plaidWebhookSignatureValid(read.token, key.key) ? 'ok' : 'signature';
+  const verified = await verifyPlaidWebhookToken(read.token, key.key, Buffer.from(body), now());
+  return verified.ok ? 'ok' : verified.reason;
 }
 
 describe('Plaid webhook verification (#84, WEBHOOK-003/004)', () => {
@@ -206,6 +207,56 @@ describe('Plaid webhook verification (#84, WEBHOOK-003/004)', () => {
     const token = signPlaidWebhook(BODY, plaid.webhookKey);
     const read = readPlaidWebhookToken(token, Buffer.from(BODY), now());
     expect(read.ok).toBe(true);
+  });
+});
+
+describe('verifyPlaidWebhookToken: jose checks it all again, past the quick refusal', () => {
+  const keyFor = async () => {
+    const read = readPlaidWebhookToken(
+      plaid.signWebhook(BODY).headers['plaid-verification'],
+      Buffer.from(BODY),
+      now(),
+    );
+    if (!read.ok) throw new Error(read.reason);
+    const key = await new PlaidWebhookKeys().get('server', read.token.kid, () => client);
+    if (!key.found) throw new Error(key.reason);
+    return key.key;
+  };
+  const token = (jwt: string) => ({ jwt, kid: plaid.webhookKey.kid });
+
+  it('allows ES256 only, whatever the header says', async () => {
+    const key = await keyFor();
+    const real = plaid.signWebhook(BODY).headers['plaid-verification']!;
+    const [, p, s] = real.split('.') as [string, string, string];
+    const hs = `${part({ alg: 'HS256', kid: plaid.webhookKey.kid })}.${p}.${s}`;
+    expect(await verifyPlaidWebhookToken(token(hs), key, Buffer.from(BODY), now())).toEqual({
+      ok: false,
+      reason: 'algorithm',
+    });
+    const none = `${part({ alg: 'none', kid: plaid.webhookKey.kid })}.${p}.`;
+    expect((await verifyPlaidWebhookToken(token(none), key, Buffer.from(BODY), now())).ok).toBe(
+      false,
+    );
+  });
+
+  it('refuses a stale iat, and a body the verified payload doesn’t hash to', async () => {
+    const key = await keyFor();
+    const old = plaid.signWebhook(BODY, { iat: Math.floor(now() / 1000) - 6 * 60 });
+    expect(
+      await verifyPlaidWebhookToken(
+        token(old.headers['plaid-verification']!),
+        key,
+        Buffer.from(BODY),
+        now(),
+      ),
+    ).toEqual({ ok: false, reason: 'stale' });
+    const fresh = plaid.signWebhook(BODY).headers['plaid-verification']!;
+    expect(
+      await verifyPlaidWebhookToken(token(fresh), key, Buffer.from(`${BODY} `), now()),
+    ).toEqual({ ok: false, reason: 'body_hash' });
+    expect(await verifyPlaidWebhookToken(token(fresh), key, Buffer.from(BODY), now())).toEqual({
+      ok: true,
+    });
   });
 });
 

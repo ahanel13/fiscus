@@ -4,8 +4,8 @@ import {
   plaidWebhookAction,
   plaidWebhookBodySchema,
   PlaidWebhookKeys,
-  plaidWebhookSignatureValid,
   readPlaidWebhookToken,
+  verifyPlaidWebhookToken,
   resolvePlaidCredentials,
   type PlaidCredentials,
   type PlaidWebhookRejection,
@@ -43,7 +43,7 @@ export interface PlaidWebhookRequest {
  * outcome counted through definer functions only (migration plaid_webhooks_access).
  *
  * Every request is checked before anything happens: its JWT's shape, `alg` ES256, `iat` within five
- * minutes, the raw body's SHA-256, then the signature, with the key Plaid serves for that `kid` to
+ * minutes, the raw body's SHA-256, then the signature (verified with `jose`), with the key Plaid serves for that `kid` to
  * the Item's own credential set (ADR 0008 §Credentials 4; the server's keys for an Item no
  * connection has). A refusal is 401, counted and logged by reason only. A verified webhook only
  * queues work (WEBHOOK-005): a sync, or a check that asks Plaid before changing anything. Bodies,
@@ -97,9 +97,8 @@ export class PlaidWebhookService {
         'retry-after': '60',
       });
     }
-    if (!plaidWebhookSignatureValid(read.token, key.key)) {
-      return this.#refuse('signature', keys.credentialSetId);
-    }
+    const verified = await verifyPlaidWebhookToken(read.token, key.key, req.rawBody, this.now());
+    if (!verified.ok) return this.#refuse(verified.reason, keys.credentialSetId);
 
     if (!item) {
       // Verified, but for an Item no connection here has (removed, or another instance's).

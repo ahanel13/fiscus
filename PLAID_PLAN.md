@@ -125,7 +125,7 @@ Webhooks (#84, #85), only for instances Plaid can reach:
 - [x] Existing Items moved with `/item/webhook/update` when the URL changes, each with its own
       keys, and off webhooks when it's unset; `webhook_enabled` once Plaid's
       WEBHOOK_UPDATE_ACKNOWLEDGED arrives (WEBHOOK-002, WEBHOOK-008) (#84)
-- [x] Verified by its ES256 JWT (`alg` exactly ES256, the key from
+- [x] Verified by its ES256 JWT with `jose` (`alg` exactly ES256, the key from
       `/webhook_verification_key/get` for the Item's own credential set, cached by `kid` until
       `expired_at`), raw-body SHA-256 in constant time, and `iat` at most 5 minutes old; the
       header read case-insensitively (WEBHOOK-003, WEBHOOK-004) (#84)
@@ -164,6 +164,10 @@ Webhooks (#84, #85), only for instances Plaid can reach:
   007 (no redirect URI: plain HTTP), 008 and 015 (no sandbox keys, so no real sandbox run or
   second persona; webhooks tested with locally made ES256 keys only), 009 (needs_human and
   cannot_verify tasks remain).
+- Round 4 (2026-11-19, webhook JWTs verified with `jose`, #84): FAIL, on the same four. Passed
+  001–006, 010–014; 011 no longer has the WEBHOOK-003 deviation. Run live again: unsigned 401,
+  signed 200, changed body 401, an HS256 header 401. Failed: 007, 008, 009 and 015, as in
+  round 3.
 
 ## Maintenance
 
@@ -212,10 +216,13 @@ it's skipped.
   approved by the user.
 - Webhooks (#84): `PLAID_WEBHOOK_URL` (env only for now) turns them on; polling still runs, and
   relaxes to every 12 hours for an Item with webhooks only while they're healthy (a verified one
-  in 48 hours, no refusal in 24). Verification uses `node:crypto` (ES256 with `ieee-p1363`
-  signatures) rather than a JWT library, as the issue decided: Node's own ECDSA, with every claim
-  checked by hand and tested against forged tokens (`alg` none, HS256, another key, an unknown
-  `kid`, a stale `iat`, a changed body).
+  in 48 hours, no refusal in 24). Verification uses `jose` (6.2.12), a vetted JWT library, as
+  WEBHOOK-003 asks: `jwtVerify` with `algorithms: ['ES256']` and `maxTokenAge` 5 minutes, keys
+  imported with `importJWK` for ES256. The user chose this over the issue's first plan of
+  hand-checking with `node:crypto` (2026-11-19). The raw body's SHA-256 is still compared in
+  constant time, before the key is fetched and again on the verified payload. Tested against
+  forged tokens (`alg` none, HS256, another key, an unknown `kid`, a stale `iat`, a changed
+  body).
 - Polling instead of webhooks by default: a self-hosted instance is often LAN-only, with no public
   HTTPS receiver, so each connection syncs on a schedule (`next_sync_at`, every 4 hours by default) and webhooks are opt-in (#84). This
   is a stated stopgap, not a silent default (WEBHOOK-005). Accepted by the user on 2026-10-22:

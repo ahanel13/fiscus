@@ -502,7 +502,8 @@ Webhooks only make updates sooner.
 - **The receiver**, `POST /api/v1/webhooks/plaid`: no session and no CSRF token; 16 KB at most
   (413), read as raw bytes for this route only; 120 requests a minute per client address (429,
   which Plaid retries). Then the `Plaid-Verification` JWT, in this order:
-  1. Its shape, and `alg` exactly `ES256` (`none` and HS256 refused before any key is looked up).
+  1. Its shape (read with `jose`'s decoders), and `alg` exactly `ES256` (`none` and HS256
+     refused before any key is looked up).
   2. `iat` at most 5 minutes old (30 seconds ahead allowed, for clocks that differ).
   3. `request_body_sha256` equal to the SHA-256 of the raw body, compared in constant time
      (WEBHOOK-004). These three need no key and are only a quick refusal.
@@ -514,7 +515,8 @@ Webhooks only make updates sooner.
      (set, `kid`) until Plaid's `expired_at`, and a day at most. A `kid` Plaid doesn't have is
      remembered for 10 minutes. Fetches are capped at 10 a minute per set: past that, or when
      Plaid can't be reached, the answer is 503 and Plaid sends the webhook again (WEBHOOK-007).
-  6. The ES256 signature, checked with `node:crypto`.
+  6. The JWT, verified with `jose` (`jwtVerify`, ES256 the only algorithm allowed, `maxTokenAge`
+     5 minutes), then the verified payload's body hash checked against the raw body again.
   Any refusal is 401 `webhook_unverified`, counted by reason, logged by reason only, and not acted
   on. Verified for an unknown Item: 200, counted as `unknown_item`. Otherwise 200 once queued.
 - **Triggers, not data** (WEBHOOK-005). `fiscus_queue_plaid_webhook` sets only scheduling columns:

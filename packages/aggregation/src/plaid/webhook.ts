@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { createHash, createPublicKey, timingSafeEqual, verify, type KeyObject } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { isProviderError } from '@fiscus/domain';
+import { decodeJwt, decodeProtectedHeader, errors as joseErrors, importJWK, jwtVerify } from 'jose';
 import { z } from 'zod';
 import type { PlaidClient } from './client.js';
 
@@ -42,38 +43,39 @@ export const PLAID_WEBHOOK_REJECTIONS: readonly PlaidWebhookRejection[] = [
 /** Plaid's answer to `/webhook_verification_key/get` for a `kid` it doesn't have. */
 const UNKNOWN_KEY_CODE = 'INVALID_WEBHOOK_VERIFICATION_KEY_ID';
 const KID = /^[A-Za-z0-9_.:-]{1,128}$/;
-const B64URL = /^[A-Za-z0-9_-]*$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+/** The only algorithm Plaid signs with, and the only one accepted (WEBHOOK-003). */
+const ALGORITHMS = ['ES256'];
 
-const headerSchema = z.object({
-  alg: z.string(),
-  kid: z.string().optional(),
-  typ: z.string().optional(),
-});
 const payloadSchema = z.object({ iat: z.number(), request_body_sha256: z.string() });
 
-/** The unverified parts of a JWT, once it has the shape of one. */
+/** A webhook's JWT, read but not yet verified: its `kid` picks the key it's checked with. */
 export interface PlaidWebhookToken {
+  /** The compact JWT, as Plaid sent it. */
+  jwt: string;
   kid: string;
-  iat: number;
-  bodySha256: string;
-  signingInput: Buffer;
-  signature: Buffer;
 }
 
-const decodePart = (part: string): unknown => {
-  if (!B64URL.test(part)) return undefined;
-  try {
-    return JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
-  } catch {
-    return undefined;
-  }
+/** The raw body's SHA-256 equals the token's, compared in constant time (WEBHOOK-004). */
+const bodyMatches = (claimed: string, rawBody: Buffer): boolean =>
+  SHA256_HEX.test(claimed) &&
+  timingSafeEqual(Buffer.from(claimed, 'hex'), createHash('sha256').update(rawBody).digest());
+
+/** `iat` within five minutes, and not more than the allowed skew ahead. */
+const fresh = (iat: number, now: number): boolean => {
+  const issuedAt = iat * 1000;
+  return (
+    Number.isFinite(issuedAt) &&
+    now - issuedAt <= PLAID_WEBHOOK_MAX_AGE_MS &&
+    issuedAt - now <= PLAID_WEBHOOK_CLOCK_SKEW_MS
+  );
 };
 
 /**
- * Checks everything that needs no key: the header's shape, `alg` exactly ES256, `iat` within five
- * minutes, and the body's SHA-256 (of the raw bytes, compared in constant time) equal to the
- * token's. These are only a quick refusal: none of it is trusted until the signature is checked.
+ * Checks everything that needs no key, with `jose`'s decoders: a JWT's shape, `alg` exactly
+ * ES256, a `kid`, `iat` within five minutes, and the raw body's SHA-256 equal to the token's
+ * (constant time). Only a quick refusal, so a forgery costs no key fetch: none of it is trusted
+ * until `verifyPlaidWebhookToken` has checked the signature, and checked them all again.
  */
 export function readPlaidWebhookToken(
   header: string | undefined,
@@ -81,61 +83,76 @@ export function readPlaidWebhookToken(
   now: number,
 ): { ok: true; token: PlaidWebhookToken } | { ok: false; reason: PlaidWebhookRejection } {
   if (header === undefined || header === '') return { ok: false, reason: 'missing' };
-  const parts = header.split('.');
-  if (parts.length !== 3 || header.length > 4096) return { ok: false, reason: 'malformed' };
-  const [h, p, s] = parts as [string, string, string];
-  const head = headerSchema.safeParse(decodePart(h));
-  if (!head.success) return { ok: false, reason: 'malformed' };
-  if (head.data.alg !== 'ES256') return { ok: false, reason: 'algorithm' };
-  if (!head.data.kid || !KID.test(head.data.kid)) return { ok: false, reason: 'malformed' };
-  const payload = payloadSchema.safeParse(decodePart(p));
+  if (header.length > 4096 || header.split('.').length !== 3) {
+    return { ok: false, reason: 'malformed' };
+  }
+  let head: ReturnType<typeof decodeProtectedHeader>;
+  let claims: unknown;
+  try {
+    head = decodeProtectedHeader(header);
+    claims = decodeJwt(header);
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  if (head.alg !== 'ES256') return { ok: false, reason: 'algorithm' };
+  if (typeof head.kid !== 'string' || !KID.test(head.kid))
+    return { ok: false, reason: 'malformed' };
+  const payload = payloadSchema.safeParse(claims);
   if (!payload.success || !SHA256_HEX.test(payload.data.request_body_sha256)) {
     return { ok: false, reason: 'malformed' };
   }
-  const issuedAt = payload.data.iat * 1000;
-  if (
-    !Number.isFinite(issuedAt) ||
-    now - issuedAt > PLAID_WEBHOOK_MAX_AGE_MS ||
-    issuedAt - now > PLAID_WEBHOOK_CLOCK_SKEW_MS
-  ) {
-    return { ok: false, reason: 'stale' };
+  if (!fresh(payload.data.iat, now)) return { ok: false, reason: 'stale' };
+  if (!bodyMatches(payload.data.request_body_sha256, rawBody)) {
+    return { ok: false, reason: 'body_hash' };
   }
-  const expected = Buffer.from(payload.data.request_body_sha256, 'hex');
-  const actual = createHash('sha256').update(rawBody).digest();
-  if (!timingSafeEqual(expected, actual)) return { ok: false, reason: 'body_hash' };
-  if (!B64URL.test(s)) return { ok: false, reason: 'malformed' };
-  const signature = Buffer.from(s, 'base64url');
-  // ES256's signature is r and s, 32 bytes each (JWS, RFC 7518 §3.4).
-  if (signature.length !== 64) return { ok: false, reason: 'signature' };
-  return {
-    ok: true,
-    token: {
-      kid: head.data.kid,
-      iat: payload.data.iat,
-      bodySha256: payload.data.request_body_sha256,
-      signingInput: Buffer.from(`${h}.${p}`, 'ascii'),
-      signature,
-    },
-  };
+  return { ok: true, token: { jwt: header, kid: head.kid } };
 }
 
-/** The token's ES256 signature, checked with node:crypto against Plaid's key. */
-export const plaidWebhookSignatureValid = (token: PlaidWebhookToken, key: KeyObject): boolean => {
+/**
+ * The token verified with `jose` against Plaid's key (WEBHOOK-003): the ES256 signature, with
+ * ES256 the only algorithm allowed, and `iat` at most five minutes old (`maxTokenAge`, with the
+ * same skew allowed ahead). Then the verified payload's body hash is compared with the raw body
+ * again, in constant time, so nothing from before the signature check is relied on.
+ */
+export async function verifyPlaidWebhookToken(
+  token: PlaidWebhookToken,
+  key: CryptoKey,
+  rawBody: Buffer,
+  now: number,
+): Promise<{ ok: true } | { ok: false; reason: PlaidWebhookRejection }> {
+  let verified: unknown;
   try {
-    return verify(
-      'sha256',
-      token.signingInput,
-      { key, dsaEncoding: 'ieee-p1363' },
-      token.signature,
-    );
-  } catch {
-    return false;
+    ({ payload: verified } = await jwtVerify(token.jwt, key, {
+      algorithms: ALGORITHMS,
+      maxTokenAge: PLAID_WEBHOOK_MAX_AGE_MS / 1000,
+      clockTolerance: PLAID_WEBHOOK_CLOCK_SKEW_MS / 1000,
+      currentDate: new Date(now),
+    }));
+  } catch (error) {
+    if (error instanceof joseErrors.JOSEAlgNotAllowed) return { ok: false, reason: 'algorithm' };
+    if (error instanceof joseErrors.JWSSignatureVerificationFailed) {
+      return { ok: false, reason: 'signature' };
+    }
+    if (
+      error instanceof joseErrors.JWTExpired ||
+      (error instanceof joseErrors.JWTClaimValidationFailed && error.claim === 'iat')
+    ) {
+      return { ok: false, reason: 'stale' };
+    }
+    return { ok: false, reason: 'malformed' };
   }
-};
+  const payload = payloadSchema.safeParse(verified);
+  if (!payload.success) return { ok: false, reason: 'malformed' };
+  if (!fresh(payload.data.iat, now)) return { ok: false, reason: 'stale' };
+  if (!bodyMatches(payload.data.request_body_sha256, rawBody)) {
+    return { ok: false, reason: 'body_hash' };
+  }
+  return { ok: true };
+}
 
 /** What the key cache can answer: a key, none by that id, or "ask again later". */
 export type PlaidWebhookKeyResult =
-  | { found: true; key: KeyObject }
+  | { found: true; key: CryptoKey }
   | { found: false; reason: 'unknown_key' }
   | { found: false; reason: 'unavailable' };
 
@@ -159,7 +176,7 @@ export interface PlaidWebhookKeysOptions {
  * answers with 503, so Plaid sends that webhook again later (WEBHOOK-007).
  */
 export class PlaidWebhookKeys {
-  readonly #keys = new Map<string, { key: KeyObject | null; until: number }>();
+  readonly #keys = new Map<string, { key: CryptoKey | null; until: number }>();
   readonly #fetches = new Map<string, { count: number; resetAt: number }>();
   readonly #pending = new Map<string, Promise<PlaidWebhookKeyResult>>();
   readonly #fetchesPerMinute: number;
@@ -239,12 +256,12 @@ export class PlaidWebhookKeys {
     ) {
       return this.#unknown(id);
     }
-    let publicKey: KeyObject;
+    let publicKey: CryptoKey;
     try {
-      publicKey = createPublicKey({
-        key: { kty: 'EC', crv: 'P-256', x: key.x, y: key.y },
-        format: 'jwk',
-      });
+      // Imported by jose for ES256 only: a key of another curve or type is refused here.
+      const imported = await importJWK({ kty: 'EC', crv: 'P-256', x: key.x, y: key.y }, 'ES256');
+      if (imported instanceof Uint8Array) return this.#unknown(id);
+      publicKey = imported;
     } catch {
       return this.#unknown(id);
     }
@@ -257,7 +274,7 @@ export class PlaidWebhookKeys {
     return { found: false, reason: 'unknown_key' };
   }
 
-  #remember(id: string, key: KeyObject | null, until: number): void {
+  #remember(id: string, key: CryptoKey | null, until: number): void {
     this.#keys.delete(id);
     this.#keys.set(id, { key, until });
     if (this.#keys.size > this.#maxEntries) this.#prune(this.#keys, this.#now(), (v) => v.until);
