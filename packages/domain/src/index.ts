@@ -126,3 +126,14 @@ export {
   type PayStyle,
   type SpendingCategory,
 } from './forecast.js';
+export {
+  defaultFundingStart,
+  fundingPeriods,
+  fundingProgress,
+  nextPeriodStart,
+  type FundingCadence,
+  type FundingPeriod,
+  type FundingPeriodProgress,
+  type FundingProgress,
+  type FundingStatus,
+} from './funding.js';

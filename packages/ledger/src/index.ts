@@ -16,3 +16,4 @@ export * from './recap.js';
 export * from './recurring.js';
 export * from './review.js';
 export * from './transfers.js';
+export * from './funding.js';

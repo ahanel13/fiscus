@@ -205,3 +205,83 @@ export interface AttributionFlagStatus {
 export const flagAttributionSchema = z.object({
   note: z.string().trim().min(1).max(500).optional(),
 });
+
+// Joint-account funding targets (ADR 0006 §7.3, #113).
+
+export const FUNDING_CADENCES = ['weekly', 'every_two_weeks', 'monthly'] as const;
+export type FundingCadence = (typeof FUNDING_CADENCES)[number];
+
+export const FUNDING_CADENCE_LABELS: Record<FundingCadence, string> = {
+  weekly: 'a week',
+  every_two_weeks: 'every two weeks',
+  monthly: 'a month',
+};
+
+/**
+ * Sets what a member moves into a joint account each period. Only a fixed amount for now: a
+ * share of income (`percent_of_income`) would show others that member's income, so it waits for
+ * their consent (#110, F4). `startsOn` defaults to the start of this period; a monthly target
+ * starts on the first of a month.
+ */
+export const setFundingTargetSchema = z
+  .object({
+    method: z.literal('fixed'),
+    amountMinor: minorUnitsSchema.min(1),
+    cadence: z.enum(FUNDING_CADENCES),
+    startsOn: z.iso.date().optional(),
+  })
+  .strict()
+  .refine((t) => t.cadence !== 'monthly' || !t.startsOn || t.startsOn.endsWith('-01'), {
+    message: 'A monthly target starts on the first of a month',
+    path: ['startsOn'],
+  });
+export type SetFundingTarget = z.infer<typeof setFundingTargetSchema>;
+
+/** `not_started`: its first period hasn't begun. */
+export type FundingStatus = 'on_track' | 'behind' | 'ahead' | 'not_started';
+
+export interface FundingPeriodProgress {
+  from: string;
+  to: string;
+  targetMinor: number;
+  contributedMinor: number;
+}
+
+/** One member's target for a joint account, and how it's going. */
+export interface FundingTarget {
+  id: string;
+  accountId: string;
+  memberId: string;
+  method: 'fixed';
+  amountMinor: number;
+  cadence: FundingCadence;
+  startsOn: string;
+  status: FundingStatus;
+  /** Moved in from their own accounts since it started. */
+  contributedMinor: number;
+  /** Behind: short of what was due by now. Ahead: over what's due by the end of this period. */
+  differenceMinor: number;
+  /** Still to move in this period, catching up included. */
+  leftThisPeriodMinor: number;
+  /** The period today is in; null before it starts. */
+  current: FundingPeriodProgress | null;
+  /** The latest periods, newest first, this one included. */
+  recent: FundingPeriodProgress[];
+  setByMemberId: string;
+}
+
+/** A joint account you own, its owners, and the targets for funding it. */
+export interface FundingAccount {
+  accountId: string;
+  accountName: string;
+  currency: string;
+  ownerIds: string[];
+  targets: FundingTarget[];
+}
+
+export interface FundingTargets {
+  /** Today, in the household's time zone. */
+  today: string;
+  /** Joint accounts you own, by name. */
+  accounts: FundingAccount[];
+}

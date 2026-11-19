@@ -38,6 +38,7 @@ describe('row-level security', () => {
     'connection_secrets',
     'connections',
     'category_groups',
+    'funding_targets',
     'goal_claim_events',
     'goal_claims',
     'goal_plans',

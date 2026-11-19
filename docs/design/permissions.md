@@ -185,6 +185,8 @@ caller can't see ("Transfer to Anthony").
 | SHR-04 | Record or remove a settle-up between you and someone else | own | own | ❌ | Only the two people it's between see or remove it. A transfer that paid it must be in an account you own; it's then marked a settle-up |
 | SHR-05 | Agree to a split by income, change the income it uses, or withdraw (F4, #110) | own | own | ❌ | For yourself only, from today: nothing before moves. Your income (a figure you enter, or your income over the last 3 months) is yours alone, not even owners or system jobs read it. Agreeing and withdrawing are in the household's activity, without any figure |
 | SHR-06 | Read where a split by income stands | ✅ | ✅ | ✅ | Who has agreed, and today's split between them in percentages. Never anyone's income, or which income they chose; your own choice shows only to you |
+| SHR-07 | Read the funding targets of joint accounts, and how each is going | ✅ | ✅ | ✅ | Only on joint accounts whose transactions you see (owner, full or view-only access): what each owner moved in from their own accounts shows as them, never the account (F1) |
+| SHR-08 | Set, change or remove a funding target for an owner of a joint account | acct-own | acct-own | ❌ | Only the account's owners, for any of its owners. A fixed amount a week, every two weeks or a month; a share of income isn't offered yet, as it would need that member's consent (SHR-05, F4). Each change is in the activity of those who see the account |
 
 ### 4.10 Bills and recurring (bills walkthrough §1–§3, §6)
 | ID | Action | OWN | MEM | VIEW | Notes |
