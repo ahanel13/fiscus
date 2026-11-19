@@ -466,6 +466,13 @@ rule starts from a date, and a rule never changes a month that's been settled.
 - Anyone can withdraw later, and the split goes back to the default from that day.
 - Requests expire after 14 days (#265).
 
+*As built (#110):* each person agrees for themselves under **Household settings → Shared costs**
+(**Your income, for splits by income**), from that day on. A split by income counts for an
+expense once everyone it's for has agreed, so a third member who isn't part of the rent doesn't
+hold it up. The rule shows **Waiting for …** or today's split. The others see who has agreed and
+the split, never an income or which income someone chose. Asking someone, with Not now / Decline
+and the 14-day expiry, comes with #265.
+
 ---
 
 ## 10. Settling up

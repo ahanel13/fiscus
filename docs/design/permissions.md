@@ -180,9 +180,11 @@ caller can't see ("Transfer to Anthony").
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
 | SHR-01 | Read the household's split rules | ✅ | ✅ | ✅ | |
-| SHR-02 | Change the default split or a category's rule, or cancel one not yet started | ✅ | ✅ | ❌ | From this month on, never earlier: a month that has started keeps its rule. Each change is in the household's activity. Split by income needs every affected member's consent (#110) |
+| SHR-02 | Change the default split or a category's rule, or cancel one not yet started | ✅ | ✅ | ❌ | From this month on, never earlier: a month that has started keeps its rule. Each change is in the household's activity. A split by income can be set any time, and counts for an expense only once everyone it's for has agreed (SHR-05) |
 | SHR-03 | Read your balance with each person, and the month's shared expenses | own | own | own | Only balances that involve you, from shared expenses you're for or paid. Someone else's payment shows as them, never their account (F1) |
 | SHR-04 | Record or remove a settle-up between you and someone else | own | own | ❌ | Only the two people it's between see or remove it. A transfer that paid it must be in an account you own; it's then marked a settle-up |
+| SHR-05 | Agree to a split by income, change the income it uses, or withdraw (F4, #110) | own | own | ❌ | For yourself only, from today: nothing before moves. Your income (a figure you enter, or your income over the last 3 months) is yours alone, not even owners or system jobs read it. Agreeing and withdrawing are in the household's activity, without any figure |
+| SHR-06 | Read where a split by income stands | ✅ | ✅ | ✅ | Who has agreed, and today's split between them in percentages. Never anyone's income, or which income they chose; your own choice shows only to you |
 
 ### 4.10 Bills and recurring (bills walkthrough §1–§3, §6)
 | ID | Action | OWN | MEM | VIEW | Notes |

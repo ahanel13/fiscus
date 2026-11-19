@@ -30,7 +30,62 @@ describe('splitRuleFor', () => {
   });
 });
 
+describe('splitRuleFor, by income (F4, #110)', () => {
+  const policies: SplitPolicyRow[] = [
+    { categoryId: null, effectiveFrom: '2026-01-01', rule: shares({ a: 7000, b: 3000 }) },
+    { categoryId: 'rent', effectiveFrom: '2026-10-01', rule: { method: 'income_proportional' } },
+  ];
+  // Both agreed from Oct 10, and c never did.
+  const income = (date: string) =>
+    date >= '2026-10-10'
+      ? [
+          { memberId: 'a', shareBps: 5700 },
+          { memberId: 'b', shareBps: 4300 },
+        ]
+      : null;
+
+  it('splits by the shares that day once everyone it’s for has agreed', () => {
+    expect(splitRuleFor(policies, 'rent', '2026-10-12', ['a', 'b'], income)).toEqual({
+      method: 'income_proportional',
+      shares: income('2026-10-12'),
+    });
+  });
+
+  it('falls back to the household default until then, or without someone’s consent', () => {
+    const fallback = shares({ a: 7000, b: 3000 });
+    expect(splitRuleFor(policies, 'rent', '2026-10-09', ['a', 'b'], income)).toEqual(fallback);
+    expect(splitRuleFor(policies, 'rent', '2026-10-12', ['a', 'c'], income)).toEqual(fallback);
+    expect(splitRuleFor(policies, 'rent', '2026-10-12', ['a', 'b'])).toEqual(fallback);
+  });
+
+  it('falls back to an equal split when the default is by income and unagreed', () => {
+    const byIncome: SplitPolicyRow[] = [
+      { categoryId: null, effectiveFrom: '2026-01-01', rule: { method: 'income_proportional' } },
+    ];
+    expect(splitRuleFor(byIncome, 'rent', '2026-10-01', ['a', 'b'], income)).toEqual({
+      method: 'equal',
+    });
+  });
+});
+
 describe('splitShares', () => {
+  it('scales a split by income to the people it’s for', () => {
+    const rule = {
+      method: 'income_proportional' as const,
+      shares: [
+        { memberId: 'a', shareBps: 5000 },
+        { memberId: 'b', shareBps: 3000 },
+        { memberId: 'c', shareBps: 2000 },
+      ],
+    };
+    expect(splitShares(rule, ['b', 'c'])).toEqual(
+      new Map([
+        ['b', 6000],
+        ['c', 4000],
+      ]),
+    );
+  });
+
   it('splits equally, giving odd basis points to the first members', () => {
     expect(splitShares({ method: 'equal' }, ['a', 'b'])).toEqual(
       new Map([

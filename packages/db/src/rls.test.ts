@@ -44,6 +44,7 @@ describe('row-level security', () => {
     'goals',
     'import_batches',
     'import_profiles',
+    'income_split_consents',
     'member_preferences',
     'notification_channels',
     'notification_deliveries',

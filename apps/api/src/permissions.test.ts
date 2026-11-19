@@ -1033,6 +1033,30 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
       }),
     ),
 
+  // A split by income (F4, #110): you agree for yourself; everyone sees who has and the split.
+  'SHR-05/OWN': async () => {
+    ok(await f.A.request('PUT', url('/income-split/consent'), { basis: 'actual' }));
+    ok(await f.A.delete(url('/income-split/consent')));
+  },
+  'SHR-05/MEM': async () => {
+    const r = await f.B.request('PUT', url('/income-split/consent'), {
+      basis: 'declared',
+      declaredMonthlyMinor: 432_109,
+    });
+    ok(r);
+    expect(r.body.data.yours).toEqual({ basis: 'declared', declaredMonthlyMinor: 432_109 });
+    // Nobody else sees the figure, or which income B chose.
+    const seen = (await f.A.get(url('/income-split'))).body.data;
+    expect(seen.yours).toBeNull();
+    expect(JSON.stringify(seen)).not.toContain('432109');
+    ok(await f.B.delete(url('/income-split/consent')));
+  },
+  'SHR-05/VIEW': async () =>
+    refused(await f.V.request('PUT', url('/income-split/consent'), { basis: 'actual' })),
+  'SHR-06/OWN': async () => ok(await f.A.get(url('/income-split'))),
+  'SHR-06/MEM': async () => ok(await f.B.get(url('/income-split'))),
+  'SHR-06/VIEW': async () => ok(await f.V.get(url('/income-split'))),
+
   // ── 4.11 Sessions ──
   'TOK-04/OWN': async () => ok(await f.A.get('/api/v1/me/sessions')),
   'TOK-04/MEM': async () => ok(await f.B.get('/api/v1/me/sessions')),

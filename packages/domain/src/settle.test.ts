@@ -125,6 +125,28 @@ describe('who owes whom', () => {
     expect(pairBalances(expenseEffects([byHand], policies)).owes('alex', 'sam')).toBe(9000);
   });
 
+  it('splits by income once both have agreed, and by the default before (#110)', () => {
+    const policies: SplitPolicyRow[] = [
+      { categoryId: 'rent', effectiveFrom: '2026-10-01', rule: { method: 'income_proportional' } },
+    ];
+    const income = (date: string) =>
+      date >= '2026-10-10'
+        ? [
+            { memberId: 'alex', shareBps: 6000 },
+            { memberId: 'sam', shareBps: 4000 },
+          ]
+        : null;
+    const rent = (date: string) => expense(date, 200000, by('sam'), { categoryId: 'rent', date });
+    // Before they agreed: equally, so Alex owes half.
+    expect(
+      pairBalances(expenseEffects([rent('2026-10-01')], policies, income)).owes('alex', 'sam'),
+    ).toBe(100000);
+    // After: Alex's 60%.
+    expect(
+      pairBalances(expenseEffects([rent('2026-10-12')], policies, income)).owes('alex', 'sam'),
+    ).toBe(120000);
+  });
+
   it('works out a fixed monthly amount over the month, the rest equally (#109)', () => {
     const policies: SplitPolicyRow[] = [
       {

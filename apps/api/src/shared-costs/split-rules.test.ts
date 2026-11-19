@@ -132,7 +132,7 @@ describe('split rules', () => {
     expect(mid.status).toBe(422);
   });
 
-  it('names only people in the household, and doesn’t take split by income yet', async () => {
+  it('names only people in the household, and takes a split by income (#110)', async () => {
     const stranger = await A.request('PUT', url('/split-rules/default'), {
       rule: {
         method: 'fixed_percent',
@@ -148,7 +148,9 @@ describe('split rules', () => {
       rule: { method: 'income_proportional' },
       effectiveFrom: nextMonth,
     });
-    expect(income.status).toBe(422);
+    expect(income.status, JSON.stringify(income.body)).toBe(200);
+    expect(income.body.data.rule).toEqual({ method: 'income_proportional' });
+    expect((await A.delete(url(`/split-rules/${income.body.data.id}`))).status).toBe(204);
     // Shares that don't add up to 100%.
     const short = await A.request('PUT', url('/split-rules/default'), {
       rule: {

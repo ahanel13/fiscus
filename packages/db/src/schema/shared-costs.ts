@@ -23,7 +23,7 @@ import { categories, transactions } from './ledger.js';
 
 export const splitMethod = pgEnum('split_method', [
   'equal',
-  // Needs every affected member's consent first (F4, #110); not accepted by the api until then.
+  // Counts only while every affected member consents (F4, #110): `income_split_consents`.
   'income_proportional',
   'fixed_percent',
   'fixed_amount',
@@ -76,6 +76,50 @@ export const splitPolicies = pgTable(
     check(
       'split_policies_default_method',
       sql`${t.categoryId} IS NOT NULL OR ${t.method} IS NOT NULL`,
+    ),
+  ],
+);
+
+/** What a member's share of a split by income is worked out from (F4, #110). */
+export const incomeBasis = pgEnum('income_basis', [
+  // A monthly figure they enter.
+  'declared',
+  // Their income over the 3 months before: income transactions attributed to them.
+  'actual',
+]);
+
+/**
+ * Each member's consent to a split by income (F4, #110, walkthrough D19), from a day on. A row
+ * with a basis consents from `effective_from`; one without withdraws from it. What holds on a day
+ * is the member's latest row starting on or before it, so a change never reaches back. Only the
+ * member reads their own rows (migration 0100): others learn only whether they've consented and
+ * the split it makes, through definer functions that never return an income.
+ */
+export const incomeSplitConsents = pgTable(
+  'income_split_consents',
+  {
+    id: id(),
+    householdId: uuid()
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    memberId: uuid().notNull(),
+    effectiveFrom: date({ mode: 'string' }).notNull(),
+    /** Null: withdrawn from `effective_from`. */
+    basis: incomeBasis(),
+    /** For `declared`: the monthly figure, in the household's currency. */
+    declaredMonthlyMinor: money('declared_monthly_minor'),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('income_split_consents_from').on(t.householdId, t.memberId, t.effectiveFrom),
+    foreignKey({
+      columns: [t.householdId, t.memberId],
+      foreignColumns: [householdMembers.householdId, householdMembers.id],
+    }),
+    index().on(t.memberId),
+    check(
+      'income_split_consents_declared',
+      sql`coalesce(${t.basis} = 'declared', false) = (${t.declaredMonthlyMinor} IS NOT NULL) AND coalesce(${t.declaredMonthlyMinor}, 0) >= 0`,
     ),
   ],
 );

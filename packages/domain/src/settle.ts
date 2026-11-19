@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { type SplitPolicyRow, type SplitRuleInput, splitRuleFor, splitShares } from './split.js';
+import {
+  type AppliedRule,
+  type IncomeShares,
+  type SplitPolicyRow,
+  splitRuleFor,
+  splitShares,
+} from './split.js';
 
 // Who owes whom (#111, ADR 0006 §7.2, budgeting walkthrough §8): for each shared expense, what
 // each person paid (the account's owners on its date) against what each owes (the split rule for
@@ -70,20 +76,28 @@ const mainPayer = (e: SharedExpense) =>
  * hand is a split of its own and wins; otherwise the category's rule decides. A fixed monthly
  * amount ("You $400 · the rest equally") is worked out over the month: those named pay their
  * amounts, scaled down if the month cost less, and the rest is split equally among the others.
+ * A split by income uses `incomeShares` on the expense's date (#110).
  */
 export function expenseEffects(
   expenses: readonly SharedExpense[],
   policies: readonly SplitPolicyRow[],
+  incomeShares?: IncomeShares,
 ): ExpenseEffect[] {
   const effects: ExpenseEffect[] = [];
   // Fixed-amount rules are settled per category per month, across that month's expenses.
   const fixedGroups = new Map<
     string,
-    { rule: Extract<SplitRuleInput, { method: 'fixed_amount' }>; items: SharedExpense[] }
+    { rule: Extract<AppliedRule, { method: 'fixed_amount' }>; items: SharedExpense[] }
   >();
   for (const e of expenses) {
     const unequal = new Set(e.forMembers.map((f) => f.shareBps)).size > 1;
-    const rule = splitRuleFor(policies, e.categoryId, e.date);
+    const rule = splitRuleFor(
+      policies,
+      e.categoryId,
+      e.date,
+      e.forMembers.map((f) => f.memberId),
+      incomeShares,
+    );
     if (!unequal && rule.method === 'fixed_amount') {
       const key = `${e.categoryId}|${e.date.slice(0, 7)}`;
       const g = fixedGroups.get(key) ?? { rule, items: [] };

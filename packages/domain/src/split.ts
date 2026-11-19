@@ -7,7 +7,21 @@
 export type SplitRuleInput =
   | { method: 'equal' }
   | { method: 'fixed_percent'; shares: readonly { memberId: string; shareBps: number }[] }
-  | { method: 'fixed_amount'; amounts: readonly { memberId: string; amountMinor: number }[] };
+  | { method: 'fixed_amount'; amounts: readonly { memberId: string; amountMinor: number }[] }
+  | { method: 'income_proportional' };
+
+/** A rule as it applies to one expense: a split by income comes as the shares it makes that day. */
+export type AppliedRule =
+  | Exclude<SplitRuleInput, { method: 'income_proportional' }>
+  | { method: 'income_proportional'; shares: readonly { memberId: string; shareBps: number }[] };
+
+/**
+ * The split by income on a day (F4, #110), between everyone who had agreed to it by then; null
+ * when nobody had. The shares come from the database, never the incomes behind them.
+ */
+export type IncomeShares = (
+  date: string,
+) => readonly { memberId: string; shareBps: number }[] | null;
 
 export interface SplitPolicyRow {
   /** Null for the household's default. */
@@ -18,7 +32,7 @@ export interface SplitPolicyRow {
   rule: SplitRuleInput | null;
 }
 
-const EQUAL: SplitRuleInput = { method: 'equal' };
+const EQUAL: AppliedRule = { method: 'equal' };
 
 const latest = (rows: readonly SplitPolicyRow[], date: string) => {
   let found: SplitPolicyRow | undefined;
@@ -29,47 +43,64 @@ const latest = (rows: readonly SplitPolicyRow[], date: string) => {
 };
 
 /**
- * The rule for an expense in `categoryId` on `date`: the category's own rule from then, else the
- * household's default from then, else an equal split.
+ * The rule for an expense in `categoryId` on `date`, for the people in `forMembers`: the
+ * category's own rule from then, else the household's default from then, else an equal split.
+ *
+ * A split by income counts only when everyone the expense is for had agreed to it by `date` (F4,
+ * #110). Until then it's as if it weren't there: a category's goes to the household default, and
+ * the default's to an equal split.
  */
 export function splitRuleFor(
   policies: readonly SplitPolicyRow[],
   categoryId: string | null,
   date: string,
-): SplitRuleInput {
+  forMembers: readonly string[] = [],
+  incomeShares?: IncomeShares,
+): AppliedRule {
+  const applied = (rule: SplitRuleInput | null | undefined): AppliedRule | null => {
+    if (!rule) return null;
+    if (rule.method !== 'income_proportional') return rule;
+    const shares = incomeShares?.(date);
+    if (!shares || forMembers.length === 0) return null;
+    const agreed = new Set(shares.map((s) => s.memberId));
+    return forMembers.every((m) => agreed.has(m)) ? { method: rule.method, shares } : null;
+  };
   if (categoryId !== null) {
     const own = latest(
       policies.filter((p) => p.categoryId === categoryId),
       date,
     );
-    if (own?.rule) return own.rule;
+    const rule = applied(own?.rule);
+    if (rule) return rule;
   }
   return (
-    latest(
-      policies.filter((p) => p.categoryId === null),
-      date,
-    )?.rule ?? EQUAL
+    applied(
+      latest(
+        policies.filter((p) => p.categoryId === null),
+        date,
+      )?.rule,
+    ) ?? EQUAL
   );
 }
 
 /**
  * Each member's share of one expense, in basis points adding up to 10 000, for the members it's
- * for. `equal` divides evenly; `fixed_percent` scales the rule's shares to the members present,
- * and splits evenly if none of them have one. Basis points that don't divide evenly go one each to
+ * for. `equal` divides evenly; `fixed_percent` and `income_proportional` scale the rule's shares to
+ * the members present, and split evenly if none of them have one. Basis points that don't divide evenly go one each to
  * the members first in `members`' order, so the result never depends on anything else.
  *
  * `fixed_amount` is a monthly amount, not a share of one expense: it returns null, and settle-up
  * works it out over the month.
  */
 export function splitShares(
-  rule: SplitRuleInput,
+  rule: AppliedRule,
   members: readonly string[],
 ): Map<string, number> | null {
   const unique = [...new Set(members)];
   if (unique.length === 0) return new Map();
   if (rule.method === 'fixed_amount') return null;
   const weights =
-    rule.method === 'fixed_percent'
+    rule.method === 'fixed_percent' || rule.method === 'income_proportional'
       ? unique.map((m) => rule.shares.find((s) => s.memberId === m)?.shareBps ?? 0)
       : unique.map(() => 1);
   const total = weights.reduce((a, b) => a + b, 0);

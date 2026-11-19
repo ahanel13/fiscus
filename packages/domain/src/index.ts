@@ -48,7 +48,14 @@ export {
   type ExpenseEffect,
   type SharedExpense,
 } from './settle.js';
-export { splitRuleFor, splitShares, type SplitPolicyRow, type SplitRuleInput } from './split.js';
+export {
+  type AppliedRule,
+  type IncomeShares,
+  splitRuleFor,
+  splitShares,
+  type SplitPolicyRow,
+  type SplitRuleInput,
+} from './split.js';
 export {
   addMonths,
   amountsFor,

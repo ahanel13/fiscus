@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { HouseholdMember } from '@fiscus/shared';
 import { describe, expect, it } from 'vitest';
-import { describeRule } from './shared-costs-settings.js';
+import { describeIncomeSplit, describeRule } from './shared-costs-settings.js';
 
 const members = [
   { id: 'a', displayName: 'Alex', isYou: true },
@@ -32,6 +32,7 @@ describe('describeRule', () => {
       ),
     ).toBe('You $400.00 a month · the rest equally');
     expect(describeRule(null, members, 'USD')).toBe('The household default');
+    expect(describeRule({ method: 'income_proportional' }, members, 'USD')).toBe('By income');
   });
 
   it('names someone who left without guessing', () => {
@@ -48,5 +49,29 @@ describe('describeRule', () => {
         'USD',
       ),
     ).toBe('Someone who left 50% · Sam 50%');
+  });
+});
+
+describe('describeIncomeSplit', () => {
+  const split = (consented: Record<string, boolean>, shares: Record<string, number> = {}) => ({
+    today: '2026-11-17',
+    members: Object.entries(consented).map(([memberId, c]) => ({ memberId, consented: c })),
+    shares: Object.entries(shares).map(([memberId, shareBps]) => ({ memberId, shareBps })),
+    yours: null,
+  });
+
+  it('says who it’s waiting for, you first', () => {
+    expect(describeIncomeSplit(split({ a: true, s: false }, { a: 10000 }), members)).toBe(
+      'Waiting for Sam',
+    );
+    expect(describeIncomeSplit(split({ a: false, s: false }), members)).toBe(
+      'Waiting for you and Sam',
+    );
+  });
+
+  it('shows the split once everyone has agreed, never an income', () => {
+    expect(describeIncomeSplit(split({ a: true, s: true }, { a: 4300, s: 5700 }), members)).toBe(
+      'Sam 57% · you 43%',
+    );
   });
 });
