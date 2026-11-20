@@ -412,3 +412,57 @@ export interface BudgetYear {
   /** Everything spent in each month. */
   spentMinor: number[];
 }
+
+/**
+ * A budget's template (#105): amounts saved from a month under a name, to fill a month with
+ * later. Seen as its budget is: the household's by everyone in it, your own by you alone.
+ */
+export interface BudgetTemplate {
+  id: string;
+  name: string;
+  amounts: { categoryId: string; amountMinor: number }[];
+  /** Flex's flexible number, when it was saved from a month that ran flex. */
+  flexibleMinor: number | null;
+  createdAt: string;
+}
+
+/** Saves a month's amounts, as its strategy reads them, as a template. */
+export const createBudgetTemplateSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  month: budgetMonthSchema,
+});
+
+/**
+ * What fills a month's amounts (#105): the month before it, the average of the three full months
+ * before it (spending you can see, rounded to $5, as setup's is), or a template.
+ */
+export const fillMonthSchema = z
+  .object({
+    source: z.enum(['last_month', 'average', 'template']),
+    templateId: z.uuid().optional(),
+  })
+  .refine((f) => (f.source === 'template') === (f.templateId !== undefined), {
+    message: 'Name the template to use, and only for a template',
+    path: ['templateId'],
+  });
+export type FillMonth = z.infer<typeof fillMonthSchema>;
+
+/**
+ * What filling a month would change (#105), before anything does. Each category the source has
+ * an amount for takes it, replacing what the month had; categories it doesn't mention keep
+ * theirs. Only the changes are listed.
+ */
+export interface FillPreview {
+  month: string;
+  source: FillMonth['source'];
+  /** For `last_month`, the month copied; for `average`, the months averaged, oldest first. */
+  months: string[];
+  changes: { categoryId: string; beforeMinor: number; afterMinor: number }[];
+  /** Flex's flexible number, when it changes. */
+  flexible: { beforeMinor: number; afterMinor: number } | null;
+  /**
+   * Categories the source has an amount for that keep theirs, because their amount is an allowance
+   * (D15), set in the shared budget.
+   */
+  allowances: string[];
+}

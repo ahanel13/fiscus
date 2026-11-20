@@ -248,6 +248,44 @@ Monarch's model:
 The flexible card says whether you're on pace ("84% of the month, 94% of the budget") and lists
 what's been spent in each flexible category, without limits.
 
+### 3.5 Filling a month
+
+**Fill amounts**, beside **Change how you budget** (in the menu on a phone), sets a month's
+amounts in one go (#105):
+- **Copy September**: the month before, as it was budgeted.
+- **Use 3-month average**: what was spent in the last three full months, as setup's start is
+  (D5). For a month still to come, that's the three before this one.
+- **Use a template**: amounts saved from a month under a name ("Holiday month"), with **Save as
+  a template**.
+
+**D29. Filling a month shows what changes, then replaces the amounts the source has.**
+- A preview lists each category that would change, from what it is to what it becomes. Nothing
+  changes until **Fill October**.
+- Each category the source has an amount for takes it, replacing what was set. Categories it
+  doesn't mention keep theirs. "Only fill empty ones" doesn't fit: a month without its own
+  amounts repeats the last one (D13), so every category already has one.
+- Later months without amounts of their own follow the filled month, as they follow any change.
+  Months with their own keep them.
+- **The average counts only spending you can see.** It reads the budget's scope (D1) the way the
+  month does, so a purchase shared by Sam and Jo isn't in Alex's average of Ours. Months with no
+  spending are left out, and amounts are rounded to $5. Expected income is averaged too, for
+  category limits. For someone who joined later, Ours starts at their history window (#256), so
+  nothing from before it is copied or averaged.
+- **An allowance's category keeps its amount.** Its amount is the allowance (D15), set in the
+  shared budget, so a fill leaves it alone and the preview says so. A template saved from a month
+  with an allowance leaves its category out.
+- **In each strategy.** Category limits fills limits and expected income. Zero-based fills
+  what's assigned (D27 is the one-click version). Flex fills its fixed costs, and sets the
+  flexible number to what the flexible categories add up to, or to the flexible number copied or
+  saved. 50/30/20 doesn't use the amounts; they're kept for switching back (D14), and the preview
+  says so.
+- **Templates belong to their budget.** Ours' templates are the household's, seen by everyone
+  who sees Ours and changed by owners and members (D4). Yours are yours alone (D3). A template
+  keeps each category's amount, leaving out zeros, and flex's flexible number when saved from a
+  flex month. A category deleted since is skipped; one merged into another adds its amount into
+  the other's, as the budget's amounts do.
+- Each fill, and each template saved or deleted, goes into the household's activity for Ours.
+
 ---
 
 ## 4. A category up close
@@ -637,6 +675,7 @@ real.
 | D26 | Ownership changes count from the day they're made, unless you include the history | #447 |
 | D27 | A zero-based month assigns afresh; Assign like last month copies the last one's amounts | #100 |
 | D28 | Funding targets are fixed amounts per period, tracked from contributions; a share of income waits for consent | #113 |
+| D29 | Filling a month (last month, 3-month average, a template) previews, then replaces the amounts the source has; the average counts only what you can see | #105 |
 
 ## Open questions
 

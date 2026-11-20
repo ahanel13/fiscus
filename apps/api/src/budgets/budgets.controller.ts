@@ -6,8 +6,12 @@ import {
   budgetScopeSchema,
   type BudgetSuggestion,
   type BudgetSummary,
+  type BudgetTemplate,
   type BudgetYear,
   createBudgetSchema,
+  createBudgetTemplateSchema,
+  type FillPreview,
+  fillMonthSchema,
   moveMoneySchema,
   type ScopePreview,
   setBudgetScopeSchema,
@@ -22,6 +26,7 @@ import {
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -221,5 +226,58 @@ export class BudgetsController {
     @Body(new ZodPipe(setPercentageSchema)) body: z.infer<typeof setPercentageSchema>,
   ): Promise<void> {
     await this.budgets.setPercentage(ctx, budgetId, month, body);
+  }
+
+  /** A budget's templates (#105). */
+  @Get(':budgetId/templates')
+  async templates(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+  ): Promise<{ data: BudgetTemplate[] }> {
+    return { data: await this.budgets.templates(ctx, budgetId) };
+  }
+
+  /** Saves a month's amounts as a template (#105). */
+  @Post(':budgetId/templates')
+  async createTemplate(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Body(new ZodPipe(createBudgetTemplateSchema))
+    body: z.infer<typeof createBudgetTemplateSchema>,
+  ): Promise<{ data: BudgetTemplate }> {
+    return { data: await this.budgets.createTemplate(ctx, budgetId, body) };
+  }
+
+  @Delete(':budgetId/templates/:templateId')
+  @HttpCode(204)
+  async deleteTemplate(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('templateId', UuidPipe) templateId: string,
+  ): Promise<void> {
+    await this.budgets.deleteTemplate(ctx, budgetId, templateId);
+  }
+
+  /** What filling a month would change (#105): last month, the 3-month average, or a template. */
+  @Get(':budgetId/months/:month/fill-preview')
+  async fillPreview(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
+    @Query(new ZodPipe(fillMonthSchema)) q: z.infer<typeof fillMonthSchema>,
+  ): Promise<{ data: FillPreview }> {
+    return { data: await this.budgets.fillPreview(ctx, budgetId, month, q) };
+  }
+
+  /** Fills a month's amounts (#105), as the preview showed. */
+  @Post(':budgetId/months/:month/fill')
+  @HttpCode(204)
+  async fill(
+    @Household() ctx: HouseholdContext,
+    @Param('budgetId', UuidPipe) budgetId: string,
+    @Param('month', new ZodPipe(budgetMonthSchema)) month: string,
+    @Body(new ZodPipe(fillMonthSchema)) body: z.infer<typeof fillMonthSchema>,
+  ): Promise<void> {
+    await this.budgets.fill(ctx, budgetId, month, body);
   }
 }

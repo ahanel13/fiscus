@@ -6,6 +6,7 @@ import {
   budgetMoves,
   budgets,
   budgetStrategies,
+  budgetTemplates,
   categories,
   categoryGroups,
   type Executor,
@@ -49,9 +50,13 @@ import type {
   BudgetScope,
   BudgetSuggestion,
   BudgetSummary,
+  BudgetTemplate,
   BudgetYear,
   BudgetYearRow,
   createBudgetSchema,
+  createBudgetTemplateSchema,
+  FillMonth,
+  FillPreview,
   MoveMoney,
   ScopePreview,
   setPercentageSchema,
@@ -60,6 +65,7 @@ import type {
 import { Injectable } from '@nestjs/common';
 import { and, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { z } from 'zod';
+import { violatedConstraint } from '../common/db-errors.js';
 import { Problem, problems } from '../common/problem.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import type { HouseholdActivity } from '../households/household-scope.js';
@@ -830,6 +836,181 @@ export class BudgetsService {
     });
   }
 
+  /** A budget's templates (#105), seen as the budget is. */
+  async templates(ctx: HouseholdContext, budgetId: string): Promise<BudgetTemplate[]> {
+    return this.scope.run(ctx, async (tx) => {
+      await findBudget(tx, budgetId);
+      const rows = await tx
+        .select()
+        .from(budgetTemplates)
+        .where(eq(budgetTemplates.budgetId, budgetId))
+        .orderBy(sql`lower(${budgetTemplates.name})`);
+      return rows.map(templateOf);
+    });
+  }
+
+  /**
+   * Saves a month's amounts as a template (#105): each category's amount as the month's strategy
+   * reads it, leaving out zeros (no budget), and flex's flexible number when it runs flex.
+   */
+  async createTemplate(
+    ctx: HouseholdContext,
+    budgetId: string,
+    input: z.infer<typeof createBudgetTemplateSchema>,
+  ): Promise<BudgetTemplate> {
+    return this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      if (input.month < monthOfDate(row.startsMonth)) throw problems.notFound();
+      const definition = await loadBudgetDefinition(tx, row);
+      const period = periodFor(input.month, definition.periods);
+      const allowed = fillable(definition, period.kind);
+      // An allowance's category has the allowance as its amount (D15), not one typed in.
+      for (const a of allowancesIn(input.month, definition.allowances))
+        allowed.delete(a.categoryId);
+      const amounts = Object.fromEntries(
+        [...budgetedFor(definition, input.month)].filter(([id, v]) => v > 0 && allowed.has(id)),
+      );
+      const flexibleMinor =
+        period.kind === 'flex'
+          ? flexibleFor(input.month, flex.settings(period.settings).flexibleMinor)
+          : null;
+      if (Object.keys(amounts).length === 0 && !flexibleMinor) {
+        throw new Problem(
+          422,
+          'nothing_to_save',
+          'That month has no amounts to save',
+          'Set some amounts first.',
+        );
+      }
+      const [created] = await tx
+        .insert(budgetTemplates)
+        .values({
+          householdId: ctx.householdId,
+          budgetId,
+          name: input.name,
+          amounts,
+          flexibleMinor,
+        })
+        .returning()
+        .catch(duplicateTemplate);
+      await record(activity, row, 'budget.template_saved', {
+        templateId: created!.id,
+        name: input.name,
+        month: input.month,
+      });
+      return templateOf(created!);
+    });
+  }
+
+  /** Deletes a template (#105). Months filled from it keep their amounts. */
+  async deleteTemplate(ctx: HouseholdContext, budgetId: string, templateId: string): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      const [gone] = await tx
+        .delete(budgetTemplates)
+        .where(and(eq(budgetTemplates.id, templateId), eq(budgetTemplates.budgetId, budgetId)))
+        .returning({ name: budgetTemplates.name });
+      if (!gone) throw problems.notFound();
+      await record(activity, row, 'budget.template_deleted', { templateId, name: gone.name });
+    });
+  }
+
+  /** What filling a month would change (#105), before anything does. */
+  async fillPreview(
+    ctx: HouseholdContext,
+    budgetId: string,
+    month: string,
+    fill: FillMonth,
+  ): Promise<FillPreview> {
+    return this.scope.run(ctx, async (tx) => {
+      const row = await findBudget(tx, budgetId);
+      if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
+      return (await fillPlan(tx, ctx, row, month, fill)).preview;
+    });
+  }
+
+  /**
+   * Fills a month's amounts (#105) from the month before, the 3-month average, or a template.
+   * Each category the source has an amount for takes it, replacing what the month had; the rest
+   * keep theirs. Later months that repeat this one follow it, as they do any change; months with
+   * amounts of their own keep them. In flex, the flexible number is filled too.
+   */
+  async fill(
+    ctx: HouseholdContext,
+    budgetId: string,
+    month: string,
+    fill: FillMonth,
+  ): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      const row = await findBudget(tx, budgetId);
+      checkCanEdit(ctx, row.memberId ? 'mine' : 'household');
+      if (month < monthOfDate(row.startsMonth)) throw problems.notFound();
+      const { preview, period } = await fillPlan(tx, ctx, row, month, fill);
+      if (preview.changes.length === 0 && !preview.flexible) {
+        throw new Problem(409, 'nothing_to_fill', 'Nothing would change', 'The amounts match.');
+      }
+      const day = firstDayOf(month);
+      // A month without amounts of its own repeats the last one that had some: those are copied
+      // in first, so the categories the source doesn't mention keep theirs. Zero-based assigns
+      // afresh (D8), so there's nothing to copy.
+      if (period.kind !== 'zero_based') {
+        await tx.execute(sql`
+          INSERT INTO budget_amounts (household_id, budget_id, month, category_id, amount_minor)
+          SELECT household_id, budget_id, ${day}::date, category_id, amount_minor
+          FROM budget_amounts
+          WHERE budget_id = ${row.id}
+            AND month = (SELECT max(month) FROM budget_amounts
+                         WHERE budget_id = ${row.id} AND month <= ${day}::date)
+          ON CONFLICT DO NOTHING`);
+      }
+      if (preview.changes.length) {
+        await tx
+          .insert(budgetAmounts)
+          .values(
+            preview.changes.map((c) => ({
+              householdId: ctx.householdId,
+              budgetId: row.id,
+              month: day,
+              categoryId: c.categoryId,
+              amountMinor: c.afterMinor,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [budgetAmounts.budgetId, budgetAmounts.month, budgetAmounts.categoryId],
+            set: {
+              amountMinor: sql`excluded.amount_minor`,
+              version: sql`${budgetAmounts.version} + 1`,
+            },
+          });
+      }
+      if (preview.flexible) {
+        const given = (period.settings.flexibleMinor ?? {}) as Record<string, number>;
+        await tx
+          .update(budgetStrategies)
+          .set({
+            settings: {
+              ...period.settings,
+              flexibleMinor: { ...given, [month]: preview.flexible.afterMinor },
+            },
+          })
+          .where(
+            and(
+              eq(budgetStrategies.budgetId, row.id),
+              eq(budgetStrategies.fromMonth, firstDayOf(period.fromMonth)),
+            ),
+          );
+      }
+      await record(activity, row, 'budget.filled', {
+        month,
+        source: fill.source,
+        ...(fill.templateId ? { templateId: fill.templateId } : {}),
+        categories: preview.changes.length,
+      });
+    });
+  }
+
   async #summary(
     tx: Executor,
     _ctx: HouseholdContext,
@@ -1153,6 +1334,159 @@ function lastAssigned(
   let assignedMinor = 0;
   for (const [id, v] of definition.amounts.get(last)!) if (spending.has(id)) assignedMinor += v;
   return { month: last, assignedMinor };
+}
+
+const templateOf = (r: typeof budgetTemplates.$inferSelect): BudgetTemplate => ({
+  id: r.id,
+  name: r.name,
+  amounts: Object.entries(r.amounts).map(([categoryId, amountMinor]) => ({
+    categoryId,
+    amountMinor,
+  })),
+  flexibleMinor: r.flexibleMinor,
+  createdAt: r.createdAt.toISOString(),
+});
+
+const duplicateTemplate = (err: unknown): never => {
+  if (violatedConstraint(err) === 'budget_templates_name') {
+    throw new Problem(409, 'duplicate_name', 'A template with that name already exists');
+  }
+  throw err;
+};
+
+/**
+ * The categories a month's amounts can be filled for (#105): spending categories the budget
+ * doesn't leave out, and income too where the strategy expects it (category limits, §3).
+ */
+function fillable(definition: BudgetDefinitionRows, kind: BudgetStrategyKind): Set<string> {
+  // The definition's categories already leave out the ones it doesn't budget.
+  return new Set(
+    definition.categories
+      .filter((c) => c.kind !== 'transfer' && (c.kind !== 'income' || kind === 'category'))
+      .map((c) => c.id),
+  );
+}
+
+/**
+ * What a fill would do (#105): the source's amounts against the month's, and flex's flexible
+ * number. The 3-month average reads the budget's scope in the reader's context, so it counts
+ * only spending they can see (D1, ADR 0006 F3).
+ */
+async function fillPlan(
+  tx: Executor,
+  ctx: HouseholdContext,
+  row: BudgetRow,
+  month: string,
+  fill: FillMonth,
+) {
+  const definition = await loadBudgetDefinition(tx, row);
+  const period = periodFor(month, definition.periods);
+  const allowed = fillable(definition, period.kind);
+  const flexibleIds = new Set(
+    definition.categories.filter((c) => c.kind === 'flexible').map((c) => c.id),
+  );
+  const flexibleOf = (amounts: ReadonlyMap<string, number>) => {
+    let total: number | null = null;
+    for (const [id, v] of amounts) if (flexibleIds.has(id)) total = (total ?? 0) + v;
+    return total;
+  };
+  // For a member who joined later, the household's budget starts at their history window (#256):
+  // nothing from before it is copied (startsMonth) or averaged (below).
+  const startsMonth = monthOfDate(row.startsMonth);
+  let source: ReadonlyMap<string, number>;
+  let months: string[];
+  let flexibleMinor: number | null;
+  if (fill.source === 'last_month') {
+    const last = addMonths(month, -1);
+    if (last < startsMonth) {
+      throw new Problem(
+        409,
+        'nothing_to_copy',
+        `This budget starts in ${startsMonth}`,
+        'There’s no month before it to copy.',
+      );
+    }
+    source = budgetedFor(definition, last);
+    months = [last];
+    const lastPeriod = periodFor(last, definition.periods);
+    flexibleMinor =
+      lastPeriod.kind === 'flex'
+        ? flexibleFor(last, flex.settings(lastPeriod.settings).flexibleMinor)
+        : flexibleOf(source);
+  } else if (fill.source === 'average') {
+    // The three full months before it: before this month, for a month still to come.
+    const { today } = await householdRanges(tx, ctx.householdId);
+    const thisMonth = monthOfDate(today);
+    const end = addMonths(month < thisMonth ? month : thisMonth, -1);
+    // The average reads spending from before the budget began, as setup's does, but not from
+    // before the reader's history window: their shared accounts' transactions aren't windowed.
+    const { rows: w } = await tx.execute<{ m: string | null }>(
+      sql`SELECT to_char(fiscus_budget_window(${row.id}), 'YYYY-MM') AS m`,
+    );
+    const window = w[0]?.m ?? null;
+    const span = [-2, -1, 0]
+      .map((n) => addMonths(end, n))
+      .filter((m) => window === null || m >= window);
+    const scope: BudgetScope = row.memberId ? 'mine' : 'household';
+    const activity = span.length
+      ? await budgetActivity(tx, ctx, scope, span[0]!, span.at(-1)!)
+      : new Map<string, MonthActivity>();
+    const byMonth = span.map((m) => {
+      const a = activity.get(m);
+      const out = new Map<string, number>();
+      for (const [id, v] of a?.spentMinor ?? []) if (v > 0) out.set(id, v);
+      for (const [id, v] of a?.incomeByCategory ?? []) if (v > 0) out.set(id, v);
+      return out;
+    });
+    source = suggestAmounts(byMonth);
+    months = span.filter((_, i) => byMonth[i]!.size > 0);
+    if (months.length === 0) {
+      throw new Problem(
+        409,
+        'no_history',
+        'Nothing was spent in the three months before',
+        'There’s nothing to average yet.',
+      );
+    }
+    flexibleMinor = flexibleOf(source);
+  } else {
+    const [template] = await tx
+      .select()
+      .from(budgetTemplates)
+      .where(and(eq(budgetTemplates.id, fill.templateId!), eq(budgetTemplates.budgetId, row.id)));
+    if (!template) throw problems.notFound();
+    source = new Map(Object.entries(template.amounts));
+    months = [];
+    flexibleMinor = template.flexibleMinor ?? flexibleOf(source);
+  }
+  // An allowance's category keeps its amount: it's the allowance, set in the shared budget (D15),
+  // and can't be typed over (allowance_category).
+  const allowanceIds = new Set(allowancesIn(month, definition.allowances).map((a) => a.categoryId));
+  const allowances = [...source.keys()].filter((id) => allowed.has(id) && allowanceIds.has(id));
+  const current = budgetedFor(definition, month);
+  const changes = [...source]
+    .filter(([id, v]) => allowed.has(id) && !allowanceIds.has(id) && (current.get(id) ?? 0) !== v)
+    .map(([categoryId, afterMinor]) => ({
+      categoryId,
+      beforeMinor: current.get(categoryId) ?? 0,
+      afterMinor,
+    }));
+  let flexible: FillPreview['flexible'] = null;
+  if (period.kind === 'flex' && flexibleMinor !== null) {
+    const beforeMinor = flexibleFor(month, flex.settings(period.settings).flexibleMinor);
+    if (beforeMinor !== flexibleMinor) flexible = { beforeMinor, afterMinor: flexibleMinor };
+  }
+  return {
+    period,
+    preview: {
+      month,
+      source: fill.source,
+      months,
+      changes,
+      flexible,
+      allowances,
+    } satisfies FillPreview,
+  };
 }
 
 /** Whether the budget runs zero-based in `month`. */

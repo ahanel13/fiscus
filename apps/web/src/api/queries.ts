@@ -10,6 +10,7 @@ import type {
   BudgetScope,
   BudgetSuggestion,
   BudgetSummary,
+  BudgetTemplate,
   GoalsOverview,
   CashFlow,
   CategoryGroup,
@@ -263,6 +264,14 @@ export const budgetMonthQuery = (id: string, budgetId: string, month: string) =>
     queryKey: ['households', id, 'budgets', budgetId, month],
     queryFn: async () =>
       (await api<Data<BudgetMonth>>('GET', `${hh(id)}/budgets/${budgetId}/months/${month}`)).data,
+  });
+
+/** A budget's templates (#105), seen as the budget is. */
+export const budgetTemplatesQuery = (id: string, budgetId: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'budgets', budgetId, 'templates'],
+    queryFn: async () =>
+      (await api<Data<BudgetTemplate[]>>('GET', `${hh(id)}/budgets/${budgetId}/templates`)).data,
   });
 
 /** Recurring series on the accounts you can see, with their payments and next date (#118). */

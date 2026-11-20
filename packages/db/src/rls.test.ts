@@ -34,6 +34,7 @@ describe('row-level security', () => {
     'budget_categories',
     'budget_moves',
     'budget_strategies',
+    'budget_templates',
     'budgets',
     'categories',
     'connection_secrets',

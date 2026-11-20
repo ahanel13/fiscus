@@ -620,6 +620,9 @@ describe('system context belongs to the worker', () => {
       // A merged category's moves follow it (0086).
       'budget_moves.from_category_id',
       'budget_moves.to_category_id',
+      // A merged category's template amounts add into the other's (0108).
+      'budget_templates.amounts',
+      'budget_templates.updated_at',
       // What a verified webhook asks for (#84).
       'connections.check_requested_at',
       'connections.consecutive_failures',
