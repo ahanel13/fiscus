@@ -62,6 +62,7 @@ import type {
   setPercentageSchema,
   StrategyPreview,
 } from '@fiscus/shared';
+import { budgetMonthRange } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import { and, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { z } from 'zod';
@@ -96,8 +97,8 @@ export class BudgetsService {
           .from(budgets)
           .orderBy(sql`${budgets.memberId} IS NOT NULL`),
       );
-      const { today } = await householdRanges(tx, ctx.householdId);
-      return Promise.all(rows.map((b) => this.#summary(tx, ctx, b, monthOfDate(today))));
+      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
+      return Promise.all(rows.map((b) => this.#summary(tx, ctx, b, budgetMonth)));
     });
   }
 
@@ -105,8 +106,7 @@ export class BudgetsService {
   async suggestion(ctx: HouseholdContext, scope?: BudgetScope): Promise<BudgetSuggestion> {
     return this.scope.run(ctx, async (tx) => {
       const resolved = scope ?? (await defaultScope(tx, ctx));
-      const { today } = await householdRanges(tx, ctx.householdId);
-      const thisMonth = monthOfDate(today);
+      const { budgetMonth: thisMonth } = await householdRanges(tx, ctx.householdId);
       const months = [-3, -2, -1].map((n) => addMonths(thisMonth, n));
       const activity = await budgetActivity(tx, ctx, resolved, months[0]!, months[2]!);
       const spent = months.map((m) => activity.get(m)?.spentMinor ?? new Map<string, number>());
@@ -129,8 +129,7 @@ export class BudgetsService {
     return this.scope.run(ctx, async (tx, activity) => {
       const scope = input.scope ?? (await defaultScope(tx, ctx));
       checkCanEdit(ctx, scope);
-      const { today } = await householdRanges(tx, ctx.householdId);
-      const month = monthOfDate(today);
+      const { budgetMonth: month } = await householdRanges(tx, ctx.householdId);
       const spending = await spendingCategories(tx);
       if (input.amounts.some((a) => !spending.has(a.categoryId))) {
         throw new Problem(
@@ -203,9 +202,11 @@ export class BudgetsService {
         .select({ currency: households.baseCurrency })
         .from(households)
         .where(eq(households.id, ctx.householdId));
+      const ranges = await householdRanges(tx, ctx.householdId);
       return {
         budget: summaryOf(row, out.kind),
         month,
+        ...budgetMonthRange(month, ranges.budgetStartDay, ranges.today),
         currency: h!.currency,
         canEdit: canEdit(ctx, scope),
         excluded: definition.excluded,
@@ -308,8 +309,8 @@ export class BudgetsService {
         fromMonth,
         from: current?.kind ?? null,
       });
-      const { today } = await householdRanges(tx, ctx.householdId);
-      return this.#summary(tx, ctx, row, monthOfDate(today));
+      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
+      return this.#summary(tx, ctx, row, budgetMonth);
     });
   }
 
@@ -322,9 +323,9 @@ export class BudgetsService {
     return this.scope.run(ctx, async (tx) => {
       const row = await findBudget(tx, budgetId);
       await checkScopeChange(tx, ctx, row, scope);
-      const { today } = await householdRanges(tx, ctx.householdId);
+      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
       const start = monthOfDate(row.startsMonth);
-      const month = monthOfDate(today) < start ? start : monthOfDate(today);
+      const month = budgetMonth < start ? start : budgetMonth;
       const definition = await loadBudgetDefinition(tx, row);
       const as = async (s: BudgetScope) => {
         const out = computeBudgetMonth(
@@ -361,8 +362,8 @@ export class BudgetsService {
         .where(eq(budgets.id, budgetId))
         .returning();
       await record(activity, updated!, 'budget.scope_changed', { scope });
-      const { today } = await householdRanges(tx, ctx.householdId);
-      return this.#summary(tx, ctx, updated!, monthOfDate(today));
+      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
+      return this.#summary(tx, ctx, updated!, budgetMonth);
     });
   }
 
@@ -571,15 +572,8 @@ export class BudgetsService {
       if (goal.archivedAt) {
         throw new Problem(409, 'goal_archived', `${goal.name} is archived`, 'Bring it back first.');
       }
-      const { today } = await householdRanges(tx, ctx.householdId);
-      const { before } = await setGoalPlan(
-        tx,
-        goal,
-        month,
-        amountMinor,
-        applyTo,
-        monthOfDate(today),
-      );
+      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
+      const { before } = await setGoalPlan(tx, goal, month, amountMinor, applyTo, budgetMonth);
       await record(
         activity,
         row,
@@ -739,7 +733,7 @@ export class BudgetsService {
       const row = await findBudget(tx, budgetId);
       const scope: BudgetScope = row.memberId ? 'mine' : 'household';
       const ranges = await householdRanges(tx, ctx.householdId);
-      const thisMonth = monthOfDate(ranges.today);
+      const thisMonth = ranges.budgetMonth;
       const first = `${year}-${String(ranges.settings.fiscalYearStartMonth).padStart(2, '0')}`;
       const months = Array.from({ length: 12 }, (_, i) => addMonths(first, i));
       const ledger = await budgetActivity(tx, ctx, scope, months[0]!, months[11]!);
@@ -789,6 +783,9 @@ export class BudgetsService {
       return {
         year,
         months,
+        // From the first month's start day to the day before the next year's (#71).
+        from: budgetMonthRange(months[0]!, ranges.budgetStartDay).from,
+        to: budgetMonthRange(months[11]!, ranges.budgetStartDay).to,
         rows,
         flexible,
         spentMinor: months.map((_, i) => rows.reduce((sum, r) => sum + r.months[i]!.spentMinor, 0)),
@@ -1415,8 +1412,8 @@ async function fillPlan(
         : flexibleOf(source);
   } else if (fill.source === 'average') {
     // The three full months before it: before this month, for a month still to come.
-    const { today } = await householdRanges(tx, ctx.householdId);
-    const thisMonth = monthOfDate(today);
+    // In budget months (#71), as budgetActivity() counts them.
+    const { budgetMonth: thisMonth } = await householdRanges(tx, ctx.householdId);
     const end = addMonths(month < thisMonth ? month : thisMonth, -1);
     // The average reads spending from before the budget began, as setup's does, but not from
     // before the reader's history window: their shared accounts' transactions aren't windowed.
@@ -1525,8 +1522,7 @@ async function checkSwitchMonth(
   row: BudgetRow,
   fromMonth: string,
 ): Promise<void> {
-  const { today } = await householdRanges(tx, ctx.householdId);
-  const thisMonth = monthOfDate(today);
+  const { budgetMonth: thisMonth } = await householdRanges(tx, ctx.householdId);
   if (fromMonth < thisMonth || fromMonth < monthOfDate(row.startsMonth)) {
     throw new Problem(
       422,

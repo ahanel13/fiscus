@@ -13,11 +13,12 @@ import {
   budgetActivity,
   budgetsInWindow,
   cardStatementsDue,
+  householdRanges,
   loadBudgetDefinition,
   seriesOccurrences,
   waitingForReview,
 } from '@fiscus/ledger';
-import { addDays } from '@fiscus/shared';
+import { addDays, budgetMonthOf } from '@fiscus/shared';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { appLink, longDate, type MemberRun, money, weekOf, when } from './member.js';
 
@@ -221,7 +222,8 @@ export async function lowBalance(m: MemberRun): Promise<number> {
 export async function budgetNearlySpent(m: MemberRun): Promise<number> {
   if (!m.on('budget_nearly_spent')) return 0;
   const { percent } = m.settings('budget_nearly_spent');
-  const month = m.today.slice(0, 7);
+  // The budget month today is in, from the household's start day (#71).
+  const month = budgetMonthOf(m.today, (await householdRanges(m.tx, m.householdId)).budgetStartDay);
   const rows = await budgetsInWindow(m.tx, await m.tx.select().from(budgets));
   const names = new Map(
     (await m.tx.select({ id: categories.id, name: categories.name }).from(categories)).map((c) => [

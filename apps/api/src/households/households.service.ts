@@ -20,6 +20,7 @@ const SETTINGS = [
   'timezone',
   'weekStart',
   'fiscalYearStartMonth',
+  'budgetMonthStartDay',
   'dateBasis',
   'financeStyle',
   'categorizeMarksReviewed',
@@ -38,6 +39,7 @@ export function toHousehold(
     timezone: row.timezone,
     weekStart: row.weekStart,
     fiscalYearStartMonth: row.fiscalYearStartMonth,
+    budgetMonthStartDay: row.budgetMonthStartDay,
     dateBasis: row.dateBasis,
     financeStyle: row.financeStyle,
     categorizeMarksReviewed: row.categorizeMarksReviewed,
@@ -56,6 +58,7 @@ type HouseholdInput = Pick<
   | 'timezone'
   | 'weekStart'
   | 'fiscalYearStartMonth'
+  | 'budgetMonthStartDay'
   | 'dateBasis'
   | 'financeStyle'
   | 'categorizeMarksReviewed'

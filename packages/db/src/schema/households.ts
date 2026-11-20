@@ -40,6 +40,8 @@ export const households = pgTable(
     timezone: text().notNull(),
     weekStart: smallint().notNull().default(1),
     fiscalYearStartMonth: smallint().notNull().default(1),
+    /** The day budget months start on (#71); the last day in months without it. */
+    budgetMonthStartDay: smallint().notNull().default(1),
     dateBasis: dateBasis().notNull().default('posted'),
     financeStyle: financeStyle().notNull().default('hybrid'),
     /** Setting a transaction's category marks it reviewed (the walkthrough's F14, #349). */
@@ -55,6 +57,7 @@ export const households = pgTable(
   (t) => [
     check('households_week_start', sql`${t.weekStart} BETWEEN 0 AND 6`),
     check('households_fiscal_month', sql`${t.fiscalYearStartMonth} BETWEEN 1 AND 12`),
+    check('households_budget_month_start_day', sql`${t.budgetMonthStartDay} BETWEEN 1 AND 31`),
   ],
 );
 

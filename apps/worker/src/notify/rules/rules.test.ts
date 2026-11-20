@@ -306,6 +306,59 @@ describe('notification rules', { timeout: 120_000 }, () => {
     }
   });
 
+  it('counts a budget category nearly spent in the budget month, from the start day (#71)', async () => {
+    const { householdId, alex } = await household();
+    const joint = await h.account({ householdId, owners: [alex], name: 'Checking' });
+    const [groceries] = (
+      await h.owner.query(
+        `SELECT id FROM categories WHERE household_id = $1 AND name = 'Groceries'`,
+        [householdId],
+      )
+    ).rows;
+    // Months start on the 31st: February's runs from Feb 28 to Mar 30, so Mar 1 is in it.
+    await h.owner.query('UPDATE households SET budget_month_start_day = 31 WHERE id = $1', [
+      householdId,
+    ]);
+    const budget = randomUUID();
+    await h.owner.query(
+      `INSERT INTO budgets (id, household_id, member_id, starts_month) VALUES ($1, $2, $3, '2026-02-01')`,
+      [budget, householdId, alex],
+    );
+    await h.owner.query(
+      `INSERT INTO budget_strategies (household_id, budget_id, from_month, strategy)
+       VALUES ($1, $2, '2026-02-01', 'category')`,
+      [householdId, budget],
+    );
+    await h.owner.query(
+      `INSERT INTO budget_amounts (household_id, budget_id, month, category_id, amount_minor)
+       VALUES ($1, $2, '2026-02-01', $3, 50000)`,
+      [householdId, budget, groceries.id],
+    );
+    // Feb 27 is January's budget month, before the budget; Feb 28 is February's.
+    for (const [date, amount] of [
+      ['2026-02-27', -30000],
+      ['2026-02-28', -46000],
+    ] as const) {
+      await h.owner.query(
+        `INSERT INTO transactions (id, household_id, account_id, amount_minor, currency,
+           authorized_date, original_description, display_name, source, category_id)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'USD', $4, 'Market', 'Market', 'manual', $5)`,
+        [householdId, joint, amount, date, groceries.id],
+      );
+    }
+    await rules().runHousehold(
+      householdId,
+      { date: '2026-03-01', hour: 9, weekday: 'sunday' },
+      { daily: true },
+    );
+    expect(await sent(alex, 'budget_nearly_spent')).toMatchObject([
+      {
+        title: 'Groceries is at 92% of its budget',
+        dedupe_key: `budget_nearly_spent:${budget}:${groceries.id}:2026-02`,
+      },
+    ]);
+  });
+
   it('reminds of a card statement on cards they own', async () => {
     const { householdId, alex, sam } = await household();
     const card = await h.account({

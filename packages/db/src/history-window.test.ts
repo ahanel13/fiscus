@@ -263,6 +263,51 @@ describe('member history window (RLS)', () => {
     expect(updated.rowCount).toBe(0);
   });
 
+  it('starts the window in the budget month its first day falls in (#71)', async () => {
+    // With budget months from the 20th, Jan 15 is in December's (Dec 20 - Jan 19): C sees what
+    // was moved in December, and can write it. With the 31st, Jan 15 is still December's.
+    const window = () =>
+      asMember('C', async (q) => {
+        const { rows } = await q.query(
+          `SELECT fiscus_budget_window($1)::text AS ours, fiscus_budget_window($2)::text AS mine`,
+          [budget.ours, budget.c],
+        );
+        const moved = await ids(q, `SELECT id FROM budget_moves`);
+        return { ...rows[0], moved };
+      });
+    const december = moves.find((m) => !m.seenBy.includes('C') && m.seenBy.includes('B'));
+    try {
+      for (const [day, ours] of [
+        [1, '2027-01-01'],
+        [15, '2027-01-01'],
+        [16, '2026-12-01'],
+        [20, '2026-12-01'],
+        [31, '2026-12-01'],
+      ] as const) {
+        await owner.query(`UPDATE households SET budget_month_start_day = $2 WHERE id = $1`, [
+          H,
+          day,
+        ]);
+        const got = await window();
+        expect({ day, ours: got.ours, mine: got.mine }).toEqual({ day, ours, mine: null });
+        expect(got.moved.has(december!.id), `start day ${day}`).toBe(ours === '2026-12-01');
+      }
+      await owner.query(`UPDATE households SET budget_month_start_day = 20 WHERE id = $1`, [H]);
+      const write = await error(() =>
+        asMember('C', (q) =>
+          q.query(
+            `INSERT INTO budget_amounts (household_id, budget_id, month, category_id, amount_minor)
+             VALUES ($1, $2, '2026-12-01', $3, 100)`,
+            [H, budget.ours, dining],
+          ),
+        ),
+      );
+      expect(write).toBeUndefined();
+    } finally {
+      await owner.query(`UPDATE households SET budget_month_start_day = 1 WHERE id = $1`, [H]);
+    }
+  });
+
   it('sets a joining member’s window to their join date, and leaves the first member’s open', async () => {
     const h2 = randomUUID();
     await owner.query(

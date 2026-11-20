@@ -83,7 +83,7 @@ export class GoalsService {
   /** Every goal you see, the accounts you can claim, and any shortfall (walkthrough §1, §5). */
   async overview(ctx: HouseholdContext): Promise<GoalsOverview> {
     return this.scope.run(ctx, async (tx) => {
-      const { today } = await householdRanges(tx, ctx.householdId);
+      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
       const rows = await tx
         .select(goalColumns)
         .from(goals)
@@ -110,7 +110,8 @@ export class GoalsService {
       const owned = new Set(mine.map((a) => a.accountId));
       const banks = await banksOf(tx, claims);
       const debts = await debtsOf(tx);
-      const month = today.slice(0, 7);
+      // A goal's months are its budget's (G10, #71).
+      const month = budgetMonth;
       const at = { claims, values, owned, banks, debts, month };
       const goalList = rows.map((g) => present(ctx, g, at));
       const saving = goalList.filter((g) => g.kind === 'save');
@@ -284,8 +285,9 @@ export class GoalsService {
         .returning(goalColumns);
       // The plan is its budget line too (G16): from this month on, the months before unchanged.
       if (patch.planMinor !== undefined && patch.planMinor !== row.planMinor) {
-        const { today } = await householdRanges(tx, ctx.householdId);
-        const month = today.slice(0, 7);
+        const { budgetMonth } = await householdRanges(tx, ctx.householdId);
+        // A goal's months are its budget's (G10, #71).
+        const month = budgetMonth;
         await setGoalPlan(tx, updated!, month, patch.planMinor ?? 0, 'future', month, false);
       }
       await record(activity, updated!, 'goal.changed', { name: updated!.name, ...patch });
@@ -542,14 +544,14 @@ export class GoalsService {
     const row = await findGoal(tx, goalId);
     const claims = await tx.select().from(goalClaims).where(eq(goalClaims.goalId, goalId));
     const owned = new Set((await ownedAccounts(tx, ctx)).map((a) => a.accountId));
-    const { today } = await householdRanges(tx, ctx.householdId);
+    const { budgetMonth } = await householdRanges(tx, ctx.householdId);
     return present(ctx, row, {
       claims,
       values: await claimValues(tx),
       owned,
       banks: await banksOf(tx, claims),
       debts: row.accountId ? await debtsOf(tx, [row.accountId]) : new Map(),
-      month: today.slice(0, 7),
+      month: budgetMonth,
     });
   }
 }
@@ -571,8 +573,9 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 /** A new goal's plan, as its budget line from this month (G16). */
 async function startPlan(tx: Executor, row: GoalRow): Promise<void> {
   if (row.planMinor === null) return;
-  const { today } = await householdRanges(tx, row.householdId);
-  const month = today.slice(0, 7);
+  const { budgetMonth } = await householdRanges(tx, row.householdId);
+  // A goal's months are its budget's (G10, #71).
+  const month = budgetMonth;
   await setGoalPlan(tx, row, month, row.planMinor, 'future', month, false);
 }
 

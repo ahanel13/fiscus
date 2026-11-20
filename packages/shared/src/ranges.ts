@@ -233,6 +233,41 @@ export function resolveRange(
   }
 }
 
+// ── Budget months (ADR 0011 §4, #71) ────────────────────────────────────────────────────────
+// A budget month is named for the month it starts in. With a start day of 15, "November" runs
+// from Nov 15 to Dec 14. A start day a month doesn't have (29–31) falls on its last day, so with
+// 31 February's month starts on the 28th (29th in a leap year) and runs to Mar 30. Months never
+// overlap or leave a gap. Day 1 is the calendar month. Only budget views use these.
+
+export const BUDGET_START_DAYS = { min: 1, max: 31 } as const;
+
+/** The first day of budget month `month` (`YYYY-MM`). */
+export function budgetMonthStart(month: string, startDay: number): string {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  return fmt(y, m, Math.min(startDay, daysInMonth(y, m)));
+}
+
+/** The budget month (`YYYY-MM`) a date falls in. */
+export function budgetMonthOf(date: string, startDay: number): string {
+  const { y, m, day } = parse(date);
+  if (day >= Math.min(startDay, daysInMonth(y, m))) return date.slice(0, 7);
+  return addMonths(fmt(y, m, 1), -1).slice(0, 7);
+}
+
+/** A budget month's dates, like a calendar preset's: `partial` until it's over. */
+export function budgetMonthRange(
+  month: string,
+  startDay: number,
+  today: string = '9999-12-31',
+): ResolvedRange {
+  const next = addMonths(`${month}-01`, 1).slice(0, 7);
+  return period(
+    budgetMonthStart(month, startDay),
+    addDays(budgetMonthStart(next, startDay), -1),
+    today,
+  );
+}
+
 /** The range to compare against (ADR 0011 §2): the period just before, or the same one a year ago. */
 export function comparisonRange(
   range: ResolvedRange,

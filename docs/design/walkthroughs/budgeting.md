@@ -148,6 +148,23 @@ Every strategy has the same frame:
 The bar has a thin mark for how far through the month you are. A category at 80% on the 26th is
 on pace, and one at 80% on the 10th isn't. Selecting a category's name opens its drawer (§4).
 
+**D32. Budget months can start on any day (#71).**
+- The household's **Budget months start on** setting picks the day, for a mid-month payday.
+  It's the 1st by default: calendar months. It belongs to the household, not to each budget, so
+  the Ours and Mine budgets and their goal lines always share months (ADR 0011 §4). Allowances
+  (D15), filling a month (D29) and a newer member's first month (#256) follow it too. Reports,
+  shared costs' statements and funding targets (D28) keep calendar months.
+- A month is named for the month it starts in. With the 15th, November runs from Nov 15 to Dec
+  14, and the stepper shows the dates under the name. A day a month doesn't have (29–31) is its
+  last day.
+- **Changing it moves every month's edges, past months too.** Amounts, moves and strategies
+  stay with their month, so November keeps its $600 for groceries. What each month spent is
+  counted again from the new dates, and rollover follows, since a month is worked out when it's
+  read (D13). Nothing is copied or lost, and changing it back gives the old months back.
+  Settings says so before it's saved.
+- Spending from before a budget's first month, once the edges move, is outside the budget, as
+  it is for any month before it starts.
+
 **D6. Nothing spent goes missing.**
 - While categories without a budget are hidden, what they spent shows as one line, "$84.00 spent
   in 3 categories without a budget", with **Show them**.
@@ -352,7 +369,8 @@ surprised.
 - future months show what's budgeted;
 - the totals compare the year so far with the year's budget.
 
-Years follow the household's fiscal year (ADR 0011). It's the place to see that Utilities runs
+Years follow the household's fiscal year (ADR 0011), in budget months (D32): with the 15th, a
+January year runs from Jan 15 to the next Jan 14. It's the place to see that Utilities runs
 high every winter, and to plan for it.
 
 ---
@@ -559,8 +577,9 @@ contributions (D2).**
 - What counts is the same as the budget's contributions: transfers into the joint account from an
   account that owner has alone. A move from another joint account counts for no one. Settle-ups
   don't count.
-- Targets count from when they start. Months are calendar months; weeks and fortnights run from
-  the day the target starts. Changing a target starts counting again from this period.
+- Targets count from when they start. Months are calendar months, even when budget months start
+  on another day (D32): a target is what owners agreed to pay in, not a budget. Weeks and
+  fortnights run from the day the target starts. Changing a target starts counting again from this period.
 - **Behind** is less than was due by the end of the last period that's over: "Behind $300.00".
   **Ahead** is more than this period needs. Otherwise it's **on track**, so the money can arrive
   any day in the period. A short month is made up by the next.
@@ -612,7 +631,7 @@ the screens.
 
 | | First | Later |
 |---|---|---|
-| Budgets | Category limits (#99), the month view (#103), annual view (#106), budgets by finance style (#107), **Change how you budget** with the preview (#104), flex (#102) | Zero-based (#100), 50/30/20 (#101), templates (#105), budget month start day (#71) |
+| Budgets | Category limits (#99), the month view (#103), annual view (#106), budgets by finance style (#107), **Change how you budget** with the preview (#104), flex (#102) | Zero-based (#100), 50/30/20 (#101), templates (#105), budget month start day (#71, D32) |
 | Shared costs | Who owes whom (#111), settling up (#112), equal and fixed splits with rules per category (#109), the Shared costs page (#115), flagged changes (#60), fixed funding targets (#113) | Split by income and its consent (#110, #265), allowances (#114), funding targets by share of income (#113), reminders (#116) |
 
 Flex comes first among the other strategies because it's Monarch's, and the one people switching
@@ -676,6 +695,7 @@ real.
 | D27 | A zero-based month assigns afresh; Assign like last month copies the last one's amounts | #100 |
 | D28 | Funding targets are fixed amounts per period, tracked from contributions; a share of income waits for consent | #113 |
 | D29 | Filling a month (last month, 3-month average, a template) previews, then replaces the amounts the source has; the average counts only what you can see | #105 |
+| D32 | Budget months start on the household's day; changing it moves every month's edges and keeps the amounts | #71 |
 
 ## Open questions
 
@@ -684,8 +704,6 @@ real.
   see. Totals would then differ by viewer, labeled as ADR 0006 F3 requires. Alternatives: count
   only what's attributed to everyone, or let a household have more than one shared budget.
   Decide with #107, with a Roommates household to test against.
-- **Budget month start day** (#71, P2). A month from the 15th to the 14th changes every
-  boundary here. The model takes a start day from the beginning, and the setting comes later.
 - **Over-budget alerts** belong to notifications in M4 (#127), not here.
 - **Goals as budget lines** (M5). Settled in [Goals and budgets](../goals-and-budgets.md): a
   goal's monthly contribution is its own kind of line in every strategy (G4, G5), and purchases

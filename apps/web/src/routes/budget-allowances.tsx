@@ -9,7 +9,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
-import { allowancesQuery } from '../api/queries.js';
+import { allowancesQuery, householdQuery } from '../api/queries.js';
 import { Amount } from '../components/Amount.js';
 import { CategoryName } from '../components/CategoryName.js';
 import {
@@ -25,6 +25,7 @@ import {
   SelectItem,
   toast,
 } from '../components/ui.js';
+import { thisBudgetMonth } from '../lib/budget-months.js';
 
 // Allowances, or fun money (#114; budgeting walkthrough D15; ADR 0006 §7.4, F5): a line in the
 // shared budget that funds a member's own. Everyone sees each amount, never how it was spent.
@@ -40,7 +41,7 @@ const monthName = (month: string) =>
     timeZone: 'UTC',
   });
 
-const thisMonth = () => {
+const calendarMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
@@ -243,7 +244,9 @@ function AllowanceDialog({
   const [categoryId, setCategoryId] = useState<string>(
     editing?.categoryId ?? funMoney?.id ?? NEW_CATEGORY,
   );
-  const now = thisMonth();
+  // The budget month today is in (#71), as the api counts "this month".
+  const household = useQuery(householdQuery(householdId)).data;
+  const now = household ? thisBudgetMonth(household) : calendarMonth();
   const [from, setFrom] = useState<'this' | 'next'>('this');
   const fromMonth = from === 'this' ? now : monthAfter(now);
   const name = memberId ? who(members, memberId) : 'them';

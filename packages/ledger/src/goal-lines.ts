@@ -13,9 +13,21 @@ import {
   transactions,
 } from '@fiscus/db';
 import type { BudgetGoalLine } from '@fiscus/domain';
-import { estimatedMinimum } from '@fiscus/shared';
-import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { transactionDate } from './ranges.js';
+import { budgetMonthStart, estimatedMinimum } from '@fiscus/shared';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  or,
+  type SQL,
+  sql,
+  type SQLWrapper,
+} from 'drizzle-orm';
+import { budgetMonthSql, type transactionDate } from './ranges.js';
 
 // Goals in a budget (goals and budgets G4, G9, G13, G16): which goals have a line in a budget,
 // their plans by month, and what reached each one in a month. Runs in the reader's context:
@@ -36,16 +48,19 @@ export async function budgetGoalLines(
   memberId: string | null,
 ): Promise<BudgetGoalLine[]> {
   const [h] = await tx
-    .select({ tz: households.timezone })
+    .select({ tz: households.timezone, startDay: households.budgetMonthStartDay })
     .from(households)
     .where(eq(households.id, householdId));
   const tz = h?.tz ?? 'UTC';
+  // The budget months it was made and archived in (#71, G10).
+  const monthOf = (at: SQLWrapper) =>
+    budgetMonthSql(sql`(${at} AT TIME ZONE ${tz})::date`, h?.startDay ?? 1);
   const rows = await tx
     .select({
       id: goals.id,
       kind: goals.kind,
-      fromMonth: sql<string>`to_char(${goals.createdAt} AT TIME ZONE ${tz}, 'YYYY-MM')`,
-      untilMonth: sql<string | null>`to_char(${goals.archivedAt} AT TIME ZONE ${tz}, 'YYYY-MM')`,
+      fromMonth: monthOf(goals.createdAt),
+      untilMonth: monthOf(goals.archivedAt) as SQL<string | null>,
     })
     .from(goals)
     .where(ofScope(memberId))
@@ -91,7 +106,8 @@ export interface GoalMovedMonth {
  * - A pay-down goal: what was paid on its loan or card over the minimum (G9); the minimum is a
  *   bill. The rate and minimum entered on the goal go first, then the bank's, else 2% of what's
  *   owed (at least $25).
- * Only months the goal's in the budget count.
+ * Only months the goal's in the budget count. Months are budget months (#71): `from` is the
+ * first, starting on `startDay`, and `end` the day after the last.
  */
 export async function goalMoved(
   tx: Executor,
@@ -101,6 +117,7 @@ export async function goalMoved(
   from: string,
   end: string,
   currency: string,
+  startDay = 1,
 ): Promise<Map<string, GoalMovedMonth>> {
   const out = new Map<string, GoalMovedMonth>();
   if (lines.length === 0) return out;
@@ -153,7 +170,7 @@ export async function goalMoved(
       amountMinor: transactions.amountMinor,
       group: transactions.transferGroupId,
       savings: savingsAccount,
-      month: sql<string>`to_char(${date}, 'YYYY-MM')`,
+      month: budgetMonthSql(date, startDay),
     })
     .from(transactions)
     .innerJoin(accounts, eq(accounts.id, transactions.accountId))
@@ -171,7 +188,7 @@ export async function goalMoved(
           sql`${transactions.transferGroupId} IS NOT NULL`,
           sql`${categoryGroups.kind} = 'transfer'`,
         ),
-        gte(date, `${from}-01`),
+        gte(date, budgetMonthStart(from, startDay)),
         sql`${date} < ${end}::date`,
       ),
     );
