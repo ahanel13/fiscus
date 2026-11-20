@@ -17,3 +17,5 @@ export * from './recurring.js';
 export * from './review.js';
 export * from './transfers.js';
 export * from './funding.js';
+export * from './income-split.js';
+export * from './shared-costs.js';

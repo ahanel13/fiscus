@@ -187,6 +187,33 @@ describe('Settings → Notifications', () => {
     expect(await screen.findByText('Fridays at 8 am')).toBeTruthy();
   });
 
+  it('sets a settle-up reminder’s day and amount (#116)', async () => {
+    show();
+    const table = await screen.findByRole('table');
+    expect(
+      within(table).getByText(
+        'Mondays, when a balance is $20 or more · people you share costs with',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(table).getByText('On the 1st, for the month before · people you share costs with'),
+    ).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /^You’re not square with someone/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'You’re not square with someone' });
+    await userEvent.click(within(dialog).getByRole('button', { name: /Day/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Friday' }));
+    const amount = within(dialog).getByRole('textbox', { name: /When a balance is at least/ });
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '50');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(requests.at(-1)).toMatchObject({
+        path: `/api/v1/households/${HH}/notifications/rules/settle_up_reminder`,
+        body: { settings: { day: 'friday', overMinor: 5_000 } },
+      }),
+    );
+  });
+
   it('sends a test and says how it went', async () => {
     testStatus = { status: 'failed', code: 'http_401' };
     show();

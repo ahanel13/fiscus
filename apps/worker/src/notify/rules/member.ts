@@ -26,12 +26,15 @@ export interface MemberRun {
   householdId: string;
   memberId: string;
   role: 'owner' | 'member' | 'viewer';
-  /** The household's today, and its hour now (D20). */
+  /** The household's today, its hour now (D20), and its weekday: `monday`. */
   today: string;
   hour: number;
+  weekday: string;
   currency: string;
   /** The household's first day of the week, 0 (Sunday) to 6. */
   weekStartDay: number;
+  /** Whether the household settles up: two or more members, not Combined (ADR 0006 §8). */
+  settlesUp: boolean;
   /** A rule's settings: theirs over D18's defaults. */
   settings<K extends NotificationKind>(kind: K): NotificationSettings<K>;
   /** Whether a rule goes anywhere: off when they've unticked every channel. */
@@ -44,7 +47,15 @@ export async function memberRun(
   tx: Executor,
   m: Pick<
     MemberRun,
-    'householdId' | 'memberId' | 'role' | 'today' | 'hour' | 'currency' | 'weekStartDay'
+    | 'householdId'
+    | 'memberId'
+    | 'role'
+    | 'today'
+    | 'hour'
+    | 'weekday'
+    | 'currency'
+    | 'weekStartDay'
+    | 'settlesUp'
   >,
 ): Promise<MemberRun> {
   const prefs = new Map(

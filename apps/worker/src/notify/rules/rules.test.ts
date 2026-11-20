@@ -585,4 +585,237 @@ describe('notification rules', { timeout: 120_000 }, () => {
       expect(await recaps(alex)).toHaveLength(1);
     });
   });
+  describe('settling up (#116)', () => {
+    // Monday, November 2 2026: early in the month, and the reminders' default day.
+    const MONDAY = { date: '2026-11-02', hour: 9, weekday: 'monday' };
+    const settleUps = async (memberId: string) =>
+      (
+        await h.owner.query(
+          `SELECT kind, title, body, summary, link, dedupe_key FROM notifications
+           WHERE member_id = $1 AND kind LIKE 'settle_up_%' ORDER BY kind, title`,
+          [memberId],
+        )
+      ).rows;
+    /** Alex, Sam and Jo; Alex's private card, Sam's own card. */
+    const three = async () => {
+      const { householdId, alex, sam } = await household();
+      await h.owner.query(`UPDATE household_members SET display_name = 'Alex' WHERE id = $1`, [
+        alex,
+      ]);
+      const jo = await h.member(householdId, 'Jo');
+      const alexsCard = await h.account({
+        householdId,
+        owners: [alex],
+        name: 'Alex’s card',
+        type: 'credit',
+        visibility: 'private',
+      });
+      const samsCard = await h.account({
+        householdId,
+        owners: [sam],
+        name: 'Sam’s card',
+        type: 'credit',
+        visibility: 'private',
+      });
+      return { householdId, alex, sam, jo, alexsCard, samsCard };
+    };
+    /** A purchase on `accountId`, for `forMembers`: equally, or by `shares` (basis points). */
+    const shared = async (
+      householdId: string,
+      accountId: string,
+      amountMinor: number,
+      date: string,
+      name: string,
+      forMembers: string[],
+      shares?: number[],
+    ) => {
+      const id = randomUUID();
+      await h.owner.query(
+        `INSERT INTO transactions (id, household_id, account_id, amount_minor, currency,
+           authorized_date, original_description, display_name, source, review_status)
+         VALUES ($1, $2, $3, $4, 'USD', $5, $6, $6, 'manual', 'reviewed')`,
+        [id, householdId, accountId, amountMinor, date, name],
+      );
+      // All at once: the shares must add up to 100% when the statement ends.
+      await h.owner.query(
+        `INSERT INTO transaction_attributions (transaction_id, member_id, household_id, share_bps)
+         SELECT $1, m, $2, bps FROM unnest($3::uuid[], $4::int[]) AS t(m, bps)`,
+        [id, householdId, forMembers, shares ?? forMembers.map(() => 10000 / forMembers.length)],
+      );
+      return id;
+    };
+
+    it('sums up last month once for each pair, to its two people only, from each side', async () => {
+      const { householdId, alex, sam, jo, alexsCard, samsCard } = await three();
+      // October: Alex paid $186.40 at Costco for both; Sam paid $40 for dinner for both.
+      await shared(householdId, alexsCard, -18_640, '2026-10-12', 'Costco', [alex, sam]);
+      await shared(householdId, samsCard, -4_000, '2026-10-20', 'Lantern Thai', [alex, sam]);
+      // Sam paid Alex $20 back another way.
+      await h.owner.query(
+        `INSERT INTO settlements (id, household_id, from_member_id, to_member_id, amount_minor, date,
+           kind, created_by_member_id)
+         VALUES (gen_random_uuid(), $1, $2, $3, 2000, '2026-10-25', 'paid', $2)`,
+        [householdId, sam, alex],
+      );
+      // Alex's own purchase, for Alex alone: nobody else's business.
+      await shared(householdId, alexsCard, -61_200, '2026-10-14', 'Jeweler', [alex]);
+      const r = rules();
+      await r.runHousehold(householdId, MONDAY, { daily: true });
+      // Run again, and as if after a restart: still one each.
+      await r.runHousehold(householdId, { ...MONDAY, date: '2026-11-03' }, { daily: true });
+      await rules().runHousehold(householdId, MONDAY, { daily: true });
+      const summary = (m: string) =>
+        settleUps(m).then((n) => n.filter((x) => x.kind === 'settle_up_summary'));
+      // Sam owes Alex half of Costco less half of dinner, less the $20: $93.20 − $20 − $20.
+      expect(await summary(alex)).toEqual([
+        {
+          kind: 'settle_up_summary',
+          title: 'October with Sam: Sam owes you $53.20',
+          body: '2 shared expenses, $226.40 in all. $20 settled up.',
+          summary: 'Your monthly shared costs summary is ready.',
+          link: `/h/${householdId}/shared?month=2026-10`,
+          dedupe_key: `settle_up_summary:${sam}:2026-10`,
+        },
+      ]);
+      expect(await summary(sam)).toMatchObject([
+        {
+          title: 'October with Alex: you owe Alex $53.20',
+          body: '2 shared expenses, $226.40 in all. $20 settled up.',
+          dedupe_key: `settle_up_summary:${alex}:2026-10`,
+        },
+      ]);
+      // Jo shares nothing with them: Jo hears nothing, about anyone.
+      expect(await settleUps(jo)).toEqual([]);
+      // And nothing reaches anyone that isn't theirs to see.
+      for (const m of [alex, sam, jo]) {
+        expect(JSON.stringify(await sent(m))).not.toMatch(/Jeweler|612|card/);
+      }
+    });
+
+    it('says only what each sees in Shared costs, with three sharing [SYS-02]', async () => {
+      const { householdId, alex, sam, jo, alexsCard } = await three();
+      // Alex paid $80 for all three (half Alex's, a quarter each theirs), and $40 for Alex and Sam.
+      await shared(
+        householdId,
+        alexsCard,
+        -8_000,
+        '2026-10-05',
+        'Groceries',
+        [alex, sam, jo],
+        [5000, 2500, 2500],
+      );
+      await shared(householdId, alexsCard, -4_000, '2026-10-06', 'Concert', [alex, sam]);
+      await rules().runHousehold(householdId, MONDAY, { daily: true });
+      const summaries = async (m: string) =>
+        (await settleUps(m)).filter((x) => x.kind === 'settle_up_summary');
+      expect((await summaries(alex)).map((n) => n.title)).toEqual([
+        'October with Jo: Jo owes you $20',
+        'October with Sam: Sam owes you $40',
+      ]);
+      expect((await summaries(sam)).map((n) => [n.title, n.body])).toEqual([
+        ['October with Alex: you owe Alex $40', '2 shared expenses, $120 in all.'],
+      ]);
+      // Jo is part of the groceries only: Jo's summary is with Alex, and never mentions the
+      // concert, or what Sam owes.
+      const jos = await summaries(jo);
+      expect(jos.map((n) => [n.title, n.body])).toEqual([
+        ['October with Alex: you owe Alex $20', '1 shared expense, $80 in all.'],
+      ]);
+      expect(JSON.stringify(await sent(jo))).not.toMatch(/Concert|Sam|\$40|\$120/);
+    });
+
+    it('reminds both of a balance on their day, once a week, over their amount', async () => {
+      const { householdId, alex, sam, jo, alexsCard } = await three();
+      await shared(householdId, alexsCard, -5_000, TODAY, 'Hardware store', [alex, sam]);
+      const day = localTime('UTC', NOW).weekday;
+      const today = { ...localTime('UTC', NOW), hour: 9 };
+      const other = day === 'monday' ? 'tuesday' : 'monday';
+      await prefer(alex, householdId, 'settle_up_reminder', { day: other, overMinor: 2_000 });
+      await prefer(sam, householdId, 'settle_up_reminder', { day, overMinor: 2_000 });
+      await prefer(jo, householdId, 'settle_up_reminder', { day, overMinor: 1 });
+      const r = rules();
+      await r.runHousehold(householdId, today, { daily: true });
+      await rules().runHousehold(householdId, today, { daily: true });
+      const reminders = async (m: string) =>
+        (await settleUps(m)).filter((x) => x.kind === 'settle_up_reminder');
+      // Not Alex's day; Sam's.
+      expect(await reminders(alex)).toEqual([]);
+      expect(await reminders(sam)).toMatchObject([
+        {
+          title: 'You owe Alex $25',
+          body: 'Once you’ve paid, record it in Shared costs.',
+          summary: 'You’re not square with someone you share costs with.',
+          link: `/h/${householdId}/shared`,
+        },
+      ]);
+      expect(await reminders(jo)).toEqual([]);
+      // On Alex's day, Alex hears it from the other side; under Alex's amount, nothing.
+      await prefer(alex, householdId, 'settle_up_reminder', { day, overMinor: 2_000 });
+      await rules().runHousehold(householdId, today, { daily: true });
+      expect((await reminders(alex)).map((n) => [n.title, n.body])).toEqual([
+        ['Sam owes you $25', 'Once Sam has paid you, record it in Shared costs.'],
+      ]);
+      await h.owner.query(
+        `DELETE FROM notifications WHERE member_id = $1 AND kind = 'settle_up_reminder'`,
+        [alex],
+      );
+      await prefer(alex, householdId, 'settle_up_reminder', { day, overMinor: 2_501 });
+      await rules().runHousehold(householdId, today, { daily: true });
+      expect(await reminders(alex)).toEqual([]);
+    });
+
+    it('splits by income when both agreed, without anyone’s income in it (F4, #110)', async () => {
+      const { householdId, alex, sam, jo, alexsCard } = await three();
+      // From October, the household splits by income, and Alex and Sam have both agreed:
+      // Alex earns $6,000 a month and Sam $2,000, so Alex pays 75% and Sam 25%.
+      await h.owner.query(
+        `INSERT INTO split_policies (id, household_id, category_id, effective_from, method,
+           created_by_member_id)
+         VALUES (gen_random_uuid(), $1, NULL, '2026-10-01', 'income_proportional', $2)`,
+        [householdId, alex],
+      );
+      await h.owner.query(
+        `INSERT INTO income_split_consents (id, household_id, member_id, effective_from, basis,
+           declared_monthly_minor)
+         VALUES (gen_random_uuid(), $1, $2, '2026-10-01', 'declared', 600000),
+                (gen_random_uuid(), $1, $3, '2026-10-01', 'declared', 200000)`,
+        [householdId, alex, sam],
+      );
+      await shared(householdId, alexsCard, -10_000, '2026-10-12', 'Electric bill', [alex, sam]);
+      await rules().runHousehold(householdId, MONDAY, { daily: true });
+      const summaries = async (m: string) =>
+        (await settleUps(m)).filter((x) => x.kind === 'settle_up_summary');
+      // A quarter of $100, not half.
+      expect((await summaries(alex)).map((n) => [n.title, n.body])).toEqual([
+        ['October with Sam: Sam owes you $25', '1 shared expense, $100 in all.'],
+      ]);
+      expect((await summaries(sam)).map((n) => [n.title, n.body])).toEqual([
+        ['October with Alex: you owe Alex $25', '1 shared expense, $100 in all.'],
+      ]);
+      expect(await settleUps(jo)).toEqual([]);
+      // Neither income, nor the shares they make, reaches anyone.
+      for (const m of [alex, sam, jo]) {
+        expect(JSON.stringify(await sent(m))).not.toMatch(/6,000|2,000|600000|200000|75%|25%/);
+      }
+    });
+
+    it('sends neither in a Combined household, nor later in the month', async () => {
+      const { householdId, alex, sam, alexsCard } = await three();
+      await shared(householdId, alexsCard, -4_000, '2026-10-06', 'Concert', [alex, sam]);
+      await rules().runHousehold(
+        householdId,
+        { date: '2026-11-09', hour: 9, weekday: 'monday' },
+        { daily: true },
+      );
+      // A reminder on its Monday, but no summary a week into the month.
+      expect((await settleUps(sam)).map((n) => n.kind)).toEqual(['settle_up_reminder']);
+      await h.owner.query(`UPDATE households SET finance_style = 'combined' WHERE id = $1`, [
+        householdId,
+      ]);
+      await h.owner.query(`DELETE FROM notifications WHERE household_id = $1`, [householdId]);
+      await rules().runHousehold(householdId, MONDAY, { daily: true });
+      expect(await settleUps(alex)).toEqual([]);
+      expect(await settleUps(sam)).toEqual([]);
+    });
+  });
 });
