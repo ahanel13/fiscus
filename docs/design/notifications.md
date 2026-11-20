@@ -151,6 +151,10 @@ member gets nothing about them.
   between the two of them, what they cost, and what was settled up. It links to that month on
   Shared costs. It's sent only when something moved money between them, they settled up, or the
   month ended with a balance. Expenses that evened out, or were between other people, don't count.
+  Its months are calendar months, like Shared costs' statements, even when budget months start on
+  another day (ADR 0011 §4, D32).
+- A split by income counts as on the page: as shares, read in the recipient's own context, never
+  anyone's income (F4, D19).
 - Both are for households that settle up: two or more members, not Combined (ADR 0006 §8).
   Elsewhere they're not sent, and Settings doesn't list them.
 - A member who has left isn't reminded about, or sent a summary for.

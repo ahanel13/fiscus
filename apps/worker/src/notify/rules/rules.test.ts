@@ -764,6 +764,41 @@ describe('notification rules', { timeout: 120_000 }, () => {
       expect(await reminders(alex)).toEqual([]);
     });
 
+    it('splits by income when both agreed, without anyone’s income in it (F4, #110)', async () => {
+      const { householdId, alex, sam, jo, alexsCard } = await three();
+      // From October, the household splits by income, and Alex and Sam have both agreed:
+      // Alex earns $6,000 a month and Sam $2,000, so Alex pays 75% and Sam 25%.
+      await h.owner.query(
+        `INSERT INTO split_policies (id, household_id, category_id, effective_from, method,
+           created_by_member_id)
+         VALUES (gen_random_uuid(), $1, NULL, '2026-10-01', 'income_proportional', $2)`,
+        [householdId, alex],
+      );
+      await h.owner.query(
+        `INSERT INTO income_split_consents (id, household_id, member_id, effective_from, basis,
+           declared_monthly_minor)
+         VALUES (gen_random_uuid(), $1, $2, '2026-10-01', 'declared', 600000),
+                (gen_random_uuid(), $1, $3, '2026-10-01', 'declared', 200000)`,
+        [householdId, alex, sam],
+      );
+      await shared(householdId, alexsCard, -10_000, '2026-10-12', 'Electric bill', [alex, sam]);
+      await rules().runHousehold(householdId, MONDAY, { daily: true });
+      const summaries = async (m: string) =>
+        (await settleUps(m)).filter((x) => x.kind === 'settle_up_summary');
+      // A quarter of $100, not half.
+      expect((await summaries(alex)).map((n) => [n.title, n.body])).toEqual([
+        ['October with Sam: Sam owes you $25', '1 shared expense, $100 in all.'],
+      ]);
+      expect((await summaries(sam)).map((n) => [n.title, n.body])).toEqual([
+        ['October with Alex: you owe Alex $25', '1 shared expense, $100 in all.'],
+      ]);
+      expect(await settleUps(jo)).toEqual([]);
+      // Neither income, nor the shares they make, reaches anyone.
+      for (const m of [alex, sam, jo]) {
+        expect(JSON.stringify(await sent(m))).not.toMatch(/6,000|2,000|600000|200000|75%|25%/);
+      }
+    });
+
     it('sends neither in a Combined household, nor later in the month', async () => {
       const { householdId, alex, sam, alexsCard } = await three();
       await shared(householdId, alexsCard, -4_000, '2026-10-06', 'Concert', [alex, sam]);
