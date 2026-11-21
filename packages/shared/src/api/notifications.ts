@@ -73,6 +73,8 @@ export const notificationSettingsSchemas = {
   connection_needs_you: z.strictObject({}),
   review: z.strictObject({ hour }),
   weekly_recap: z.strictObject({ day: z.enum(WEEKDAYS), hour }),
+  settle_up_reminder: z.strictObject({ day: z.enum(WEEKDAYS), overMinor: minorUnitsSchema.min(1) }),
+  settle_up_summary: z.strictObject({}),
 } as const;
 
 export type NotificationKind = keyof typeof notificationSettingsSchemas;
@@ -167,7 +169,29 @@ export const NOTIFICATION_KIND_DEFINITIONS: { [K in NotificationKind]: KindDefin
     channels: ['in_app', 'email'],
     push: false,
   },
+  settle_up_reminder: {
+    label: 'You’re not square with someone',
+    scope: 'people you share costs with',
+    defaults: { day: 'monday', overMinor: 2_000 },
+    channels: ['in_app'],
+    push: false,
+  },
+  settle_up_summary: {
+    label: 'Monthly shared costs summary',
+    scope: 'people you share costs with',
+    defaults: {},
+    channels: ['in_app', 'email'],
+    push: false,
+  },
 };
+
+/**
+ * The settle-up kinds (#116): shown and sent only where there's settling up, in a household of
+ * two or more that doesn't combine everything (ADR 0006 §8).
+ */
+export const SETTLE_UP_KINDS = ['settle_up_reminder', 'settle_up_summary'] as const;
+export const settlesUp = (memberCount: number, financeStyle: string) =>
+  memberCount > 1 && financeStyle !== 'combined';
 
 /** The kinds a notification row can have: the rules, and a channel's test. */
 export const NOTIFICATION_ROW_KINDS = [...NOTIFICATION_KINDS, 'test'] as const;
@@ -248,6 +272,12 @@ export function describeRuleTiming(
       const day = s.day as string;
       return `${day[0]!.toUpperCase()}${day.slice(1)}s at ${formatHour(s.hour as number)}`;
     }
+    case 'settle_up_reminder': {
+      const day = s.day as string;
+      return `${day[0]!.toUpperCase()}${day.slice(1)}s, when a balance is ${money(s.overMinor as number)} or more`;
+    }
+    case 'settle_up_summary':
+      return 'On the 1st, for the month before';
   }
 }
 

@@ -8,6 +8,7 @@ import {
   withContext,
 } from '@fiscus/db';
 import { describeError } from '@fiscus/env';
+import { settlesUp } from '@fiscus/shared';
 import { Logger } from '@nestjs/common';
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type MemberRun, memberRun } from './member.js';
@@ -141,7 +142,11 @@ export class NotificationRules {
   async #members(householdId: string) {
     return withContext(this.#db, systemContext(householdId), async (tx) => {
       const [h] = await tx
-        .select({ currency: households.baseCurrency, weekStart: households.weekStart })
+        .select({
+          currency: households.baseCurrency,
+          weekStart: households.weekStart,
+          financeStyle: households.financeStyle,
+        })
         .from(households)
         .where(eq(households.id, householdId));
       const members = await tx
@@ -160,7 +165,16 @@ export class NotificationRules {
             isNull(users.disabledAt),
           ),
         );
-      return { currency: h?.currency ?? 'USD', weekStartDay: h?.weekStart ?? 1, members };
+      const [active] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(householdMembers)
+        .where(and(eq(householdMembers.householdId, householdId), isNull(householdMembers.leftAt)));
+      return {
+        currency: h?.currency ?? 'USD',
+        weekStartDay: h?.weekStart ?? 1,
+        settlesUp: settlesUp(active?.n ?? 0, h?.financeStyle ?? 'hybrid'),
+        members,
+      };
     });
   }
 
@@ -170,7 +184,7 @@ export class NotificationRules {
     local: LocalTime,
     fn: (m: MemberRun) => Promise<number>,
   ): Promise<number> {
-    const { currency, weekStartDay, members } = await this.#members(householdId);
+    const { currency, weekStartDay, settlesUp, members } = await this.#members(householdId);
     let sent = 0;
     for (const member of members) {
       try {
@@ -185,8 +199,10 @@ export class NotificationRules {
                 role: member.role,
                 today: local.date,
                 hour: local.hour,
+                weekday: local.weekday,
                 currency,
                 weekStartDay,
+                settlesUp,
               }),
             ),
         );

@@ -120,7 +120,13 @@ describe('notifications', () => {
     });
     expect(rule('weekly_recap').settings).toEqual({ day: 'monday', hour: 8 });
     expect(rule('low_balance').settings).toEqual({ accountIds: [], underMinor: 100_000 });
-    expect(s.rules).toHaveLength(10);
+    // Settling up (#116): a household of three that doesn't combine everything.
+    expect(rule('settle_up_reminder')).toMatchObject({
+      channels: ['in_app'],
+      settings: { day: 'monday', overMinor: 2_000 },
+    });
+    expect(rule('settle_up_summary').channels).toEqual(['in_app', 'email']);
+    expect(s.rules).toHaveLength(12);
   });
 
   it('sets up ntfy with its secrets encrypted, never returned, and adds it to push rules', async () => {
@@ -437,6 +443,10 @@ describe('notifications without the server’s mail settings', () => {
       .data as NotificationSettingsView;
     expect(s.emailAvailable).toBe(false);
     expect(s.channels[0]).toMatchObject({ kind: 'email', configured: false });
+    // One person, Combined: no settling up, so no settle-up rules (#116).
+    expect(s.rules.map((r) => r.kind)).not.toContain('settle_up_reminder');
+    expect(s.rules.map((r) => r.kind)).not.toContain('settle_up_summary');
+    expect(s.rules).toHaveLength(10);
   });
 });
 
