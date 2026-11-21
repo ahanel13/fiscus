@@ -489,7 +489,8 @@ Webhooks only make updates sooner.
 
 - **Turning them on.** The admin sets `PLAID_WEBHOOK_URL` to the public `https` base URL Plaid
   reaches the server at (env only for now; Server → Bank connections shows it, read-only).
-  `/api/v1/webhooks/plaid` is added to it, and that path alone needs to be public. Unset, the
+  `/api/v1/webhooks/plaid` is added to it, and that path alone needs to be public
+  ([proxy guide](../security/plaid-webhooks.md)). Unset, the
   receiver answers 404 and link tokens carry no `webhook`.
 - **New Items** get the URL on their link token (WEBHOOK-002). The exchange records what Plaid
   shows for the Item (`webhook_url`), and `webhook_enabled` when that's this server's URL.
