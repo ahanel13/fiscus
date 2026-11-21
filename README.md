@@ -91,7 +91,8 @@ Bank connections through Plaid use the server's own Plaid keys, from
   whose sign-in happens on their own site.
 - Optionally `PLAID_WEBHOOK_URL`, the public `https` address Plaid reaches this server at, to
   turn on webhooks: Plaid then tells Fiscus when a bank has new transactions, instead of Fiscus
-  only checking every few hours. Only `POST /api/v1/webhooks/plaid` needs to be public. Leave it
+  only checking every few hours. Only `POST /api/v1/webhooks/plaid` needs to be public
+  ([how to expose only that path](docs/security/plaid-webhooks.md)). Leave it
   unset on a server Plaid can't reach (a home network, plain HTTP): each bank is checked on a
   schedule, as before.
 
