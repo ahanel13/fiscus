@@ -141,3 +141,10 @@ export {
   type FundingProgress,
   type FundingStatus,
 } from './funding.js';
+export {
+  consentedDebts,
+  netPositions,
+  simplifyDebts,
+  transfersFor,
+  type Debt,
+} from './simplify.js';

@@ -59,7 +59,7 @@ interface SharedRow {
 export async function buildSharedCosts(
   tx: Executor,
   { memberId: me, month }: { memberId: string; month: string },
-): Promise<SharedCosts> {
+): Promise<Omit<SharedCosts, 'simplify'>> {
   const { rows: ctx } = await tx.execute<{
     system: boolean;
     member: string | null;
