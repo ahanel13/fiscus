@@ -12,6 +12,7 @@ import type {
   BudgetSuggestion,
   BudgetSummary,
   BudgetTemplate,
+  GoalContributions,
   GoalsOverview,
   CashFlow,
   CategoryGroup,
@@ -245,6 +246,14 @@ export const goalsQuery = (id: string) =>
   queryOptions({
     queryKey: ['households', id, 'goals'],
     queryFn: async () => (await api<Data<GoalsOverview>>('GET', `${hh(id)}/goals`)).data,
+  });
+
+/** Who's put in to a goal (#133, G7, G11): each member's contributions. */
+export const goalContributionsQuery = (id: string, goalId: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'goals', goalId, 'contributions'],
+    queryFn: async () =>
+      (await api<Data<GoalContributions>>('GET', `${hh(id)}/goals/${goalId}/contributions`)).data,
   });
 
 export const budgetsQuery = (id: string) =>

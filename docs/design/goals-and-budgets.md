@@ -102,9 +102,11 @@ aren't, and mixing them up is how the same dollars get counted twice.
   $8,000.00 toward this", and never the account's balance or transactions (ADR 0006 §4).
 - Each member's **contributions** to a shared goal (#133) are the changes in claims on their own
   accounts, plus their share of claims on joint accounts by ownership. Shared costs read the same
-  figures, as they read contributions (D2).
+  figures, as they read contributions (D2). Built as budgeting D36: a claim's growth counts up to
+  the new money that moved into its account that month, and a percentage claim its share of it.
 - Only an account's owners can claim it for a goal. A claim on a joint account needs one owner,
-  and the others are told, as other shared changes are.
+  and the others are told, as other shared changes are: in the activity of those who see the
+  account. A claim for a goal of your own tells them only that it's for a goal of yours (G15).
 
 **G8. When the household changes, claims follow the accounts.**
 - A member who leaves (ADR 0012) takes their private accounts, and their claims on shared goals
@@ -138,7 +140,9 @@ Goal lines are built (#132): each goal's plan is its line in its scope's budget 
 from `goal_plans` (G16), and its moved figure is worked out from transfers (G4, G13) or extra paid
 on a debt (G9). In zero-based, Move money and Cover take from or give to a goal line's to-move
 money (`budget_moves.from_goal_id`, `to_goal_id`, migration `0095`). Still to come: putting a
-transfer toward one goal of two (G13's choice).
+transfer toward one goal of two (G13's choice). Each member's contributions to a shared goal
+(#133, budgeting D36) are worked out when read, from its claims' history and what moved into
+their accounts (`fiscus_goal_contributions()`, migration `0117`).
 
 
 Nothing on goals' screens. Just enough that M5 adds goals without changing the budget engine:

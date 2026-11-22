@@ -24,6 +24,7 @@ import {
   type Goal,
   type GoalAccount,
   type GoalClaim,
+  type GoalContributions,
   type GoalDebt,
   type GoalShortfall,
   type GoalsOverview,
@@ -172,7 +173,10 @@ export class GoalsService {
         })
         .returning(goalColumns);
       await startPlan(tx, row!);
-      for (const c of input.claims) await setClaim(tx, ctx, row!, c.accountId, c);
+      for (const c of input.claims) {
+        await setClaim(tx, ctx, row!, c.accountId, c);
+        await tellCoOwners(tx, activity, row!, c.accountId, 'goal.joint_claim_set', c);
+      }
       await record(activity, row!, 'goal.created', {
         name: row!.name,
         targetMinor: row!.targetMinor,
@@ -437,6 +441,7 @@ export class GoalsService {
       }
       await setClaim(tx, ctx, row, accountId, claim);
       await record(activity, row, 'goal.claim_set', { name: row.name, ...claim });
+      await tellCoOwners(tx, activity, row, accountId, 'goal.joint_claim_set', claim);
       return this.#one(tx, ctx, goalId);
     });
   }
@@ -459,6 +464,7 @@ export class GoalsService {
       }
       await event(tx, ctx, gone, 'released', null);
       await record(activity, row, 'goal.claim_released', { name: row.name });
+      await tellCoOwners(tx, activity, row, accountId, 'goal.joint_claim_released', {});
       return this.#one(tx, ctx, goalId);
     });
   }
@@ -537,6 +543,47 @@ export class GoalsService {
           amountMinor: t.amountMinor,
         });
       }
+    });
+  }
+
+  /**
+   * Who's put in (#133, G7, G11, D36): each member's contributions to a savings goal you see, from
+   * fiscus_goal_contributions() (0117), which gives only what each put in and never the balances
+   * or transactions of accounts you can't see. A newer member sees the months from their history
+   * window on, and their own (#256).
+   */
+  async contributions(ctx: HouseholdContext, goalId: string): Promise<GoalContributions> {
+    return this.scope.run(ctx, async (tx) => {
+      const row = await findGoal(tx, goalId);
+      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
+      const { rows } =
+        row.kind === 'save'
+          ? await tx.execute<{ month: string; member_id: string; amount_minor: string }>(
+              sql`SELECT * FROM fiscus_goal_contributions(${goalId}::uuid)`,
+            )
+          : { rows: [] };
+      const months = rows.map((r) => ({
+        month: r.month,
+        memberId: r.member_id,
+        amountMinor: Number(r.amount_minor),
+      }));
+      const byMember = new Map<string, { totalMinor: number; thisMonthMinor: number }>();
+      for (const m of months) {
+        const t = byMember.get(m.memberId) ?? { totalMinor: 0, thisMonthMinor: 0 };
+        t.totalMinor += m.amountMinor;
+        if (m.month === budgetMonth) t.thisMonthMinor += m.amountMinor;
+        byMember.set(m.memberId, t);
+      }
+      const members = [...byMember]
+        .map(([memberId, t]) => ({ memberId, ...t }))
+        .sort((a, b) => b.totalMinor - a.totalMinor || a.memberId.localeCompare(b.memberId));
+      return {
+        goalId,
+        thisMonth: budgetMonth,
+        members,
+        totalMinor: members.reduce((s, m) => s + m.totalMinor, 0),
+        months,
+      };
     });
   }
 
@@ -1010,6 +1057,42 @@ async function activeMembers(tx: Executor, householdId: string): Promise<number>
       and(eq(householdMembers.householdId, householdId), isNull(householdMembers.leftAt)),
     )) as [{ n: number }];
   return n;
+}
+
+/**
+ * A claim on a joint account needs one owner, and the others are told (G7): in the activity of
+ * those who see the account, as an account's other changes are. A goal of the claimer's own stays
+ * theirs (G15): its co-owners learn only that part of the account is set aside for it.
+ */
+async function tellCoOwners(
+  tx: Executor,
+  activity: HouseholdActivity,
+  goal: GoalRow,
+  accountId: string,
+  action: 'goal.joint_claim_set' | 'goal.joint_claim_released',
+  claim: ClaimInput,
+): Promise<void> {
+  const [{ n }] = (await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(accountOwners)
+    .where(eq(accountOwners.accountId, accountId))) as [{ n: number }];
+  if (n < 2) return;
+  await activity.record({
+    action,
+    targetType: 'account',
+    targetId: accountId,
+    accountId,
+    metadata:
+      goal.memberId === null
+        ? {
+            goalId: goal.id,
+            name: goal.name,
+            ...(claim.amountMinor !== undefined ? { amountMinor: claim.amountMinor } : {}),
+            ...(claim.percentBps !== undefined ? { percentBps: claim.percentBps } : {}),
+          }
+        : { ownGoal: true },
+    visibleToHousehold: true,
+  });
 }
 
 /** Changes to the household's goals are in its activity; your own goals' are yours. */
