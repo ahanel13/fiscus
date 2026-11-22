@@ -92,7 +92,7 @@ export function OwnershipClaimBanner({ householdId }: { householdId: string }) {
     >
       <div className="mx-auto flex max-w-5xl flex-wrap items-start gap-3">
         <UserRoundCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-warning" />
-        <div className="min-w-0 flex-1 space-y-1">
+        <div className="min-w-0 flex-1 basis-64 space-y-1">
           <h2 id="ownership-claim-banner" className="font-semibold">
             {isClaimant
               ? 'You’ve claimed ownership of this household'
