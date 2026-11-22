@@ -4,6 +4,7 @@ import { householdRanges, incomeShares } from '@fiscus/ledger';
 import type { IncomeSplit, IncomeSplitConsent } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
 import { desc, sql } from 'drizzle-orm';
+import { acceptConsentRequests } from '../consent-requests/consent-requests.service.js';
 import type { HouseholdContext } from '../households/household-context.js';
 import { HouseholdScope } from '../households/household-scope.js';
 
@@ -14,8 +15,7 @@ import { HouseholdScope } from '../households/household-scope.js';
  * their consent to them alone, and everyone else gets only who has agreed and the split it makes,
  * from definer functions that never return an income (migration 0100).
  *
- * Consent here is given, not asked for. Asking someone, with an expiry (#265), builds on it: a
- * request is answered by agreeing here.
+ * Anyone can also be asked to agree (#265, D34): agreeing here answers every open request to them.
  */
 @Injectable()
 export class IncomeSplitService {
@@ -47,6 +47,7 @@ export class IncomeSplitService {
           metadata: { effectiveFrom: today },
         });
       }
+      await acceptConsentRequests(tx, activity, ctx.memberId, 'income_split');
       return this.#state(tx, ctx);
     });
   }

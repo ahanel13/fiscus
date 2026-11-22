@@ -19,8 +19,8 @@ are in the [bills walkthrough](walkthroughs/bills.md) §7 (D15–D20). The table
   send email yet; ask whoever runs it." and email can't be ticked.
 - **The rules** (#127, §4): a bill is due, a bill or paycheck is late, a card statement is due, a
   big transaction, low balance, a budget category nearly spent, transactions to review, and a bank
-  connection that needs you; the weekly recap (#128, §4.3); and settle-up reminders and the
-  monthly shared costs summary (#116, §4.4).
+  connection that needs you; the weekly recap (#128, §4.3); settle-up reminders and the
+  monthly shared costs summary (#116, §4.4); and consent requests (#265, §4.5).
 
 ## 2. Channels
 
@@ -102,6 +102,7 @@ Sam's private card's purchases never reach Alex. It writes their notification th
 | Weekly recap | each member | their day, from their hour (§4.3); a quiet week too | `weekly_recap:<week it covers>` |
 | You're not square with someone | the two people in a pair, each from their side (§4.4) | their day (Mondays by default), when their balance with the other is at least their amount ($20) | `settle_up_reminder:<other member>:<week>` |
 | Monthly shared costs summary | the two people in a pair, each from their side (§4.4) | the first daily run of a month, for the month before; up to the 7th, after a restart | `settle_up_summary:<other member>:<month>` |
+| Someone asks you to agree | whoever was asked; then whoever asked (§4.5) | within a minute or so of being asked; of an answer, or of the request expiring | `consent_request:<request>`, then `consent_request:<request>:<accepted, declined or expired>` |
 
 "A new subscription, or a price went up" isn't sent yet: detection (#119) doesn't record when a
 series first appeared or its amount moved and stayed (D14). It needs that first (#123, #129).
@@ -160,6 +161,26 @@ member gets nothing about them.
 - A member who has left isn't reminded about, or sent a summary for.
 - At summary detail, neither names anyone or gives an amount.
 
+### 4.5 Consent requests
+
+A consent request (#265, ADR 0012 §Departures item 5, budgeting walkthrough D34) is one member
+asking another to agree to something, for now a split by income. It isn't one of the hourly
+rules: every minute or so the worker asks which households have a request open, or one that
+ended since its last look (`fiscus_consent_request_households`), and for each, in the household's
+system context:
+- ends the requests whose 14 days are over, as **expired**, recorded in the activity as the
+  system's doing;
+- tells whoever was asked, once: "Alex asks you to agree to a split by income", saying the others
+  see only the split and when the request ends;
+- tells whoever asked, once, how it ended: "Sam agreed to a split by income", "Sam declined a split
+  by income", or "Your request to Sam has ended" (14 days without an answer; they can ask again).
+  A withdrawn request tells nobody.
+
+Someone who has left, or can't sign in, isn't told. The text names only members and the request,
+which everyone in the household sees; never an income. At summary detail it names nobody. The
+kind is listed in Settings in a household of two or more. Email goes out through the server's one
+mail server, like every other notification (§6).
+
 ## 5. What a webhook receives
 
 A `POST` with `Content-Type: application/json`:
@@ -179,7 +200,7 @@ A `POST` with `Content-Type: application/json`:
 
 - `kind` is one of the rules (`bill_due`, `late`, `statement_due`, `big_transaction`,
   `low_balance`, `budget_nearly_spent`, `subscription_change`, `connection_needs_you`, `review`,
-  `weekly_recap`, `settle_up_reminder`, `settle_up_summary`), or `test`.
+  `weekly_recap`, `settle_up_reminder`, `settle_up_summary`, `consent_request`), or `test`.
 - `title` and `body` are at the channel's detail level: `detail` says which. At `minimal`, `url`
   is the server's address only. `url` is null when the server's `PUBLIC_URL` isn't set for the
   worker.

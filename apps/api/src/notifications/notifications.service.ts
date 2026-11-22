@@ -200,8 +200,11 @@ export class NotificationsService {
         and(eq(householdMembers.householdId, ctx.householdId), isNull(householdMembers.leftAt)),
       );
     const settling = settlesUp(active?.n ?? 0, h?.financeStyle ?? 'hybrid');
+    // Nobody to ask, or be asked by, in a household of one (#265).
     const kinds = NOTIFICATION_KINDS.filter(
-      (k) => settling || !(SETTLE_UP_KINDS as readonly string[]).includes(k),
+      (k) =>
+        (settling || !(SETTLE_UP_KINDS as readonly string[]).includes(k)) &&
+        (k !== 'consent_request' || (active?.n ?? 0) > 1),
     );
     return {
       emailAvailable,

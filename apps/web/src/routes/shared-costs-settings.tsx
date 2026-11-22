@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  type ConsentRequest,
   formatMoney,
   type HouseholdMember,
   type IncomeSplit,
@@ -14,6 +15,7 @@ import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
 import {
   categoriesQuery,
+  consentRequestsQuery,
   householdQuery,
   incomeSplitQuery,
   membersQuery,
@@ -40,7 +42,8 @@ import {
 
 // Household settings → Shared costs (#109, budgeting walkthrough §9): how a shared expense is
 // split, by default and for particular categories, each from a month on. A split by income waits
-// for everyone's agreement, and shows only the split, never an income (F4, #110, D19).
+// for everyone's agreement, and shows only the split, never an income (F4, #110, D19). Anyone can
+// ask someone it's waiting for, who has 14 days to answer (#265, D34).
 
 type Method = SplitRule['method'];
 
@@ -88,6 +91,37 @@ export function describeIncomeSplit(split: IncomeSplit, members: HouseholdMember
     return `Waiting for ${list}`;
   }
   return describeShares(split.shares, members);
+}
+
+const dayLabel = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+
+/**
+ * The latest request to someone for a split by income that still says something: one that's
+ * open, or one they declined or let expire. Withdrawn and answered ones say nothing more.
+ */
+export function latestRequest(
+  requests: readonly ConsentRequest[],
+  memberId: string,
+): ConsentRequest | null {
+  const r = requests
+    .filter((x) => x.kind === 'income_split' && x.memberId === memberId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return r && ['pending', 'declined', 'expired'].includes(r.status) ? r : null;
+}
+
+/** "You asked on November 21. It ends on December 5.", "Declined on November 22." */
+export function describeRequest(r: ConsentRequest, members: HouseholdMember[]): string {
+  switch (r.status) {
+    case 'pending':
+      return `${cap(nameOf(members, r.requestedByMemberId))} asked on ${dayLabel(r.createdAt)}. It ends on ${dayLabel(r.expiresAt)}.`;
+    case 'declined':
+      return `Declined on ${dayLabel(r.closedAt ?? r.createdAt)}.`;
+    case 'expired':
+      return `Didn’t answer by ${dayLabel(r.expiresAt)}.`;
+    default:
+      return '';
+  }
 }
 
 /**
@@ -138,6 +172,7 @@ export function SharedCostsSettings() {
   const groups = useQuery(categoriesQuery(householdId)).data ?? [];
   const rules = useQuery(splitRulesQuery(householdId));
   const income = useQuery(incomeSplitQuery(householdId));
+  const requests = useQuery(consentRequestsQuery(householdId)).data ?? [];
   const queryClient = useQueryClient();
   const canEdit = household.you.role !== 'viewer';
   const [editing, setEditing] = useState<{ categoryId: string | null; isNew: boolean } | null>(
@@ -224,8 +259,25 @@ export function SharedCostsSettings() {
         {scheduled(def.scheduled)}
       </Card>
 
-      {income.data && (byIncome || income.data.yours) && household.you.role !== 'viewer' ? (
-        <IncomeCard householdId={householdId} split={income.data} currency={currency} />
+      {income.data && byIncome && canEdit ? (
+        <AgreementCard
+          householdId={householdId}
+          split={income.data}
+          members={members}
+          requests={requests}
+        />
+      ) : null}
+
+      {income.data &&
+      (byIncome || income.data.yours || askedYou(requests, household.you.memberId).length > 0) &&
+      canEdit ? (
+        <IncomeCard
+          householdId={householdId}
+          split={income.data}
+          currency={currency}
+          members={members}
+          asked={askedYou(requests, household.you.memberId)}
+        />
       ) : null}
 
       <Card className="space-y-3">
@@ -547,21 +599,136 @@ function RuleDialog({
   );
 }
 
+/** Open requests to you for a split by income. */
+const askedYou = (requests: readonly ConsentRequest[], you: string) =>
+  requests.filter((r) => r.kind === 'income_split' && r.memberId === you && r.status === 'pending');
+
+const refreshRequests = (queryClient: ReturnType<typeof useQueryClient>, householdId: string) =>
+  queryClient.invalidateQueries({ queryKey: ['households', householdId, 'consent-requests'] });
+
+/**
+ * Who a split by income is waiting for, and asking them (#265, D34): each has 14 days to answer.
+ * Asking changes nothing by itself; until they agree, the household default applies.
+ */
+function AgreementCard({
+  householdId,
+  split,
+  members,
+  requests,
+}: {
+  householdId: string;
+  split: IncomeSplit;
+  members: HouseholdMember[];
+  requests: ConsentRequest[];
+}) {
+  const queryClient = useQueryClient();
+  const onError = (e: unknown) =>
+    toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' });
+  const ask = useMutation({
+    mutationFn: (memberId: string) =>
+      api('POST', `/api/v1/households/${householdId}/consent-requests`, {
+        body: { kind: 'income_split', memberId },
+      }),
+    onSuccess: async (_, memberId) => {
+      await refreshRequests(queryClient, householdId);
+      toast(`Asked ${nameOf(members, memberId)}. They have 14 days to answer.`);
+    },
+    onError,
+  });
+  const withdraw = useMutation({
+    mutationFn: (id: string) =>
+      api('POST', `/api/v1/households/${householdId}/consent-requests/${id}/withdraw`),
+    onSuccess: async () => {
+      await refreshRequests(queryClient, householdId);
+      toast('Request withdrawn.');
+    },
+    onError,
+  });
+  const you = members.find((x) => x.isYou)?.id;
+  const others = split.members.filter((m) => m.memberId !== you);
+  if (others.length === 0) return null;
+  return (
+    <Card className="space-y-3">
+      <div>
+        <h2 className="font-semibold">Who has agreed</h2>
+        <p className="text-sm text-muted">
+          A split by income counts once everyone it’s for has agreed. Ask the people it’s waiting
+          for: each has 14 days to answer.
+        </p>
+      </div>
+      <ul className="divide-y divide-border">
+        {others.map((m) => {
+          const r = m.consented ? null : latestRequest(requests, m.memberId);
+          const mine = r?.status === 'pending' && r.requestedByMemberId === you;
+          return (
+            <li key={m.memberId} className="flex flex-wrap items-center gap-3 py-3">
+              <div className="mr-auto min-w-0">
+                <p className="font-medium">{cap(nameOf(members, m.memberId))}</p>
+                <p className="text-sm text-muted">
+                  {m.consented ? 'Agreed' : r ? describeRequest(r, members) : 'Not asked yet'}
+                </p>
+              </div>
+              {m.consented ? null : mine ? (
+                <Button
+                  variant="ghost"
+                  isPending={withdraw.isPending && withdraw.variables === r!.id}
+                  onPress={() => withdraw.mutate(r!.id)}
+                >
+                  Withdraw
+                </Button>
+              ) : r?.status === 'pending' ? null : (
+                <Button
+                  variant="secondary"
+                  isPending={ask.isPending && ask.variables === m.memberId}
+                  onPress={() => ask.mutate(m.memberId)}
+                >
+                  {r ? 'Ask again' : 'Ask'}
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
 /**
  * Your income for a split by income (D19): agree, choosing what it uses; change it; or withdraw.
- * Only you see what you chose. The others see that you agreed, and the split.
+ * Only you see what you chose. The others see that you agreed, and the split. When someone has
+ * asked you (#265, D34), it says so: agree, decline, or leave it for now.
  */
 function IncomeCard({
   householdId,
   split,
   currency,
+  members,
+  asked,
 }: {
   householdId: string;
   split: IncomeSplit;
   currency: string;
+  members: HouseholdMember[];
+  asked: ConsentRequest[];
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [notNow, setNotNow] = useState(false);
+  const decline = useMutation({
+    mutationFn: () =>
+      Promise.all(
+        asked.map((r) =>
+          api('POST', `/api/v1/households/${householdId}/consent-requests/${r.id}/decline`),
+        ),
+      ),
+    onSuccess: async () => {
+      await refreshRequests(queryClient, householdId);
+      toast('Declined. Nothing changes: the household default still applies.');
+    },
+    onError: (e) => toast((e as ApiError).detail ?? (e as ApiError).title, { tone: 'error' }),
+  });
+  const askers = [...new Set(asked.map((r) => cap(nameOf(members, r.requestedByMemberId))))];
+  const ends = asked.map((r) => r.expiresAt).sort()[0];
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ['households', householdId, 'income-split'] });
   const withdraw = useMutation({
@@ -603,6 +770,29 @@ function IncomeCard({
           <Button onPress={() => setOpen(true)}>Review and agree</Button>
         )}
       </div>
+      {asked.length > 0 && !yours && !notNow ? (
+        <Alert tone="info">
+          <div className="space-y-2">
+            <p>
+              <b>{askers.join(' and ')}</b> asked you to agree to a split by income. The request
+              ends on {dayLabel(ends!)}. Until you agree, nothing changes.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="secondary" onPress={() => setNotNow(true)}>
+                Not now
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                isPending={decline.isPending}
+                onPress={() => decline.mutate()}
+              >
+                Decline
+              </Button>
+            </div>
+          </div>
+        </Alert>
+      ) : null}
       <p className="text-xs text-muted">Only you see the income you choose.</p>
       {open ? (
         <ConsentDialog
@@ -645,6 +835,8 @@ function ConsentDialog({
       await queryClient.invalidateQueries({
         queryKey: ['households', householdId, 'shared-costs'],
       });
+      // Agreeing answers any request to you.
+      await refreshRequests(queryClient, householdId);
       toast(initial ? 'Your income for splits is changed, from today.' : 'Agreed, from today.');
       onClose();
     },

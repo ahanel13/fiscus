@@ -145,7 +145,7 @@ belongs to, or to the backlog.
 - [P1] "Ours" overview page: shared spending, split fairness, balances owed, funding status
 - [P2] Settle-up reminders and monthly settlement summary notification
 - [P1] Attribution activity feed with "flag change", plus a disputed state in settle-up (F6, #60)
-- [P2] Consent requests with a 14-day expiry and an archive fallback (ADR 0012, #265). Departures as a whole: [ADR 0012](adr/0012-member-lifecycle.md)
+- [P2] Consent requests with a 14-day expiry and an archive fallback (ADR 0012, #265). Departures as a whole: [ADR 0012](adr/0012-member-lifecycle.md). Requests and their expiry are built, for a split by income (D34); joint accounts' deletion and transfer, with the archive fallback, come with those actions (#253)
 
 ## M4 · Bills, recurring & notifications
 **Epic: Bill & recurring tracking** (`area:bills`)

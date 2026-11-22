@@ -75,6 +75,7 @@ export const notificationSettingsSchemas = {
   weekly_recap: z.strictObject({ day: z.enum(WEEKDAYS), hour }),
   settle_up_reminder: z.strictObject({ day: z.enum(WEEKDAYS), overMinor: minorUnitsSchema.min(1) }),
   settle_up_summary: z.strictObject({}),
+  consent_request: z.strictObject({}),
 } as const;
 
 export type NotificationKind = keyof typeof notificationSettingsSchemas;
@@ -183,6 +184,13 @@ export const NOTIFICATION_KIND_DEFINITIONS: { [K in NotificationKind]: KindDefin
     channels: ['in_app', 'email'],
     push: false,
   },
+  consent_request: {
+    label: 'Someone asks you to agree',
+    scope: 'and answers to what you asked',
+    defaults: {},
+    channels: ['in_app', 'email'],
+    push: true,
+  },
 };
 
 /**
@@ -278,6 +286,8 @@ export function describeRuleTiming(
     }
     case 'settle_up_summary':
       return 'On the 1st, for the month before';
+    case 'consent_request':
+      return 'When you’re asked, and when a request of yours is answered or ends';
   }
 }
 

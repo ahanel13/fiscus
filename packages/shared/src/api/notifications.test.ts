@@ -64,6 +64,9 @@ describe('notification rules (D18)', () => {
     expect(t('weekly_recap', { day: 'friday', hour: 17 })).toBe('Fridays at 5 pm');
     expect(t('settle_up_reminder')).toBe('Mondays, when a balance is $20 or more');
     expect(t('settle_up_summary')).toBe('On the 1st, for the month before');
+    expect(t('consent_request')).toBe(
+      'When you’re asked, and when a request of yours is answered or ends',
+    );
   });
 });
 

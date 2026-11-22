@@ -126,7 +126,9 @@ describe('notifications', () => {
       settings: { day: 'monday', overMinor: 2_000 },
     });
     expect(rule('settle_up_summary').channels).toEqual(['in_app', 'email']);
-    expect(s.rules).toHaveLength(12);
+    // Consent requests (#265): when someone asks you, or answers you.
+    expect(rule('consent_request').channels).toEqual(['in_app', 'email']);
+    expect(s.rules).toHaveLength(13);
   });
 
   it('sets up ntfy with its secrets encrypted, never returned, and adds it to push rules', async () => {
@@ -446,6 +448,8 @@ describe('notifications without the server’s mail settings', () => {
     // One person, Combined: no settling up, so no settle-up rules (#116).
     expect(s.rules.map((r) => r.kind)).not.toContain('settle_up_reminder');
     expect(s.rules.map((r) => r.kind)).not.toContain('settle_up_summary');
+    // Nobody to ask, or be asked by (#265).
+    expect(s.rules.map((r) => r.kind)).not.toContain('consent_request');
     expect(s.rules).toHaveLength(10);
   });
 });

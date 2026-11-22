@@ -39,6 +39,7 @@ describe('row-level security', () => {
     'categories',
     'connection_secrets',
     'connections',
+    'consent_requests',
     'category_groups',
     'funding_targets',
     'goal_claim_events',

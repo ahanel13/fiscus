@@ -537,8 +537,7 @@ rule starts from a date, and a rule never changes a month that's been settled.
 (**Your income, for splits by income**), from that day on. A split by income counts for an
 expense once everyone it's for has agreed, so a third member who isn't part of the rent doesn't
 hold it up. The rule shows **Waiting for …** or today's split. The others see who has agreed and
-the split, never an income or which income someone chose. Asking someone, with Not now / Decline
-and the 14-day expiry, comes with #265.
+the split, never an income or which income someone chose.
 
 **D33. Rent is split by days for someone who joins or leaves mid-month (#261).** A category's
 rule can **Prorate by days for someone who joins or leaves** (ADR 0012 §Joining). It's for costs
@@ -562,6 +561,26 @@ that cover the month, such as rent, utilities and subscriptions.
 - Each prorated expense says so on Shared costs: "Prorated: Jo 15 of 30 days". Balances, settle-up
   reminders, the monthly summary and the fewer-transfers plan (D31) all count it, since they're
   built from the same Shared costs.
+
+**D34. Asking someone to agree, with 14 days to answer (#265, ADR 0012 §Departures item 5).**
+- Under **Who has agreed**, each person a split by income is waiting for has **Ask**. Owners and
+  members ask; viewers neither ask nor are asked.
+- The person asked sees it under **Your income, for splits by income**: "Alex asked you to agree
+  to a split by income. The request ends on December 5. Until you agree, nothing changes." with
+  **Review and agree**, **Not now** and **Decline**. They're also told in the bell, and by email
+  by default (one notification kind, **Someone asks you to agree**).
+- A request waits **14 days**. Agreeing answers it; declining changes nothing; whoever asked can
+  withdraw it. After 14 days without an answer it expires, whoever asked is told, and they can
+  ask again. One open request per person at a time.
+- Asking changes nothing by itself: until they agree, the household default applies.
+- Everyone in the household sees who asked whom and how it ended (**Asked on November 21. It ends
+  on December 5.**, **Declined on November 22.**, **Didn’t answer by December 5.**), and each step
+  is in the household's activity: asked, agreed, declined, withdrawn, expired.
+
+*As built (#265):* these are ADR 0012's consent requests, with a split by income as the first
+thing asked. Deleting or transferring a joint account will ask the same way once those actions
+exist (#253, and permanent deletion of an account isn't built yet); their fallback after 14 days
+is archiving (closing) the account, which needs nobody's agreement.
 
 ---
 
@@ -684,6 +703,8 @@ contributions (D2).**
 | Shared costs | Nothing shared this month | "Nothing shared yet in October. Transactions attributed to both of you appear here" |
 | Shared costs | All square | "You and Sam are square." No **Settle up** button |
 | Split rules | Waiting for agreement | The rule shows **Waiting for Sam**, and the category uses the default split |
+| Who has agreed | Sam was asked | "You asked on November 21. It ends on December 5." with **Withdraw** |
+| Who has agreed | Sam didn't answer | "Didn’t answer by December 5." with **Ask again** |
 
 ---
 
@@ -763,6 +784,7 @@ real.
 | D31 | Fewer transfers only between people who all agree, and each sees only their part | #262 |
 | D32 | Budget months start on the household's day; changing it moves every month's edges and keeps the amounts | #71 |
 | D33 | A category's rule can prorate by days for people who join or leave that month; the default never does | #261 |
+| D34 | Anyone can ask someone a split by income waits for; they have 14 days to answer, and asking changes nothing by itself | #265 |
 
 ## Open questions
 
