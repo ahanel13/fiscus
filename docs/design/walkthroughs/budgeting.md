@@ -469,6 +469,25 @@ Who can **see** the account still follows its current owners, as now: a new co-o
 whole account. What changes is only which budget, and which side of Shared costs, its past
 spending counts on.
 
+**D35. A member can claim ownership once no owner has used Fiscus for 30 days (#267).** A
+household whose owners have gone quiet (they moved out and stopped signing in, or can't be
+reached) shouldn't be stuck without anyone who can change its settings or invite people (ADR 0012
+§Departures item 7). But an owner on holiday mustn't come back to find someone else in charge.
+- **When:** only once **no owner has used Fiscus for 30 days**: not signed in, and not used a
+  session. Household settings → Members then offers a member (not a viewer) **Claim ownership**,
+  after their password if they signed in a while ago. Nobody else learns that the owners are away.
+- **Notice:** every owner is told at once, a week before the 30 days are up, and the day before,
+  in Fiscus and by email, whatever their notification settings. While it's open, owners see a
+  banner on every page with **Reject claim**, one click. Everyone in the household sees the claim
+  on Members.
+- **Ends:** an owner rejects it, or uses Fiscus at all (they're back, so they're reachable), or
+  the claimant withdraws it, leaves, or stops being a member. Then nothing changes.
+- **Otherwise,** after 30 days the claimant becomes an owner **too**. Nobody is demoted. As an
+  owner, they can then remove an absent owner, whose departure package protects them.
+- So the shortest takeover is 60 days of every owner's silence, with three notices. One claim is
+  open at a time. Each step, notices included, is in the household's activity, and the database
+  checks who may take each one.
+
 ---
 
 ## 8. Shared costs: who owes whom
@@ -785,6 +804,7 @@ real.
 | D32 | Budget months start on the household's day; changing it moves every month's edges and keeps the amounts | #71 |
 | D33 | A category's rule can prorate by days for people who join or leave that month; the default never does | #261 |
 | D34 | Anyone can ask someone a split by income waits for; they have 14 days to answer, and asking changes nothing by itself | #265 |
+| D35 | A member can claim ownership once no owner has used Fiscus for 30 days; owners have 30 days' notice, and rejecting or using Fiscus ends it | #267 |
 
 ## Open questions
 

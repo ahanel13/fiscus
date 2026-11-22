@@ -86,6 +86,7 @@ erDiagram
 | totp_secret_enc | bytea null | Encrypted with the **instance** KEK (users aren't household-scoped) |
 | is_instance_admin | bool default false | ADR 0005 §2. Grants no household data access |
 | disabled_at | timestamptz null | |
+| last_active_at | timestamptz default now() | When they last used Fiscus: signing in, or a request on a session (touched at most once a minute). Kept when sessions end. Never shown to anyone; it decides only whether every owner is away for an ownership claim (#267, migration `0115`, which counts existing users as here on the day it runs) |
 
 **`user_identities`**: OIDC links. `(provider, subject)` UNIQUE, `user_id` FK.
 
@@ -129,6 +130,8 @@ UNIQUE `(household_id, user_id) WHERE left_at IS NULL AND user_id IS NOT NULL`.
 **`member_guardians`** (ships with #223): `(member_id, guardian_member_id)` PK, `household_id`, `created_at`. Required for every member without a login (≥1 guardian). Guardians get `owner`-level access to the dependent's accounts (`fiscus_account_access()` will include them). Guardians must be login members.
 
 **`invites`**: `household_id`, `email` (only an account with this email can accept), `role`, `token_hash`, `invited_by_member_id`, `expires_at` (7 days), `accepted_at`, `accepted_by_user_id`, `revoked_at`. The token is only sent in URL fragments and request bodies, never in paths, so it stays out of logs.
+
+**`ownership_claims`** (#267, migrations `0115`, `0116`; ADR 0012 §Departures item 7, budgeting walkthrough D35, HH-17): a member asking to become an owner too, when no owner has used Fiscus for 30 days. `household_id`, `claimant_member_id`, `status` enum `open`/`rejected`/`withdrawn`/`cancelled`/`granted`, `created_at`, `ends_at` (30 days on), `closed_at` (set exactly when it isn't open), `closed_by_member_id` (the owner who rejected it or the claimant who withdrew it; null when the worker ended it), `cancel_reason` (`owner_returned`/`claimant_ineligible`, set exactly when cancelled). Composite FKs to members (cascade). A partial unique index keeps one open claim per household. Everyone in the household reads them. A trigger (`fiscus_ownership_claim_steps`) sets `created_at` and `ends_at` itself, lets only a current member who isn't an owner or a viewer claim, as themselves, and only while every current owner's `users.last_active_at` is over 30 days old; lets any current owner reject and only the claimant withdraw, while it's open; and only the worker cancel it, or grant it once `ends_at` has passed. One that has ended never changes, and nothing deletes one. The worker finds households to look at with `fiscus_ownership_claim_households(since)` (ids only, for `fiscus_worker`), cancels a claim when an owner has been active since it started or the claimant left or isn't a member any more, grants it by making the claimant an owner, and writes the `ownership_claim` notices (notifications §4.6). Each step is in the household's activity, recorded as the system's when the worker took it.
 
 **`household_keys`**: ADR 0005 envelope encryption.
 

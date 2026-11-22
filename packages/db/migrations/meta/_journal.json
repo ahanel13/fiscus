@@ -806,6 +806,20 @@
       "when": 1795130180201,
       "tag": "0114_consent_requests_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1795130182201,
+      "tag": "0115_ownership_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1795130183201,
+      "tag": "0116_ownership_claims_rls",
+      "breakpoints": true
     }
   ]
 }

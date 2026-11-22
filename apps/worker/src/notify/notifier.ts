@@ -24,7 +24,9 @@ import {
 import {
   type DetailLevel,
   type ExternalChannelKind,
+  isNoticeKind,
   NOTIFICATION_KINDS,
+  NOTIFICATION_CHANNELS,
   type NotificationChannelKind,
   type NotificationKind,
   type NotificationRowKind,
@@ -33,6 +35,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import type { ConsentRequestNotices } from './consent-requests.js';
+import type { OwnershipClaimNotices } from './ownership-claims.js';
 import type { NotificationRules } from './rules/runner.js';
 
 // Delivering notifications (#125, #126, #130). Whatever writes a notification (the api, or a
@@ -88,6 +91,8 @@ export interface NotifierDeps {
   rules?: NotificationRules;
   /** Expires consent requests and tells the people involved (#265), looked at with the rules. */
   consentRequests?: ConsentRequestNotices;
+  /** Ends or grants ownership claims and tells the people involved (#267), looked at with the rules. */
+  ownershipClaims?: OwnershipClaimNotices;
   logger?: Pick<Logger, 'log' | 'warn' | 'error'>;
 }
 
@@ -158,6 +163,11 @@ export class Notifier {
     } catch (error) {
       this.#logger.error(`Consent requests failed: ${describeError(error)}`);
     }
+    try {
+      await this.#deps.ownershipClaims?.maybePass();
+    } catch (error) {
+      this.#logger.error(`Ownership claims failed: ${describeError(error)}`);
+    }
     const { rows: unrouted } = await db.execute<{ notification_id: string; household_id: string }>(
       sql`SELECT notification_id, household_id FROM fiscus_unrouted_notifications(${this.#options.batch})`,
     );
@@ -187,7 +197,7 @@ export class Notifier {
 
   /**
    * A notification's deliveries: the channels its recipient ticked for its kind (or D18's
-   * defaults), that are set up and available here. In Fiscus shows it in the bell. A test goes to
+   * defaults), or every channel for a notice, that are set up and available here. In Fiscus shows it in the bell. A test goes to
    * its channel only, set up or not, so its result says what's wrong. A recipient who has left
    * the household gets nothing.
    */
@@ -234,9 +244,12 @@ export class Notifier {
                 ),
               )
           : [];
+        // A notice (an ownership claim, #267) can't be turned off: everywhere they can get it.
         const ticked = isRuleKind(n.kind)
           ? ruleChannels(n.kind, pref?.channels as NotificationChannelKind[] | null, setUp)
-          : (['in_app'] as NotificationChannelKind[]);
+          : isNoticeKind(n.kind)
+            ? [...NOTIFICATION_CHANNELS]
+            : (['in_app'] as NotificationChannelKind[]);
         chosen = ticked.filter(
           (c) =>
             c === 'in_app' || (c === 'email' ? email !== null : (setUp as string[]).includes(c)),

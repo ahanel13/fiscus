@@ -27,6 +27,7 @@ import { applyTheme } from '../lib/theme.js';
 import { CommandPalette } from './CommandPalette.js';
 import { ShellTitleContext } from './shell-title.js';
 import { HistoryBanner } from './HistoryCheck.js';
+import { OwnershipClaimBanner } from './OwnershipClaim.js';
 import { NotificationBell } from './NotificationBell.js';
 import {
   Avatar,
@@ -214,6 +215,8 @@ export function AppShell() {
           <TimeZoneProvider timeZone={household.timezone}>
             {/* This device's check of the household's history (#264), on every page. */}
             <HistoryBanner householdId={householdId} />
+            {/* A claim to ownership (#267), for the owners and the claimant while it's open. */}
+            <OwnershipClaimBanner householdId={householdId} />
             <ShellTitleContext.Provider value={setPageTitle}>
               <Outlet />
             </ShellTitleContext.Provider>

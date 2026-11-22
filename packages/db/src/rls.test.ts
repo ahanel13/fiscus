@@ -54,6 +54,7 @@ describe('row-level security', () => {
     'notification_deliveries',
     'notification_preferences',
     'notifications',
+    'ownership_claims',
     'recurring_dismissals',
     'recurring_marks',
     'recurring_series',

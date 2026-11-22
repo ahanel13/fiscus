@@ -2,7 +2,7 @@
 import { type DbHandle, sessions, users } from '@fiscus/db';
 import type { SessionSummary } from '@fiscus/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { DB } from '../database/database.module.js';
 import type { AuthContext } from './auth-context.js';
 import { randomToken, sha256 } from './tokens.js';
@@ -39,7 +39,19 @@ export class SessionService {
         userAgent: meta.userAgent?.slice(0, 512) ?? null,
       })
       .returning({ id: sessions.id });
+    await this.#markActive(userId, now);
     return { token, id: row!.id };
+  }
+
+  /**
+   * When they last used Fiscus (#267), kept when the session ends. Every owner away for 30 days
+   * lets a member claim ownership, and an owner back ends a claim (ADR 0012).
+   */
+  async #markActive(userId: string, now: Date): Promise<void> {
+    await this.db.db
+      .update(users)
+      .set({ lastActiveAt: now, updatedAt: sql`${users.updatedAt}` })
+      .where(eq(users.id, userId));
   }
 
   async resolve(token: string): Promise<AuthContext | null> {
@@ -62,6 +74,7 @@ export class SessionService {
     }
     if (now.getTime() - session.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
       await this.db.db.update(sessions).set({ lastSeenAt: now }).where(eq(sessions.id, session.id));
+      await this.#markActive(user.id, now);
     }
     return {
       session: {

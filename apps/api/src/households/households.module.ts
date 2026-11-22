@@ -11,10 +11,17 @@ import { InviteTokensService } from './invite-tokens.service.js';
 import { InvitesController } from './invites.controller.js';
 import { InvitesService } from './invites.service.js';
 import { MembersService } from './members.service.js';
+import { OwnershipClaimsController } from './ownership-claims.controller.js';
+import { OwnershipClaimsService } from './ownership-claims.service.js';
 
 @Module({
   imports: [AuthModule],
-  controllers: [HouseholdsController, InvitesController, ActivityController],
+  controllers: [
+    HouseholdsController,
+    InvitesController,
+    ActivityController,
+    OwnershipClaimsController,
+  ],
   providers: [
     HouseholdAccess,
     HouseholdGuard,
@@ -23,6 +30,7 @@ import { MembersService } from './members.service.js';
     InviteTokensService,
     InvitesService,
     MembersService,
+    OwnershipClaimsService,
   ],
   exports: [HouseholdAccess, HouseholdGuard, HouseholdScope],
 })

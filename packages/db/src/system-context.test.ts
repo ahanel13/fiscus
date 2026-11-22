@@ -577,12 +577,13 @@ describe('system context belongs to the worker', () => {
                           'fiscus_notification_households',
                           'fiscus_households_with_new_transactions',
                           'fiscus_consent_request_households',
+                          'fiscus_ownership_claim_households',
                           'fiscus_clear_owner_reviewer', 'fiscus_clear_member_reviewer',
                           'fiscus_find_plaid_item', 'fiscus_plaid_webhook_key_set',
                           'fiscus_queue_plaid_webhook', 'fiscus_record_plaid_webhook',
                           'fiscus_plaid_webhook_moves', 'fiscus_unrelax_connections')
       ORDER BY 1`);
-    expect(owners.map((o) => o.rolname)).toEqual(Array(20).fill('fiscus_steward'));
+    expect(owners.map((o) => o.rolname)).toEqual(Array(21).fill('fiscus_steward'));
     const { rows } = await owner.query(`
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
                                     'categories', 'household_keys', 'audit_events', 'users',

@@ -11,6 +11,7 @@ export * from './api/consent-requests.js';
 export * from './api/households.js';
 export * from './api/ledger.js';
 export * from './api/notifications.js';
+export * from './api/ownership-claims.js';
 export * from './api/recap.js';
 export * from './api/recurring.js';
 export * from './api/rules.js';

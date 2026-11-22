@@ -235,6 +235,30 @@ const CELLS: Record<string, (a: Actor) => Promise<void>> = {
   'HH-01/MEM': async () => ok(await f.B.get(url())),
   'HH-01/VIEW': async () => ok(await f.V.get(url())),
   // Your own name and color, nobody else's (there's no route to change another member's).
+  // An ownership claim (#267): owners already are, viewers can't. A member can, once no owner has
+  // used Fiscus for 30 days; withdrawn again so the household stays as it was.
+  'HH-17/OWN': async () => refused(await f.A.post(url('/ownership-claims'))),
+  'HH-17/MEM': async () => {
+    const owners = `SELECT u.id FROM users u JOIN household_members m ON m.user_id = u.id
+                    WHERE m.household_id = $1 AND m.role = 'owner' AND m.left_at IS NULL`;
+    await f.db.query(
+      `UPDATE users SET last_active_at = now() - interval '31 days' WHERE id IN (${owners})`,
+      [f.hh],
+    );
+    await f.db.query(
+      `UPDATE sessions SET reauthenticated_at = now()
+       WHERE user_id = (SELECT user_id FROM household_members WHERE id = $1)`,
+      [f.member.B],
+    );
+    try {
+      const r = await f.B.post(url('/ownership-claims'));
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+      ok(await f.B.post(url(`/ownership-claims/${r.body.data.id}/withdraw`)));
+    } finally {
+      await f.db.query(`UPDATE users SET last_active_at = now() WHERE id IN (${owners})`, [f.hh]);
+    }
+  },
+  'HH-17/VIEW': async () => refused(await f.V.post(url('/ownership-claims'))),
   'HH-18/OWN': async () => ok(await f.A.request('PATCH', url('/me'), { displayName: 'Ada' })),
   'HH-18/MEM': async () => ok(await f.B.request('PATCH', url('/me'), { displayName: 'Bea' })),
   'HH-18/VIEW': async () => ok(await f.V.request('PATCH', url('/me'), { displayName: 'Vic' })),
