@@ -827,6 +827,13 @@
       "when": 1795130184201,
       "tag": "0117_goal_contributions",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1795130185201,
+      "tag": "0118_goal_debt_due_day",
+      "breakpoints": true
     }
   ]
 }

@@ -126,3 +126,31 @@ export function payoff(debts: PayoffDebt[], strategy: PayoffStrategy, thisMonth:
     order: order.map((d) => d.id),
   };
 }
+
+// ── A debt's minimum as a bill (G9, goals walkthrough G23) ───────────────────────────────────
+// With no due date from the bank, a pay-down goal can say which day of the month its minimum is
+// due. A day the month doesn't have (29–31) is its last day, as budget start days are (D32).
+
+const daysIn = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+const dayOf = (index: number, dueDay: number) => {
+  const y = Math.floor(index / 12);
+  const m = (index % 12) + 1;
+  return `${monthOf(index)}-${String(Math.min(dueDay, daysIn(y, m))).padStart(2, '0')}`;
+};
+
+/** The days a monthly minimum is due from `from` to `to` (`YYYY-MM-DD`, both included). */
+export function monthlyDueDates(dueDay: number, from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let i = monthIndex(from.slice(0, 7)); i <= monthIndex(to.slice(0, 7)); i++) {
+    const due = dayOf(i, dueDay);
+    if (due >= from && due <= to) out.push(due);
+  }
+  return out;
+}
+
+/** The due date before `date` (`YYYY-MM-DD`): payments after it, through `date`, count toward it. */
+export function previousDueDate(dueDay: number, date: string): string {
+  const i = monthIndex(date.slice(0, 7));
+  const here = dayOf(i, dueDay);
+  return here < date ? here : dayOf(i - 1, dueDay);
+}

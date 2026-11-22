@@ -3,7 +3,9 @@ import {
   accountLiabilities,
   accountOwners,
   accounts,
+  balanceSnapshots,
   type Executor,
+  goals,
   householdMembers,
   households,
   recurringMarks,
@@ -14,10 +16,13 @@ import {
 import {
   addDays,
   estimateCount,
+  estimatedMinimum,
   estimateNext,
   LATE_AFTER_DAYS,
+  monthlyDueDates,
   occurrences,
   payOccurrences,
+  previousDueDate,
   type RecurringCandidate,
   type RecurringMatch,
   recurringMatches,
@@ -31,7 +36,7 @@ import {
   statementPaid,
   whoLooksAfter,
 } from '@fiscus/shared';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
 import { ownersOnDates } from './owners.js';
 
 // Who sees a series, and who looks after it (#121; bills walkthrough D13, D22). For the api's
@@ -453,15 +458,25 @@ export async function seriesOccurrences(
 
 // ── Card statements (#122; bills walkthrough D9) ────────────────────────────────────────────
 
-/** A card's statement, from the bank (Plaid liabilities, #86): what's owed, by when, and paid. */
+/**
+ * A card's statement, from the bank (Plaid liabilities, #86): what's owed, by when, and paid. Or,
+ * for a loan or card the bank gives no due date for, its minimum from its pay-down goal, due on
+ * the day the goal says (G9, G23).
+ */
 export interface CardStatement {
+  source: 'bank' | 'goal';
+  /** The pay-down goal it comes from; null from the bank. */
+  goalId: string | null;
   accountId: string;
   accountName: string;
   currency: string;
   due: string;
-  /** The day the statement closed; payments after it count toward it. */
+  /**
+   * The day the statement closed; payments after it count toward it. From a goal: the due date
+   * before, and payments after it, through this due date, count.
+   */
   statementDate: string | null;
-  /** Its balance, positive. */
+  /** Its balance, positive; from a goal, the minimum. */
   owedMinor: number;
   minimumMinor: number | null;
   /** What's gone into the card since the statement date. */
@@ -487,7 +502,15 @@ export async function cardStatements(
     to,
     today,
     accountIds,
-  }: { from: string; to: string; today: string; accountIds?: string[] },
+    forMemberId,
+  }: {
+    from: string;
+    to: string;
+    today: string;
+    accountIds?: string[];
+    /** Leaves out others' own (Mine) goals, in system context too (G15). */
+    forMemberId?: string;
+  },
 ): Promise<CardStatement[]> {
   if (accountIds && accountIds.length === 0) return [];
   const rows = await tx
@@ -521,6 +544,8 @@ export async function cardStatements(
     const paidSoFar = Number(sum?.total ?? 0);
     const paid = statementPaid(owed, l.minimumPaymentMinor, paidSoFar);
     out.push({
+      source: 'bank',
+      goalId: null,
       accountId: l.accountId,
       accountName: name,
       currency,
@@ -537,6 +562,123 @@ export async function cardStatements(
             ? 'late'
             : 'due',
     });
+  }
+  out.push(...(await goalMinimums(tx, { from, to, today, accountIds, forMemberId })));
+  return out.sort(
+    (a, b) => a.due.localeCompare(b.due) || a.accountName.localeCompare(b.accountName),
+  );
+}
+
+/**
+ * A debt's minimum as a bill from its pay-down goal (G9, G23), for a loan or card the bank gives
+ * no due date for (SimpleFIN, manual accounts, or a bank that doesn't say): due each month on the
+ * goal's day, from the day the goal began. It's the minimum entered on the goal, else the bank's,
+ * else the estimate (2% of what's owed). Payments into the account since the due date before pay
+ * it. Seen, as statements are, by those who see the account's details (owner and full access)
+ * and the goal (a Mine goal only by its member, G15).
+ */
+async function goalMinimums(
+  tx: Executor,
+  {
+    from,
+    to,
+    today,
+    accountIds,
+    forMemberId,
+  }: { from: string; to: string; today: string; accountIds?: string[]; forMemberId?: string },
+): Promise<CardStatement[]> {
+  const rows = await tx
+    .select({
+      goalId: goals.id,
+      accountId: accounts.id,
+      dueDay: goals.dueDay,
+      enteredMinimum: goals.minimumMinor,
+      began: sql<string>`${goals.createdAt}::date::text`,
+      name: accounts.name,
+      currency: accounts.currency,
+      bankMinimum: accountLiabilities.minimumPaymentMinor,
+      bankDue: accountLiabilities.nextDueDate,
+    })
+    .from(goals)
+    .innerJoin(accounts, eq(accounts.id, goals.accountId))
+    .leftJoin(accountLiabilities, eq(accountLiabilities.accountId, accounts.id))
+    .where(
+      and(
+        eq(goals.kind, 'pay_down'),
+        isNull(goals.archivedAt),
+        isNotNull(goals.dueDay),
+        isNull(accounts.closedAt),
+        sql`${accounts.id} IN (SELECT account_id FROM fiscus_account_access() WHERE level IN ('owner', 'full'))`,
+        accountIds ? inArray(accounts.id, accountIds) : undefined,
+        forMemberId
+          ? sql`(${goals.memberId} IS NULL OR ${goals.memberId} = ${forMemberId})`
+          : undefined,
+      ),
+    )
+    // One per debt: the household's goal before someone's own.
+    .orderBy(sql`${goals.memberId} IS NOT NULL`, asc(goals.createdAt));
+  const seen = new Set<string>();
+  const debts = rows.filter((r) => {
+    // The bank's due dates go first (D9).
+    if (r.bankDue || seen.has(r.accountId)) return false;
+    seen.add(r.accountId);
+    return true;
+  });
+  if (!debts.length) return [];
+  const balances = new Map<string, number>();
+  for (const b of await tx
+    .selectDistinctOn([balanceSnapshots.accountId], {
+      accountId: balanceSnapshots.accountId,
+      balanceMinor: balanceSnapshots.balanceMinor,
+    })
+    .from(balanceSnapshots)
+    .where(
+      inArray(
+        balanceSnapshots.accountId,
+        debts.map((d) => d.accountId),
+      ),
+    )
+    .orderBy(balanceSnapshots.accountId, desc(balanceSnapshots.asOf))) {
+    balances.set(b.accountId, b.balanceMinor);
+  }
+  const out: CardStatement[] = [];
+  for (const d of debts) {
+    const owed = Math.max(0, -(balances.get(d.accountId) ?? 0));
+    if (owed <= 0) continue;
+    const minimum = Math.min(owed, d.enteredMinimum ?? d.bankMinimum ?? estimatedMinimum(owed));
+    if (minimum <= 0) continue;
+    for (const due of monthlyDueDates(d.dueDay!, d.began > from ? d.began : from, to)) {
+      const before = previousDueDate(d.dueDay!, due);
+      const [sum] = await tx
+        .select({ total: sql<string>`coalesce(sum(${transactions.amountMinor}), 0)` })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.accountId, d.accountId),
+            isNull(transactions.parentId),
+            isNull(transactions.deletedAt),
+            gt(transactions.amountMinor, 0),
+            gt(transactions.effectiveDate, before),
+            lte(transactions.effectiveDate, due),
+          ),
+        );
+      const paidSoFar = Number(sum?.total ?? 0);
+      const paid = statementPaid(minimum, minimum, paidSoFar);
+      out.push({
+        source: 'goal',
+        goalId: d.goalId,
+        accountId: d.accountId,
+        accountName: d.name,
+        currency: d.currency,
+        due,
+        statementDate: before,
+        owedMinor: minimum,
+        minimumMinor: minimum,
+        paidSoFarMinor: paidSoFar,
+        paid,
+        status: paid === 'paid' ? 'paid' : addDays(due, LATE_AFTER_DAYS) < today ? 'late' : 'due',
+      });
+    }
   }
   return out;
 }
@@ -558,6 +700,7 @@ export async function cardStatementsDue(
     to: addDays(today, withinDays),
     today,
     accountIds: owned.map((o) => o.accountId),
+    forMemberId: memberId,
   });
   return statements.filter((s) => s.paid !== 'paid');
 }

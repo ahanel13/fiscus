@@ -223,6 +223,11 @@ export interface RecurringOccurrence {
   /** Card statements: how much of it is paid (D9). */
   statementPaid?: StatementPaid;
   /**
+   * Card statements: from the bank (D9), or a debt's minimum from its pay-down goal, on the day
+   * the goal says it's due (G23).
+   */
+  source?: 'bank' | 'goal';
+  /**
    * Who: for a bill, who looks after it; for income, who it's for; for a card statement, whose
    * card it is. Shown only when `shared` (D22).
    */

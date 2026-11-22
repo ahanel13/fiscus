@@ -414,7 +414,8 @@ export class RecurringService {
   ): Promise<RecurringOccurrence[]> {
     return (await cardStatements(tx, { from, to, today })).map((st) => ({
       seriesId: null,
-      name: `${st.accountName} statement`,
+      // A debt's minimum from its goal (G23) is a payment, not a statement.
+      name: `${st.accountName} ${st.source === 'goal' ? 'payment' : 'statement'}`,
       kind: 'statement',
       accountId: st.accountId,
       currency: st.currency,
@@ -425,6 +426,7 @@ export class RecurringService {
       minimumMinor: st.minimumMinor,
       paidSoFarMinor: st.paidSoFarMinor,
       statementPaid: st.paid,
+      source: st.source,
       memberIds: people.owners(st.accountId),
       shared: people.seeStatement(st.accountId).length > 1,
     }));

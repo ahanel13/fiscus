@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
-import { estimatedMinimum, payoff, type PayoffDebt } from './payoff.js';
+import {
+  estimatedMinimum,
+  monthlyDueDates,
+  payoff,
+  type PayoffDebt,
+  previousDueDate,
+} from './payoff.js';
 
 const card: PayoffDebt = {
   id: 'card',
@@ -75,5 +81,31 @@ describe('payoff (walkthrough §8)', () => {
     expect(estimatedMinimum(500_000)).toBe(10_000);
     expect(estimatedMinimum(50_000)).toBe(2_500);
     expect(estimatedMinimum(1_000)).toBe(1_000);
+  });
+});
+
+describe('a debt’s minimum as a bill (G23)', () => {
+  it('is due on its day each month, in range', () => {
+    expect(monthlyDueDates(15, '2026-11-01', '2026-12-31')).toEqual(['2026-11-15', '2026-12-15']);
+    expect(monthlyDueDates(15, '2026-11-16', '2027-01-15')).toEqual(['2026-12-15', '2027-01-15']);
+    expect(monthlyDueDates(15, '2026-11-16', '2026-12-14')).toEqual([]);
+  });
+
+  it('falls on the last day of a month without its day', () => {
+    expect(monthlyDueDates(31, '2027-01-01', '2027-04-30')).toEqual([
+      '2027-01-31',
+      '2027-02-28',
+      '2027-03-31',
+      '2027-04-30',
+    ]);
+    expect(monthlyDueDates(29, '2028-02-01', '2028-02-29')).toEqual(['2028-02-29']);
+  });
+
+  it('counts payments from the due date before', () => {
+    expect(previousDueDate(15, '2026-12-15')).toBe('2026-11-15');
+    expect(previousDueDate(15, '2026-12-16')).toBe('2026-12-15');
+    expect(previousDueDate(1, '2027-01-01')).toBe('2026-12-01');
+    expect(previousDueDate(31, '2027-03-31')).toBe('2027-02-28');
+    expect(previousDueDate(31, '2027-03-01')).toBe('2027-02-28');
   });
 });

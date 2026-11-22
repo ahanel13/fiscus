@@ -121,8 +121,10 @@ aren't, and mixing them up is how the same dollars get counted twice.
 **G9. A payoff goal is a goal on a loan or card's balance, and its extra payments are its line.**
 - The target is the liability's balance reaching zero (#134), and progress is how far it's come
   down. Snowball and avalanche order several of them.
-- Payments are transfers (D7). The **required** payment is a bill (M4). The **extra** payment is
-  the goal line: planned against what was paid over the minimum. Neither counts as spending.
+- Payments are transfers (D7). The **required** payment is a bill (M4): the bank's statement
+  (bills D9), or, for a debt the bank gives no due date for, the minimum on the day its goal says
+  (goals walkthrough G23). The **extra** payment is the goal line: planned against what was paid
+  over the minimum. Neither counts as spending.
 
 ---
 

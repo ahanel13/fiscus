@@ -381,6 +381,7 @@ export function DebtDialog({
   const [plan, setPlan] = useState<number | null>(goal.planMinor);
   const [apr, setApr] = useState(d.entered.aprBps !== null ? String(d.entered.aprBps / 100) : '');
   const [minimum, setMinimum] = useState<number | null>(d.entered.minimumMinor);
+  const [due, setDue] = useState(d.entered.dueDay !== null ? String(d.entered.dueDay) : '');
   const [icon, setIcon] = useState<GoalIconName | null>(goal.icon);
   const [color, setColor] = useState<string | null>(goal.color);
   const [photo, setPhoto] = useState<{ previewUrl: string; dataBase64: string } | 'remove' | null>(
@@ -390,6 +391,9 @@ export function DebtDialog({
     photo === 'remove' ? null : (photo?.previewUrl ?? lookOf(householdId, goal).photo);
   const plain = () => setPhoto(shownPhoto ? 'remove' : null);
   const aprBps = apr.trim() === '' ? null : Math.round(Number(apr) * 100);
+  const dueDay = due.trim() === '' ? null : Number(due);
+  // The bank's due dates go first (D9); without them, the goal says when its minimum is due (G23).
+  const bankDue = d.bank?.nextDueDate ?? null;
   const money = (minor: number) => formatMoney(minor, currency);
 
   const save = useMutation({
@@ -401,6 +405,7 @@ export function DebtDialog({
         ...(plan !== goal.planMinor ? { planMinor: plan } : {}),
         ...(aprBps !== d.entered.aprBps ? { aprBps } : {}),
         ...(minimum !== d.entered.minimumMinor ? { minimumMinor: minimum } : {}),
+        ...(dueDay !== d.entered.dueDay ? { dueDay } : {}),
         ...(icon !== goal.icon ? { icon } : {}),
         ...(color !== goal.color ? { color } : {}),
       };
@@ -420,13 +425,16 @@ export function DebtDialog({
       await queryClient.invalidateQueries({ queryKey: ['households', householdId, 'goals'] });
       // Its extra is its budget line (G9, G16).
       void queryClient.invalidateQueries({ queryKey: ['households', householdId, 'budgets'] });
+      // Its minimum is a bill when it has a due day (G23).
+      void queryClient.invalidateQueries({ queryKey: ['households', householdId, 'recurring'] });
       toast(`${name} saved.`);
       onClose();
     },
   });
   const err = save.error as ApiError | null;
   const aprOk = aprBps === null || (Number.isFinite(aprBps) && aprBps >= 0 && aprBps <= 10_000);
-  const valid = name.trim() && target && target > 0 && aprOk;
+  const dueOk = dueDay === null || (Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31);
+  const valid = name.trim() && target && target > 0 && aprOk && dueOk;
 
   return (
     <Dialog title={goal.name} size="lg" isOpen onOpenChange={(open) => (open ? null : onClose())}>
@@ -494,6 +502,17 @@ export function DebtDialog({
             value={minimum}
             onChange={setMinimum}
           />
+          {bankDue ? null : (
+            <TextField
+              label="Due on day (optional)"
+              value={due}
+              inputMode="numeric"
+              onChange={(v) => setDue(v.replace(/[^0-9]/g, '').slice(0, 2))}
+              description="The day of the month the minimum is due. It shows in Bills, with reminders."
+              isInvalid={!dueOk}
+              errorMessage="A day from 1 to 31"
+            />
+          )}
         </div>
         <DialogActions>
           <Button variant="secondary" onPress={onClose}>

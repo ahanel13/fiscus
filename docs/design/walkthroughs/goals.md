@@ -208,8 +208,9 @@ A **Pay down** goal is a loan or a card's balance reaching zero (G9, #134), one 
 - Its start is what was owed when the goal began (you can change it); progress is how far it's
   come down. The row shows what's owed, the share paid, and the rate and payments: "24.99% APR ·
   $130.00 minimum + $250.00 extra a month".
-- The **minimum** is a bill (M4), with its reminders. The **extra** is the goal's plan and its
-  budget line: what's paid over the minimum counts toward it.
+- The **minimum** is a bill (M4), with its reminders: the bank's statement, or one from the goal
+  (G23). The **extra** is the goal's plan and its budget line: what's paid over the minimum
+  counts toward it.
 - Rates and minimums come from the bank (Plaid liabilities), or are entered in the goal, which
   goes first. Without a rate, **Set up APR** asks for one and the projection leaves its interest
   out; without a minimum, 2% of what's owed (at least $25) is assumed, and said so.
@@ -226,6 +227,22 @@ A **Pay down** goal is a loan or a card's balance reaching zero (G9, #134), one 
 raises its balance, and the goal shows that: progress is the balance against where it started.
 The card's drawer says so, and suggests moving its everyday spending elsewhere while paying it
 down. Payoff goals never take purchases (G14).
+
+**G23. A debt the bank gives no due date for gets its minimum as a bill from its goal.** A card
+or loan linked through Plaid has its statement from the bank (bills D9). One from SimpleFIN, a
+manual one, or one whose bank doesn't say, has no due date, so its minimum would be no bill at
+all. Its goal can say **Due on day** 15:
+- Bills shows "Car loan payment" on the 15th of each month, marked **From your goal**, for the
+  minimum: the one entered on the goal, else the bank's, else the estimate. A day a month doesn't
+  have (29–31) is its last day.
+- Payments into the loan or card since the due date before pay it; with less than the minimum
+  it's "partly paid", and two days after the date it's late (bills D12).
+- It's reminded of like a statement ("A card statement is due", bills D18), to the debt's owners,
+  and counted with the statements, never as a bill.
+- It shows to those who see the account's details (owner and full access) and the goal: a Mine
+  goal's only to you (G15). The goal's row says "due on the 15th".
+- The bank's due dates go first: with them, there's no **Due on day**. It starts the day the goal
+  does, and stops when the goal is put away or the day is cleared.
 
 ---
 
@@ -314,6 +331,7 @@ A Mine goal only ever notifies you.
 | G20 | Spending from a goal comes off bank-account claims first, the largest first, and can be chosen | #139 |
 | G21 | A payoff goal on a card counts its balance, so new spending shows | #134 |
 | G22 | Goals ship in seven steps, savings goals with claims first | #131 |
+| G23 | A debt with no due date from the bank gets its minimum as a bill on the day its goal says | #134 |
 
 ## Open questions
 

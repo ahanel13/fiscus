@@ -237,7 +237,7 @@ export async function buildWeeklyRecap(
     if (st.paid === 'paid' || st.paid === 'minimum') continue;
     comingUp.push({
       due: st.due,
-      name: `${st.accountName} statement`,
+      name: `${st.accountName} ${st.source === 'goal' ? 'payment' : 'statement'}`,
       kind: 'statement',
       amountMinor: -(st.owedMinor - st.paidSoFarMinor),
       about: false,
