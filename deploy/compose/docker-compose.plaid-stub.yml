@@ -26,6 +26,8 @@ services:
       PLAID_STUB_PORT: '4010'
       SIMPLEFIN_STUB_PORT: '4011'
       SIMPLEFIN_STUB_URL: http://plaid-stub:4011
+      # Where the admin's sandbox test webhook is delivered (#85), when PLAID_WEBHOOK_URL is set.
+      PLAID_STUB_WEBHOOK_TARGET: http://api:3000
     healthcheck:
       test:
         [

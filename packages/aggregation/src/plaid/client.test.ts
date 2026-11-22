@@ -337,6 +337,9 @@ describe('PlaidClient (#82)', () => {
       await expect(production.sandboxItemResetLogin('t')).rejects.toMatchObject({
         providerCode: 'SANDBOX_ONLY',
       });
+      await expect(
+        production.sandboxItemFireWebhook('t', 'ITEM', 'NEW_ACCOUNTS_AVAILABLE'),
+      ).rejects.toMatchObject({ providerCode: 'SANDBOX_ONLY' });
       expect(urls).toEqual([]);
     });
   });

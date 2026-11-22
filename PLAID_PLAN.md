@@ -138,7 +138,13 @@ Webhooks (#84, #85), only for instances Plaid can reach:
       (WEBHOOK-001, WEBHOOK-005, WEBHOOK-006, TXN-003, LIAB-004) (#84)
 - [ ] PENDING_DISCONNECT and PENDING_EXPIRATION only re-check the Item today; prompting update
       mode a week ahead, before the Item breaks, is a follow-up (WEBHOOK-006, OAUTH-009)
-- [ ] The health panel and the guide to exposing only the webhook path (#85)
+- [x] The guide to exposing only the webhook path (#85, #542)
+- [x] The health panel in Server → Bank connections: last verified, refusals by reason over 24 h
+      and 7 d, unknown Items, connections without a webhook, whether polling is relaxed; counts
+      only (D16) (#85)
+- [x] Sandbox "Send a test webhook": a test bank's Item made with the server's keys and URL,
+      `/sandbox/item/fire_webhook`, and the panel shows it arrive; 404 outside sandbox
+      (WEBHOOK-008, SANDBOX-003, SANDBOX-005) (#85)
 
 ## Acceptance
 
@@ -168,6 +174,10 @@ Webhooks (#84, #85), only for instances Plaid can reach:
   001–006, 010–014; 011 no longer has the WEBHOOK-003 deviation. Run live again: unsigned 401,
   signed 200, changed body 401, an HS256 header 401. Failed: 007, 008, 009 and 015, as in
   round 3.
+- Round 5 (2026-11-22, webhook health panel and sandbox test webhook, #85): FAIL, on three.
+  Passed 001–006, 010–015. Run live on a throwaway stack with the fake Plaid: "Send a test
+  webhook" answered 202, the fired webhook was verified and the panel showed it arrive. Failed:
+  007 (no redirect URI on plain HTTP), 008 (no sandbox keys), 009 (human tasks still open).
 
 ## Maintenance
 

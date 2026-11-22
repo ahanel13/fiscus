@@ -236,8 +236,10 @@ curl -s -o /dev/null -w '%{http_code}\n' $H/                                    
 ## Once it works
 
 New bank connections get the webhook URL when they're made. Existing ones are moved to it by the
-worker, about 20 a minute (aggregation §6b). Webhook health in Server → Bank connections comes
-with #85.
+worker, about 20 a minute (aggregation §6b). Server → Bank connections shows how webhooks are
+doing: the last verified one, refused requests by reason, connections without a webhook yet, and
+whether polling has relaxed. With sandbox keys, "Send a test webhook" there has Plaid fire one,
+and the panel shows it arrive (aggregation §6b).
 
 If the checks give 404 where you expect 401, `PLAID_WEBHOOK_URL` isn't set, or the api hasn't been
 restarted since. If they give 200, or a page, for any other path, the proxy is passing more than

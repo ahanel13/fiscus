@@ -4,7 +4,7 @@ import { FieldCrypto, MasterKey, MasterKeys } from '@fiscus/crypto';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle } from './client.js';
-import { systemContext, withContext } from './context.js';
+import { systemContext, userContext, withContext } from './context.js';
 import { HouseholdKeyStore } from './household-key-store.js';
 import { savePlaidKeySet } from './plaid-credentials.js';
 import {
@@ -12,6 +12,7 @@ import {
   plaidWebhookHealth,
   plaidWebhookKeySet,
   plaidWebhookMoves,
+  plaidWebhookPanel,
   queuePlaidWebhook,
   recordPlaidWebhook,
   unrelaxPlaidConnections,
@@ -267,5 +268,72 @@ describe('Plaid webhook definers (#84)', () => {
     await expect(app.pool.query(`SELECT fiscus_unrelax_connections('4 hours')`)).rejects.toThrow(
       /worker/,
     );
+  });
+
+  it('sums the panel’s counts by reason and period, and counts Items without a webhook (#85)', async () => {
+    await owner.query(`DELETE FROM connections`);
+    const admin = randomUUID();
+    await owner.query(
+      `INSERT INTO users (id, email, display_name, is_instance_admin)
+       VALUES ($1, 'admin@h.test', 'A', true)`,
+      [admin],
+    );
+    // On the URL and acknowledged; on the URL, not yet; elsewhere; none; disconnected (left out).
+    const on = await connection('ok');
+    const waiting = await connection('ok');
+    const elsewhere = await connection('login_required');
+    await connection('error');
+    const gone = await connection('disconnected');
+    await owner.query(
+      `UPDATE connections SET webhook_url = $1, webhook_enabled = (id = $2)
+       WHERE id IN ($2, $3, $4)`,
+      [URL_A, on, waiting, gone],
+    );
+    await owner.query(
+      `UPDATE connections SET webhook_url = 'https://old.example/x' WHERE id = $1`,
+      [elsewhere],
+    );
+    await recordPlaidWebhook(app.db, null, 'verified');
+    await recordPlaidWebhook(app.db, setId, 'verified');
+    await recordPlaidWebhook(app.db, null, 'unknown_item');
+    await recordPlaidWebhook(app.db, null, 'signature');
+    await recordPlaidWebhook(app.db, null, 'signature');
+    // Three days ago: in the week, not the day.
+    await owner.query(
+      `INSERT INTO plaid_webhook_stats (hour, outcome, count, last_at)
+       VALUES (date_trunc('hour', now() - interval '3 days'), 'stale', 4, now() - interval '3 days'),
+              (date_trunc('hour', now() - interval '3 days'), 'unknown_item', 2,
+               now() - interval '3 days')`,
+    );
+    const panel = await withContext(app.db, userContext(admin), (tx) =>
+      plaidWebhookPanel(tx, URL_A),
+    );
+    expect(panel.connections).toEqual({ plaid: 4, withoutWebhook: 3 });
+    expect(panel.refusals.last24h).toEqual({
+      missing: 0,
+      malformed: 0,
+      algorithm: 0,
+      stale: 0,
+      body_hash: 0,
+      unknown_key: 0,
+      signature: 2,
+    });
+    expect(panel.refusals.last7d).toMatchObject({ stale: 4, signature: 2 });
+    expect(panel.unknownItems).toEqual({ last24h: 1, last7d: 3 });
+    expect(panel.lastVerifiedAt).toBeInstanceOf(Date);
+    expect(panel.lastVerifiedByKeys.server).toBeInstanceOf(Date);
+    expect(panel.lastVerifiedByKeys.household).toBeInstanceOf(Date);
+    // Webhooks off: every live connection is without one.
+    const off = await withContext(app.db, userContext(admin), (tx) => plaidWebhookPanel(tx, null));
+    expect(off.connections).toEqual({ plaid: 4, withoutWebhook: 4 });
+    // Only for an instance admin, outside any household, and never the worker.
+    await expect(
+      withContext(app.db, userContext(user), (tx) => plaidWebhookPanel(tx, URL_A)),
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/needs an instance admin/) },
+    });
+    await expect(
+      worker.pool.query(`SELECT fiscus_admin_plaid_webhook_counts(NULL)`),
+    ).rejects.toThrow(/needs an instance admin/);
   });
 });

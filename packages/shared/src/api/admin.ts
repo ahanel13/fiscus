@@ -97,6 +97,53 @@ export const bankConnectionStatsSchema = z.strictObject({
 });
 export type BankConnectionStats = z.infer<typeof bankConnectionStatsSchema>;
 
+const instantSchema = z.iso.datetime({ offset: true }).nullable();
+
+/** A refused webhook's reasons (#84): the receiver's 401s, counted by reason. */
+export const PLAID_WEBHOOK_REFUSAL_REASONS = [
+  'signature',
+  'stale',
+  'body_hash',
+  'unknown_key',
+  'missing',
+  'malformed',
+  'algorithm',
+] as const;
+export type PlaidWebhookRefusalReason = (typeof PLAID_WEBHOOK_REFUSAL_REASONS)[number];
+
+const refusalCountsSchema = z.strictObject(
+  Object.fromEntries(PLAID_WEBHOOK_REFUSAL_REASONS.map((r) => [r, countSchema])) as Record<
+    PlaidWebhookRefusalReason,
+    typeof countSchema
+  >,
+);
+
+/**
+ * The webhook receiver's health (#85), from its hourly counts: times and numbers only (D16), never
+ * a household, an Item id or a webhook's body.
+ */
+export const plaidWebhookHealthSchema = z.strictObject({
+  /** The last webhook whose signature checked out, its Item known here or not. */
+  lastVerifiedAt: instantSchema,
+  /** The last verified for a connection here: on the server's keys, or a household's own. */
+  lastVerifiedByKeys: z.strictObject({ server: instantSchema, household: instantSchema }),
+  /** Refused requests, by reason, in the last 24 hours and 7 days (counted by the hour). */
+  refusals: z.strictObject({ last24h: refusalCountsSchema, last7d: refusalCountsSchema }),
+  /** Verified webhooks for an Item no connection here has. */
+  unknownItems: z.strictObject({ last24h: countSchema, last7d: countSchema }),
+  /** Live Plaid connections, and those whose Item doesn't send its webhooks here yet. */
+  connections: z.strictObject({ plaid: countSchema, withoutWebhook: countSchema }),
+  /** Webhooks are healthy, so connections with one are polled every 12 hours (#84). */
+  pollingRelaxed: z.boolean(),
+  /** "Send a test webhook" is offered: sandbox keys, and webhooks on. Never in production. */
+  testAvailable: z.boolean(),
+});
+export type PlaidWebhookHealth = z.infer<typeof plaidWebhookHealthSchema>;
+
+/** What "Send a test webhook" answers: when Plaid was asked to fire it. */
+export const plaidTestWebhookSchema = z.strictObject({ firedAt: z.iso.datetime({ offset: true }) });
+export type PlaidTestWebhook = z.infer<typeof plaidTestWebhookSchema>;
+
 /**
  * Server → Bank connections: how this server connects to banks. Counts only, never content (D16):
  * no balances, account names, transactions, or household names.
@@ -112,6 +159,8 @@ export const bankConnectionsOverviewSchema = z.strictObject({
      * null when they're off and each bank is polled.
      */
     webhookUrl: z.string().nullable(),
+    /** The receiver's health (#85); counts are kept whether webhooks are on or not. */
+    webhooks: plaidWebhookHealthSchema,
   }),
   simplefin: z.strictObject({ enabled: z.boolean() }),
   settings: instanceSettingsSchema,

@@ -544,11 +544,26 @@ Webhooks only make updates sooner.
   only make polling normal again, never stop it.
 - **Logs** carry the refusal's reason and connection ids only: never a body, a token, or an item
   id (`plaid-webhooks.test.ts`).
-- **For the health panel (#85).** `plaid_webhook_stats` keeps, per hour and credential set, each
-  outcome's count and when it was last seen, for 8 days: the last verified webhook (overall and
-  per set), refusals in the last 24 hours and 7 days by reason, and unknown Items.
-  `plaidWebhookHealth` (`@fiscus/db`) says whether polling is relaxed. Connections without a
-  webhook are those whose `webhook_url` isn't the current URL, or without `webhook_enabled`.
+- **The health panel (#85)**, in Server → Bank connections, from `plaid_webhook_stats` (per
+  hour and credential set, each outcome's count and when it was last seen, for 8 days):
+  webhooks on or off and the URL; the last verified webhook (its Item known here or not), and
+  the last for a connection on the server's keys and on a household's own; refusals in the last
+  24 hours and 7 days by reason; verified webhooks for unknown Items; connections without a
+  webhook; and whether polling is relaxed (`plaidWebhookHealth`, as the worker judges it).
+  Counts are by the hour, so "the last 24 hours" takes every hour that overlaps them. The
+  connection counts come from `fiscus_admin_plaid_webhook_counts(url)`, a definer like
+  `fiscus_admin_bank_stats` (instance admin only, outside any household): live Plaid
+  connections, and those whose `webhook_url` isn't the current URL or without
+  `webhook_enabled` (all of them when webhooks are off). Two numbers, naming nothing (D16).
+  The response is a strict schema; `admin-settings.test.ts` lists every field.
+- **Send a test webhook (#85, SANDBOX-005).** Only with sandbox keys and webhooks on (404
+  otherwise, so never in production), at most 3 a minute. With the server's keys the api makes
+  an Item at Plaid's test bank (`/sandbox/public_token/create`, `ins_109508`, with this
+  server's webhook URL: no Link, no household), and asks `/sandbox/item/fire_webhook` for a
+  `TRANSACTIONS: DEFAULT_UPDATE`. It reaches the receiver like any webhook, is verified with the
+  server's keys, and is counted as an unknown Item; the panel asks again every 3 seconds, for 2
+  minutes at most, until the last verified webhook is newer than the test. The Item is removed
+  (`/item/remove`) 5 minutes later, or when the api stops.
 
 ## 7. A connection day to day
 

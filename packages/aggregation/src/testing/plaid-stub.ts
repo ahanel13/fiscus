@@ -17,9 +17,25 @@ const now = new Date().toISOString();
 const scenario = { ...base, balances: base.balances.map((b) => ({ ...b, asOf: now })) };
 
 const port = Number(process.env.PLAID_STUB_PORT ?? 4010);
+// The admin's sandbox test webhook (#85) goes to the Item's https URL's path, on the stack's own
+// api (PLAID_STUB_WEBHOOK_TARGET, plain http inside the stack), as Plaid would through the proxy.
+const target = process.env.PLAID_STUB_WEBHOOK_TARGET;
 const plaid = await startFakePlaid({
   scenario,
   listen: { host: '0.0.0.0', port },
+  ...(target && {
+    deliverWebhook: async (
+      url: string,
+      webhook: { body: string; headers: Record<string, string> },
+    ) => {
+      const { pathname } = new URL(url);
+      await fetch(new URL(pathname, target), {
+        method: 'POST',
+        headers: webhook.headers,
+        body: webhook.body,
+      });
+    },
+  }),
   // A household's own keys (#83), as fake as the server's: what the tests enter in the keys card.
   otherKeys: [{ clientId: 'fake-household-client-id-5150', secret: 'fake-household-secret-5150' }],
 });

@@ -15,6 +15,7 @@ import {
   linkTokenCreateResponseSchema,
   plaidErrorSchema,
   publicTokenExchangeResponseSchema,
+  sandboxItemFireWebhookResponseSchema,
   sandboxPublicTokenCreateResponseSchema,
   transactionsSyncResponseSchema,
   webhookVerificationKeyGetResponseSchema,
@@ -171,13 +172,14 @@ export class PlaidClient {
   }
 
   /**
-   * Sandbox only, for the real-sandbox job (#79): an Item at a test bank without Link, and a
-   * forced login break. Refused before any request outside sandbox.
+   * Sandbox only, for the real-sandbox job (#79) and the admin's test webhook (#85): an Item at a
+   * test bank without Link (with a webhook URL, if given), a forced login break, and a webhook
+   * fired on demand (SANDBOX-005). Refused before any request outside sandbox.
    */
   async sandboxPublicTokenCreate(
     institutionId: string,
     products: string[],
-    options: { override_username?: string; override_password?: string } = {},
+    options: { override_username?: string; override_password?: string; webhook?: string } = {},
   ) {
     this.#sandboxOnly();
     return this.#post(
@@ -193,6 +195,15 @@ export class PlaidClient {
       '/sandbox/item/reset_login',
       { access_token: accessToken },
       emptyResponseSchema,
+    );
+  }
+
+  async sandboxItemFireWebhook(accessToken: string, webhookType: string, webhookCode: string) {
+    this.#sandboxOnly();
+    return this.#post(
+      '/sandbox/item/fire_webhook',
+      { access_token: accessToken, webhook_type: webhookType, webhook_code: webhookCode },
+      sandboxItemFireWebhookResponseSchema,
     );
   }
 
