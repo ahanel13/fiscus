@@ -42,8 +42,11 @@ export {
 export {
   allocate,
   expenseEffects,
+  type MemberSpan,
   pairBalances,
   PairBalances,
+  type Proration,
+  prorationFor,
   settlementEffect,
   type ExpenseEffect,
   type SharedExpense,
@@ -51,6 +54,7 @@ export {
 export {
   type AppliedRule,
   type IncomeShares,
+  prorates,
   splitRuleFor,
   splitShares,
   type SplitPolicyRow,

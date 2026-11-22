@@ -540,6 +540,29 @@ hold it up. The rule shows **Waiting for …** or today's split. The others see 
 the split, never an income or which income someone chose. Asking someone, with Not now / Decline
 and the 14-day expiry, comes with #265.
 
+**D33. Rent is split by days for someone who joins or leaves mid-month (#261).** A category's
+rule can **Prorate by days for someone who joins or leaves** (ADR 0012 §Joining). It's for costs
+that cover the month, such as rent, utilities and subscriptions.
+- Someone the expense is for who joined or left the household during its month pays for their
+  days in the household that month. Jo joins on the 16th of a 30-day September: Jo's share of
+  September's rent is 15 days' worth, and Alex and Sam cover the rest in their own proportions.
+- It weights whatever the rule is: equal shares by days, percentages and splits by income by
+  share × days, and a fixed monthly amount ("Jo $400 a month") is cut to Jo's days.
+- The day someone joins counts; the day they leave doesn't. A room handed over on the 15th is paid
+  for once.
+- Everyone who joined in the month the household was set up counts from the start: their join
+  date is when the household came to Fiscus, not when they moved in.
+- Months are calendar months, as statements are (D32). A month everyone was there for all of is
+  split as before.
+- Proration doesn't add anyone: the expense must be for Jo (its attribution) to count for Jo, so
+  rent paid on the 1st, before Jo joined, includes Jo only if someone adds them.
+- Shares set by hand on a transaction win, as they do over any rule. The household default
+  never prorates, since it also covers one-off expenses: a dinner the week Jo joined is Jo's in
+  full.
+- Each prorated expense says so on Shared costs: "Prorated: Jo 15 of 30 days". Balances, settle-up
+  reminders, the monthly summary and the fewer-transfers plan (D31) all count it, since they're
+  built from the same Shared costs.
+
 ---
 
 ## 10. Settling up
@@ -739,6 +762,7 @@ real.
 | D30 | Settle-up reminders and a monthly summary go to the two people in a pair, each from their own side | #116 |
 | D31 | Fewer transfers only between people who all agree, and each sees only their part | #262 |
 | D32 | Budget months start on the household's day; changing it moves every month's edges and keeps the amounts | #71 |
+| D33 | A category's rule can prorate by days for people who join or leave that month; the default never does | #261 |
 
 ## Open questions
 

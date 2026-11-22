@@ -591,6 +591,12 @@ function ExpenseRow({
         <span className="block text-xs text-muted">
           {category(e.categoryId)} · paid by {e.paidBy.map(name).join(' and ')}
         </span>
+        {e.prorated.length ? (
+          <span className="block text-xs text-muted">
+            Prorated:{' '}
+            {e.prorated.map((p) => `${name(p.memberId)} ${p.days} of ${p.ofDays} days`).join(', ')}
+          </span>
+        ) : null}
         {flag ? <span className="block text-xs text-warning">{flag}</span> : null}
       </span>
       <span className="text-right">

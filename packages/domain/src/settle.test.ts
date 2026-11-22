@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   allocate,
   expenseEffects,
+  type MemberSpan,
   pairBalances,
+  prorationFor,
   settlementEffect,
   type SharedExpense,
 } from './settle.js';
@@ -199,5 +201,127 @@ describe('settling up', () => {
     expect(
       pairBalances([...effects, settlementEffect('s', 'sam', 'alex', 10000)]).owes('alex', 'sam'),
     ).toBe(680);
+  });
+});
+
+// Prorated shared costs (#261, D33): rent in a 30-day September, with Jo joining on the 16th.
+describe('prorating for people who join or leave', () => {
+  // As an equal attribution stores three: the remainder to the first.
+  const three = [
+    { memberId: 'alex', shareBps: 3334 },
+    { memberId: 'sam', shareBps: 3333 },
+    { memberId: 'jo', shareBps: 3333 },
+  ];
+  const rent = (over: Partial<SharedExpense> = {}) =>
+    expense('rent', 150000, by('alex'), {
+      date: '2026-09-01',
+      categoryId: 'rent',
+      forMembers: three,
+      ...over,
+    });
+  const prorated = (rule: SplitPolicyRow['rule']): SplitPolicyRow[] => [
+    { categoryId: 'rent', effectiveFrom: '2026-01-01', rule },
+  ];
+  const spans: MemberSpan[] = [
+    { memberId: 'alex', from: '2025-01-01', to: null },
+    { memberId: 'sam', from: '2025-01-01', to: null },
+    { memberId: 'jo', from: '2026-09-16', to: null },
+  ];
+  const owed = (e: SharedExpense, p: SplitPolicyRow[], s = spans) =>
+    Object.fromEntries(expenseEffects([e], p, undefined, s)[0]!.owed);
+
+  it('weights an equal split by days in the household that month', () => {
+    // 30 + 30 + 15 days: 600, 600 and 300 of 1,500.
+    expect(owed(rent(), prorated({ method: 'equal', prorate: true }))).toEqual({
+      alex: 60000,
+      sam: 60000,
+      jo: 30000,
+    });
+    expect(prorationFor(rent(), prorated({ method: 'equal', prorate: true }), spans)).toEqual([
+      { memberId: 'jo', days: 15, ofDays: 30 },
+    ]);
+  });
+
+  it('leaves a rule without prorate, and the household default, as they were', () => {
+    expect(owed(rent(), prorated({ method: 'equal' }))).toEqual({
+      alex: 50000,
+      sam: 50000,
+      jo: 50000,
+    });
+    // The default never prorates: it covers one-off expenses too.
+    expect(
+      owed(rent(), [{ categoryId: null, effectiveFrom: '2026-01-01', rule: { method: 'equal' } }]),
+    ).toEqual({ alex: 50000, sam: 50000, jo: 50000 });
+  });
+
+  it('counts the day someone leaves as not theirs', () => {
+    const left: MemberSpan[] = [
+      { memberId: 'alex', from: '2025-01-01', to: null },
+      { memberId: 'sam', from: '2025-01-01', to: '2026-09-11' },
+      { memberId: 'jo', from: '2025-01-01', to: null },
+    ];
+    // Sam: the 1st to the 10th, 10 days. 30 + 10 + 30 = 70; odd cents from the payer on.
+    expect(owed(rent(), prorated({ method: 'equal', prorate: true }), left)).toEqual({
+      alex: 64286,
+      sam: 21429,
+      jo: 64285,
+    });
+  });
+
+  it('is unchanged in months everyone was there for', () => {
+    expect(
+      owed(rent({ date: '2026-10-01' }), prorated({ method: 'equal', prorate: true })),
+    ).toEqual({ alex: 50000, sam: 50000, jo: 50000 });
+  });
+
+  it('scales percentages by days, the others covering the rest in their proportions', () => {
+    const rule = {
+      method: 'fixed_percent' as const,
+      shares: [
+        { memberId: 'alex', shareBps: 5000 },
+        { memberId: 'sam', shareBps: 2500 },
+        { memberId: 'jo', shareBps: 2500 },
+      ],
+      prorate: true,
+    };
+    // Weights 50×30, 25×30, 25×15: 1500, 750, 375 of 2625.
+    expect(owed(rent(), prorated(rule))).toEqual({ alex: 85715, sam: 42857, jo: 21428 });
+  });
+
+  it('prorates a fixed monthly amount', () => {
+    const rule = {
+      method: 'fixed_amount' as const,
+      amounts: [{ memberId: 'jo', amountMinor: 40000 }],
+      prorate: true,
+    };
+    // Jo: half of 400.00. The other 1,300.00 equally between Alex and Sam.
+    expect(owed(rent(), prorated(rule))).toEqual({ jo: 20000, alex: 65000, sam: 65000 });
+  });
+
+  it('splits a three-way attribution by the rule, as an even split', () => {
+    const rule = {
+      method: 'fixed_percent' as const,
+      shares: [
+        { memberId: 'alex', shareBps: 5000 },
+        { memberId: 'sam', shareBps: 2500 },
+        { memberId: 'jo', shareBps: 2500 },
+      ],
+    };
+    expect(owed(rent({ date: '2026-10-01' }), prorated(rule))).toEqual({
+      alex: 75000,
+      sam: 37500,
+      jo: 37500,
+    });
+  });
+
+  it('leaves shares set by hand alone', () => {
+    const byHand = [
+      { memberId: 'alex', shareBps: 5000 },
+      { memberId: 'sam', shareBps: 3000 },
+      { memberId: 'jo', shareBps: 2000 },
+    ];
+    expect(
+      owed(rent({ forMembers: byHand }), prorated({ method: 'equal', prorate: true })),
+    ).toEqual({ alex: 75000, sam: 45000, jo: 30000 });
   });
 });

@@ -4,6 +4,7 @@ import {
   categories,
   categoryGroups,
   type Executor,
+  householdMembers,
   households,
   settlements,
   splitPolicies,
@@ -15,13 +16,15 @@ import {
   type ExpenseEffect,
   expenseEffects,
   firstDayOf,
+  type MemberSpan,
   pairBalances,
+  prorationFor,
   settlementEffect,
   type SharedExpense,
   type SplitPolicyRow,
 } from '@fiscus/domain';
 import { type Settlement, type SharedCosts, type SplitRule, splitRuleSchema } from '@fiscus/shared';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql, type SQLWrapper } from 'drizzle-orm';
 import { attributedToTwoOrMore } from './budget-activity.js';
 import { incomeShares } from './income-split.js';
 import { ownersOnDates } from './owners.js';
@@ -73,10 +76,11 @@ export async function buildSharedCosts(
   }
   const householdId = ctx[0].household;
   const [h] = await tx
-    .select({ currency: households.baseCurrency })
+    .select({ currency: households.baseCurrency, timeZone: households.timezone })
     .from(households)
     .where(eq(households.id, householdId));
   const currency = h!.currency;
+  const spans = await memberSpans(tx, householdId, h!.timeZone);
   const end = firstDayOf(addMonths(month, 1));
   const rows = await sharedRows(tx, householdId, currency, end);
   const expenses = await sharedExpenses(tx, rows);
@@ -105,7 +109,7 @@ export async function buildSharedCosts(
     .from(settlements)
     .where(sql`${settlements.date} < ${end}::date`);
   const effects = [
-    ...expenseEffects(mine, policies, income),
+    ...expenseEffects(mine, policies, income, spans),
     ...settled.map((x) => settlementEffect(x.id, x.fromMemberId, x.toMemberId, x.amountMinor)),
   ];
   const beforeSet = new Set([
@@ -131,6 +135,7 @@ export async function buildSharedCosts(
       paidBy: e.paidBy.map((p) => p.memberId),
       forMembers: e.forMembers.map((f) => f.memberId),
       effect: list(single),
+      prorated: prorationFor(e, policies, spans),
       evensOut: [...eff.net.values()].every((v) => v === 0),
     };
   };
@@ -141,7 +146,7 @@ export async function buildSharedCosts(
   const disputed = flagged
     .map((e) => {
       const f = flags.get(e.id)!;
-      const { evensOut: _e, ...l } = line(e, expenseEffects([e], policies, income)[0]!);
+      const { evensOut: _e, ...l } = line(e, expenseEffects([e], policies, income, spans)[0]!);
       return {
         ...l,
         flag: {
@@ -256,6 +261,34 @@ async function sharedExpenses(tx: Executor, rows: SharedRow[]): Promise<SharedEx
       paidBy,
     };
   });
+}
+
+/**
+ * When each member was in the household, as dates in its time zone, for prorating (#261, D33).
+ * Everyone in the household sees who's in it and since when, those who've left included.
+ *
+ * Those who joined in the month the household was set up count from the start: their join date
+ * is when it was set up in Fiscus, not when they moved in, and the household's first rent was
+ * theirs in full.
+ */
+async function memberSpans(
+  tx: Executor,
+  householdId: string,
+  timeZone: string,
+): Promise<MemberSpan[]> {
+  const local = (t: SQLWrapper) => sql`(${t} AT TIME ZONE ${timeZone})`;
+  return tx
+    .select({
+      memberId: householdMembers.id,
+      from: sql<string | null>`CASE
+        WHEN date_trunc('month', ${local(householdMembers.joinedAt)})
+          <= date_trunc('month', ${local(households.createdAt)}) THEN NULL
+        ELSE ${local(householdMembers.joinedAt)}::date::text END`,
+      to: sql<string | null>`${local(householdMembers.leftAt)}::date::text`,
+    })
+    .from(householdMembers)
+    .innerJoin(households, eq(households.id, householdMembers.householdId))
+    .where(eq(householdMembers.householdId, householdId));
 }
 
 async function loadPolicies(tx: Executor): Promise<SplitPolicyRow[]> {

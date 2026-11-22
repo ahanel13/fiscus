@@ -90,7 +90,9 @@ shared history isn't the newcomer's business.
   `history_from` date on `household_members`, applied in queries and row-level security.
 - **Split policies are effective-dated** (ADR 0006 §7). A new member's share of rent starts on
   their join date, with **proration** for partial billing periods. The same applies when someone
-  leaves.
+  leaves. *As built (#261, budgeting walkthrough D33):* a category's rule (rent, utilities)
+  opts in, and splits each expense by the days of its calendar month each person was in the
+  household.
 
 ### Departures: protections for every way someone leaves
 A member can leave on good terms (moving out), be removed by an owner, or leave in a dispute
