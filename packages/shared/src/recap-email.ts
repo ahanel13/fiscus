@@ -174,11 +174,12 @@ function historyOf(r: WeeklyRecap, checkUrl: string | undefined) {
   return {
     line: `Activity history: at entry ${seq}, fingerprint ${historyFingerprint(hash)}.`,
     keep: 'Keep this email to check later that your household’s history wasn’t rewritten.',
-    how: checkUrl
-      ? null
-      : `To check it, paste ${historyPointCode(head.data)} into Household settings → History check.`,
+    code: checkUrl ? null : historyPointCode(head.data),
   };
 }
+
+/** Without a link: where to paste the code, around it. */
+const PASTE = ['To check it, paste ', ' into Household settings → History check.'] as const;
 
 const escape = (s: string) =>
   s
@@ -216,7 +217,12 @@ export function renderWeeklyRecapEmail(
     ...(l.review ? [l.review] : []),
     ...(url ? [`Open Fiscus: ${url}`] : []),
     '',
-    ...(history ? [history.line, `${history.keep} ${history.how ?? `Check it: ${checkUrl}`}`] : []),
+    ...(history
+      ? [
+          history.line,
+          `${history.keep} ${history.code ? `${PASTE[0]}${history.code}${PASTE[1]}` : `Check it: ${checkUrl}`}`,
+        ]
+      : []),
     settings,
   ].join('\n');
 
@@ -267,8 +273,8 @@ ${url ? `<p><a href="${escape(url)}" style="display:inline-block;background:#1f5
 <p style="margin-top:22px;border-top:1px solid #e5e5e0;padding-top:12px;color:#6b6b66;font-size:12px">${
     history
       ? `${escape(history.line)}<br>${escape(history.keep)} ${
-          history.how
-            ? escape(history.how)
+          history.code
+            ? `${escape(PASTE[0])}<code style="word-break:break-all">${escape(history.code)}</code>${escape(PASTE[1])}`
             : `<a href="${escape(checkUrl!)}" style="color:#1f5f46">Check it</a>.`
         }<br>`
       : ''

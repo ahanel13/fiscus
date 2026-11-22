@@ -114,7 +114,9 @@ describe('renderWeeklyRecapEmail', () => {
     const code = `18342-${alex.history.hash}`;
     expect(parseHistoryPointCode(code)).toEqual(alex.history);
     expect(e.text).toContain(`To check it, paste ${code} into Household settings → History check.`);
-    expect(e.html).toContain(`paste ${code} into Household settings → History check.`);
+    expect(e.html).toContain(
+      `paste <code style="word-break:break-all">${code}</code> into Household settings → History check.`,
+    );
     expect(e.html).not.toContain('Check it</a>');
   });
 
