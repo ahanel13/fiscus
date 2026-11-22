@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
+import { historyPointCode, parseHistoryPointCode } from './api/households.js';
 import { type WeeklyRecap, weeklyRecapSchema } from './api/recap.js';
 import { renderWeeklyRecapEmail, weekLabel } from './recap-email.js';
 
@@ -66,7 +67,7 @@ describe('renderWeeklyRecapEmail', () => {
     expect(e.text).toContain('Restaurants is $41.30 over its budget');
     expect(e.text).toContain('Costco, $412.18 on Joint card · your biggest this week');
     expect(e.text).toContain('4 transactions are waiting for review.');
-    expect(e.text).toContain('Activity history: entry 18,342 · 7f3a 91c2.');
+    expect(e.text).toContain('Activity history: at entry 18342, fingerprint 7f3a 91c2.');
     expect(e.text).toContain('This email has full detail.');
     expect(e.html).toContain('<h1 style="font-size:20px;margin:0">Your week, Nov 2–8</h1>');
     expect(e.html).toContain('href="https://fiscus.example/h/1"');
@@ -90,7 +91,38 @@ describe('renderWeeklyRecapEmail', () => {
     expect(e.html).not.toMatch(/\$/);
     expect(e.text).toContain('Your weekly recap is ready in Fiscus.');
     // The history head isn't about money, and is what a kept email is for.
-    expect(e.text).toContain('entry 18,342');
+    expect(e.text).toContain('at entry 18342, fingerprint 7f3a 91c2');
+  });
+
+  it('carries the history head, what it’s for, and a link to check it (#389)', () => {
+    const checkUrl = `https://fiscus.example/h/1/settings?kept=18342-${alex.history.hash}`;
+    for (const detail of ['full', 'summary', 'minimal'] as const) {
+      const e = renderWeeklyRecapEmail(alex, { detail, checkUrl });
+      // The same words as household settings, so the two compare at a glance.
+      expect(e.text).toContain('Activity history: at entry 18342, fingerprint 7f3a 91c2.');
+      expect(e.text).toContain(
+        'Keep this email to check later that your household’s history wasn’t rewritten. ' +
+          `Check it: ${checkUrl}`,
+      );
+      expect(e.html).toContain('Activity history: at entry 18342, fingerprint 7f3a 91c2.');
+      expect(e.html).toContain(`<a href="${checkUrl}" style="color:#1f5f46">Check it</a>`);
+    }
+  });
+
+  it('gives the code to paste, without a server address to link to', () => {
+    const e = renderWeeklyRecapEmail(alex);
+    const code = `18342-${alex.history.hash}`;
+    expect(parseHistoryPointCode(code)).toEqual(alex.history);
+    expect(e.text).toContain(`To check it, paste ${code} into Household settings → History check.`);
+    expect(e.html).toContain(`paste ${code} into Household settings → History check.`);
+    expect(e.html).not.toContain('Check it</a>');
+  });
+
+  it('leaves the history out when there’s no head to show', () => {
+    const e = renderWeeklyRecapEmail({ ...alex, history: { seq: 0, hash: '' } });
+    expect(e.text).not.toContain('Activity history');
+    expect(e.html).not.toContain('Activity history');
+    expect(e.text).toContain('This email has full detail.');
   });
 
   it('is short on a quiet week, and says so', () => {
@@ -135,5 +167,20 @@ describe('weekLabel', () => {
   it('names the month once, or both across months', () => {
     expect(weekLabel('2026-11-02', '2026-11-08')).toBe('Nov 2–8');
     expect(weekLabel('2026-10-26', '2026-11-01')).toBe('Oct 26–Nov 1');
+  });
+});
+
+describe('a kept history point’s code', () => {
+  const hash = 'ab'.repeat(32);
+  it('round-trips, forgiving spaces and case', () => {
+    expect(historyPointCode({ seq: 42, hash })).toBe(`42-${hash}`);
+    expect(parseHistoryPointCode(` 42 - ${hash.toUpperCase()}\n`)).toEqual({ seq: 42, hash });
+    expect(parseHistoryPointCode(`0-${'0'.repeat(64)}`)).toEqual({ seq: 0, hash: '0'.repeat(64) });
+  });
+  it('refuses anything else', () => {
+    for (const bad of ['', '42', `42-${hash.slice(1)}`, `-1-${hash}`, `x-${hash}`, `42.${hash}`]) {
+      expect(parseHistoryPointCode(bad)).toBeNull();
+    }
+    expect(parseHistoryPointCode(`99999999999999999-${hash}`)).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { historyFingerprint, historyPointCode, historyPointSchema } from './api/households.js';
 import type { RecapComingUp, RecapDetail, RecapWorthALook, WeeklyRecap } from './api/recap.js';
 import { formatMoney } from './money.js';
 
@@ -17,6 +18,11 @@ export interface RecapEmailOptions {
   detail?: RecapDetail;
   /** Where "Open Fiscus" goes. */
   url?: string;
+  /**
+   * Where "Check it" goes: household settings with this recap's history head as `?kept=` (#389).
+   * Without it, the email gives the code to paste there instead.
+   */
+  checkUrl?: string;
 }
 
 const day = (d: string, o: Intl.DateTimeFormatOptions) =>
@@ -156,10 +162,23 @@ const DETAIL_LINE: Record<RecapDetail, string> = {
   minimal: 'This email has minimal detail: nothing about your money.',
 };
 
-const historyLine = (r: WeeklyRecap) =>
-  `Activity history: entry ${r.history.seq.toLocaleString('en-US')} · ${r.history.hash
-    .slice(0, 8)
-    .replace(/(.{4})/, '$1 ')}.`;
+/**
+ * The household's history head, as household settings show it (#264), and what it's for: a kept
+ * email is one more witness that the history only grew (ADR 0013 §4, #389). It isn't about money,
+ * so every detail level has it. Null when there's no head to show.
+ */
+function historyOf(r: WeeklyRecap, checkUrl: string | undefined) {
+  const head = historyPointSchema.safeParse(r.history);
+  if (!head.success) return null;
+  const { seq, hash } = head.data;
+  return {
+    line: `Activity history: at entry ${seq}, fingerprint ${historyFingerprint(hash)}.`,
+    keep: 'Keep this email to check later that your household’s history wasn’t rewritten.',
+    how: checkUrl
+      ? null
+      : `To check it, paste ${historyPointCode(head.data)} into Household settings → History check.`,
+  };
+}
 
 const escape = (s: string) =>
   s
@@ -172,10 +191,10 @@ const escape = (s: string) =>
 /** The recap as an email: subject, plain text and HTML (inline styles only, for mail clients). */
 export function renderWeeklyRecapEmail(
   recap: WeeklyRecap,
-  { detail = 'full', url }: RecapEmailOptions = {},
+  { detail = 'full', url, checkUrl }: RecapEmailOptions = {},
 ): RecapEmail {
   const l = lines(recap, detail);
-  const keep = 'Keep this email to check later that your household’s history wasn’t rewritten.';
+  const history = historyOf(recap, checkUrl);
   const settings = `${DETAIL_LINE[detail]} Change it, or stop it, in Settings → Notifications.`;
 
   const text = [
@@ -197,7 +216,7 @@ export function renderWeeklyRecapEmail(
     ...(l.review ? [l.review] : []),
     ...(url ? [`Open Fiscus: ${url}`] : []),
     '',
-    `${historyLine(recap)} ${keep}`,
+    ...(history ? [history.line, `${history.keep} ${history.how ?? `Check it: ${checkUrl}`}`] : []),
     settings,
   ].join('\n');
 
@@ -245,7 +264,15 @@ ${
 }
 ${l.review ? `<p style="margin-top:18px">${escape(l.review)}</p>` : ''}
 ${url ? `<p><a href="${escape(url)}" style="display:inline-block;background:#1f5f46;color:#ffffff;text-decoration:none;padding:8px 14px;border-radius:8px">Open Fiscus</a></p>` : ''}
-<p style="margin-top:22px;border-top:1px solid #e5e5e0;padding-top:12px;color:#6b6b66;font-size:12px">${escape(historyLine(recap))} ${escape(keep)}<br>${escape(settings)}</p>
+<p style="margin-top:22px;border-top:1px solid #e5e5e0;padding-top:12px;color:#6b6b66;font-size:12px">${
+    history
+      ? `${escape(history.line)}<br>${escape(history.keep)} ${
+          history.how
+            ? escape(history.how)
+            : `<a href="${escape(checkUrl!)}" style="color:#1f5f46">Check it</a>.`
+        }<br>`
+      : ''
+  }${escape(settings)}</p>
 </div></body></html>`;
 
   return { subject: subjectOf(recap, detail), text, html };

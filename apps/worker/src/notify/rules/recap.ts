@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { notifications } from '@fiscus/db';
 import { buildWeeklyRecap, lastWeekStart } from '@fiscus/ledger';
-import { DETAIL_LEVELS, renderWeeklyRecapEmail, WEEKDAYS, weekLabel } from '@fiscus/shared';
+import {
+  DETAIL_LEVELS,
+  historyPointCode,
+  historyPointSchema,
+  renderWeeklyRecapEmail,
+  WEEKDAYS,
+  weekLabel,
+} from '@fiscus/shared';
 import { and, eq } from 'drizzle-orm';
 import { appLink, type MemberRun, money } from './member.js';
 
 // The weekly recap (#128; bills walkthrough §8, D21): at each member's day and hour, in the
 // household's time zone, their recap of last week, built in their own context (it refuses any
 // other, SYS-02). One notification a week: a short entry in Fiscus and on push channels, and the
-// full recap by email, rendered at each detail level (D17). A quiet week still sends.
+// full recap by email, rendered at each detail level (D17). A quiet week still sends. The email
+// carries the household's history head, with a link that checks it later (ADR 0013 §4, #389).
 
 export interface RecapOptions {
   /** The weekday and hour there now. */
@@ -36,10 +44,22 @@ export async function weeklyRecap(m: MemberRun, o: RecapOptions): Promise<number
   });
   const link = appLink(m.householdId);
   const url = o.publicUrl ? new URL(link, o.publicUrl).toString() : undefined;
+  const head = historyPointSchema.safeParse(recap.history);
+  const checkUrl =
+    o.publicUrl && head.success
+      ? new URL(
+          `${appLink(m.householdId, 'settings')}?kept=${historyPointCode(head.data)}`,
+          o.publicUrl,
+        ).toString()
+      : undefined;
   const email = Object.fromEntries(
     DETAIL_LEVELS.map((detail) => [
       detail,
-      renderWeeklyRecapEmail(recap, { detail, ...(url ? { url } : {}) }),
+      renderWeeklyRecapEmail(recap, {
+        detail,
+        ...(url ? { url } : {}),
+        ...(checkUrl ? { checkUrl } : {}),
+      }),
     ]),
   ) as Record<(typeof DETAIL_LEVELS)[number], ReturnType<typeof renderWeeklyRecapEmail>>;
   const review = recap.toReview
