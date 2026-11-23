@@ -236,6 +236,13 @@ describe('cross-tenant isolation (generated from routes)', () => {
         kind: 'paid',
       })
     ).body.data.id;
+    // A consent request between them (#265).
+    ids.b.requestId = (
+      await bob.post(`/api/v1/households/${b.id}/consent-requests`, {
+        kind: 'income_split',
+        memberId: ids.b.otherMemberId,
+      })
+    ).body.data.id;
   }, 180_000);
 
   afterAll(async () => {

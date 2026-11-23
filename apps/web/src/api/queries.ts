@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
+  ConsentRequest,
   Account,
   AccountLayout,
   Allowance,
@@ -293,6 +294,14 @@ export const incomeSplitQuery = (id: string) =>
   queryOptions({
     queryKey: ['households', id, 'income-split'],
     queryFn: async () => (await api<Data<IncomeSplit>>('GET', `${hh(id)}/income-split`)).data,
+  });
+
+/** Consent requests (#265, D34): open ones, and those that ended in the last 30 days. */
+export const consentRequestsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'consent-requests'],
+    queryFn: async () =>
+      (await api<Data<ConsentRequest[]>>('GET', `${hh(id)}/consent-requests`)).data,
   });
 
 export const tagsQuery = (id: string) =>

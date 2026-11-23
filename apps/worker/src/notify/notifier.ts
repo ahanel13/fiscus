@@ -32,6 +32,7 @@ import {
 } from '@fiscus/shared';
 import { Logger } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
+import type { ConsentRequestNotices } from './consent-requests.js';
 import type { NotificationRules } from './rules/runner.js';
 
 // Delivering notifications (#125, #126, #130). Whatever writes a notification (the api, or a
@@ -85,6 +86,8 @@ export interface NotifierDeps {
   channels: NotifierChannels;
   /** The rules that decide what to send (#127), looked at before each pass routes and sends. */
   rules?: NotificationRules;
+  /** Expires consent requests and tells the people involved (#265), looked at with the rules. */
+  consentRequests?: ConsentRequestNotices;
   logger?: Pick<Logger, 'log' | 'warn' | 'error'>;
 }
 
@@ -149,6 +152,11 @@ export class Notifier {
       await this.#deps.rules?.maybePass();
     } catch (error) {
       this.#logger.error(`Notification rules failed: ${describeError(error)}`);
+    }
+    try {
+      await this.#deps.consentRequests?.maybePass();
+    } catch (error) {
+      this.#logger.error(`Consent requests failed: ${describeError(error)}`);
     }
     const { rows: unrouted } = await db.execute<{ notification_id: string; household_id: string }>(
       sql`SELECT notification_id, household_id FROM fiscus_unrouted_notifications(${this.#options.batch})`,
