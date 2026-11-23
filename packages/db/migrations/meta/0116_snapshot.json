@@ -1,6 +1,6 @@
 {
-  "id": "697efa4f-86ae-406f-97c4-b25f1af8cc4c",
-  "prevId": "1d381631-9732-46ff-b6b3-1686e6dad109",
+  "id": "e72fb156-5e20-46ac-b670-8f6ff3a56858",
+  "prevId": "2d13a3ab-b8cc-4ed4-8a70-b1446c7cb803",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -71,37 +71,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "account_groups_household_id_member_id_household_members_household_id_id_fk": {
           "name": "account_groups_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "account_groups",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "account_groups_member_id_id": {
           "name": "account_groups_member_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "member_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -180,41 +180,41 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "account_placements_household_id_member_id_household_members_household_id_id_fk": {
           "name": "account_placements_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "account_placements",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "account_placements_household_id_account_id_accounts_household_id_id_fk": {
           "name": "account_placements_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "account_placements",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -297,26 +297,26 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "account_liabilities_household_id_account_id_accounts_household_id_id_fk": {
           "name": "account_liabilities_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "account_liabilities",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -378,41 +378,41 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "account_owner_periods_household_id_account_id_accounts_household_id_id_fk": {
           "name": "account_owner_periods_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "account_owner_periods",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "account_owner_periods_household_id_member_id_household_members_household_id_id_fk": {
           "name": "account_owner_periods_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "account_owner_periods",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -480,41 +480,41 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "account_owners_household_id_account_id_accounts_household_id_id_fk": {
           "name": "account_owners_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "account_owners",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "account_owners_household_id_member_id_household_members_household_id_id_fk": {
           "name": "account_owners_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "account_owners",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -713,10 +713,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"accounts\".\"connection_id\" IS NOT NULL AND \"accounts\".\"provider_account_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "accounts_household_id_sort_order_index": {
           "name": "accounts_household_id_sort_order_index",
@@ -735,50 +735,50 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "accounts_household_id_households_id_fk": {
           "name": "accounts_household_id_households_id_fk",
           "tableFrom": "accounts",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "accounts_household_id_reviewer_member_id_household_members_household_id_id_fk": {
           "name": "accounts_household_id_reviewer_member_id_household_members_household_id_id_fk",
           "tableFrom": "accounts",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "reviewer_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "accounts_household_id_id": {
           "name": "accounts_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -880,9 +880,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "balance_snapshots_import_batch_id_index": {
           "name": "balance_snapshots_import_batch_id_index",
@@ -895,26 +895,26 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "balance_snapshots_household_id_account_id_accounts_household_id_id_fk": {
           "name": "balance_snapshots_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "balance_snapshots",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -985,9 +985,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "allowances_category_id_index": {
           "name": "allowances_category_id_index",
@@ -1000,54 +1000,54 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "allowances_household_id_households_id_fk": {
           "name": "allowances_household_id_households_id_fk",
           "tableFrom": "allowances",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "allowances_household_id_member_id_household_members_household_id_id_fk": {
           "name": "allowances_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "allowances",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "allowances_household_id_category_id_categories_household_id_id_fk": {
           "name": "allowances_household_id_category_id_categories_household_id_id_fk",
           "tableFrom": "allowances",
+          "tableTo": "categories",
           "columnsFrom": [
             "household_id",
             "category_id"
           ],
-          "tableTo": "categories",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1135,41 +1135,41 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "budget_amounts_household_id_budget_id_budgets_household_id_id_fk": {
           "name": "budget_amounts_household_id_budget_id_budgets_household_id_id_fk",
           "tableFrom": "budget_amounts",
+          "tableTo": "budgets",
           "columnsFrom": [
             "household_id",
             "budget_id"
           ],
-          "tableTo": "budgets",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "budget_amounts_household_id_category_id_categories_household_id_id_fk": {
           "name": "budget_amounts_household_id_category_id_categories_household_id_id_fk",
           "tableFrom": "budget_amounts",
+          "tableTo": "categories",
           "columnsFrom": [
             "household_id",
             "category_id"
           ],
-          "tableTo": "categories",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1271,41 +1271,41 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "budget_categories_household_id_budget_id_budgets_household_id_id_fk": {
           "name": "budget_categories_household_id_budget_id_budgets_household_id_id_fk",
           "tableFrom": "budget_categories",
+          "tableTo": "budgets",
           "columnsFrom": [
             "household_id",
             "budget_id"
           ],
-          "tableTo": "budgets",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "budget_categories_household_id_category_id_categories_household_id_id_fk": {
           "name": "budget_categories_household_id_category_id_categories_household_id_id_fk",
           "tableFrom": "budget_categories",
+          "tableTo": "categories",
           "columnsFrom": [
             "household_id",
             "category_id"
           ],
-          "tableTo": "categories",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1415,9 +1415,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "budget_moves_from_category_id_index": {
           "name": "budget_moves_from_category_id_index",
@@ -1430,9 +1430,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "budget_moves_to_category_id_index": {
           "name": "budget_moves_to_category_id_index",
@@ -1445,9 +1445,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "budget_moves_from_goal_id_index": {
           "name": "budget_moves_from_goal_id_index",
@@ -1460,9 +1460,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "budget_moves_to_goal_id_index": {
           "name": "budget_moves_to_goal_id_index",
@@ -1475,86 +1475,86 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "budget_moves_household_id_budget_id_budgets_household_id_id_fk": {
           "name": "budget_moves_household_id_budget_id_budgets_household_id_id_fk",
           "tableFrom": "budget_moves",
+          "tableTo": "budgets",
           "columnsFrom": [
             "household_id",
             "budget_id"
           ],
-          "tableTo": "budgets",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "budget_moves_household_id_from_category_id_categories_household_id_id_fk": {
           "name": "budget_moves_household_id_from_category_id_categories_household_id_id_fk",
           "tableFrom": "budget_moves",
+          "tableTo": "categories",
           "columnsFrom": [
             "household_id",
             "from_category_id"
           ],
-          "tableTo": "categories",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "budget_moves_household_id_to_category_id_categories_household_id_id_fk": {
           "name": "budget_moves_household_id_to_category_id_categories_household_id_id_fk",
           "tableFrom": "budget_moves",
+          "tableTo": "categories",
           "columnsFrom": [
             "household_id",
             "to_category_id"
           ],
-          "tableTo": "categories",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "budget_moves_household_id_from_goal_id_goals_household_id_id_fk": {
           "name": "budget_moves_household_id_from_goal_id_goals_household_id_id_fk",
           "tableFrom": "budget_moves",
+          "tableTo": "goals",
           "columnsFrom": [
             "household_id",
             "from_goal_id"
           ],
-          "tableTo": "goals",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "budget_moves_household_id_to_goal_id_goals_household_id_id_fk": {
           "name": "budget_moves_household_id_to_goal_id_goals_household_id_id_fk",
           "tableFrom": "budget_moves",
+          "tableTo": "goals",
           "columnsFrom": [
             "household_id",
             "to_goal_id"
           ],
-          "tableTo": "goals",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1633,17 +1633,17 @@
         "budget_strategies_household_id_budget_id_budgets_household_id_id_fk": {
           "name": "budget_strategies_household_id_budget_id_budgets_household_id_id_fk",
           "tableFrom": "budget_strategies",
+          "tableTo": "budgets",
           "columnsFrom": [
             "household_id",
             "budget_id"
           ],
-          "tableTo": "budgets",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1733,32 +1733,32 @@
             },
             {
               "expression": "lower(\"name\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "budget_templates_household_id_budget_id_budgets_household_id_id_fk": {
           "name": "budget_templates_household_id_budget_id_budgets_household_id_id_fk",
           "tableFrom": "budget_templates",
+          "tableTo": "budgets",
           "columnsFrom": [
             "household_id",
             "budget_id"
           ],
-          "tableTo": "budgets",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1845,58 +1845,58 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "budgets_household_id_households_id_fk": {
           "name": "budgets_household_id_households_id_fk",
           "tableFrom": "budgets",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "budgets_household_id_member_id_household_members_household_id_id_fk": {
           "name": "budgets_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "budgets",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "budgets_household_id_id": {
           "name": "budgets_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "budgets_scope": {
           "name": "budgets_scope",
+          "nullsNotDistinct": true,
           "columns": [
             "household_id",
             "member_id"
-          ],
-          "nullsNotDistinct": true
+          ]
         }
       },
       "policies": {},
@@ -1980,41 +1980,41 @@
         "aggregation_credentials_household_id_households_id_fk": {
           "name": "aggregation_credentials_household_id_households_id_fk",
           "tableFrom": "aggregation_credentials",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "aggregation_credentials_household_id_created_by_member_id_household_members_household_id_id_fk": {
           "name": "aggregation_credentials_household_id_created_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "aggregation_credentials",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "created_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "aggregation_credentials_household_id_id": {
           "name": "aggregation_credentials_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2068,17 +2068,17 @@
         "connection_secrets_household_id_connection_id_connections_household_id_id_fk": {
           "name": "connection_secrets_household_id_connection_id_connections_household_id_id_fk",
           "tableFrom": "connection_secrets",
+          "tableTo": "connections",
           "columnsFrom": [
             "household_id",
             "connection_id"
           ],
-          "tableTo": "connections",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2300,9 +2300,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "connections_due": {
           "name": "connections_due",
@@ -2315,10 +2315,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"connections\".\"next_sync_at\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "connections_requested": {
           "name": "connections_requested",
@@ -2331,102 +2331,102 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"connections\".\"sync_requested_at\" IS NOT NULL OR \"connections\".\"check_requested_at\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "connections_household_id_households_id_fk": {
           "name": "connections_household_id_households_id_fk",
           "tableFrom": "connections",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "connections_institution_id_institutions_id_fk": {
           "name": "connections_institution_id_institutions_id_fk",
           "tableFrom": "connections",
+          "tableTo": "institutions",
           "columnsFrom": [
             "institution_id"
           ],
-          "tableTo": "institutions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "connections_household_id_owner_member_id_household_members_household_id_id_fk": {
           "name": "connections_household_id_owner_member_id_household_members_household_id_id_fk",
           "tableFrom": "connections",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "owner_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "connections_household_id_credential_set_id_aggregation_credentials_household_id_id_fk": {
           "name": "connections_household_id_credential_set_id_aggregation_credentials_household_id_id_fk",
           "tableFrom": "connections",
+          "tableTo": "aggregation_credentials",
           "columnsFrom": [
             "household_id",
             "credential_set_id"
           ],
-          "tableTo": "aggregation_credentials",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "connections_household_id_replaces_connection_id_connections_household_id_id_fk": {
           "name": "connections_household_id_replaces_connection_id_connections_household_id_id_fk",
           "tableFrom": "connections",
+          "tableTo": "connections",
           "columnsFrom": [
             "household_id",
             "replaces_connection_id"
           ],
-          "tableTo": "connections",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "connections_household_id_id": {
           "name": "connections_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "connections_provider_item": {
           "name": "connections_provider_item",
+          "nullsNotDistinct": false,
           "columns": [
             "provider",
             "provider_item_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2515,11 +2515,11 @@
       "uniqueConstraints": {
         "institutions_provider_institution": {
           "name": "institutions_provider_institution",
+          "nullsNotDistinct": false,
           "columns": [
             "provider",
             "provider_institution_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2581,12 +2581,12 @@
       "uniqueConstraints": {
         "plaid_webhook_stats_bucket": {
           "name": "plaid_webhook_stats_bucket",
+          "nullsNotDistinct": true,
           "columns": [
             "hour",
             "credential_set_id",
             "outcome"
-          ],
-          "nullsNotDistinct": true
+          ]
         }
       },
       "policies": {},
@@ -2594,6 +2594,194 @@
         "plaid_webhook_stats_outcome": {
           "name": "plaid_webhook_stats_outcome",
           "value": "\"plaid_webhook_stats\".\"outcome\" IN ('verified', 'unknown_item', 'missing', 'malformed', 'algorithm', 'stale', 'body_hash', 'unknown_key', 'signature')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.consent_requests": {
+      "name": "consent_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "household_id": {
+          "name": "household_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "consent_request_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_by_member_id": {
+          "name": "requested_by_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "consent_request_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(now() + interval '14 days')"
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "consent_requests_pending": {
+          "name": "consent_requests_pending",
+          "columns": [
+            {
+              "expression": "household_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"consent_requests\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "consent_requests_member_id_index": {
+          "name": "consent_requests_member_id_index",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "consent_requests_requested_by_member_id_index": {
+          "name": "consent_requests_requested_by_member_id_index",
+          "columns": [
+            {
+              "expression": "requested_by_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "consent_requests_household_id_households_id_fk": {
+          "name": "consent_requests_household_id_households_id_fk",
+          "tableFrom": "consent_requests",
+          "tableTo": "households",
+          "columnsFrom": [
+            "household_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "consent_requests_household_id_requested_by_member_id_household_members_household_id_id_fk": {
+          "name": "consent_requests_household_id_requested_by_member_id_household_members_household_id_id_fk",
+          "tableFrom": "consent_requests",
+          "tableTo": "household_members",
+          "columnsFrom": [
+            "household_id",
+            "requested_by_member_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "consent_requests_household_id_member_id_household_members_household_id_id_fk": {
+          "name": "consent_requests_household_id_member_id_household_members_household_id_id_fk",
+          "tableFrom": "consent_requests",
+          "tableTo": "household_members",
+          "columnsFrom": [
+            "household_id",
+            "member_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "consent_requests_not_yourself": {
+          "name": "consent_requests_not_yourself",
+          "value": "\"consent_requests\".\"requested_by_member_id\" <> \"consent_requests\".\"member_id\""
+        },
+        "consent_requests_closed": {
+          "name": "consent_requests_closed",
+          "value": "(\"consent_requests\".\"status\" = 'pending') = (\"consent_requests\".\"closed_at\" IS NULL)"
+        },
+        "consent_requests_expires": {
+          "name": "consent_requests_expires",
+          "value": "\"consent_requests\".\"expires_at\" > \"consent_requests\".\"created_at\""
         }
       },
       "isRLSEnabled": false
@@ -2689,26 +2877,26 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "goal_claim_events_household_id_goal_id_goals_household_id_id_fk": {
           "name": "goal_claim_events_household_id_goal_id_goals_household_id_id_fk",
           "tableFrom": "goal_claim_events",
+          "tableTo": "goals",
           "columnsFrom": [
             "household_id",
             "goal_id"
           ],
-          "tableTo": "goals",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2784,52 +2972,52 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "goal_claims_household_id_goal_id_goals_household_id_id_fk": {
           "name": "goal_claims_household_id_goal_id_goals_household_id_id_fk",
           "tableFrom": "goal_claims",
+          "tableTo": "goals",
           "columnsFrom": [
             "household_id",
             "goal_id"
           ],
-          "tableTo": "goals",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "goal_claims_household_id_account_id_accounts_household_id_id_fk": {
           "name": "goal_claims_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "goal_claims",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "goal_claims_goal_account": {
           "name": "goal_claims_goal_account",
+          "nullsNotDistinct": false,
           "columns": [
             "goal_id",
             "account_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2890,17 +3078,17 @@
         "goal_plans_household_id_goal_id_goals_household_id_id_fk": {
           "name": "goal_plans_household_id_goal_id_goals_household_id_id_fk",
           "tableFrom": "goal_plans",
+          "tableTo": "goals",
           "columnsFrom": [
             "household_id",
             "goal_id"
           ],
-          "tableTo": "goals",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -3088,9 +3276,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "goals_member_id_index": {
           "name": "goals_member_id_index",
@@ -3103,9 +3291,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "goals_account_id_index": {
           "name": "goals_account_id_index",
@@ -3118,65 +3306,65 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "goals_household_id_households_id_fk": {
           "name": "goals_household_id_households_id_fk",
           "tableFrom": "goals",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "goals_household_id_member_id_household_members_household_id_id_fk": {
           "name": "goals_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "goals",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "goals_household_id_account_id_accounts_household_id_id_fk": {
           "name": "goals_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "goals",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "goals_household_id_id": {
           "name": "goals_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -3263,15 +3451,15 @@
         "household_keys_household_id_households_id_fk": {
           "name": "household_keys_household_id_households_id_fk",
           "tableFrom": "household_keys",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -3373,10 +3561,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"household_members\".\"left_at\" IS NULL AND \"household_members\".\"user_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "household_members_user_id_index": {
           "name": "household_members_user_id_index",
@@ -3389,48 +3577,48 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "household_members_household_id_households_id_fk": {
           "name": "household_members_household_id_households_id_fk",
           "tableFrom": "household_members",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "household_members_user_id_users_id_fk": {
           "name": "household_members_user_id_users_id_fk",
           "tableFrom": "household_members",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "household_members_household_id_id": {
           "name": "household_members_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -3672,60 +3860,60 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "invites_household_id_households_id_fk": {
           "name": "invites_household_id_households_id_fk",
           "tableFrom": "invites",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "invites_invited_by_member_id_household_members_id_fk": {
           "name": "invites_invited_by_member_id_household_members_id_fk",
           "tableFrom": "invites",
+          "tableTo": "household_members",
           "columnsFrom": [
             "invited_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "invites_accepted_by_user_id_users_id_fk": {
           "name": "invites_accepted_by_user_id_users_id_fk",
           "tableFrom": "invites",
+          "tableTo": "users",
           "columnsFrom": [
             "accepted_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "invites_token_hash_unique": {
           "name": "invites_token_hash_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "token_hash"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -3820,15 +4008,15 @@
           "primaryKey": true,
           "notNull": true,
           "identity": {
+            "type": "always",
             "name": "audit_events_id_seq",
+            "schema": "public",
             "increment": "1",
+            "startWith": "1",
             "minValue": "1",
             "maxValue": "9223372036854775807",
-            "startWith": "1",
             "cache": "1",
-            "cycle": false,
-            "schema": "public",
-            "type": "always"
+            "cycle": false
           }
         },
         "occurred_at": {
@@ -3907,8 +4095,8 @@
           "primaryKey": false,
           "notNull": true,
           "generated": {
-            "type": "stored",
-            "as": "coalesce(household_id, '00000000-0000-0000-0000-000000000000'::uuid)"
+            "as": "coalesce(household_id, '00000000-0000-0000-0000-000000000000'::uuid)",
+            "type": "stored"
           }
         },
         "seq": {
@@ -3967,9 +4155,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "audit_events_target_type_target_id_index": {
           "name": "audit_events_target_type_target_id_index",
@@ -3988,9 +4176,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "audit_events_actor_user_id_occurred_at_index": {
           "name": "audit_events_actor_user_id_occurred_at_index",
@@ -4009,9 +4197,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "audit_events_scope_seq": {
           "name": "audit_events_scope_seq",
@@ -4030,10 +4218,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"audit_events\".\"seq\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -4139,38 +4327,38 @@
         "password_reset_tokens_user_id_users_id_fk": {
           "name": "password_reset_tokens_user_id_users_id_fk",
           "tableFrom": "password_reset_tokens",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "password_reset_tokens_created_by_user_id_users_id_fk": {
           "name": "password_reset_tokens_created_by_user_id_users_id_fk",
           "tableFrom": "password_reset_tokens",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "password_reset_tokens_token_hash_unique": {
           "name": "password_reset_tokens_token_hash_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "token_hash"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -4242,38 +4430,38 @@
         "server_invites_invited_by_user_id_users_id_fk": {
           "name": "server_invites_invited_by_user_id_users_id_fk",
           "tableFrom": "server_invites",
+          "tableTo": "users",
           "columnsFrom": [
             "invited_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "server_invites_accepted_by_user_id_users_id_fk": {
           "name": "server_invites_accepted_by_user_id_users_id_fk",
           "tableFrom": "server_invites",
+          "tableTo": "users",
           "columnsFrom": [
             "accepted_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "server_invites_token_hash_unique": {
           "name": "server_invites_token_hash_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "token_hash"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -4360,9 +4548,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "sessions_user_id_index": {
           "name": "sessions_user_id_index",
@@ -4375,24 +4563,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "sessions_user_id_users_id_fk": {
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4488,9 +4676,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -4630,9 +4818,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "import_batches_account_id_index": {
           "name": "import_batches_account_id_index",
@@ -4645,9 +4833,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "import_batches_household_id_run_id_index": {
           "name": "import_batches_household_id_run_id_index",
@@ -4666,65 +4854,65 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "import_batches_household_id_account_id_accounts_household_id_id_fk": {
           "name": "import_batches_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "import_batches",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "import_batches_household_id_member_id_household_members_household_id_id_fk": {
           "name": "import_batches_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "import_batches",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "import_batches_profile_id_import_profiles_id_fk": {
           "name": "import_batches_profile_id_import_profiles_id_fk",
           "tableFrom": "import_batches",
+          "tableTo": "import_profiles",
           "columnsFrom": [
             "profile_id"
           ],
-          "tableTo": "import_profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "import_batches_household_id_id": {
           "name": "import_batches_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -4810,41 +4998,41 @@
             },
             {
               "expression": "lower(\"name\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "import_profiles_household_id_households_id_fk": {
           "name": "import_profiles_household_id_households_id_fk",
           "tableFrom": "import_profiles",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "import_profiles_household_id_id": {
           "name": "import_profiles_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -4891,15 +5079,15 @@
         "instance_settings_updated_by_user_id_users_id_fk": {
           "name": "instance_settings_updated_by_user_id_users_id_fk",
           "tableFrom": "instance_settings",
+          "tableTo": "users",
           "columnsFrom": [
             "updated_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5001,38 +5189,38 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"categories\".\"system_key\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "categories_household_id_group_id_category_groups_household_id_id_fk": {
           "name": "categories_household_id_group_id_category_groups_household_id_id_fk",
           "tableFrom": "categories",
+          "tableTo": "category_groups",
           "columnsFrom": [
             "household_id",
             "group_id"
           ],
-          "tableTo": "category_groups",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "categories_household_id_id": {
           "name": "categories_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -5100,26 +5288,26 @@
         "category_groups_household_id_households_id_fk": {
           "name": "category_groups_household_id_households_id_fk",
           "tableFrom": "category_groups",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "category_groups_household_id_id": {
           "name": "category_groups_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -5186,41 +5374,41 @@
             },
             {
               "expression": "lower(\"name\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "tags_household_id_households_id_fk": {
           "name": "tags_household_id_households_id_fk",
           "tableFrom": "tags",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "tags_household_id_id": {
           "name": "tags_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -5279,41 +5467,41 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "transaction_attributions_household_id_transaction_id_transactions_household_id_id_fk": {
           "name": "transaction_attributions_household_id_transaction_id_transactions_household_id_id_fk",
           "tableFrom": "transaction_attributions",
+          "tableTo": "transactions",
           "columnsFrom": [
             "household_id",
             "transaction_id"
           ],
-          "tableTo": "transactions",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "transaction_attributions_household_id_member_id_household_members_household_id_id_fk": {
           "name": "transaction_attributions_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "transaction_attributions",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -5402,10 +5590,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"transaction_notes\".\"author_member_id\" IS NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transaction_notes_private": {
           "name": "transaction_notes_private",
@@ -5424,27 +5612,27 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"transaction_notes\".\"author_member_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "transaction_notes_household_id_transaction_id_transactions_household_id_id_fk": {
           "name": "transaction_notes_household_id_transaction_id_transactions_household_id_id_fk",
           "tableFrom": "transaction_notes",
+          "tableTo": "transactions",
           "columnsFrom": [
             "household_id",
             "transaction_id"
           ],
-          "tableTo": "transactions",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5488,41 +5676,41 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "transaction_tags_household_id_transaction_id_transactions_household_id_id_fk": {
           "name": "transaction_tags_household_id_transaction_id_transactions_household_id_id_fk",
           "tableFrom": "transaction_tags",
+          "tableTo": "transactions",
           "columnsFrom": [
             "household_id",
             "transaction_id"
           ],
-          "tableTo": "transactions",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "transaction_tags_household_id_tag_id_tags_household_id_id_fk": {
           "name": "transaction_tags_household_id_tag_id_tags_household_id_id_fk",
           "tableFrom": "transaction_tags",
+          "tableTo": "tags",
           "columnsFrom": [
             "household_id",
             "tag_id"
           ],
-          "tableTo": "tags",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -5610,8 +5798,8 @@
           "primaryKey": false,
           "notNull": true,
           "generated": {
-            "type": "stored",
-            "as": "coalesce(\"transactions\".\"date_override\", \"transactions\".\"posted_date\", \"transactions\".\"authorized_date\")"
+            "as": "coalesce(\"transactions\".\"date_override\", \"transactions\".\"posted_date\", \"transactions\".\"authorized_date\")",
+            "type": "stored"
           }
         },
         "effective_authorized_date": {
@@ -5620,8 +5808,8 @@
           "primaryKey": false,
           "notNull": true,
           "generated": {
-            "type": "stored",
-            "as": "coalesce(\"transactions\".\"date_override\", \"transactions\".\"authorized_date\")"
+            "as": "coalesce(\"transactions\".\"date_override\", \"transactions\".\"authorized_date\")",
+            "type": "stored"
           }
         },
         "pending": {
@@ -5816,9 +6004,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "transactions_list": {
           "name": "transactions_list",
@@ -5843,10 +6031,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"deleted_at\" IS NULL AND \"transactions\".\"has_splits\" = false",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_list_authorized": {
           "name": "transactions_list_authorized",
@@ -5871,10 +6059,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"deleted_at\" IS NULL AND \"transactions\".\"has_splits\" = false",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_account_id_effective_date_index": {
           "name": "transactions_account_id_effective_date_index",
@@ -5893,9 +6081,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "transactions_household_id_category_id_effective_date_index": {
           "name": "transactions_household_id_category_id_effective_date_index",
@@ -5920,9 +6108,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "transactions_parent_id_index": {
           "name": "transactions_parent_id_index",
@@ -5935,9 +6123,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "transactions_created": {
           "name": "transactions_created",
@@ -5950,9 +6138,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "transactions_transfer_match": {
           "name": "transactions_transfer_match",
@@ -5977,10 +6165,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"transfer_group_id\" IS NULL AND \"transactions\".\"deleted_at\" IS NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_transfer_expected": {
           "name": "transactions_transfer_expected",
@@ -5993,10 +6181,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"transfer_expected_account_id\" IS NOT NULL AND \"transactions\".\"transfer_group_id\" IS NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_transfer_group": {
           "name": "transactions_transfer_group",
@@ -6009,10 +6197,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"transfer_group_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_review_queue": {
           "name": "transactions_review_queue",
@@ -6025,10 +6213,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"review_status\" = 'needs_review' AND \"transactions\".\"deleted_at\" IS NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_provider": {
           "name": "transactions_provider",
@@ -6047,10 +6235,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"provider_transaction_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_provider_pending": {
           "name": "transactions_provider_pending",
@@ -6069,10 +6257,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"provider_pending_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_import_dedupe": {
           "name": "transactions_import_dedupe",
@@ -6091,10 +6279,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"import_account_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "transactions_dedupe": {
           "name": "transactions_dedupe",
@@ -6113,96 +6301,96 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"transactions\".\"source\" = 'import' AND \"transactions\".\"dedupe_key\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "transactions_merchant_logo_id_merchant_logos_id_fk": {
           "name": "transactions_merchant_logo_id_merchant_logos_id_fk",
           "tableFrom": "transactions",
+          "tableTo": "merchant_logos",
           "columnsFrom": [
             "merchant_logo_id"
           ],
-          "tableTo": "merchant_logos",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "transactions_household_id_account_id_accounts_household_id_id_fk": {
           "name": "transactions_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "transactions",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "transactions_household_id_parent_id_transactions_household_id_id_fk": {
           "name": "transactions_household_id_parent_id_transactions_household_id_id_fk",
           "tableFrom": "transactions",
+          "tableTo": "transactions",
           "columnsFrom": [
             "household_id",
             "parent_id"
           ],
-          "tableTo": "transactions",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "transactions_household_id_category_id_categories_household_id_id_fk": {
           "name": "transactions_household_id_category_id_categories_household_id_id_fk",
           "tableFrom": "transactions",
+          "tableTo": "categories",
           "columnsFrom": [
             "household_id",
             "category_id"
           ],
-          "tableTo": "categories",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "transactions_household_id_import_batch_id_import_batches_household_id_id_fk": {
           "name": "transactions_household_id_import_batch_id_import_batches_household_id_id_fk",
           "tableFrom": "transactions",
+          "tableTo": "import_batches",
           "columnsFrom": [
             "household_id",
             "import_batch_id"
           ],
-          "tableTo": "import_batches",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "transactions_household_id_id": {
           "name": "transactions_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -6302,11 +6490,11 @@
       "uniqueConstraints": {
         "merchant_logos_provider_key": {
           "name": "merchant_logos_provider_key",
+          "nullsNotDistinct": false,
           "columns": [
             "provider",
             "provider_key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -6393,37 +6581,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "notification_channels_household_id_member_id_household_members_household_id_id_fk": {
           "name": "notification_channels_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "notification_channels",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "notification_channels_member_kind": {
           "name": "notification_channels_member_kind",
+          "nullsNotDistinct": false,
           "columns": [
             "member_id",
             "kind"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -6533,10 +6721,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"notification_deliveries\".\"status\" = 'pending'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "notification_deliveries_household_id_index": {
           "name": "notification_deliveries_household_id_index",
@@ -6549,37 +6737,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "notification_deliveries_household_id_notification_id_notifications_household_id_id_fk": {
           "name": "notification_deliveries_household_id_notification_id_notifications_household_id_id_fk",
           "tableFrom": "notification_deliveries",
+          "tableTo": "notifications",
           "columnsFrom": [
             "household_id",
             "notification_id"
           ],
-          "tableTo": "notifications",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "notification_deliveries_channel": {
           "name": "notification_deliveries_channel",
+          "nullsNotDistinct": false,
           "columns": [
             "notification_id",
             "channel"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -6661,26 +6849,26 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "notification_preferences_household_id_member_id_household_members_household_id_id_fk": {
           "name": "notification_preferences_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "notification_preferences",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -6821,9 +7009,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "notifications_unrouted": {
           "name": "notifications_unrouted",
@@ -6836,10 +7024,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"notifications\".\"routed_at\" IS NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "notifications_household_id_index": {
           "name": "notifications_household_id_index",
@@ -6852,45 +7040,45 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "notifications_household_id_member_id_household_members_household_id_id_fk": {
           "name": "notifications_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "notifications",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "notifications_household_id_id": {
           "name": "notifications_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "notifications_dedupe": {
           "name": "notifications_dedupe",
+          "nullsNotDistinct": false,
           "columns": [
             "member_id",
             "dedupe_key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -7005,10 +7193,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"ownership_claims\".\"status\" = 'open'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "ownership_claims_claimant_member_id_index": {
           "name": "ownership_claims_claimant_member_id_index",
@@ -7021,54 +7209,54 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "ownership_claims_household_id_households_id_fk": {
           "name": "ownership_claims_household_id_households_id_fk",
           "tableFrom": "ownership_claims",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "ownership_claims_household_id_claimant_member_id_household_members_household_id_id_fk": {
           "name": "ownership_claims_household_id_claimant_member_id_household_members_household_id_id_fk",
           "tableFrom": "ownership_claims",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "claimant_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "ownership_claims_household_id_closed_by_member_id_household_members_household_id_id_fk": {
           "name": "ownership_claims_household_id_closed_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "ownership_claims",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "closed_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -7142,17 +7330,17 @@
         "member_preferences_household_id_member_id_household_members_household_id_id_fk": {
           "name": "member_preferences_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "member_preferences",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -7216,32 +7404,32 @@
         "recurring_dismissals_household_id_account_id_accounts_household_id_id_fk": {
           "name": "recurring_dismissals_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "recurring_dismissals",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "recurring_dismissals_household_id_created_by_member_id_household_members_household_id_id_fk": {
           "name": "recurring_dismissals_household_id_created_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "recurring_dismissals",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "created_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -7329,56 +7517,56 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "recurring_marks_household_id_series_id_recurring_series_household_id_id_fk": {
           "name": "recurring_marks_household_id_series_id_recurring_series_household_id_id_fk",
           "tableFrom": "recurring_marks",
+          "tableTo": "recurring_series",
           "columnsFrom": [
             "household_id",
             "series_id"
           ],
-          "tableTo": "recurring_series",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "recurring_marks_household_id_transaction_id_transactions_household_id_id_fk": {
           "name": "recurring_marks_household_id_transaction_id_transactions_household_id_id_fk",
           "tableFrom": "recurring_marks",
+          "tableTo": "transactions",
           "columnsFrom": [
             "household_id",
             "transaction_id"
           ],
-          "tableTo": "transactions",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "recurring_marks_household_id_created_by_member_id_household_members_household_id_id_fk": {
           "name": "recurring_marks_household_id_created_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "recurring_marks",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "created_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -7393,11 +7581,11 @@
       "uniqueConstraints": {
         "recurring_marks_transaction": {
           "name": "recurring_marks_transaction",
+          "nullsNotDistinct": false,
           "columns": [
             "series_id",
             "transaction_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -7522,9 +7710,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "recurring_series_responsible_member_id_index": {
           "name": "recurring_series_responsible_member_id_index",
@@ -7537,80 +7725,80 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "recurring_series_household_id_households_id_fk": {
           "name": "recurring_series_household_id_households_id_fk",
           "tableFrom": "recurring_series",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "recurring_series_household_id_account_id_accounts_household_id_id_fk": {
           "name": "recurring_series_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "recurring_series",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "recurring_series_household_id_created_by_member_id_household_members_household_id_id_fk": {
           "name": "recurring_series_household_id_created_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "recurring_series",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "created_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "recurring_series_household_id_responsible_member_id_household_members_household_id_id_fk": {
           "name": "recurring_series_household_id_responsible_member_id_household_members_household_id_id_fk",
           "tableFrom": "recurring_series",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "responsible_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "recurring_series_household_id_id": {
           "name": "recurring_series_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -7732,9 +7920,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "rules_member_id_index": {
           "name": "rules_member_id_index",
@@ -7747,65 +7935,65 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "rules_household_id_households_id_fk": {
           "name": "rules_household_id_households_id_fk",
           "tableFrom": "rules",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "rules_household_id_author_member_id_household_members_household_id_id_fk": {
           "name": "rules_household_id_author_member_id_household_members_household_id_id_fk",
           "tableFrom": "rules",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "author_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "rules_household_id_member_id_household_members_household_id_id_fk": {
           "name": "rules_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "rules",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "rules_household_id_id": {
           "name": "rules_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -7887,10 +8075,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"attribution_flags\".\"resolved_at\" IS NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "attribution_flags_household_id_resolved_at_index": {
           "name": "attribution_flags_household_id_resolved_at_index",
@@ -7909,67 +8097,67 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "attribution_flags_household_id_households_id_fk": {
           "name": "attribution_flags_household_id_households_id_fk",
           "tableFrom": "attribution_flags",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "attribution_flags_transaction_id_transactions_id_fk": {
           "name": "attribution_flags_transaction_id_transactions_id_fk",
           "tableFrom": "attribution_flags",
+          "tableTo": "transactions",
           "columnsFrom": [
             "transaction_id"
           ],
-          "tableTo": "transactions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "attribution_flags_household_id_flagged_by_member_id_household_members_household_id_id_fk": {
           "name": "attribution_flags_household_id_flagged_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "attribution_flags",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "flagged_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "attribution_flags_household_id_resolved_by_member_id_household_members_household_id_id_fk": {
           "name": "attribution_flags_household_id_resolved_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "attribution_flags",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "resolved_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -8080,88 +8268,88 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "funding_targets_household_id_households_id_fk": {
           "name": "funding_targets_household_id_households_id_fk",
           "tableFrom": "funding_targets",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "funding_targets_household_id_account_id_accounts_household_id_id_fk": {
           "name": "funding_targets_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "funding_targets",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "funding_targets_household_id_member_id_household_members_household_id_id_fk": {
           "name": "funding_targets_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "funding_targets",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "funding_targets_household_id_created_by_member_id_household_members_household_id_id_fk": {
           "name": "funding_targets_household_id_created_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "funding_targets",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "created_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "funding_targets_household_id_id": {
           "name": "funding_targets_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "funding_targets_account_member": {
           "name": "funding_targets_account_member",
+          "nullsNotDistinct": false,
           "columns": [
             "account_id",
             "member_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -8238,51 +8426,51 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "income_split_consents_household_id_households_id_fk": {
           "name": "income_split_consents_household_id_households_id_fk",
           "tableFrom": "income_split_consents",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "income_split_consents_household_id_member_id_household_members_household_id_id_fk": {
           "name": "income_split_consents_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "income_split_consents",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "income_split_consents_from": {
           "name": "income_split_consents_from",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "member_id",
             "effective_from"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -8323,30 +8511,30 @@
         "settle_up_simplify_consents_household_id_households_id_fk": {
           "name": "settle_up_simplify_consents_household_id_households_id_fk",
           "tableFrom": "settle_up_simplify_consents",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "settle_up_simplify_consents_household_id_member_id_household_members_household_id_id_fk": {
           "name": "settle_up_simplify_consents_household_id_member_id_household_members_household_id_id_fk",
           "tableFrom": "settle_up_simplify_consents",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -8447,9 +8635,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "settlements_to_member_id_index": {
           "name": "settlements_to_member_id_index",
@@ -8462,100 +8650,100 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "settlements_household_id_households_id_fk": {
           "name": "settlements_household_id_households_id_fk",
           "tableFrom": "settlements",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "settlements_transaction_id_transactions_id_fk": {
           "name": "settlements_transaction_id_transactions_id_fk",
           "tableFrom": "settlements",
+          "tableTo": "transactions",
           "columnsFrom": [
             "transaction_id"
           ],
-          "tableTo": "transactions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "settlements_household_id_from_member_id_household_members_household_id_id_fk": {
           "name": "settlements_household_id_from_member_id_household_members_household_id_id_fk",
           "tableFrom": "settlements",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "from_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "settlements_household_id_to_member_id_household_members_household_id_id_fk": {
           "name": "settlements_household_id_to_member_id_household_members_household_id_id_fk",
           "tableFrom": "settlements",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "to_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "settlements_household_id_created_by_member_id_household_members_household_id_id_fk": {
           "name": "settlements_household_id_created_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "settlements",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "created_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "settlements_household_id_id": {
           "name": "settlements_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "settlements_transaction": {
           "name": "settlements_transaction",
+          "nullsNotDistinct": false,
           "columns": [
             "transaction_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -8647,74 +8835,74 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "split_policies_household_id_households_id_fk": {
           "name": "split_policies_household_id_households_id_fk",
           "tableFrom": "split_policies",
+          "tableTo": "households",
           "columnsFrom": [
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "split_policies_household_id_category_id_categories_household_id_id_fk": {
           "name": "split_policies_household_id_category_id_categories_household_id_id_fk",
           "tableFrom": "split_policies",
+          "tableTo": "categories",
           "columnsFrom": [
             "household_id",
             "category_id"
           ],
-          "tableTo": "categories",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "split_policies_household_id_created_by_member_id_household_members_household_id_id_fk": {
           "name": "split_policies_household_id_created_by_member_id_household_members_household_id_id_fk",
           "tableFrom": "split_policies",
+          "tableTo": "household_members",
           "columnsFrom": [
             "household_id",
             "created_by_member_id"
           ],
-          "tableTo": "household_members",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "split_policies_household_id_id": {
           "name": "split_policies_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "split_policies_from": {
           "name": "split_policies_from",
+          "nullsNotDistinct": true,
           "columns": [
             "household_id",
             "category_id",
             "effective_from"
-          ],
-          "nullsNotDistinct": true
+          ]
         }
       },
       "policies": {},
@@ -8851,9 +9039,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "sync_holds_connection_id_index": {
           "name": "sync_holds_connection_id_index",
@@ -8866,60 +9054,60 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "sync_holds_household_id_account_id_accounts_household_id_id_fk": {
           "name": "sync_holds_household_id_account_id_accounts_household_id_id_fk",
           "tableFrom": "sync_holds",
+          "tableTo": "accounts",
           "columnsFrom": [
             "household_id",
             "account_id"
           ],
-          "tableTo": "accounts",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "sync_holds_household_id_connection_id_connections_household_id_id_fk": {
           "name": "sync_holds_household_id_connection_id_connections_household_id_id_fk",
           "tableFrom": "sync_holds",
+          "tableTo": "connections",
           "columnsFrom": [
             "household_id",
             "connection_id"
           ],
-          "tableTo": "connections",
           "columnsTo": [
             "household_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "sync_holds_household_id_id": {
           "name": "sync_holds_household_id_id",
+          "nullsNotDistinct": false,
           "columns": [
             "household_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "sync_holds_provider": {
           "name": "sync_holds_provider",
+          "nullsNotDistinct": false,
           "columns": [
             "account_id",
             "provider_transaction_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -8996,6 +9184,24 @@
         "zero_based",
         "percentage",
         "flex"
+      ]
+    },
+    "public.consent_request_kind": {
+      "name": "consent_request_kind",
+      "schema": "public",
+      "values": [
+        "income_split"
+      ]
+    },
+    "public.consent_request_status": {
+      "name": "consent_request_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "accepted",
+        "declined",
+        "withdrawn",
+        "expired"
       ]
     },
     "public.goal_claim_reason": {
@@ -9178,10 +9384,10 @@
     }
   },
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

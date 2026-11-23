@@ -1,6 +1,6 @@
 {
-  "id": "1d381631-9732-46ff-b6b3-1686e6dad109",
-  "prevId": "ed0dcf5f-a009-4466-aa98-b39cfbe34b09",
+  "id": "2d13a3ab-b8cc-4ed4-8a70-b1446c7cb803",
+  "prevId": "2fe3e3c4-e971-4401-8890-481278e5d34e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2594,6 +2594,194 @@
         "plaid_webhook_stats_outcome": {
           "name": "plaid_webhook_stats_outcome",
           "value": "\"plaid_webhook_stats\".\"outcome\" IN ('verified', 'unknown_item', 'missing', 'malformed', 'algorithm', 'stale', 'body_hash', 'unknown_key', 'signature')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.consent_requests": {
+      "name": "consent_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "household_id": {
+          "name": "household_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "consent_request_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_by_member_id": {
+          "name": "requested_by_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "consent_request_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(now() + interval '14 days')"
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "consent_requests_pending": {
+          "name": "consent_requests_pending",
+          "columns": [
+            {
+              "expression": "household_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"consent_requests\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "consent_requests_member_id_index": {
+          "name": "consent_requests_member_id_index",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "consent_requests_requested_by_member_id_index": {
+          "name": "consent_requests_requested_by_member_id_index",
+          "columns": [
+            {
+              "expression": "requested_by_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "consent_requests_household_id_households_id_fk": {
+          "name": "consent_requests_household_id_households_id_fk",
+          "tableFrom": "consent_requests",
+          "tableTo": "households",
+          "columnsFrom": [
+            "household_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "consent_requests_household_id_requested_by_member_id_household_members_household_id_id_fk": {
+          "name": "consent_requests_household_id_requested_by_member_id_household_members_household_id_id_fk",
+          "tableFrom": "consent_requests",
+          "tableTo": "household_members",
+          "columnsFrom": [
+            "household_id",
+            "requested_by_member_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "consent_requests_household_id_member_id_household_members_household_id_id_fk": {
+          "name": "consent_requests_household_id_member_id_household_members_household_id_id_fk",
+          "tableFrom": "consent_requests",
+          "tableTo": "household_members",
+          "columnsFrom": [
+            "household_id",
+            "member_id"
+          ],
+          "columnsTo": [
+            "household_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "consent_requests_not_yourself": {
+          "name": "consent_requests_not_yourself",
+          "value": "\"consent_requests\".\"requested_by_member_id\" <> \"consent_requests\".\"member_id\""
+        },
+        "consent_requests_closed": {
+          "name": "consent_requests_closed",
+          "value": "(\"consent_requests\".\"status\" = 'pending') = (\"consent_requests\".\"closed_at\" IS NULL)"
+        },
+        "consent_requests_expires": {
+          "name": "consent_requests_expires",
+          "value": "\"consent_requests\".\"expires_at\" > \"consent_requests\".\"created_at\""
         }
       },
       "isRLSEnabled": false
@@ -8996,6 +9184,24 @@
         "zero_based",
         "percentage",
         "flex"
+      ]
+    },
+    "public.consent_request_kind": {
+      "name": "consent_request_kind",
+      "schema": "public",
+      "values": [
+        "income_split"
+      ]
+    },
+    "public.consent_request_status": {
+      "name": "consent_request_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "accepted",
+        "declined",
+        "withdrawn",
+        "expired"
       ]
     },
     "public.goal_claim_reason": {
