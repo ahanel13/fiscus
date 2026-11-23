@@ -139,8 +139,12 @@ export async function statementDue(m: MemberRun): Promise<number> {
       await m.notify({
         kind: 'statement_due',
         dedupeKey: `statement_due:${st.accountId}:${st.due}`,
-        title: `${st.accountName} statement is due ${when(st.due, m.today)}`,
-        body: `${money(st.owedMinor - st.paidSoFarMinor, st.currency)} to pay${minimum}.`,
+        // A debt's minimum from its goal (G23): the minimum is all there is to pay.
+        title: `${st.accountName} ${st.source === 'goal' ? 'payment' : 'statement'} is due ${when(st.due, m.today)}`,
+        body:
+          st.source === 'goal'
+            ? `${money(st.owedMinor - st.paidSoFarMinor, st.currency)} minimum to pay.`
+            : `${money(st.owedMinor - st.paidSoFarMinor, st.currency)} to pay${minimum}.`,
         summary: 'A card statement is due soon.',
         link: appLink(m.householdId, 'recurring'),
       })

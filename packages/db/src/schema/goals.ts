@@ -10,6 +10,7 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -59,6 +60,11 @@ export const goals = pgTable(
     accountId: uuid(),
     aprBps: integer(),
     minimumMinor: money('minimum_minor'),
+    /**
+     * The day of the month its minimum is due, as entered, for a debt the bank gives no due date
+     * for: the minimum is then a bill from the goal (G9, goals walkthrough G23). Migration 0118.
+     */
+    dueDay: smallint(),
     ...versioning(),
     ...timestamps(),
   },
@@ -81,6 +87,10 @@ export const goals = pgTable(
     check('goals_debt', sql`(${t.kind} = 'pay_down') = (${t.accountId} IS NOT NULL)`),
     check('goals_apr', sql`${t.aprBps} IS NULL OR ${t.aprBps} BETWEEN 0 AND 10000`),
     check('goals_minimum', sql`${t.minimumMinor} IS NULL OR ${t.minimumMinor} >= 0`),
+    check(
+      'goals_due_day',
+      sql`${t.dueDay} IS NULL OR (${t.kind} = 'pay_down' AND ${t.dueDay} BETWEEN 1 AND 31)`,
+    ),
     check('goals_color', sql`${t.color} IS NULL OR ${t.color} ~ '^#[0-9a-f]{6}$'`),
     check(
       'goals_image',

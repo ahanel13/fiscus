@@ -98,6 +98,8 @@ export const createGoalSchema = z.object({
 const aprBps = z.number().int().min(0).max(10_000);
 /** A minimum payment you enter, when the bank doesn't say. */
 const minimum = z.number().int().min(0).max(1_000_000_000_00);
+/** The day of the month the minimum is due, when the bank gives no due date (G23). */
+const dueDay = z.number().int().min(1).max(31);
 
 /**
  * Pay down a loan or card (G9): one goal per debt. Its target is what's owed when it starts,
@@ -114,6 +116,7 @@ export const createPayDownSchema = z
     planMinor: z.number().int().min(0).max(1_000_000_000_00).nullable().optional(),
     aprBps: aprBps.nullable().optional(),
     minimumMinor: minimum.nullable().optional(),
+    dueDay: dueDay.nullable().optional(),
     icon: goalLook.icon.optional(),
     color: goalLook.color.optional(),
   })
@@ -128,6 +131,8 @@ export const updateGoalSchema = z
     /** A debt's rate and minimum as you enter them; null goes back to the bank's (G9). */
     aprBps: aprBps.nullable(),
     minimumMinor: minimum.nullable(),
+    /** The day its minimum is due, as a bill from the goal (G23); null for none. */
+    dueDay: dueDay.nullable(),
     ...goalLook,
   })
   .partial()
@@ -228,7 +233,12 @@ export interface GoalDebt {
   /** What the bank says, when it does. */
   bank: { aprBps: number | null; minimumMinor: number | null; nextDueDate: string | null } | null;
   /** What's been entered on the goal. */
-  entered: { aprBps: number | null; minimumMinor: number | null };
+  entered: {
+    aprBps: number | null;
+    minimumMinor: number | null;
+    /** The day of the month its minimum is due (G23); a bank's due date goes first. */
+    dueDay: number | null;
+  };
   /** What counts: the entered value, else the bank's. */
   aprBps: number | null;
   minimumMinor: number | null;

@@ -328,7 +328,9 @@ function Upcoming({
         <NothingYet />
         {fromBank.length ? (
           <section className="space-y-2">
-            <h2 className="px-1 text-sm font-semibold">From your bank</h2>
+            <h2 className="px-1 text-sm font-semibold">
+              {fromBank.every((o) => o.source !== 'goal') ? 'From your bank' : 'Debt payments'}
+            </h2>
             <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
               {fromBank.map((o) => (
                 <OccurrenceRow
@@ -342,7 +344,8 @@ function Upcoming({
               ))}
             </ul>
             <p className="px-1 text-xs text-muted">
-              Card due dates come from the bank, so they show from the first sync.
+              Card due dates come from the bank, so they show from the first sync. For a debt the
+              bank doesn’t say, its pay-down goal can.
             </p>
           </section>
         ) : null}
@@ -584,7 +587,10 @@ export function OccurrenceRow({
               {statementBadge(o.statementPaid)}
             </Badge>
           ) : null}
-          {o.kind === 'statement' ? <Badge>From the bank</Badge> : null}
+          {o.kind === 'statement' ? (
+            // A debt's minimum, due on the day its pay-down goal says (G23).
+            <Badge>{o.source === 'goal' ? 'From your goal' : 'From the bank'}</Badge>
+          ) : null}
           {o.kind === 'subscription' ? <Badge>Subscription</Badge> : null}
           <ChangeBadges changes={o.changes} currency={o.currency} />
         </span>

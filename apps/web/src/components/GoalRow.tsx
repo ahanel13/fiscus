@@ -8,6 +8,7 @@ import {
 } from '@fiscus/shared';
 import { clsx } from 'clsx';
 import { Check, MoreHorizontal } from 'lucide-react';
+import { ordinal } from '../lib/budget-months.js';
 import { BankLogo } from './BankLogo.js';
 import { GoalPicture, type GoalLook, goalPhotoUrl } from './GoalPicture.js';
 import { Badge, type BadgeTone, Button, Menu, MenuItem, MenuTrigger } from './ui.js';
@@ -258,6 +259,13 @@ function DebtTerms({
         {money(minimum)} minimum{d.minimumMinor === null ? ' (estimated)' : ''}
         {g.planMinor ? ` + ${money(g.planMinor)} extra` : ''} a month
       </span>
+      {d.entered.dueDay !== null && !d.bank?.nextDueDate ? (
+        // Its minimum is a bill on this day (G23).
+        <>
+          <span aria-hidden>·</span>
+          <span>due on the {ordinal(d.entered.dueDay)}</span>
+        </>
+      ) : null}
     </p>
   );
 }

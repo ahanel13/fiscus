@@ -177,6 +177,20 @@ describe('card statements, on Upcoming (#122)', () => {
     expect(within(item).queryByRole('button', { name: /more/ })).toBeNull();
   });
 
+  it('says a debt’s minimum is from its goal, when the bank gives no due date (G23)', async () => {
+    row(
+      statement({
+        name: 'Car loan payment',
+        source: 'goal',
+        expectedMinor: -25_000,
+        minimumMinor: 25_000,
+      }),
+    );
+    const item = (await screen.findByText('Car loan payment')).closest('li')!;
+    expect(within(item).getByText('From your goal')).toBeInTheDocument();
+    expect(within(item).queryByText('From the bank')).toBeNull();
+  });
+
   it('is partly paid, minimum paid, or paid', async () => {
     const first = row(statement({ statementPaid: 'part', paidSoFarMinor: 2_000 }));
     expect(await screen.findByText('Partly paid')).toBeInTheDocument();

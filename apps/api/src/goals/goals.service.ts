@@ -243,6 +243,7 @@ export class GoalsService {
           planMinor: input.planMinor ?? null,
           aprBps: input.aprBps ?? null,
           minimumMinor: input.minimumMinor ?? null,
+          dueDay: input.dueDay ?? null,
           icon: input.icon ?? null,
           color: input.color ?? null,
           position: last?.n ?? 0,
@@ -270,9 +271,15 @@ export class GoalsService {
       checkCanEdit(ctx, row);
       if (
         row.kind !== 'pay_down' &&
-        (patch.aprBps !== undefined || patch.minimumMinor !== undefined)
+        (patch.aprBps !== undefined ||
+          patch.minimumMinor !== undefined ||
+          patch.dueDay !== undefined)
       ) {
-        throw new Problem(422, 'not_a_debt', 'Only a pay-down goal has a rate and a minimum');
+        throw new Problem(
+          422,
+          'not_a_debt',
+          'Only a pay-down goal has a rate, a minimum and a due day',
+        );
       }
       if (row.version !== baseVersion) {
         throw new Problem(
@@ -889,7 +896,7 @@ interface Context {
 /** A pay-down goal's debt as the caller sees it (G9): the entered rate and minimum first. */
 function debtOf(g: GoalRow, debts: Map<string, Debt>): GoalDebt {
   const d = debts.get(g.accountId!);
-  const entered = { aprBps: g.aprBps, minimumMinor: g.minimumMinor };
+  const entered = { aprBps: g.aprBps, minimumMinor: g.minimumMinor, dueDay: g.dueDay };
   return {
     accountId: g.accountId!,
     accountName: d?.name ?? null,

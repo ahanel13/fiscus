@@ -188,6 +188,8 @@ statements beside bills.
     less, it says "minimum paid" or "partly paid".
   - A card payment is a transfer, so it isn't added to **Bills**. The bills on the card were
     already counted when they were paid with it: adding the statement would count them twice.
+  - A loan or card the bank gives no due date for (SimpleFIN, manual) can get its minimum here
+    from its pay-down goal, on the day the goal says, marked **From your goal** (goals G23).
 - **D10. What you see is what your accounts let you see.** A series is visible to whoever can
   see its account (ADR 0006): Sam's private card's subscriptions don't appear for Alex. **Ours**
   and **Mine** filter by who it's for, as budgets do: Mine is bills and income for you alone.
