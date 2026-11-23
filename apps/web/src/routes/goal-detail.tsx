@@ -10,6 +10,7 @@ import {
 } from '@fiscus/shared';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type ApiError } from '../api/client.js';
+import { goalContributionsQuery } from '../api/queries.js';
 import { GoalPicture } from '../components/GoalPicture.js';
 import { GoalProgressChart } from '../components/GoalProgressChart.js';
 import { claimLabel, lookOf, shortMonth, STATUS } from '../components/GoalRow.js';
@@ -17,7 +18,8 @@ import { Alert, Badge, Button, Dialog, DialogActions, Skeleton, toast } from '..
 
 // A savings goal up close (goals walkthrough §3–§4, #135, #137): what it has, this month planned
 // against moved, the market for percentage claims (G12), its pace (G18) and where it leads, a chart
-// of it all, what to change when it's at risk, what funds it, and its months.
+// of it all, what to change when it's at risk, what funds it, who's put in for a shared goal
+// (#133), and its months.
 
 type Data<T> = { data: T };
 const base = (householdId: string) => `/api/v1/households/${householdId}`;
@@ -212,6 +214,10 @@ export function GoalDetail({
           )}
         </section>
 
+        {g.kind === 'save' && g.scope === 'household' && members.length > 1 ? (
+          <WhoPutIn householdId={householdId} goalId={g.id} members={members} currency={currency} />
+        ) : null}
+
         {p && p.months.length ? <Months progress={p} money={money} /> : null}
 
         <p className="text-xs text-muted">
@@ -253,6 +259,71 @@ function Stat({ label, value, note }: { label: string; value: string | null; not
       </dd>
       <dd className="text-xs text-muted">{note}</dd>
     </div>
+  );
+}
+
+/**
+ * Who's put in, for a shared goal (walkthrough §3, #133, G7, G11): each member's contributions,
+ * which are its claims growing with money moved into their accounts, and their share of it on
+ * joint accounts by ownership. Earmarking money already there isn't anyone's. Here, not in its edit
+ * dialog, so viewers see it too (GOAL-09).
+ */
+function WhoPutIn({
+  householdId,
+  goalId,
+  members,
+  currency,
+}: {
+  householdId: string;
+  goalId: string;
+  members: HouseholdMember[];
+  currency: string;
+}) {
+  const { data, isPending } = useQuery(goalContributionsQuery(householdId, goalId));
+  const nameOf = (id: string) => members.find((m) => m.id === id)?.displayName ?? 'Someone';
+  return (
+    <section aria-labelledby="who-put-in" className="space-y-2">
+      <h3 id="who-put-in" className="text-sm font-medium">
+        Who’s put in{' '}
+        <span className="font-normal text-muted">· new money, not what was already there</span>
+      </h3>
+      {isPending ? (
+        <Skeleton className="h-12 w-full" />
+      ) : !data || data.members.length === 0 ? (
+        <p className="text-sm text-muted">
+          Nothing yet. Money moved into its accounts counts once its claims grow with it.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border rounded-xl border border-border">
+          {data.members.map((m) => {
+            const share = data.totalMinor > 0 ? m.totalMinor / data.totalMinor : 0;
+            return (
+              <li key={m.memberId} className="space-y-1.5 px-3 py-2 text-sm">
+                <div className="flex items-baseline gap-3">
+                  <span className="min-w-0 flex-1 font-medium">{nameOf(m.memberId)}</span>
+                  <span className="text-xs text-muted tabular-nums">
+                    {formatMoney(m.thisMonthMinor, currency)} this month
+                  </span>
+                  <span className="font-semibold tabular-nums">
+                    {formatMoney(m.totalMinor, currency)}
+                  </span>
+                </div>
+                <div
+                  className="h-1.5 overflow-hidden rounded-full bg-surface-2"
+                  role="img"
+                  aria-label={`${Math.round(share * 100)}% of what’s been put in`}
+                >
+                  <div
+                    className="h-full rounded-full bg-accent"
+                    style={{ width: `${share * 100}%` }}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
