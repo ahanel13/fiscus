@@ -107,12 +107,12 @@ Selecting a goal opens its page:
 **Built (#135, #137).** Selecting a savings goal opens it up close: its status and the line beside
 it; **Saved**, **this month** (moved against its plan), **market** this month when it has a
 percentage claim (else its pace), and the month it gets there at this pace; the chart; what to
-change when it's at risk; what funds it; and the last six months, each with what it had, what
-moved in, the market, and claims changed. **Edit goal** opens it to change. The chart draws what it
-had at each month's end, a dashed line from now at its pace to the target, a dotted steady line
-from where it began to the target by its date, and the target; a crosshair shows any month. The
-goal's history is its claims as they stood (G17, G24). Who's put in (#133) is still in its edit
-dialog.
+change when it's at risk; what funds it; who's put in, for a shared goal (#133); and the last six
+months, each with what it had, what moved in, the market, and claims changed. **Edit goal** opens
+it to change. The chart draws what it had at each month's end, a dashed line from now at its pace
+to the target, a dotted steady line from where it began to the target by its date, and the target;
+a crosshair shows any month. The goal's history is its claims as they stood (G17, G24). Who's put
+in is here rather than in its edit dialog, so a viewer, who can't edit, sees it too (GOAL-09).
 
 **G17. A goal keeps the history of its claims.** Every change is kept with its reason: earmarked,
 moved in, spent from, gave way to a shortfall, or the market. Progress on any date is the claims as

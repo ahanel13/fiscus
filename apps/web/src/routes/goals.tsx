@@ -15,12 +15,7 @@ import { useParams } from '@tanstack/react-router';
 import { Eye, EyeOff, Goal as GoalIcon, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api, type ApiError } from '../api/client.js';
-import {
-  goalContributionsQuery,
-  goalsQuery,
-  householdQuery,
-  membersQuery,
-} from '../api/queries.js';
+import { goalsQuery, householdQuery, membersQuery } from '../api/queries.js';
 import { AllocateDialog, allocationOf, goalNames } from '../components/AllocateDialog.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PicturePicker, shrinkPhoto } from '../components/GoalPicture.js';
@@ -864,14 +859,6 @@ function GoalDialog({
             </p>
           ) : null}
         </div>
-        {goal && goal.kind === 'save' && goal.scope === 'household' && shared ? (
-          <WhoPutIn
-            householdId={householdId}
-            goalId={goal.id}
-            members={members}
-            currency={currency}
-          />
-        ) : null}
         {shared && scope === 'household' ? (
           <p className="text-xs text-muted">
             Everyone in the household sees this goal. A claim on an account they can’t see shows
@@ -888,70 +875,6 @@ function GoalDialog({
         </DialogActions>
       </div>
     </Dialog>
-  );
-}
-
-/**
- * Who's put in, for a shared goal (walkthrough §3, #133, G7, G11): each member's contributions,
- * which are its claims growing with money moved into their accounts, and their share of it on
- * joint accounts by ownership. Earmarking money already there isn't anyone's.
- */
-function WhoPutIn({
-  householdId,
-  goalId,
-  members,
-  currency,
-}: {
-  householdId: string;
-  goalId: string;
-  members: HouseholdMember[];
-  currency: string;
-}) {
-  const { data, isPending } = useQuery(goalContributionsQuery(householdId, goalId));
-  const nameOf = (id: string) => members.find((m) => m.id === id)?.displayName ?? 'Someone';
-  return (
-    <section aria-labelledby="who-put-in" className="space-y-2">
-      <p id="who-put-in" className="text-sm font-medium">
-        Who’s put in{' '}
-        <span className="font-normal text-muted">· new money, not what was already there</span>
-      </p>
-      {isPending ? (
-        <Skeleton className="h-12 w-full" />
-      ) : !data || data.members.length === 0 ? (
-        <p className="text-sm text-muted">
-          Nothing yet. Money moved into its accounts counts once its claims grow with it.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border rounded-xl border border-border">
-          {data.members.map((m) => {
-            const share = data.totalMinor > 0 ? m.totalMinor / data.totalMinor : 0;
-            return (
-              <li key={m.memberId} className="space-y-1.5 px-3 py-2 text-sm">
-                <div className="flex items-baseline gap-3">
-                  <span className="min-w-0 flex-1 font-medium">{nameOf(m.memberId)}</span>
-                  <span className="text-xs text-muted tabular-nums">
-                    {formatMoney(m.thisMonthMinor, currency)} this month
-                  </span>
-                  <span className="font-semibold tabular-nums">
-                    {formatMoney(m.totalMinor, currency)}
-                  </span>
-                </div>
-                <div
-                  className="h-1.5 overflow-hidden rounded-full bg-surface-2"
-                  role="img"
-                  aria-label={`${Math.round(share * 100)}% of what’s been put in`}
-                >
-                  <div
-                    className="h-full rounded-full bg-accent"
-                    style={{ width: `${share * 100}%` }}
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
   );
 }
 
