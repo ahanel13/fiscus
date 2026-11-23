@@ -169,7 +169,25 @@ earmarked. Nothing moves on its own (G3):
 
 **G19. Priority is the goals' order, and the lowest gives way first.** Goals are listed in priority
 order, which you change by dragging. The suggestion takes a shortfall from the lowest-priority goal
-the account backs, then the next (#136). Nothing is taken without you.
+the account backs, then the next (#136). Nothing is taken without you. **Split it by their
+claims** shares the shortfall in proportion, never taking more than a goal's claim: a goal you
+can't see may hold the rest, and that part stays short.
+
+**Unclaimed money, the other way round.** When your savings hold money no goal has earmarked and a
+goal still needs some, the Save up tab says so: "$2,800.00 in your accounts isn't earmarked for any
+goal. By priority, $2,800.00 of your savings could go toward Emergency fund and Japan trip."
+**Review suggestion** lists each step (the goal, the account, the amount), ticked, with the amount
+editable. **Earmark** adds them to the goals' claims, all at once or not at all; **Not now** leaves
+everything as it was. The money doesn't move: it's earmarked where it is (G11).
+
+**G25. Priority also suggests where unclaimed money could go, and only you earmark it.** The
+highest-priority savings goal first, up to what it still needs to reach its target, then the next.
+For each goal, an account it already draws on by a fixed amount comes first (the claim is raised),
+then your savings accounts, the most unclaimed first. Checking and other everyday accounts aren't
+offered, nor investments a goal doesn't already draw on (percentages suit those, G2), nor an
+account a goal claims by percentage. It's worked out from what you see: your own accounts, and
+goals you see (a Mine goal of someone else's is never in it, G15). Confirming is setting claims,
+so only an account's owners can, never beyond what's free (G3, G7).
 
 ---
 
@@ -353,6 +371,7 @@ A Mine goal only ever notifies you.
 | G22 | Goals ship in seven steps, savings goals with claims first | #131 |
 | G23 | A debt with no due date from the bank gets its minimum as a bill on the day its goal says | #134 |
 | G24 | A goal's months read its claims as each ended; each month's change is claims changed, moved in, or the market | #135, #137 |
+| G25 | Priority suggests where unclaimed money could go, highest first, from savings; only an owner's yes earmarks it | #136 |
 
 ## Open questions
 

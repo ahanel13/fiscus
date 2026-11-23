@@ -153,6 +153,21 @@ export const giveWaySchema = z.object({
     .refine((t) => new Set(t.map((x) => x.goalId)).size === t.length, 'Each goal once'),
 });
 
+/**
+ * Unclaimed money toward goals, as priority suggested and you confirmed (G25): each adds to the
+ * goal's fixed claim on the account, or makes one. All or nothing.
+ */
+export const allocateSchema = z.object({
+  add: z
+    .array(z.object({ goalId: z.uuid(), accountId: z.uuid(), amountMinor: money }))
+    .min(1)
+    .max(50)
+    .refine(
+      (a) => new Set(a.map((x) => `${x.goalId}:${x.accountId}`)).size === a.length,
+      'Each goal and account once',
+    ),
+});
+
 export interface GoalClaim {
   accountId: string;
   /** Null when it's an account you can't see: only the claim shows (G7). */
@@ -291,6 +306,8 @@ export interface GoalAccount {
   accountId: string;
   name: string;
   type: 'depository' | 'investment';
+  /** The bank's subtype ("savings", "checking"): suggestions leave everyday accounts be (G25). */
+  subtype: string | null;
   balanceMinor: number;
   /** Every goal's claims on it, yours or not (G3). */
   claimedMinor: number;

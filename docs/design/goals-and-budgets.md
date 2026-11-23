@@ -41,7 +41,9 @@ aren't, and mixing them up is how the same dollars get counted twice.
 - A goal can draw on several accounts (a house fund from savings and a brokerage account): its
   progress is the claims added up. An account can back several goals: $8,000 for the house and
   $2,000 for the trip, out of $20,000, leaves $10,000 unclaimed.
-- Unclaimed money is just money in the account. It isn't offered to the budget.
+- Unclaimed money is just money in the account. It isn't offered to the budget. Goal priority
+  can suggest earmarking it for goals, highest first ([walkthrough](walkthroughs/goals.md) G25),
+  and only an owner's yes does.
 - Claims are the many-to-many funding of #138, and progress (#135) and status (#137) come from
   them.
 

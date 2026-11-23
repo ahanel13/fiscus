@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { parseIfMatch } from '@fiscus/domain';
 import {
+  allocateSchema,
   createGoalSchema,
   createPayDownSchema,
   giveWaySchema,
@@ -91,6 +92,16 @@ export class GoalsController {
     @Body(new ZodPipe(giveWaySchema)) body: z.infer<typeof giveWaySchema>,
   ): Promise<void> {
     await this.goals.giveWay(ctx, body.accountId, body.take);
+  }
+
+  /** Unclaimed money toward goals, as priority suggested and you confirmed (G25). */
+  @Post('allocate')
+  @HttpCode(204)
+  async allocate(
+    @Household() ctx: HouseholdContext,
+    @Body(new ZodPipe(allocateSchema)) body: z.infer<typeof allocateSchema>,
+  ): Promise<void> {
+    await this.goals.allocate(ctx, body.add);
   }
 
   /** Requires If-Match: first save wins. */
