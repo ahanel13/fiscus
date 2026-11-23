@@ -190,6 +190,27 @@ export const historyPointSchema = z.object({
 });
 export type HistoryPoint = z.infer<typeof historyPointSchema>;
 
+/** A head's short fingerprint, for comparing across devices and kept emails: "8878 b15a". */
+export function historyFingerprint(hash: string): string {
+  return `${hash.slice(0, 4)} ${hash.slice(4, 8)}`;
+}
+
+/**
+ * A point as one code a member can keep and paste back (#389): "18342-<64 hex>". In a link it's
+ * the `kept` search parameter, and a dash keeps it from ever reading as a JSON number there.
+ */
+export function historyPointCode(point: HistoryPoint): string {
+  return `${point.seq}-${point.hash}`;
+}
+
+/** The point in a kept code, or null; spaces and case don't matter. */
+export function parseHistoryPointCode(code: string): HistoryPoint | null {
+  const m = /^(\d{1,16})-([0-9a-f]{64})$/.exec(code.replace(/\s+/g, '').toLowerCase());
+  if (!m) return null;
+  const parsed = historyPointSchema.safeParse({ seq: Number(m[1]), hash: m[2] });
+  return parsed.success ? parsed.data : null;
+}
+
 /**
  * A proof that the chain grew from a member's last verified point (#264). Folding `leaves` from
  * that point's hash, SHA-256(previous ‖ leaf) each, reaches `head.hash`, or the hash at `next`

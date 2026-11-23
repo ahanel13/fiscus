@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomUUID } from 'node:crypto';
+import { appendActivity, systemContext, withContext } from '@fiscus/db';
 import { addDays } from '@fiscus/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startWorkerHarness, type WorkerHarness } from '../../testing/harness.js';
@@ -573,6 +574,45 @@ describe('notification rules', { timeout: 120_000 }, () => {
       const [sams] = await recaps(sam);
       expect(JSON.stringify(sams.email.full)).toContain('Jeweler');
       expect(JSON.stringify(alexs)).not.toMatch(/Jeweler|Sam’s card|612/);
+    });
+
+    it('carries the history head, with a link that checks it later (#389)', async () => {
+      const { householdId, alex } = await household();
+      for (const action of ['household.created', 'household.updated']) {
+        await withContext(h.worker.db, systemContext(householdId), (tx) =>
+          appendActivity(tx, {
+            actorKind: 'system',
+            householdId,
+            action,
+            visibleToHousehold: true,
+          }),
+        );
+      }
+      const withUrl = new NotificationRules(
+        h.worker.db,
+        { publicUrl: 'https://fiscus.example' },
+        quiet,
+      );
+      await withUrl.runHousehold(householdId, MONDAY, { daily: false });
+      const {
+        rows: [head],
+      } = await h.owner.query(
+        `SELECT seq::int AS seq, encode(head_hash, 'hex') AS hash FROM audit_chain_heads
+         WHERE scope_id = $1`,
+        [householdId],
+      );
+      expect(head.seq).toBe(2);
+      const [recap] = await recaps(alex);
+      const check = `https://fiscus.example/h/${householdId}/settings?kept=${head.seq}-${head.hash}`;
+      for (const detail of ['full', 'summary', 'minimal']) {
+        const { text } = recap.email[detail];
+        expect(text).toContain(
+          `Activity history: at entry ${head.seq}, fingerprint ${head.hash.slice(0, 4)} ${head.hash.slice(4, 8)}.`,
+        );
+        expect(text).toContain(`Check it: ${check}`);
+      }
+      // Push channels and the entry in Fiscus stay short: the email is the one to keep.
+      expect(`${recap.title} ${recap.body} ${recap.summary}`).not.toContain(head.hash.slice(0, 4));
     });
 
     it('is left out when turned off', async () => {

@@ -118,6 +118,13 @@ time, for everyone.
   - The server also serves the web app. An operator who changes the JavaScript can skip the check. The answer is a verifier outside the served app (#387).
   - The chain covers history, not current data. A direct edit to a transaction that records no activity isn't caught by this (#388).
 
+## As built (#389): the weekly recap email is a witness
+A recap email sits in a member's mailbox, outside the server, so it's one more witness that the history only grew.
+
+- **What it carries.** Every weekly recap email, at each detail level, ends with the household's head when the recap was built, in household settings' words: "Activity history: at entry 18342, fingerprint 7f3a 91c2.". Then one line: "Keep this email to check later that your household's history wasn't rewritten.", with a "Check it" link to `/h/:id/settings?kept=<seq>-<hash>` (`historyPointCode()` in `@fiscus/shared`). Without `PUBLIC_URL` the email gives the code to paste instead. The head isn't about money, so minimal has it too. It does tell the email provider how many entries the history has, which proofs already disclose to members (above).
+- **The check.** Household settings → History check → "Check a recap you kept" runs the same proof and fold as the device's own check (`checkWitness()`), from the kept point instead of the stored witness. It never moves this device's witness. A failure shows there, and isn't reported to the household, since the code is whatever was pasted.
+- **Limits.** The check runs in the web app the server serves, as the device's does (#387). An email nobody checks catches nothing, and its fingerprint is 8 hex characters: it's for reading, and the link's full hash is what the check uses.
+
 ## Consequences
 - Disputes become resolvable: "who changed this, and from what?" always has an answer.
 - Sneaky edits are visible to the other members, and edits made outside the app (directly in the

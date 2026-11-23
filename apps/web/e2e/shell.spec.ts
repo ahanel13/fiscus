@@ -1355,6 +1355,20 @@ test('your browser notices when the history was rewritten, even consistently (#2
   await expect(check).toContainText(`at entry ${head.seq}, fingerprint ${print}`);
   expect(await axeViolations(page)).toEqual([]);
 
+  // A weekly recap email kept outside the server carries this head, and its link checks it (#389).
+  const kept = page.getByRole('region', { name: 'Check a recap you kept' });
+  const keptLink = `${householdUrl}/settings?kept=${head.seq}-${head.hash}`;
+  await page.goto(keptLink);
+  await expect(kept.getByLabel('Code from the email')).toHaveValue(`${head.seq}-${head.hash}`);
+  await expect(kept.getByRole('status')).toContainText(
+    /The history (is still at|still extends) the point in the email/,
+  );
+  await expect(kept).toContainText(`entry ${head.seq}, fingerprint ${print}`);
+  expect(await axeViolations(page)).toEqual([]);
+  await kept.getByLabel('Code from the email').fill('18342-7f3a91c2');
+  await kept.getByRole('button', { name: 'Check' }).click();
+  await expect(kept).toContainText('That isn’t a code from a recap email.');
+
   // An operator edits an old entry and recomputes the whole chain: the server's own check passes.
   const rewritten = rewriteHistory(householdId);
   expect(rewritten.seq).toBe(head.seq);
@@ -1372,6 +1386,14 @@ test('your browser notices when the history was rewritten, even consistently (#2
   await expect(banner).toContainText('An entry this device verified has changed, or is gone.');
   await expect(check).toContainText('The history check failed.');
   expect(await axeViolations(page)).toEqual([]);
+  // The kept email's point fails too, without a report of its own: the code was pasted.
+  await page.goto(keptLink);
+  await expect(kept.getByRole('alert')).toContainText(
+    'The history doesn’t extend the point in the email',
+  );
+  await expect(kept).toContainText(
+    'The entry at that position has a different fingerprint now, or is gone.',
+  );
   await page
     .getByRole('navigation', { name: 'Main' })
     .first()

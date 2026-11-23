@@ -134,6 +134,12 @@ context, so it holds only what they can see (D21, SYS-02). One notification a we
 - by email, the whole recap from `renderWeeklyRecapEmail()`, rendered at each detail level and
   stored with the notification (`notifications.email`), so each channel sends the one its detail
   level asks for.
+- the email ends with the household's history head, as household settings show it ("Activity
+  history: at entry 18342, fingerprint 7f3a 91c2."), one line on what it's for, and a "Check it"
+  link to household settings with the head as `?kept=<seq>-<hash>` (#389, ADR 0013 §4). Without
+  `PUBLIC_URL` there's no link, so it gives that code to paste there. The head says nothing about
+  money, so every detail level has it, minimal too. Push channels and the entry in Fiscus don't:
+  the email is the copy a member keeps.
 
 A quiet week still sends, so it's clear nothing broke.
 

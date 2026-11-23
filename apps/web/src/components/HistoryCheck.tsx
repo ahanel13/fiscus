@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { type HistoryPoint, parseHistoryPointCode } from '@fiscus/shared';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearch } from '@tanstack/react-router';
 import { ShieldAlert } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
 import {
   acceptCurrentHistory,
+  checkWitness,
   type FailureReason,
   fingerprint,
   runHistoryCheck,
@@ -11,7 +15,17 @@ import {
   type Witness,
   type WitnessApi,
 } from '../lib/history-witness.js';
-import { Alert, Button, Card, ConfirmDialog, DateText, DialogTrigger, toast } from './ui.js';
+import {
+  Alert,
+  Button,
+  Card,
+  ConfirmDialog,
+  DateText,
+  DialogTrigger,
+  Form,
+  TextField,
+  toast,
+} from './ui.js';
 
 function witnessApi(householdId: string): WitnessApi {
   const base = `/api/v1/households/${householdId}/activity`;
@@ -176,7 +190,121 @@ export function HistoryCheckSettings({ householdId }: { householdId: string }) {
             </p>
           ) : null}
         </div>
+        <KeptPointCheck householdId={householdId} />
       </Card>
+    </section>
+  );
+}
+
+const KEPT_REASONS: Record<FailureReason, string> = {
+  history_diverged: 'The entry at that position has a different fingerprint now, or is gone.',
+  proof_unavailable: 'The server couldn’t prove the history after that point.',
+  fold_mismatch: 'The entries since don’t add up to the history the server shows now.',
+  seq_regressed: 'The history is shorter than it was then.',
+  malformed_proof: 'The server’s answer to the check wasn’t valid.',
+  verify_failed: 'The server’s own check says the history is broken.',
+};
+
+/**
+ * Checks a point kept outside the server, from a weekly recap email (#389): that the household's
+ * history still extends it, folded here like this device's own check. It doesn't touch this
+ * device's witness, and a failure isn't reported, since the code is whatever was pasted.
+ */
+function KeptPointCheck({ householdId }: { householdId: string }) {
+  const search = useSearch({ strict: false }) as { kept?: unknown };
+  const fromLink = typeof search.kept === 'string' ? search.kept : '';
+  const [code, setCode] = useState(fromLink);
+  const [point, setPoint] = useState<HistoryPoint | null>(() => parseHistoryPointCode(fromLink));
+  const [invalid, setInvalid] = useState(false);
+  const ref = useRef<HTMLElement>(null);
+  // Arriving from the email's link: the check is what the page is for.
+  useEffect(() => {
+    if (fromLink) ref.current?.scrollIntoView?.({ block: 'center' });
+  }, [fromLink]);
+  const result = useQuery({
+    queryKey: ['history-kept-check', householdId, point?.seq, point?.hash],
+    queryFn: () => checkWitness({ v: 1, ...point!, verifiedAt: '' }, witnessApi(householdId)),
+    enabled: point !== null,
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const outcome = result.data;
+  const at = point ? (
+    <>
+      entry {point.seq}, fingerprint{' '}
+      <code className="font-mono whitespace-nowrap">{fingerprint(point.hash)}</code>
+    </>
+  ) : null;
+  return (
+    <section ref={ref} className="mt-4 border-t border-border pt-4" aria-labelledby="history-kept">
+      <h3 id="history-kept" className="mb-1 text-sm font-semibold">
+        Check a recap you kept
+      </h3>
+      <p className="mb-3 text-sm text-muted">
+        Each weekly recap email ends with where the history was that week. Its “Check it” link
+        brings it here, or paste the code the email gives.
+      </p>
+      <Form
+        className="flex flex-wrap items-start gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const parsed = parseHistoryPointCode(code);
+          setInvalid(!parsed);
+          if (!parsed) return;
+          if (parsed.seq === point?.seq && parsed.hash === point.hash) void result.refetch();
+          else setPoint(parsed);
+        }}
+      >
+        <TextField
+          label="Code from the email"
+          value={code}
+          onChange={(v) => {
+            setCode(v);
+            setInvalid(false);
+          }}
+          isInvalid={invalid}
+          errorMessage="That isn’t a code from a recap email. It’s an entry number, a dash, and 64 letters and digits."
+          inputClassName="font-mono"
+          className="min-w-0 flex-1 basis-64"
+        />
+        <Button type="submit" variant="secondary" className="sm:mt-7">
+          Check
+        </Button>
+      </Form>
+      {point && (result.isFetching || !outcome) ? (
+        <p className="mt-3 text-sm text-muted">Checking…</p>
+      ) : point && outcome ? (
+        <div className="mt-3 space-y-1 text-sm">
+          {outcome.state === 'verified' ? (
+            <Alert tone="success">
+              {outcome.grew === 0 ? (
+                <>The history is still at the point in the email: {at}.</>
+              ) : (
+                <>
+                  The history still extends the point in the email, {at}: nothing up to it was
+                  changed or removed, and {outcome.grew}{' '}
+                  {outcome.grew === 1 ? 'entry was' : 'entries were'} added since.
+                </>
+              )}
+            </Alert>
+          ) : outcome.state === 'failed' ? (
+            <Alert tone="error">
+              The history doesn’t extend the point in the email, {at}.{' '}
+              {KEPT_REASONS[outcome.failure.reason]} If the code came straight from the email,
+              someone with access to the server may have changed past activity. Compare with another
+              member, and ask whoever runs the server.
+            </Alert>
+          ) : outcome.state === 'unavailable' ? (
+            <Alert tone="info">
+              This browser can’t check the history here: it needs a secure connection (HTTPS).
+            </Alert>
+          ) : (
+            <p className="text-muted">Couldn’t check the history just now. Try again.</p>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

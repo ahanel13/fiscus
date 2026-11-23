@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { HistoryIntegrityReport, HistoryPoint } from '@fiscus/shared';
+import { historyFingerprint, type HistoryIntegrityReport, type HistoryPoint } from '@fiscus/shared';
 import { ApiError } from '../api/client.js';
 
 // The browser's history witness (ADR 0013 §4, #264). This device remembers the last head of the
@@ -89,9 +89,7 @@ export async function fold(
 }
 
 /** A head's short fingerprint, for comparing across devices: "8878 b15a". */
-export function fingerprint(hash: string): string {
-  return `${hash.slice(0, 4)} ${hash.slice(4, 8)}`;
-}
+export const fingerprint = historyFingerprint;
 
 const isSeq = (v: unknown): v is number =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
