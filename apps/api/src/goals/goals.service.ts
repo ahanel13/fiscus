@@ -31,6 +31,11 @@ import {
   type goalImageSchema,
   goalPace,
   type InstitutionSummary,
+  goalHistory,
+  goalProgress,
+  type GoalProgress,
+  monthIndex,
+  monthOf,
   type updateGoalSchema,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
@@ -42,6 +47,18 @@ import type { HouseholdContext } from '../households/household-context.js';
 import type { HouseholdActivity } from '../households/household-scope.js';
 import { HouseholdScope } from '../households/household-scope.js';
 import { setGoalPlan } from './goal-plans.js';
+import {
+  claimsOn,
+  firstMonths,
+  monthEnd,
+  monthFraction,
+  movedIn,
+  movedOf,
+  type PaceExtra,
+  paces,
+  startOf,
+  windowMonth,
+} from './goal-progress.js';
 
 // Everything but the photo, which only its own route reads.
 const { image: _image, ...goalColumns } = getTableColumns(goals);
@@ -84,7 +101,8 @@ export class GoalsService {
   /** Every goal you see, the accounts you can claim, and any shortfall (walkthrough §1, §5). */
   async overview(ctx: HouseholdContext): Promise<GoalsOverview> {
     return this.scope.run(ctx, async (tx) => {
-      const { budgetMonth } = await householdRanges(tx, ctx.householdId);
+      const ranges = await householdRanges(tx, ctx.householdId);
+      const { budgetMonth } = ranges;
       const rows = await tx
         .select(goalColumns)
         .from(goals)
@@ -114,7 +132,9 @@ export class GoalsService {
       // A goal's months are its budget's (G10, #71).
       const month = budgetMonth;
       const at = { claims, values, owned, banks, debts, month };
-      const goalList = rows.map((g) => present(ctx, g, at));
+      // Status from what moved in, not the plan (G18).
+      const paced = await paces(tx, ctx, ranges, rows);
+      const goalList = rows.map((g) => present(ctx, g, at, paced.get(g.id)));
       const saving = goalList.filter((g) => g.kind === 'save');
       return {
         goals: goalList,
@@ -599,13 +619,80 @@ export class GoalsService {
     const claims = await tx.select().from(goalClaims).where(eq(goalClaims.goalId, goalId));
     const owned = new Set((await ownedAccounts(tx, ctx)).map((a) => a.accountId));
     const { budgetMonth } = await householdRanges(tx, ctx.householdId);
-    return present(ctx, row, {
-      claims,
-      values: await claimValues(tx),
-      owned,
-      banks: await banksOf(tx, claims),
-      debts: row.accountId ? await debtsOf(tx, [row.accountId]) : new Map(),
-      month: budgetMonth,
+    return present(
+      ctx,
+      row,
+      {
+        claims,
+        values: await claimValues(tx),
+        owned,
+        banks: await banksOf(tx, claims),
+        debts: row.accountId ? await debtsOf(tx, [row.accountId]) : new Map(),
+        month: budgetMonth,
+      },
+      (await paces(tx, ctx, await householdRanges(tx, ctx.householdId), [row])).get(row.id),
+    );
+  }
+
+  /**
+   * A savings goal up close (#135, #137; walkthrough §3–§4): what it had at each month's end,
+   * what moved in and what the market did (G11, G12), its pace (G18), where that leads, and what to
+   * change. Whoever sees the goal sees this (GOAL-01/02); a newer member, from their window (#256).
+   */
+  async progress(ctx: HouseholdContext, goalId: string): Promise<GoalProgress> {
+    return this.scope.run(ctx, async (tx) => {
+      const goal = await this.#one(tx, ctx, goalId);
+      const row = await findGoal(tx, goalId);
+      if (goal.kind !== 'save' || goal.archivedAt) throw problems.notFound();
+      const ranges = await householdRanges(tx, ctx.householdId);
+      const thisMonth = ranges.budgetMonth;
+      const now = monthIndex(thisMonth);
+      const firstMonth = (await firstMonths(tx, ctx)).get(goalId) ?? thisMonth;
+      const window = row.memberId === null ? await windowMonth(tx, ranges.budgetStartDay) : null;
+      // From its first month, or the reader's window, and at most ten years back.
+      const shownFrom = Math.max(
+        monthIndex(firstMonth),
+        window ? monthIndex(window) : -Infinity,
+        now - 119,
+      );
+      const months = Array.from({ length: Math.max(0, now - shownFrom + 1) }, (_, i) =>
+        monthOf(shownFrom + i),
+      );
+      const dayOf = (month: string) =>
+        month === thisMonth ? ranges.today : monthEnd(month, ranges.budgetStartDay);
+      const before = monthOf(shownFrom - 1);
+      const known = monthIndex(firstMonth) === shownFrom;
+      const claims = await claimsOn(tx, goalId, [
+        ...(known ? [] : [dayOf(before)]),
+        ...months.map(dayOf),
+      ]);
+      // Its pace reads three months back, whatever the window: accounts aren't windowed (#256).
+      const moved = await movedIn(tx, ctx, ranges, monthOf(Math.min(shownFrom, now - 3)));
+      const history = goalHistory({
+        // Before its first month it had nothing; before a window, it isn't known.
+        before: known ? [] : (claims.get(dayOf(before)) ?? null),
+        ends: months.map((month) => ({ month, claims: claims.get(dayOf(month)) ?? [] })),
+        moved: new Map(
+          [...moved].map(([month, m]) => [
+            month,
+            m.byGoalAccount.get(goalId) ?? new Map<string, number>(),
+          ]),
+        ),
+      });
+      return goalProgress({
+        goalId,
+        thisMonth,
+        monthFraction: monthFraction(ranges),
+        firstMonth,
+        targetMinor: goal.targetMinor,
+        targetDate: goal.targetDate,
+        planMinor: goal.planMinor,
+        shortMinor: goal.shortMinor,
+        progressMinor: goal.progressMinor,
+        months: history,
+        moved: movedOf(moved, goalId),
+        start: await startOf(tx, row, firstMonth, window, ranges),
+      });
     });
   }
 }
@@ -911,7 +998,7 @@ function debtOf(g: GoalRow, debts: Map<string, Debt>): GoalDebt {
 }
 
 /** The api's goal: its claims with what they're worth, progress, and what makes its date. */
-function present(ctx: HouseholdContext, g: GoalRow, at: Context): Goal {
+function present(ctx: HouseholdContext, g: GoalRow, at: Context, extra?: PaceExtra): Goal {
   const { claims, values, owned, banks, month: thisMonth } = at;
   const debt = g.kind === 'pay_down' ? debtOf(g, at.debts) : null;
   const worth = new Map(values.map((v) => [v.claim_id, v]));
@@ -971,6 +1058,7 @@ function present(ctx: HouseholdContext, g: GoalRow, at: Context): Goal {
           planMinor: g.planMinor,
           shortMinor: short,
           thisMonth,
+          ...extra,
         });
   return {
     id: g.id,

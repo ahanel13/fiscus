@@ -30,12 +30,13 @@ export const lookOf = (householdId: string, g: Goal): GoalLook => ({
   photo: g.imageVersion ? goalPhotoUrl(householdId, g.id, g.imageVersion) : null,
 });
 
-const STATUS: Record<
+export const STATUS: Record<
   NonNullable<Goal['pace']['status']>,
   { label: string; tone: BadgeTone; bar: string }
 > = {
   done: { label: 'Completed', tone: 'positive', bar: 'bg-positive' },
   on_track: { label: 'On track', tone: 'accent', bar: 'bg-accent' },
+  ahead: { label: 'Ahead', tone: 'positive', bar: 'bg-positive' },
   at_risk: { label: 'At risk', tone: 'warning', bar: 'bg-warning' },
   short: { label: 'Short', tone: 'danger', bar: 'bg-danger' },
 };
@@ -67,7 +68,7 @@ function whenOf(g: Goal, money: (minor: number) => string): string {
     }
     return `${shortMonth(projectedMonth)} (${monthsLate} ${monthsLate === 1 ? 'month' : 'months'} behind)`;
   }
-  if (status === 'on_track') {
+  if (status === 'on_track' || status === 'ahead') {
     return `${shortMonth(projectedMonth!)} · target ${shortMonth(g.targetDate!)}`;
   }
   if (!projectedMonth) return debt ? 'Its payments don’t pay it off' : 'No target date';
@@ -83,6 +84,7 @@ export function GoalRow({
   members,
   shared,
   onOpen,
+  onEdit,
   onArchive,
   onRestore,
   onDelete,
@@ -95,6 +97,8 @@ export function GoalRow({
   members: HouseholdMember[];
   shared: boolean;
   onOpen?: (() => void) | undefined;
+  /** Edit, in its menu, when opening it doesn't: null when you can't. Opening it, by default. */
+  onEdit?: (() => void) | null | undefined;
   onArchive?: (() => void) | undefined;
   onRestore?: (() => void) | undefined;
   onDelete?: (() => void) | undefined;
@@ -124,7 +128,8 @@ export function GoalRow({
         institution: c.institution,
         name: claimLabel(c, members),
       }));
-  const menu = onOpen || onArchive || onRestore || onDelete || onUp || onDown;
+  const edit = onEdit === undefined ? onOpen : onEdit;
+  const menu = edit || onArchive || onRestore || onDelete || onUp || onDown;
   return (
     <article
       aria-label={g.name}
@@ -193,7 +198,7 @@ export function GoalRow({
                   <MoreHorizontal aria-hidden className="size-4" />
                 </Button>
                 <Menu placement="bottom end">
-                  {onOpen ? <MenuItem onAction={onOpen}>Edit</MenuItem> : null}
+                  {edit ? <MenuItem onAction={edit}>Edit</MenuItem> : null}
                   {onUp ? <MenuItem onAction={onUp}>Move up in priority</MenuItem> : null}
                   {onDown ? <MenuItem onAction={onDown}>Move down in priority</MenuItem> : null}
                   {onArchive ? <MenuItem onAction={onArchive}>Archive</MenuItem> : null}

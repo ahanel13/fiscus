@@ -238,6 +238,82 @@ describe('goals (RLS)', () => {
     ).toMatch(/row-level security/);
   });
 
+  it('gives a goal’s claims as they stood each day, to whoever sees it, from their window (G17)', async () => {
+    const events = [
+      // The house earmarks $14,000 of Harbor Savings in September, and half of Alex's savings
+      // in October. Alex's own cushion takes $3,000 of Harbor Savings.
+      [goal.ours, account.joint, '2026-09-10T12:00:00Z', 1400000, null],
+      [goal.ours, account.alexs, '2026-10-05T12:00:00Z', null, 5000],
+      [goal.alexs, account.joint, '2026-09-01T12:00:00Z', 300000, null],
+    ] as const;
+    await owner.query(
+      `INSERT INTO balance_snapshots (account_id, as_of, household_id, balance_minor, source)
+       VALUES ($1, '2026-10-01', $2, 800000, 'manual')`,
+      [account.alexs, H],
+    );
+    for (const [g, a, at, amount, percent] of events) {
+      await owner.query(
+        `INSERT INTO goal_claim_events (id, household_id, goal_id, account_id, reason, member_id,
+           amount_after_minor, percent_after_bps, at)
+         VALUES ($1, $2, $3, $4, 'earmarked', $5, $6, $7, $8)`,
+        [randomUUID(), H, g, a, people.A.member, amount, percent, at],
+      );
+    }
+    const history = (a: Actor, goalId: string) =>
+      as(a, (q) =>
+        q.query(
+          `SELECT day::text, account_id, amount_minor::int AS amount, percent_bps AS percent,
+                  value_minor::int AS value
+           FROM fiscus_goal_claim_history($1,
+             ARRAY['2026-08-31', '2026-09-30', '2026-10-31', current_date]::date[])
+           WHERE day < current_date OR account_id = $2`,
+          [goalId, account.alexs],
+        ),
+      );
+    try {
+      // Alex has no window: September's $14,000, then October's half of $8,000, then of $9,400.
+      expect((await history('A', goal.ours)).rows).toEqual([
+        {
+          day: '2026-09-30',
+          account_id: account.joint,
+          amount: 1400000,
+          percent: null,
+          value: 1400000,
+        },
+        {
+          day: '2026-10-31',
+          account_id: account.alexs,
+          amount: null,
+          percent: 5000,
+          value: 400000,
+        },
+        {
+          day: '2026-10-31',
+          account_id: account.joint,
+          amount: 1400000,
+          percent: null,
+          value: 1400000,
+        },
+        {
+          day: new Date().toISOString().slice(0, 10),
+          account_id: account.alexs,
+          amount: null,
+          percent: 5000,
+          value: 470000,
+        },
+      ]);
+      // Bea joined today, so she sees today's, and never Alex's own goal.
+      expect((await history('B', goal.ours)).rows.map((r) => r.day)).toEqual([
+        new Date().toISOString().slice(0, 10),
+      ]);
+      expect((await history('B', goal.alexs)).rows).toEqual([]);
+      expect((await history('A', goal.alexs)).rows.map((r) => r.value)).toEqual([300000, 300000]);
+    } finally {
+      await owner.query(`DELETE FROM goal_claim_events WHERE household_id = $1`, [H]);
+      await owner.query(`DELETE FROM balance_snapshots WHERE as_of = '2026-10-01'`);
+    }
+  });
+
   it('deletes a member’s own goals when they leave [GOAL-07]', async () => {
     const c = { user: randomUUID(), member: randomUUID(), goal: randomUUID() };
     await owner.query(`INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'C')`, [

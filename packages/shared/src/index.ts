@@ -24,3 +24,4 @@ export * from './merchants.js';
 export * from './account-match.js';
 export * from './recap-email.js';
 export * from './payoff.js';
+export * from './goal-progress.js';

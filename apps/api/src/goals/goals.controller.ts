@@ -8,6 +8,7 @@ import {
   goalClaimSchema,
   type GoalContributions,
   goalImageSchema,
+  type GoalProgress,
   type GoalsOverview,
   orderGoalsSchema,
   updateGoalSchema,
@@ -155,6 +156,15 @@ export class GoalsController {
     @Param('goalId', UuidPipe) goalId: string,
   ): Promise<{ data: Goal }> {
     return { data: await this.goals.setImage(ctx, goalId, null) };
+  }
+
+  /** A savings goal up close (#135, #137): its history, pace and projection (GOAL-01/02). */
+  @Get(':goalId/progress')
+  async progress(
+    @Household() ctx: HouseholdContext,
+    @Param('goalId', UuidPipe) goalId: string,
+  ): Promise<{ data: GoalProgress }> {
+    return { data: await this.goals.progress(ctx, goalId) };
   }
 
   /** Puts it away, or brings it back. */
