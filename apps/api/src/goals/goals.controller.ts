@@ -6,6 +6,7 @@ import {
   giveWaySchema,
   type Goal,
   goalClaimSchema,
+  type GoalContributions,
   goalImageSchema,
   type GoalsOverview,
   orderGoalsSchema,
@@ -40,7 +41,7 @@ import { GoalsService } from './goals.service.js';
 const archiveSchema = z.object({ archived: z.boolean() }).strict();
 
 /**
- * Goals (GOAL-01–08): the household's, and your own; saving up, and paying down debt. Who may change a goal is checked per goal
+ * Goals (GOAL-01–09): the household's, and your own; saving up, and paying down debt. Who may change a goal is checked per goal
  * (GOAL-03/04); who may claim an account, by the database (GOAL-05); whether you see a goal at
  * all, by row-level security (GOAL-02).
  */
@@ -113,6 +114,15 @@ export class GoalsController {
     @Param('goalId', UuidPipe) goalId: string,
   ): Promise<void> {
     await this.goals.remove(ctx, goalId);
+  }
+
+  /** Who's put in (GOAL-09, G7, G11): each member's contributions, for whoever sees the goal. */
+  @Get(':goalId/contributions')
+  async contributions(
+    @Household() ctx: HouseholdContext,
+    @Param('goalId', UuidPipe) goalId: string,
+  ): Promise<{ data: GoalContributions }> {
+    return { data: await this.goals.contributions(ctx, goalId) };
   }
 
   /** Its photo, for whoever sees the goal (GOAL-01/02), from Fiscus's own origin. */

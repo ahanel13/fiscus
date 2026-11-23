@@ -207,10 +207,11 @@ caller can't see ("Transfer to Anthony").
 | GOAL-02 | Read a member's own goal (Mine) | own | own | own | Only their member, and system context. Nobody else sees it, or that it exists (G15). Its claims still count against an account's unclaimed money, as a total |
 | GOAL-03 | Create, change, reorder or delete the household's goals | ✅ | ✅ | ❌ | Name, target, date, monthly plan, priority, its icon, color or photo, and putting it away (archiving ends its claims, so it's refused while one is on an account that isn't yours, G7). Each change goes into the household's activity |
 | GOAL-04 | Create, change or delete your own goal | own | own | ❌ | Viewers own no accounts, so have no goals of their own |
-| GOAL-05 | Claim an account for a goal, change a claim, or take it off | ✅ | ✅ | ❌ | Only the account's owners, on a goal they see (G7): the database refuses anyone else. Never beyond the balance less every other goal's claims (G3) |
+| GOAL-05 | Claim an account for a goal, change a claim, or take it off | ✅ | ✅ | ❌ | Only the account's owners, on a goal they see (G7): the database refuses anyone else. Never beyond the balance less every other goal's claims (G3). On a joint account, the other owners are told in their activity: a goal of your own only as "a goal of their own" (G7, G15) |
 | GOAL-06 | Choose which goal gives way when an account falls short | ✅ | ✅ | ❌ | The account's owners, from its fixed claims on goals they see (G3, G19) |
 | GOAL-07 | A member's own goals when they leave | — | — | — | Deleted, with their claims and history, as their budget is (BUD-05) |
 | GOAL-08 | Pay down a loan or card: a goal on it, and its rate and minimum | ✅ | ✅ | ❌ | An open loan or card whose balance you see, one goal each among those you see. Everyone sees the household's goals, and the debt's balance with them, so a goal on a private account is your own (G9, G15). A rate or minimum entered goes before the bank's |
+| GOAL-09 | Read who's put in to a goal: each member's contributions | ✅ | ✅ | ✅ | Whoever sees the goal (GOAL-01/02). What each member put in, never the balance or transactions of an account you can't see (G7, D36). A newer member sees the months from their history window on, and their own (HH-14) |
 
 ### 4.11 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |

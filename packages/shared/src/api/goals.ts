@@ -339,6 +339,22 @@ export interface GoalShortfall {
   canResolve: boolean;
 }
 
+/**
+ * Who's put in to a savings goal (#133, goals and budgets G7, G11, budgeting D36): each member's
+ * contributions, which are its claims growing with new money moved into their accounts, and their
+ * share of it on joint accounts. Earmarking money already there isn't anyone's (G11).
+ */
+export interface GoalContributions {
+  goalId: string;
+  /** The budget month it is now (G10). */
+  thisMonth: string;
+  /** Everyone who has put something in, most first. */
+  members: { memberId: string; totalMinor: number; thisMonthMinor: number }[];
+  totalMinor: number;
+  /** What each put in, month by month (`YYYY-MM`), oldest first. */
+  months: { month: string; memberId: string; amountMinor: number }[];
+}
+
 export interface GoalsOverview {
   /** In priority order; archived ones aren't here. */
   goals: Goal[];

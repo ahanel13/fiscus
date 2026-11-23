@@ -99,7 +99,8 @@ Selecting a goal opens its page:
   account shows only the claim (G7).
 - **Who's put in**, for a shared goal (#133): each person's share of what moved into joint
   accounts, by ownership, plus claims on their own accounts. Earmarks of money already there
-  aren't anyone's contribution (G11).
+  aren't anyone's contribution (G11). A claim counts the new money it grew with that month
+  (budgeting D36), in all and this month.
 - The goal's history: claims set and changed, money moved in, purchases paid from it, shortfalls,
   each with who and when.
 

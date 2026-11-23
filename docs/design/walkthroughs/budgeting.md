@@ -413,6 +413,22 @@ Alex sees Ours and Alex's own Mine. Sam sees Ours and Sam's own Mine. Neither se
   matching budget.
 - With one budget, whichever it is, there's no switch and no scope label (D21).
 
+**D36. A shared goal's contributions are its claims growing with new money (#133).**
+- Ours goals draw on everyone's accounts (goals and budgets G7), so the goal shows **Who's put
+  in**: each member's contributions, this month and in all.
+- A contribution is a claim growing with new money. In a month, a fixed claim's growth counts up
+  to what moved into its account that month: transfers in, and not from another of the goal's own
+  accounts (G4). A percentage claim counts its share of what moved in. Earmarking money already
+  there isn't anyone's contribution (G11), and the market isn't either (G12).
+- On a private account, it's its owner's. On a joint account, it's split by ownership shares on
+  the day (ADR 0006 §2).
+- The others see what each person put in, never the account's balance or its transactions, as
+  they see the claim and not the account (G7).
+- A newer member sees the months from their history window on, and their own before it (#256).
+- Money that moves into an account without its claim growing isn't the goal's yet, so it isn't a
+  contribution. That's why a goal's contributions can be less than its budget line's moved figure,
+  which counts every transfer in (G4).
+
 ---
 
 ## 7a. When the household changes
@@ -805,6 +821,7 @@ real.
 | D33 | A category's rule can prorate by days for people who join or leave that month; the default never does | #261 |
 | D34 | Anyone can ask someone a split by income waits for; they have 14 days to answer, and asking changes nothing by itself | #265 |
 | D35 | A member can claim ownership once no owner has used Fiscus for 30 days; owners have 30 days' notice, and rejecting or using Fiscus ends it | #267 |
+| D36 | A shared goal's contributions are its claims growing with new money moved into each member's accounts, by ownership on joint ones; earmarks aren't anyone's | #133 |
 
 ## Open questions
 
