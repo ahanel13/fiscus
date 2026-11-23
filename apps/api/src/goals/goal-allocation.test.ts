@@ -182,6 +182,18 @@ describe('goal allocation', () => {
     } finally {
       await db.end();
     }
+    // Harbor's other owner is told, as for any claim (GOAL-05); Alex's private account has no one.
+    const feed = (await B.get(url('/activity?limit=100'))).body.data as {
+      action: string;
+      targetId: string | null;
+      metadata: Record<string, unknown>;
+    }[];
+    const told = feed.filter((e) => e.action === 'goal.joint_claim_set');
+    expect(told.map((e) => [e.targetId, e.metadata])).toContainEqual([
+      acct.harbor,
+      { goalId: goal.cushion, name: 'Cushion', amountMinor: 600000 },
+    ]);
+    expect(told.some((e) => e.targetId === acct.alexs)).toBe(false);
   });
 
   it('does all of it or none: never beyond what’s free (G3)', async () => {
