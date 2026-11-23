@@ -33,6 +33,11 @@ export interface FakePlaidOptions {
   scenario?: ConformanceScenario;
   /** Defaults to an ephemeral port on loopback; the e2e stack's `plaid-stub` service sets both. */
   listen?: StubListen;
+  /**
+   * Where `/sandbox/item/fire_webhook` sends what it fires (#85): given the Item's webhook URL
+   * and the signed webhook. Without it, fired webhooks are only kept in `firedWebhooks`.
+   */
+  deliverWebhook?: (url: string, webhook: SignedWebhook) => void | Promise<void>;
 }
 
 /** A Plaid error to answer with. `status` defaults by type, as Plaid's do. */
@@ -61,6 +66,10 @@ export interface FakePlaid {
   webhookKey: { kid: string; privateKey: KeyObject };
   /** The Item's webhook URL, as the last link token or `/item/webhook/update` set it. */
   readonly webhookUrl: string | null;
+  /** What `/sandbox/item/fire_webhook` fired, in order: the URL and the signed webhook (#85). */
+  firedWebhooks: { url: string; webhook: SignedWebhook }[];
+  /** The sandbox test Items `/sandbox/public_token/create` made and nobody removed yet (#85). */
+  readonly sandboxItems: number;
   /**
    * A webhook as Plaid would send it (#84): the exact body, and its `Plaid-Verification` JWT
    * signed with `webhookKey` (ES256), unless `options` changes something for a test.
@@ -251,11 +260,20 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
     }
     return found;
   };
+  /**
+   * Items made by `/sandbox/public_token/create`, by access token (#85): a test bank's Item with
+   * no accounts here, only an id and the webhook URL it was made with.
+   */
+  const sandboxItems = new Map<string, { itemId: string; webhook: string | null }>();
+  const sandboxPublicTokens = new Map<string, { itemId: string; webhook: string | null }>();
+  let sandboxCount = 0;
+  const firedWebhooks: { url: string; webhook: SignedWebhook }[] = [];
   /** The first Item's token works with any keys, for tests that hand it out themselves. */
   const tokenWorks = (body: Record<string, unknown>) =>
-    (body.access_token === itemOf(body.client_id).accessToken ||
+    ((body.access_token === itemOf(body.client_id).accessToken ||
       body.access_token === itemOf(clientId).accessToken) &&
-    body.access_token !== undefined;
+      body.access_token !== undefined) ||
+    sandboxItems.has(String(body.access_token));
   let webhook: string | null = null;
   let released = 1;
   let requestCount = 0;
@@ -265,6 +283,21 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
   const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const kid = 'fake-plaid-key-1';
   const jwk = publicKey.export({ format: 'jwk' });
+  const signWebhook = (body: object | string, options: SignWebhookOptions = {}): SignedWebhook => {
+    const text = typeof body === 'string' ? body : JSON.stringify(body);
+    return {
+      body: text,
+      headers: {
+        'content-type': 'application/json',
+        'plaid-verification': signPlaidWebhook(text, {
+          kid: options.kid ?? kid,
+          privateKey: options.privateKey ?? privateKey,
+          ...(options.iat !== undefined && { iat: options.iat }),
+          ...(options.hashOf !== undefined && { hashOf: options.hashOf }),
+        }),
+      },
+    };
+  };
 
   const balances = new Map(scenario.balances.map((b) => [b.providerAccountId, b]));
   const accounts = () =>
@@ -331,6 +364,13 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
     ],
     '/item/public_token/exchange': [
       (body, request_id) => {
+        const sandbox = sandboxPublicTokens.get(String(body.public_token));
+        if (sandbox) {
+          sandboxPublicTokens.delete(String(body.public_token));
+          const accessToken = `access-sandbox-test-${sandbox.itemId}`;
+          sandboxItems.set(accessToken, sandbox);
+          return { body: { access_token: accessToken, item_id: sandbox.itemId, request_id } };
+        }
         const made = itemOf(body.client_id);
         return body.public_token === publicToken && made.accessToken !== undefined
           ? { body: { access_token: made.accessToken, item_id: made.itemId, request_id } }
@@ -436,6 +476,7 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
       },
     }),
     '/item/remove': (body, request_id) => {
+      if (sandboxItems.delete(String(body.access_token))) return { body: { request_id } };
       // The Item the token names: the first one's token is good with any keys.
       const ended =
         body.access_token === itemOf(clientId).accessToken
@@ -447,6 +488,45 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
     '/item/webhook/update': (body, request_id) => {
       webhook = typeof body.webhook === 'string' ? body.webhook : null;
       return { body: { item: item(body), request_id } };
+    },
+    // A test bank's Item without Link (SANDBOX-003), and a webhook fired at it on demand
+    // (SANDBOX-005), signed as every webhook is. Only Items made here can fire.
+    '/sandbox/public_token/create': [
+      (body, request_id) => {
+        const options = (body.options ?? {}) as Body;
+        const n = ++sandboxCount;
+        sandboxPublicTokens.set(`public-sandbox-test-${n}`, {
+          itemId: `item-sandbox-test-${n}`,
+          webhook: typeof options.webhook === 'string' ? options.webhook : null,
+        });
+        return { body: { public_token: `public-sandbox-test-${n}`, request_id } };
+      },
+      { token: false },
+    ],
+    '/sandbox/item/fire_webhook': (body, request_id) => {
+      const made = sandboxItems.get(String(body.access_token));
+      if (!made) {
+        return error(
+          { error_type: 'INVALID_INPUT', error_code: 'INVALID_ACCESS_TOKEN' },
+          request_id,
+        );
+      }
+      if (!made.webhook) {
+        return error({ error_type: 'INVALID_REQUEST', error_code: 'INVALID_FIELD' }, request_id);
+      }
+      const webhook = signWebhook({
+        webhook_type: body.webhook_type ?? 'TRANSACTIONS',
+        webhook_code: body.webhook_code,
+        item_id: made.itemId,
+        environment: 'sandbox',
+      });
+      firedWebhooks.push({ url: made.webhook, webhook });
+      // Sent after the answer, as Plaid's are: a failed delivery is the receiver's problem.
+      const url = made.webhook;
+      setTimeout(() => {
+        void Promise.resolve(options.deliverWebhook?.(url, webhook)).catch(() => undefined);
+      }, 0);
+      return { body: { webhook_fired: true, request_id } };
     },
     '/webhook_verification_key/get': [
       (body, request_id) =>
@@ -500,21 +580,11 @@ export async function startFakePlaid(options: FakePlaidOptions = {}): Promise<Fa
     get webhookUrl() {
       return webhook;
     },
-    signWebhook(body, options = {}) {
-      const text = typeof body === 'string' ? body : JSON.stringify(body);
-      return {
-        body: text,
-        headers: {
-          'content-type': 'application/json',
-          'plaid-verification': signPlaidWebhook(text, {
-            kid: options.kid ?? kid,
-            privateKey: options.privateKey ?? privateKey,
-            ...(options.iat !== undefined && { iat: options.iat }),
-            ...(options.hashOf !== undefined && { hashOf: options.hashOf }),
-          }),
-        },
-      };
+    firedWebhooks,
+    get sandboxItems() {
+      return sandboxItems.size;
     },
+    signWebhook,
     release() {
       if (released >= scenario.updates.length) throw new Error('No more updates to release');
       released++;

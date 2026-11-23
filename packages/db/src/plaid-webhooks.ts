@@ -3,7 +3,7 @@ import { DecryptionError, type FieldCrypto } from '@fiscus/crypto';
 import { sql } from 'drizzle-orm';
 import type { Executor } from './client.js';
 import { plaidKeySetSecretContext, type PlaidKeySet } from './plaid-credentials.js';
-import type { PlaidWebhookOutcome } from './schema/connections.js';
+import { PLAID_WEBHOOK_OUTCOMES, type PlaidWebhookOutcome } from './schema/connections.js';
 
 // Plaid webhooks (#84) through the definers in migration plaid_webhooks_access: the api has no
 // household context for a webhook (no member sent it), so it finds the Item, reads its key set,
@@ -124,6 +124,79 @@ export async function plaidWebhookHealth(db: Executor): Promise<PlaidWebhookHeal
     lastVerifiedAt: at(rows[0]?.verified),
     lastFailureAt: at(rows[0]?.failed),
     healthy: rows[0]?.healthy ?? false,
+  };
+}
+
+/** A refusal's reason: every outcome but the two verified ones. */
+export type PlaidWebhookRefusal = Exclude<PlaidWebhookOutcome, 'verified' | 'unknown_item'>;
+export const PLAID_WEBHOOK_REFUSALS = PLAID_WEBHOOK_OUTCOMES.filter(
+  (o): o is PlaidWebhookRefusal => o !== 'verified' && o !== 'unknown_item',
+);
+
+/** What Server → Bank connections shows of the receiver (#85): times and counts only (D16). */
+export interface PlaidWebhookPanel {
+  /** The last webhook whose signature checked out, its Item known here or not. */
+  lastVerifiedAt: Date | null;
+  /** The last verified for an Item here, made with the server's keys, or a household's own. */
+  lastVerifiedByKeys: { server: Date | null; household: Date | null };
+  /** Refused requests by reason, in the last 24 hours and 7 days. */
+  refusals: Record<'last24h' | 'last7d', Record<PlaidWebhookRefusal, number>>;
+  /** Verified webhooks for an Item no connection here has. */
+  unknownItems: Record<'last24h' | 'last7d', number>;
+  /** Live Plaid connections, and those whose Item isn't sending its webhooks to `url`. */
+  connections: { plaid: number; withoutWebhook: number };
+}
+
+/**
+ * The receiver's counts for the admin's panel (#85), and two connection counts through
+ * fiscus_admin_plaid_webhook_counts, so it needs an instance admin's context. `url` is this
+ * server's webhook URL, null when webhooks are off. Counts are kept by the hour, so "the last 24
+ * hours" takes every hour that overlaps them: at most an hour more.
+ */
+export async function plaidWebhookPanel(
+  db: Executor,
+  url: string | null,
+): Promise<PlaidWebhookPanel> {
+  const { rows } = await db.execute<{
+    outcome: PlaidWebhookOutcome;
+    day: number;
+    week: number;
+    last_at: Date | string;
+    last_server: Date | string | null;
+    last_household: Date | string | null;
+  }>(
+    sql`SELECT outcome,
+               coalesce(sum(count) FILTER (WHERE hour > now() - interval '25 hours'), 0)::int AS day,
+               coalesce(sum(count) FILTER (WHERE hour > now() - interval '7 days 1 hour'), 0)::int
+                 AS week,
+               max(last_at) AS last_at,
+               max(last_at) FILTER (WHERE credential_set_id IS NULL) AS last_server,
+               max(last_at) FILTER (WHERE credential_set_id IS NOT NULL) AS last_household
+        FROM plaid_webhook_stats GROUP BY outcome`,
+  );
+  const at = (v: Date | string | null | undefined) => (v ? new Date(v) : null);
+  const latest = (...dates: (Date | null)[]) =>
+    dates.reduce<Date | null>((a, b) => (b && (!a || b > a) ? b : a), null);
+  const by = new Map(rows.map((r) => [r.outcome, r]));
+  const refusals = (key: 'day' | 'week') =>
+    Object.fromEntries(PLAID_WEBHOOK_REFUSALS.map((o) => [o, by.get(o)?.[key] ?? 0])) as Record<
+      PlaidWebhookRefusal,
+      number
+    >;
+  const verified = by.get('verified');
+  const unknown = by.get('unknown_item');
+  const counts = await db.execute<{ c: { plaid: number; withoutWebhook: number } }>(
+    sql`SELECT fiscus_admin_plaid_webhook_counts(${url}) AS c`,
+  );
+  return {
+    lastVerifiedAt: latest(at(verified?.last_at), at(unknown?.last_at)),
+    lastVerifiedByKeys: {
+      server: at(verified?.last_server),
+      household: at(verified?.last_household),
+    },
+    refusals: { last24h: refusals('day'), last7d: refusals('week') },
+    unknownItems: { last24h: unknown?.day ?? 0, last7d: unknown?.week ?? 0 },
+    connections: counts.rows[0]!.c,
   };
 }
 

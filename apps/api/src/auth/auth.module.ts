@@ -6,6 +6,7 @@ import { AdminMailController } from '../admin/admin-mail.controller.js';
 import { AdminSettingsController } from '../admin/admin-settings.controller.js';
 import { AdminUsersController } from '../admin/admin-users.controller.js';
 import { InstanceSettingsService } from '../admin/instance-settings.service.js';
+import { PlaidTestWebhookService } from '../admin/plaid-test-webhook.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
@@ -32,6 +33,7 @@ import { SignInService } from './sign-in.service.js';
     AuthCookies,
     CsrfService,
     InstanceSettingsService,
+    PlaidTestWebhookService,
     RateLimiter,
     ServerInvitesService,
     SessionService,

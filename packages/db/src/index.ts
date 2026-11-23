@@ -40,8 +40,12 @@ export {
 } from './plaid-credentials.js';
 export {
   findPlaidItem,
+  PLAID_WEBHOOK_REFUSALS,
   plaidWebhookHealth,
   plaidWebhookKeySet,
+  plaidWebhookPanel,
+  type PlaidWebhookPanel,
+  type PlaidWebhookRefusal,
   plaidWebhookMoves,
   queuePlaidWebhook,
   recordPlaidWebhook,

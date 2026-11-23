@@ -6,6 +6,8 @@ import {
   encryptMailPassword,
   instanceSettings,
   MAIL_SETTING_KEY,
+  plaidWebhookHealth,
+  plaidWebhookPanel,
   readStoredMail,
   readStoredMailValue,
   userContext,
@@ -15,6 +17,7 @@ import { type MailConfig, summarizeMail } from '@fiscus/notify';
 import {
   type BankConnectionStats,
   type MailStatus,
+  type PlaidWebhookHealth,
   type SetMailSettings,
   INSTANCE_SETTING_KEYS,
   type InstanceSettingKey,
@@ -246,6 +249,30 @@ export class InstanceSettingsService {
       return {
         ...stats,
         last24h: { ...stats.last24h, lastSyncedAt: last && new Date(last).toISOString() },
+      };
+    });
+  }
+
+  /** The webhook receiver's health for the admin's panel (#85); `url` null when they're off. */
+  async webhookHealth(
+    adminUserId: string,
+    url: string | null,
+  ): Promise<Omit<PlaidWebhookHealth, 'testAvailable'>> {
+    return withContext(this.db.db, userContext(adminUserId), async (tx) => {
+      const panel = await plaidWebhookPanel(tx, url);
+      // As the worker judges it: on, and healthy (#84).
+      const relaxed = url !== null && (await plaidWebhookHealth(tx)).healthy;
+      const iso = (d: Date | null) => d && d.toISOString();
+      return {
+        lastVerifiedAt: iso(panel.lastVerifiedAt),
+        lastVerifiedByKeys: {
+          server: iso(panel.lastVerifiedByKeys.server),
+          household: iso(panel.lastVerifiedByKeys.household),
+        },
+        refusals: panel.refusals,
+        unknownItems: panel.unknownItems,
+        connections: panel.connections,
+        pollingRelaxed: relaxed,
       };
     });
   }

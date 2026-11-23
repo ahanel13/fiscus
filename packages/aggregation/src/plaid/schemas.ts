@@ -147,6 +147,11 @@ export const sandboxPublicTokenCreateResponseSchema = z.object({
   public_token: z.string(),
 });
 
+export const sandboxItemFireWebhookResponseSchema = z.object({
+  ...requestId,
+  webhook_fired: z.boolean(),
+});
+
 // Every liabilities field may be null at some bank (LIAB-002): each is read on its own.
 const apr = z.object({
   apr_percentage: nullishNumber,

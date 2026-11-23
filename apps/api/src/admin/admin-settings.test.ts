@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { PLAID_WEBHOOK_PATH } from '@fiscus/aggregation';
+import { jsonBody, startFakePlaid, type FakePlaid } from '@fiscus/aggregation/testing';
 import { startTestDatabase, type TestDatabase } from '@fiscus/db/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import pg from 'pg';
@@ -6,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { SessionService } from '../auth/session.service.js';
 import { SetupService } from '../auth/setup.service.js';
 import { createTestApp, TestClient } from '../testing/test-app.js';
+import { TEST_WEBHOOK, TEST_WEBHOOK_INSTITUTION } from './plaid-test-webhook.service.js';
 
 const ADMIN = {
   email: 'admin@fiscus.test',
@@ -13,6 +16,16 @@ const ADMIN = {
   displayName: 'Ada',
 };
 const BEA = { email: 'bea@fiscus.test', password: 'another long Password1!', displayName: 'Bea' };
+const WEBHOOK_URL = `https://fiscus.example${PLAID_WEBHOOK_PATH}`;
+const NO_REFUSALS = {
+  signature: 0,
+  stale: 0,
+  body_hash: 0,
+  unknown_key: 0,
+  missing: 0,
+  malformed: 0,
+  algorithm: 0,
+};
 const DEFAULTS = {
   'plaid.allowHouseholdKeys': true,
   'simplefin.enabled': true,
@@ -35,6 +48,10 @@ describe('instance settings (ADM-05, in part)', () => {
   let tdb: TestDatabase;
   let app: NestFastifyApplication;
   let sandboxApp: NestFastifyApplication;
+  let fakeApp: NestFastifyApplication;
+  let productionApp: NestFastifyApplication;
+  let plaid: FakePlaid;
+  let fakeClosed = false;
   let owner: pg.Client;
   let admin: TestClient;
   let bea: TestClient;
@@ -60,14 +77,47 @@ describe('instance settings (ADM-05, in part)', () => {
     // After setup: on startup an app issues a new setup token while setup is still required.
     sandboxApp = await createTestApp(tdb.appUrl, {
       plaid: { clientId: 'test-client', secret: 'test-secret', env: 'sandbox' },
-      plaidWebhookUrl: 'https://fiscus.example/api/v1/webhooks/plaid',
+      plaidWebhookUrl: WEBHOOK_URL,
+    });
+    // The fake Plaid delivers what it fires to this app's receiver, as Plaid would (#85).
+    plaid = await startFakePlaid({
+      deliverWebhook: async (url, webhook) => {
+        await fakeApp.inject({
+          method: 'POST',
+          url: new URL(url).pathname,
+          payload: webhook.body,
+          headers: webhook.headers,
+          remoteAddress: '10.9.9.9',
+        });
+      },
+    });
+    fakeApp = await createTestApp(tdb.appUrl, {
+      plaid: {
+        clientId: plaid.clientId,
+        secret: plaid.secret,
+        env: 'sandbox',
+        apiBaseUrl: plaid.url,
+      },
+      plaidWebhookUrl: WEBHOOK_URL,
+    });
+    productionApp = await createTestApp(tdb.appUrl, {
+      plaid: { clientId: 'prod-client', secret: 'prod-secret', env: 'production' },
+      plaidWebhookUrl: WEBHOOK_URL,
     });
   }, 120_000);
 
   afterAll(async () => {
-    await Promise.all([app?.close(), sandboxApp?.close(), owner?.end()]);
+    await Promise.all([app?.close(), sandboxApp?.close(), productionApp?.close(), owner?.end()]);
+    if (!fakeClosed) await fakeApp?.close();
+    await plaid?.close();
     await tdb?.stop();
   });
+
+  const signedIn = async (on: NestFastifyApplication) => {
+    const c = new TestClient(on);
+    expect((await c.post('/api/v1/auth/login', ADMIN)).status).toBe(200);
+    return c;
+  };
 
   it('are only for instance admins, signed in', async () => {
     const anonymous = new TestClient(app);
@@ -180,7 +230,20 @@ describe('instance settings (ADM-05, in part)', () => {
     const res = await admin.get('/api/v1/admin/bank-connections');
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
-      plaid: { configured: false, environment: null, webhookUrl: null },
+      plaid: {
+        configured: false,
+        environment: null,
+        webhookUrl: null,
+        webhooks: {
+          lastVerifiedAt: null,
+          lastVerifiedByKeys: { server: null, household: null },
+          refusals: { last24h: NO_REFUSALS, last7d: NO_REFUSALS },
+          unknownItems: { last24h: 0, last7d: 0 },
+          connections: { plaid: 0, withoutWebhook: 0 },
+          pollingRelaxed: false,
+          testAvailable: false,
+        },
+      },
       simplefin: { enabled: false },
       settings: { ...DEFAULTS, 'sync.intervalHours': 6, 'simplefin.enabled': false },
       stats: {
@@ -199,6 +262,19 @@ describe('instance settings (ADM-05, in part)', () => {
         'data/plaid/environment',
         // The webhook URL, read-only (ADM-05, #84).
         'data/plaid/webhookUrl',
+        // The receiver's health (#85): times and counts, never an Item, body or household.
+        'data/plaid/webhooks/lastVerifiedAt',
+        'data/plaid/webhooks/lastVerifiedByKeys/server',
+        'data/plaid/webhooks/lastVerifiedByKeys/household',
+        ...['last24h', 'last7d'].flatMap((p) =>
+          Object.keys(NO_REFUSALS).map((r) => `data/plaid/webhooks/refusals/${p}/${r}`),
+        ),
+        'data/plaid/webhooks/unknownItems/last24h',
+        'data/plaid/webhooks/unknownItems/last7d',
+        'data/plaid/webhooks/connections/plaid',
+        'data/plaid/webhooks/connections/withoutWebhook',
+        'data/plaid/webhooks/pollingRelaxed',
+        'data/plaid/webhooks/testAvailable',
         'data/simplefin/enabled',
         'data/settings/plaid.allowHouseholdKeys',
         'data/settings/simplefin.enabled',
@@ -329,13 +405,108 @@ describe('instance settings (ADM-05, in part)', () => {
   });
 
   it('show the Plaid environment when its keys are set, and the webhook URL (#84)', async () => {
-    const c = new TestClient(sandboxApp);
-    expect((await c.post('/api/v1/auth/login', ADMIN)).status).toBe(200);
+    const c = await signedIn(sandboxApp);
     const res = await c.get('/api/v1/admin/bank-connections');
-    expect(res.body.data.plaid).toEqual({
+    expect(res.body.data.plaid).toMatchObject({
       configured: true,
       environment: 'sandbox',
-      webhookUrl: 'https://fiscus.example/api/v1/webhooks/plaid',
+      webhookUrl: WEBHOOK_URL,
+      webhooks: { testAvailable: true },
+    });
+  });
+
+  describe('webhook health (#85)', () => {
+    it('shows the receiver’s counts by reason, and connections without a webhook', async () => {
+      await owner.query('DELETE FROM plaid_webhook_stats');
+      await owner.query(
+        `INSERT INTO plaid_webhook_stats (hour, credential_set_id, outcome, count, last_at) VALUES
+           (date_trunc('hour', now()), NULL, 'verified', 3, now() - interval '10 minutes'),
+           (date_trunc('hour', now()), NULL, 'unknown_item', 1, now() - interval '5 minutes'),
+           (date_trunc('hour', now()), NULL, 'body_hash', 2, now()),
+           (date_trunc('hour', now() - interval '2 days'), NULL, 'unknown_key', 5,
+            now() - interval '2 days')`,
+      );
+      const res = await (await signedIn(sandboxApp)).get('/api/v1/admin/bank-connections');
+      expect(res.status).toBe(200);
+      const w = res.body.data.plaid.webhooks;
+      expect(w.refusals.last24h).toEqual({ ...NO_REFUSALS, body_hash: 2 });
+      expect(w.refusals.last7d).toEqual({ ...NO_REFUSALS, body_hash: 2, unknown_key: 5 });
+      expect(w.unknownItems).toEqual({ last24h: 1, last7d: 1 });
+      // The unknown Item's was the last verified; the server's keys' 10 minutes ago.
+      expect(Date.parse(w.lastVerifiedAt)).toBeGreaterThan(Date.parse(w.lastVerifiedByKeys.server));
+      expect(w.lastVerifiedByKeys.household).toBeNull();
+      // A refusal in the last 24 hours: polling isn't relaxed.
+      expect(w.pollingRelaxed).toBe(false);
+      // Every live Plaid connection from the counts test has no webhook.
+      expect(w.connections).toEqual({ plaid: 4, withoutWebhook: 4 });
+      await owner.query(`DELETE FROM plaid_webhook_stats WHERE outcome <> 'verified'`);
+      const relaxed = await (await signedIn(sandboxApp)).get('/api/v1/admin/bank-connections');
+      expect(relaxed.body.data.plaid.webhooks.pollingRelaxed).toBe(true);
+      // Webhooks off: never relaxed, whatever the counts say.
+      const off = await admin.get('/api/v1/admin/bank-connections');
+      expect(off.body.data.plaid.webhooks.pollingRelaxed).toBe(false);
+      await owner.query('DELETE FROM plaid_webhook_stats');
+    });
+
+    it('sends a test webhook in sandbox, and the panel shows it arrive', async () => {
+      await owner.query('DELETE FROM plaid_webhook_stats');
+      const c = await signedIn(fakeApp);
+      const before = (await c.get('/api/v1/admin/bank-connections')).body.data.plaid.webhooks;
+      expect(before).toMatchObject({ lastVerifiedAt: null, testAvailable: true });
+      const res = await c.post('/api/v1/admin/bank-connections/test-webhook', {});
+      expect(res.status, JSON.stringify(res.body)).toBe(202);
+      expect(Object.keys(res.body.data)).toEqual(['firedAt']);
+      // A test bank's Item, made with this server's URL and fired at: no household's connection.
+      const made = plaid.requests.find((r) => r.path === '/sandbox/public_token/create');
+      expect(jsonBody(made!)).toMatchObject({
+        institution_id: TEST_WEBHOOK_INSTITUTION,
+        initial_products: ['transactions'],
+        options: { webhook: WEBHOOK_URL },
+      });
+      const fired = plaid.requests.find((r) => r.path === '/sandbox/item/fire_webhook');
+      expect(jsonBody(fired!)).toMatchObject({
+        webhook_type: TEST_WEBHOOK.type,
+        webhook_code: TEST_WEBHOOK.code,
+      });
+      await vi.waitFor(async () => {
+        const w = (await c.get('/api/v1/admin/bank-connections')).body.data.plaid.webhooks;
+        expect(w.unknownItems.last24h).toBe(1);
+        expect(Date.parse(w.lastVerifiedAt)).toBeGreaterThanOrEqual(
+          Date.parse(res.body.data.firedAt),
+        );
+      });
+      // Verified with the server's keys, and nothing else counted.
+      expect(await sql('SELECT outcome, count FROM plaid_webhook_stats')).toEqual([
+        { outcome: 'unknown_item', count: 1 },
+      ]);
+      // The test Item is still there for Plaid to send from; it's removed later.
+      expect(plaid.sandboxItems).toBe(1);
+      // Nothing in the answer names the Item or its token.
+      expect(JSON.stringify(res.body)).not.toMatch(/item-|access-/);
+    });
+
+    it('removes the test Item when the api stops', async () => {
+      fakeClosed = true;
+      await fakeApp.close();
+      expect(plaid.sandboxItems).toBe(0);
+    });
+
+    it('is absent in production and with webhooks off, and only for instance admins', async () => {
+      const prod = await signedIn(productionApp);
+      expect(
+        (await prod.get('/api/v1/admin/bank-connections')).body.data.plaid.webhooks.testAvailable,
+      ).toBe(false);
+      const before = plaid.requests.length;
+      expect((await prod.post('/api/v1/admin/bank-connections/test-webhook', {})).status).toBe(404);
+      expect((await admin.post('/api/v1/admin/bank-connections/test-webhook', {})).status).toBe(
+        404,
+      );
+      expect((await bea.post('/api/v1/admin/bank-connections/test-webhook', {})).status).toBe(403);
+      const anonymous = new TestClient(sandboxApp);
+      expect((await anonymous.post('/api/v1/admin/bank-connections/test-webhook', {})).status).toBe(
+        401,
+      );
+      expect(plaid.requests.length).toBe(before);
     });
   });
 });
