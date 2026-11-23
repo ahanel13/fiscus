@@ -18,6 +18,7 @@ export * from './api/rules.js';
 export * from './api/shared-costs.js';
 export { MEMBER_COLORS } from './design.js';
 export * from './ranges.js';
+export * from './goal-allocation.js';
 export * from './api/imports.js';
 export * from './imports/index.js';
 export * from './merchants.js';

@@ -36,6 +36,7 @@ import {
   type GoalProgress,
   monthIndex,
   monthOf,
+  takeFromLowest,
   type updateGoalSchema,
 } from '@fiscus/shared';
 import { Injectable } from '@nestjs/common';
@@ -614,6 +615,51 @@ export class GoalsService {
     });
   }
 
+  /**
+   * Unclaimed money toward goals (G25, GOAL-10), once you've confirmed what priority suggested:
+   * each adds to the goal's fixed claim on the account, or makes one, as setting the claim would
+   * (owners only, never beyond what's free, and a joint account's other owners are told). All of
+   * them, or none.
+   */
+  async allocate(
+    ctx: HouseholdContext,
+    add: { goalId: string; accountId: string; amountMinor: number }[],
+  ): Promise<void> {
+    await this.scope.run(ctx, async (tx, activity) => {
+      if (ctx.role === 'viewer') throw problems.forbidden('Viewers don’t claim accounts.');
+      for (const a of add) {
+        const row = await findGoal(tx, a.goalId);
+        if (row.archivedAt) {
+          throw new Problem(
+            409,
+            'goal_archived',
+            `${row.name} is put away`,
+            'Bring it back first.',
+          );
+        }
+        if (row.kind === 'pay_down') {
+          throw new Problem(422, 'pay_down_no_claims', 'A pay-down goal is its debt, not claims');
+        }
+        const [existing] = await tx
+          .select()
+          .from(goalClaims)
+          .where(and(eq(goalClaims.goalId, a.goalId), eq(goalClaims.accountId, a.accountId)));
+        if (existing && existing.amountMinor === null) {
+          throw new Problem(
+            422,
+            'percent_claim',
+            `${row.name} draws on that account by a percentage`,
+            'Change its percentage on the goal instead.',
+          );
+        }
+        const amountMinor = (existing?.amountMinor ?? 0) + a.amountMinor;
+        await setClaim(tx, ctx, row, a.accountId, { amountMinor });
+        await record(activity, row, 'goal.claim_set', { name: row.name, amountMinor });
+        await tellCoOwners(tx, activity, row, a.accountId, 'goal.joint_claim_set', { amountMinor });
+      }
+    });
+  }
+
   async #one(tx: Executor, ctx: HouseholdContext, goalId: string): Promise<Goal> {
     const row = await findGoal(tx, goalId);
     const claims = await tx.select().from(goalClaims).where(eq(goalClaims.goalId, goalId));
@@ -847,7 +893,12 @@ const claimedOf = (balance: number, fixed: number, percentBps: number) =>
 /** Accounts you own that savings goals can draw on: bank and investment accounts, open. */
 async function ownedAccounts(tx: Executor, ctx: HouseholdContext): Promise<GoalAccount[]> {
   const rows = await tx
-    .select({ id: accounts.id, name: accounts.name, type: accounts.type })
+    .select({
+      id: accounts.id,
+      name: accounts.name,
+      type: accounts.type,
+      subtype: accounts.subtype,
+    })
     .from(accounts)
     .innerJoin(
       accountOwners,
@@ -864,6 +915,7 @@ async function ownedAccounts(tx: Executor, ctx: HouseholdContext): Promise<GoalA
       accountId: r.id,
       name: r.name,
       type: r.type as GoalAccount['type'],
+      subtype: r.subtype,
       balanceMinor: c.balance,
       claimedMinor: claimed,
       unclaimedMinor: Math.max(0, c.balance - claimed),
@@ -1106,14 +1158,10 @@ function shortfalls(
         (c) => c.accountId === v.account_id && c.amountMinor !== null && position.has(c.goalId),
       )
       .sort((a, b) => position.get(b.goalId)!.position - position.get(a.goalId)!.position);
-    let left = short;
-    const suggestion: GoalShortfall['suggestion'] = [];
-    for (const c of fixed) {
-      if (left === 0) break;
-      const take = Math.min(left, c.amountMinor!);
-      suggestion.push({ goalId: c.goalId, amountMinor: take });
-      left -= take;
-    }
+    const suggestion = takeFromLowest(
+      short,
+      fixed.map((c) => ({ goalId: c.goalId, amountMinor: c.amountMinor! })),
+    );
     return {
       accountId: v.account_id,
       accountName: v.account_name,

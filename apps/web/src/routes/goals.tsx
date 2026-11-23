@@ -8,6 +8,7 @@ import {
   type GoalShortfall,
   type GoalsOverview,
   type HouseholdMember,
+  splitByClaims,
 } from '@fiscus/shared';
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
@@ -20,6 +21,7 @@ import {
   householdQuery,
   membersQuery,
 } from '../api/queries.js';
+import { AllocateDialog, allocationOf, goalNames } from '../components/AllocateDialog.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { PicturePicker, shrinkPhoto } from '../components/GoalPicture.js';
 import { claimLabel, GoalRow, lookOf } from '../components/GoalRow.js';
@@ -83,6 +85,7 @@ export function GoalsPage() {
   const [archiving, setArchiving] = useState<Goal | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [resolving, setResolving] = useState<GoalShortfall | null>(null);
+  const [allocating, setAllocating] = useState(false);
   const [tab, setTab] = useState<Kind>('save');
   const [managing, setManaging] = useState(false);
   const queryClient = useQueryClient();
@@ -138,6 +141,8 @@ export function GoalsPage() {
   const shown = ofKind('save');
   const saving = (data?.goals ?? []).filter((g) => g.kind === 'save');
   const archived = (data?.archived ?? []).filter((g) => g.kind === tab);
+  // Where unclaimed money could go, by priority (G25): only ever a suggestion.
+  const allocation = data ? allocationOf(data) : [];
   // Priority among savings goals: swap with the next one up or down, wherever debts sit between.
   const move = (g: Goal, by: number) => {
     const ids = data!.goals.map((x) => x.id);
@@ -269,7 +274,24 @@ export function GoalsPage() {
                   </ul>
                 )}
               </section>
-              {data.accounts.length ? (
+              {allocation.length ? (
+                <Alert tone="info">
+                  <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="min-w-0 flex-1">
+                      {formatMoney(data.totals.unclaimedMinor, currency)} in your accounts isn’t
+                      earmarked for any goal. By priority,{' '}
+                      {formatMoney(
+                        allocation.reduce((sum, s) => sum + s.amountMinor, 0),
+                        currency,
+                      )}{' '}
+                      of your savings could go toward {goalNames(data, allocation)}.
+                    </span>
+                    <Button size="sm" variant="secondary" onPress={() => setAllocating(true)}>
+                      Review suggestion
+                    </Button>
+                  </span>
+                </Alert>
+              ) : data.accounts.length ? (
                 <p className="px-1 text-sm text-muted">
                   {formatMoney(data.totals.unclaimedMinor, currency)} in your savings and investment
                   accounts isn’t earmarked for any goal.
@@ -277,7 +299,8 @@ export function GoalsPage() {
               ) : null}
               <p className="px-1 text-xs text-muted">
                 Goals are in priority order. When an account falls short, the lowest gives way
-                first, and only when its owners say so. Status and dates are estimates from what
+                first, and only when its owners say so; unclaimed money is offered to the highest
+                first, and only earmarked when you say so. Status and dates are estimates from what
                 moved into each goal’s accounts over the last three months (its plan, while it’s
                 newer) and today’s balances, so they move as those do.
               </p>
@@ -390,6 +413,15 @@ export function GoalsPage() {
           shortfall={resolving}
           currency={currency}
           onClose={() => setResolving(null)}
+        />
+      ) : null}
+      {allocating && data ? (
+        <AllocateDialog
+          householdId={householdId}
+          data={data}
+          steps={allocation}
+          currency={currency}
+          onClose={() => setAllocating(false)}
         />
       ) : null}
       {deleting ? (
@@ -940,18 +972,8 @@ function GiveWayDialog({
 }) {
   const queryClient = useQueryClient();
   const money = (minor: number) => formatMoney(minor, currency);
-  const total = s.goals.reduce((sum, g) => sum + g.amountMinor, 0);
-  // Split by claims: each its share, the last one taking what rounding left.
-  const split = s.goals.map((g, i, all) => ({
-    goalId: g.goalId,
-    amountMinor:
-      i === all.length - 1
-        ? s.shortMinor -
-          all
-            .slice(0, -1)
-            .reduce((sum, x) => sum + Math.floor((s.shortMinor * x.amountMinor) / total), 0)
-        : Math.floor((s.shortMinor * g.amountMinor) / total),
-  }));
+  // Split by claims: each its share, never beyond its claim (goals you can't see hold the rest).
+  const split = splitByClaims(s.shortMinor, s.goals);
   const options: {
     id: string;
     title: string;
@@ -989,7 +1011,7 @@ function GiveWayDialog({
                   `${s.goals.find((g) => g.goalId === t.goalId)?.name} −${money(t.amountMinor)}`,
               )
               .join(', '),
-            take: split.filter((t) => t.amountMinor > 0),
+            take: split,
           },
         ]
       : []),

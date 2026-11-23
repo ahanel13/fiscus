@@ -212,6 +212,7 @@ caller can't see ("Transfer to Anthony").
 | GOAL-07 | A member's own goals when they leave | — | — | — | Deleted, with their claims and history, as their budget is (BUD-05) |
 | GOAL-08 | Pay down a loan or card: a goal on it, and its rate, minimum and due day | ✅ | ✅ | ❌ | An open loan or card whose balance you see, one goal each among those you see. Everyone sees the household's goals, and the debt's balance with them, so a goal on a private account is your own (G9, G15). A rate or minimum entered goes before the bank's; a due day, only when the bank gives no due date, makes the minimum a bill (G23) |
 | GOAL-09 | Read who's put in to a goal: each member's contributions | ✅ | ✅ | ✅ | Whoever sees the goal (GOAL-01/02). What each member put in, never the balance or transactions of an account you can't see (G7, D36). A newer member sees the months from their history window on, and their own (HH-14) |
+| GOAL-10 | Put unclaimed money toward goals, as priority suggests | ✅ | ✅ | ❌ | Worked out from your own accounts and the goals you see, and nothing is earmarked until you confirm (G25). Confirming adds to fixed claims, so the rules are GOAL-05's: the account's owners only, never beyond what's free, all or none |
 
 ### 4.11 Tokens and sessions
 | ID | Action | OWN | MEM | VIEW | Notes |
