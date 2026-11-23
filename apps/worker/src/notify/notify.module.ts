@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConsentRequestNotices } from './consent-requests.js';
 import { Notifier, type NotifierChannels, type NotifierOptions } from './notifier.js';
+import { OwnershipClaimNotices } from './ownership-claims.js';
 import { NotificationRules, type RulesOptions } from './rules/runner.js';
 
 export interface NotifyModuleConfig {
@@ -53,6 +54,7 @@ export class NotifyModule {
                 channels: config.channels,
                 ...(config.rules ? { rules: new NotificationRules(config.db, config.rules) } : {}),
                 consentRequests: new ConsentRequestNotices(config.db, config.crypto),
+                ownershipClaims: new OwnershipClaimNotices(config.db, config.crypto),
               },
               config.options,
             ),

@@ -162,7 +162,13 @@ members are never held hostage by someone who is gone or unresponsive.
    - **Ownership claim:** if every owner is unresponsive, any adult member (not viewers) can claim
      ownership. All owners are notified; any owner can reject it within **30 days**; if none does,
      the claimant becomes an **additional** owner and can then remove the absent owner, whose
-     departure package (item 0) protects them. Everything is recorded in the activity history;
+     departure package (item 0) protects them. Everything is recorded in the activity history.
+     **Unresponsive** means no owner has used Fiscus (signed in, or used a session) for
+     **30 days**, so a claim can't start while an owner is merely on a short holiday, and any owner
+     using Fiscus during the notice ends it, as a rejection does: an owner who's here is reachable.
+     Owners are told by in-app notice and email when it starts, a week before it ends and the day
+     before, whatever their notification settings. A claim needs a recent sign-in, one is open at a
+     time, and the database checks each step (#267, budgeting walkthrough D35);
    - **Admin recovery (optional, off by default):** an instance setting lets the instance admin
      grant ownership after verifying identity outside the app. The action is recorded with a
      reason and every member is notified. It's off by default because it puts the operator in the

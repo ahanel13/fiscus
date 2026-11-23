@@ -216,6 +216,17 @@ describe('cross-tenant isolation (generated from routes)', () => {
             [x.householdId, x.memberId, name],
           )
         ).rows[0].id;
+        // An open ownership claim (#267): `:claimId`. Made directly, as its trigger would refuse
+        // a claim while the owner is active.
+        await db.query('SET session_replication_role = replica');
+        x.claimId = (
+          await db.query(
+            `INSERT INTO ownership_claims (id, household_id, claimant_member_id)
+             VALUES (gen_random_uuid(), $1, $2) RETURNING id`,
+            [x.householdId, x.memberId],
+          )
+        ).rows[0].id;
+        await db.query('SET session_replication_role = origin');
       }
     } finally {
       await db.end();

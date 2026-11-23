@@ -33,6 +33,12 @@ export const users = pgTable(
     totpSecretEnc: bytea('totp_secret_enc'),
     isInstanceAdmin: boolean().notNull().default(false),
     disabledAt: timestamp({ withTimezone: true }),
+    /**
+     * When they last used Fiscus, to the minute: signing in, or a request on a session (#267).
+     * Kept when sessions end, unlike theirs. An ownership claim needs every owner away for 30 days
+     * (ADR 0012 §Departures item 7). Never shown to anyone.
+     */
+    lastActiveAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     ...timestamps(),
   },
   (t) => [uniqueIndex('users_email_key').on(t.email)],

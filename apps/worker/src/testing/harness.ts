@@ -25,7 +25,7 @@ export interface WorkerHarness {
   /** Another household, with an owner, a data key and the default categories. */
   household(): Promise<{ householdId: string; memberId: string }>;
   /** Another member of a household. */
-  member(householdId: string, name?: string): Promise<string>;
+  member(householdId: string, name?: string, role?: 'owner' | 'member' | 'viewer'): Promise<string>;
   /** An account, owned by `owners` (equal shares). */
   account(opts: AccountOptions): Promise<string>;
   /** Adds a connection, due a minute ago unless `next` says otherwise (a Postgres interval). */
@@ -125,7 +125,7 @@ export async function startWorkerHarness(): Promise<WorkerHarness> {
     householdId,
     memberId,
     household,
-    member: (id, name) => member(id, name),
+    member: (id, name, role) => member(id, name, role),
     async account(opts) {
       const id = randomUUID();
       // With its owners in one transaction: an account without any is refused at commit.

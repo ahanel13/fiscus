@@ -19,6 +19,7 @@ import type {
   ConnectionSetup,
   Household,
   HouseholdMember,
+  OwnershipClaimState,
   HouseholdPlaidKeys,
   ImportBatch,
   ImportProfile,
@@ -72,6 +73,19 @@ export const membersQuery = (id: string) =>
     queryKey: ['households', id, 'members'],
     queryFn: async () =>
       (await api<Data<HouseholdMember[]>>('GET', `/api/v1/households/${id}/members`)).data,
+  });
+
+/** The household's open ownership claim, and whether you could start one (#267, HH-17). */
+export const ownershipClaimQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['households', id, 'ownership-claim'],
+    queryFn: async () =>
+      (
+        await api<Data<OwnershipClaimState>>(
+          'GET',
+          `/api/v1/households/${id}/ownership-claims/current`,
+        )
+      ).data,
   });
 
 export const sessionsQuery = queryOptions({

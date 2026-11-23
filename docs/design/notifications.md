@@ -21,6 +21,8 @@ are in the [bills walkthrough](walkthroughs/bills.md) §7 (D15–D20). The table
   big transaction, low balance, a budget category nearly spent, transactions to review, and a bank
   connection that needs you; the weekly recap (#128, §4.3); settle-up reminders and the
   monthly shared costs summary (#116, §4.4); and consent requests (#265, §4.5).
+- **Notices** that can't be turned off (§4.6): someone claiming ownership of the household
+  (#267). They aren't in Settings → Notifications.
 
 ## 2. Channels
 
@@ -187,6 +189,26 @@ which everyone in the household sees; never an income. At summary detail it name
 kind is listed in Settings in a household of two or more. Email goes out through the server's one
 mail server, like every other notification (§6).
 
+### 4.6 Ownership claims
+
+When no owner has used Fiscus for 30 days, a member can claim ownership (#267, ADR 0012
+§Departures item 7, budgeting walkthrough D35). The worker looks every minute
+(`apps/worker/src/notify/ownership-claims.ts`) at households with a claim open or one that ended
+since its last look (`fiscus_ownership_claim_households()`), in system context, and writes kind
+`ownership_claim`:
+
+| To | When | Once per (dedupe key) |
+|---|---|---|
+| every current owner | the claim starts; 7 days before it ends; the day before. The latest step it has reached, after a restart | `ownership_claim:<claim>:started`, `…:reminder`, `…:final` |
+| the claimant | an owner rejected it (naming them), an owner came back, or it went through | `ownership_claim:<claim>:rejected`, `…:owner_returned`, `…:granted_to_you` |
+| the owners | it went through, the claimant withdrew it, or the claimant left or isn't a member any more | `ownership_claim:<claim>:granted`, `…:withdrawn`, `…:claimant_ineligible` |
+
+It's a **notice**: it goes to In Fiscus, email (once the server can send it) and every push
+channel the member has set up, whatever their rules say, so a claim always reaches the owners.
+Each link goes to Household settings → Members, where an owner rejects it in one click (a banner
+on every page says so too). Each notice sent is in the household's activity
+(`ownership_claim.notified`, with how many were told). At summary detail none names anyone.
+
 ## 5. What a webhook receives
 
 A `POST` with `Content-Type: application/json`:
@@ -206,7 +228,8 @@ A `POST` with `Content-Type: application/json`:
 
 - `kind` is one of the rules (`bill_due`, `late`, `statement_due`, `big_transaction`,
   `low_balance`, `budget_nearly_spent`, `subscription_change`, `connection_needs_you`, `review`,
-  `weekly_recap`, `settle_up_reminder`, `settle_up_summary`, `consent_request`), or `test`.
+  `weekly_recap`, `settle_up_reminder`, `settle_up_summary`, `consent_request`), the notice
+  `ownership_claim`, or `test`.
 - `title` and `body` are at the channel's detail level: `detail` says which. At `minimal`, `url`
   is the server's address only. `url` is null when the server's `PUBLIC_URL` isn't set for the
   worker.

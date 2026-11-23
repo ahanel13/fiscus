@@ -8,6 +8,7 @@ import { api, type ApiError } from '../api/client.js';
 import { SourceLinks } from '../components/About.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { HistoryCheckSettings } from '../components/HistoryCheck.js';
+import { OwnershipClaimCard } from '../components/OwnershipClaim.js';
 import { CategoriesSettings } from './categories-settings.js';
 import { HouseholdGeneral } from './household-general.js';
 import { InviteButton, InviteDialog, PendingInvites } from './invites.js';
@@ -292,6 +293,7 @@ export function MembersSettings() {
         </ul>
         {isOwner ? <PendingInvites household={household} /> : null}
       </Card>
+      <OwnershipClaimCard householdId={householdId} />
       {members.some((m) => m.isYou) ? (
         <YouInHousehold
           key={members.map((m) => `${m.id}:${m.displayName}:${m.color}`).join()}

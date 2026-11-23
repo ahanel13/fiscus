@@ -201,9 +201,19 @@ export const SETTLE_UP_KINDS = ['settle_up_reminder', 'settle_up_summary'] as co
 export const settlesUp = (memberCount: number, financeStyle: string) =>
   memberCount > 1 && financeStyle !== 'combined';
 
-/** The kinds a notification row can have: the rules, and a channel's test. */
-export const NOTIFICATION_ROW_KINDS = [...NOTIFICATION_KINDS, 'test'] as const;
-export type NotificationRowKind = NotificationKind | 'test';
+/**
+ * Notices that can't be turned off, so they aren't in Settings: someone claiming ownership of the
+ * household (#267) must reach its owners. Each goes to In Fiscus, email (once the server can send
+ * it) and every push channel the member has set up, whatever their rules say.
+ */
+export const NOTICE_KINDS = ['ownership_claim'] as const;
+export type NoticeKind = (typeof NOTICE_KINDS)[number];
+export const isNoticeKind = (kind: string): kind is NoticeKind =>
+  (NOTICE_KINDS as readonly string[]).includes(kind);
+
+/** The kinds a notification row can have: the rules, the notices, and a channel's test. */
+export const NOTIFICATION_ROW_KINDS = [...NOTIFICATION_KINDS, ...NOTICE_KINDS, 'test'] as const;
+export type NotificationRowKind = NotificationKind | NoticeKind | 'test';
 
 /**
  * The channels a rule goes to: what the member ticked, or D18's defaults with any push channel
