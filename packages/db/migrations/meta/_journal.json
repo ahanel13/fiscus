@@ -834,6 +834,13 @@
       "when": 1795130185201,
       "tag": "0118_goal_debt_due_day",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1795130186201,
+      "tag": "0119_goal_claim_history",
+      "breakpoints": true
     }
   ]
 }

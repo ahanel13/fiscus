@@ -146,6 +146,12 @@ transfer toward one goal of two (G13's choice). Each member's contributions to a
 (#133, budgeting D36) are worked out when read, from its claims' history and what moved into
 their accounts (`fiscus_goal_contributions()`, migration `0117`).
 
+Progress and status are built (#135, #137): a savings goal's history is its claims at each budget
+month's end (`fiscus_goal_claim_history()`, migration `0119`), and its pace is its line's moved
+figure averaged over the last three months, or its plan while it's newer (G18). Earmarks show as
+claims changed, never as saving (G11), and a percentage claim's fall as the market's (G12). The
+expected growth rate on investment claims waits for #140.
+
 
 Nothing on goals' screens. Just enough that M5 adds goals without changing the budget engine:
 - **The budget engine (built in #98) learns line kinds.** A budget line is a category or a goal. The goal kind is

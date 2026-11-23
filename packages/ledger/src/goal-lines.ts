@@ -96,6 +96,8 @@ export async function budgetGoalLines(
 /** What reached goals in a month (G4), and the part 50/30/20's Savings doesn't count already. */
 export interface GoalMovedMonth {
   byGoal: Map<string, number>;
+  /** The same by goal and then the account it reached, for a goal's own history (#135). */
+  byGoalAccount: Map<string, Map<string, number>>;
   elsewhereMinor: number;
 }
 
@@ -215,9 +217,22 @@ export async function goalMoved(
     const l = line.get(goalId)!;
     return month >= l.fromMonth && (l.untilMonth === null || month <= l.untilMonth);
   };
-  const add = (month: string, goalId: string, amount: number, elsewhere: boolean) => {
-    const m = out.get(month) ?? { byGoal: new Map<string, number>(), elsewhereMinor: 0 };
+  const add = (
+    month: string,
+    goalId: string,
+    accountId: string,
+    amount: number,
+    elsewhere: boolean,
+  ) => {
+    const m = out.get(month) ?? {
+      byGoal: new Map<string, number>(),
+      byGoalAccount: new Map<string, Map<string, number>>(),
+      elsewhereMinor: 0,
+    };
     m.byGoal.set(goalId, (m.byGoal.get(goalId) ?? 0) + amount);
+    const own = m.byGoalAccount.get(goalId) ?? new Map<string, number>();
+    own.set(accountId, (own.get(accountId) ?? 0) + amount);
+    m.byGoalAccount.set(goalId, own);
     if (elsewhere) m.elsewhereMinor += amount;
     out.set(month, m);
   };
@@ -251,7 +266,7 @@ export async function goalMoved(
               (leg.amountMinor * (total > 0 ? g.weight : 1)) / (total > 0 ? total : gs.length),
             );
       left -= share;
-      add(leg.month, g.goalId, share, !leg.savings);
+      add(leg.month, g.goalId, leg.accountId, share, !leg.savings);
     });
   }
   if (paid.size) {
@@ -271,7 +286,7 @@ export async function goalMoved(
       const minimum = d.minimumMinor ?? estimatedMinimum(owed.get(d.accountId!) ?? 0);
       for (const [month, amount] of paid.get(d.id) ?? []) {
         const extra = Math.max(0, amount - minimum);
-        if (extra > 0) add(month, d.id, extra, true);
+        if (extra > 0) add(month, d.id, d.accountId!, extra, true);
       }
     }
   }

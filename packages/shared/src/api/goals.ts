@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { z } from 'zod';
+import { monthIndex, type PaceInput, savingsPace } from '../goal-progress.js';
 import { payoff } from '../payoff.js';
 import { type InstitutionSummary, isoDateSchema } from './accounts.js';
 
@@ -172,10 +173,10 @@ export interface GoalClaim {
 
 /**
  * Where a goal stands (walkthrough §4, #137): `done`, `short` (an account backing it holds less
- * than its claims, G3), and for a goal with a date, `on_track` or `at_risk` at its pace. Without
- * a date there's no status, just progress.
+ * than its claims, G3), and for a goal with a date, `on_track`, `ahead` (a month's plan or more past
+ * a steady pace) or `at_risk` at its pace. Without a date there's no status, just progress.
  */
-export type GoalStatus = 'done' | 'short' | 'on_track' | 'at_risk';
+export type GoalStatus = 'done' | 'short' | 'on_track' | 'ahead' | 'at_risk';
 
 export interface GoalPace {
   status: GoalStatus | null;
@@ -185,37 +186,12 @@ export interface GoalPace {
   monthsLate: number | null;
 }
 
-const monthIndex = (month: string) => {
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  return y * 12 + m - 1;
-};
-const monthOf = (index: number) =>
-  `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
-
 /**
- * A goal's status and where its pace leads. The pace is its monthly plan: what moved in is the
- * walkthrough's pace (G18), and stands in for the plan once contributions are counted (#133).
- * This month counts: a plan that covers what's left reaches the target this month.
+ * A savings goal's status and where its pace leads (`savingsPace`). The pace is what moved in
+ * over the last three months (G18), or its plan while it's newer; without one given, its plan.
  */
-export function goalPace(g: {
-  progressMinor: number;
-  targetMinor: number;
-  targetDate: string | null;
-  planMinor: number | null;
-  shortMinor: number;
-  thisMonth: string;
-}): GoalPace {
-  const left = g.targetMinor - g.progressMinor;
-  if (left <= 0) return { status: 'done', projectedMonth: null, monthsLate: null };
-  const pace = g.planMinor ?? 0;
-  const projected = pace > 0 ? monthIndex(g.thisMonth) + Math.ceil(left / pace) - 1 : null;
-  const projectedMonth = projected === null ? null : monthOf(projected);
-  if (g.shortMinor > 0) return { status: 'short', projectedMonth, monthsLate: null };
-  if (!g.targetDate) return { status: null, projectedMonth, monthsLate: null };
-  const due = monthIndex(g.targetDate.slice(0, 7));
-  if (projected === null) return { status: 'at_risk', projectedMonth: null, monthsLate: null };
-  const late = Math.max(0, projected - due);
-  return { status: late ? 'at_risk' : 'on_track', projectedMonth, monthsLate: late };
+export function goalPace(g: PaceInput): GoalPace {
+  return savingsPace(g);
 }
 
 /**

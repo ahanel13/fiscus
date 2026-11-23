@@ -24,6 +24,7 @@ import { EmptyState } from '../components/EmptyState.js';
 import { PicturePicker, shrinkPhoto } from '../components/GoalPicture.js';
 import { claimLabel, GoalRow, lookOf } from '../components/GoalRow.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { GoalDetail } from './goal-detail.js';
 import {
   Alert,
   AmountInput,
@@ -76,6 +77,8 @@ export function GoalsPage() {
   const query = useQuery(goalsQuery(householdId));
   const [scope, setScope] = useState<Scope>('all');
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
+  // A savings goal up close (walkthrough §3): its id, so it follows the list as it changes.
+  const [viewing, setViewing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Goal | null>(null);
   const [archiving, setArchiving] = useState<Goal | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -251,7 +254,8 @@ export function GoalsPage() {
                             currency={currency}
                             members={members}
                             shared={shared}
-                            onOpen={editable ? () => setEditing(g) : undefined}
+                            onOpen={() => setViewing(g.id)}
+                            onEdit={editable ? () => setEditing(g) : null}
                             onArchive={g.canEdit ? () => setArchiving(g) : undefined}
                             onDelete={g.canEdit ? () => setDeleting(g) : undefined}
                             onUp={data.canCreate && i > 0 ? () => move(g, -1) : undefined}
@@ -273,8 +277,9 @@ export function GoalsPage() {
               ) : null}
               <p className="px-1 text-xs text-muted">
                 Goals are in priority order. When an account falls short, the lowest gives way
-                first, and only when its owners say so. Status and dates are estimates from each
-                goal’s monthly plan and today’s balances, so they move as those do.
+                first, and only when its owners say so. Status and dates are estimates from what
+                moved into each goal’s accounts over the last three months (its plan, while it’s
+                newer) and today’s balances, so they move as those do.
               </p>
             </TabPanel>
             <TabPanel id="pay_down" className="space-y-5">
@@ -334,6 +339,24 @@ export function GoalsPage() {
           </Tabs>
         )}
       </div>
+      {viewing && data?.goals.some((g) => g.id === viewing) ? (
+        <GoalDetail
+          householdId={householdId}
+          goal={data.goals.find((g) => g.id === viewing)!}
+          members={members}
+          currency={currency}
+          onEdit={(() => {
+            const g = data.goals.find((x) => x.id === viewing)!;
+            return g.canEdit || g.claims.some((c) => c.yours)
+              ? () => {
+                  setViewing(null);
+                  setEditing(g);
+                }
+              : undefined;
+          })()}
+          onClose={() => setViewing(null)}
+        />
+      ) : null}
       {editing && editing !== 'new' && editing.kind === 'pay_down' ? (
         <DebtDialog
           householdId={householdId}

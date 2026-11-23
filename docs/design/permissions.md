@@ -203,7 +203,7 @@ caller can't see ("Transfer to Anthony").
 ### 4.10a Goals (goals walkthrough, goals and budgets G1–G22)
 | ID | Action | OWN | MEM | VIEW | Notes |
 |---|---|---|---|---|---|
-| GOAL-01 | Read the household's goals (Ours), with each claim and what it's worth | ✅ | ✅ | ✅ | A claim on an account you can't see shows only the claim and whose account it is, never its name or balance (G7) |
+| GOAL-01 | Read the household's goals (Ours), with each claim and what it's worth, and each goal's history, pace and projection | ✅ | ✅ | ✅ | A claim on an account you can't see shows only the claim and whose account it is, never its name or balance (G7). Its history starts at a newer member's window (#256) |
 | GOAL-02 | Read a member's own goal (Mine) | own | own | own | Only their member, and system context. Nobody else sees it, or that it exists (G15). Its claims still count against an account's unclaimed money, as a total |
 | GOAL-03 | Create, change, reorder or delete the household's goals | ✅ | ✅ | ❌ | Name, target, date, monthly plan, priority, its icon, color or photo, and putting it away (archiving ends its claims, so it's refused while one is on an account that isn't yours, G7). Each change goes into the household's activity |
 | GOAL-04 | Create, change or delete your own goal | own | own | ❌ | Viewers own no accounts, so have no goals of their own |

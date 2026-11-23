@@ -104,6 +104,16 @@ Selecting a goal opens its page:
 - The goal's history: claims set and changed, money moved in, purchases paid from it, shortfalls,
   each with who and when.
 
+**Built (#135, #137).** Selecting a savings goal opens it up close: its status and the line beside
+it; **Saved**, **this month** (moved against its plan), **market** this month when it has a
+percentage claim (else its pace), and the month it gets there at this pace; the chart; what to
+change when it's at risk; what funds it; and the last six months, each with what it had, what
+moved in, the market, and claims changed. **Edit goal** opens it to change. The chart draws what it
+had at each month's end, a dashed line from now at its pace to the target, a dotted steady line
+from where it began to the target by its date, and the target; a crosshair shows any month. The
+goal's history is its claims as they stood (G17, G24). Who's put in (#133) is still in its edit
+dialog.
+
 **G17. A goal keeps the history of its claims.** Every change is kept with its reason: earmarked,
 moved in, spent from, gave way to a shortfall, or the market. Progress on any date is the claims as
 they stood then, so the chart, contributions and "on track" all read the same history, and nothing
@@ -133,6 +143,16 @@ counts as a missed month (G12).
 - **At $350.00 a month, it's done in June**: moves the date.
 
 Without a date, the card says how long at this pace: "About 8 months more".
+
+**G24. A goal's months read its claims as each month ended.** What a goal had at a month's end is
+its claims as they stood then, each worth what it was on the latest balance by that day (G3, G17).
+Each month's change splits three ways: a claim set, raised, lowered or taken off is **claims
+changed** (G11: progress, not saving); a percentage claim whose terms stayed put moved with its
+balance, which is what moved in plus the **market** (G12); a fixed claim that stayed put didn't
+change. **Moved in** is the goal line's moved figure (G4). The steady line behind **Ahead** runs
+from what it had as its first month ended to the target by its date; for a newer member, whose
+history starts at their window (#256), from what it had as the window's first month ended, so
+their Ahead can differ. The pace's three months aren't windowed: accounts aren't (#291).
 
 ---
 
@@ -332,6 +352,7 @@ A Mine goal only ever notifies you.
 | G21 | A payoff goal on a card counts its balance, so new spending shows | #134 |
 | G22 | Goals ship in seven steps, savings goals with claims first | #131 |
 | G23 | A debt with no due date from the bank gets its minimum as a bill on the day its goal says | #134 |
+| G24 | A goal's months read its claims as each ended; each month's change is claims changed, moved in, or the market | #135, #137 |
 
 ## Open questions
 
