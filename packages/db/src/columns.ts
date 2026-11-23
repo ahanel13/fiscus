@@ -5,6 +5,9 @@ import { v7 as uuidv7 } from 'uuid';
 
 // Column helpers that encode the conventions in docs/design/data-model.md §1.
 
+/** A new UUIDv7, as primary keys use: for rows written with SQL (the move job, #253). */
+export const newId = () => uuidv7();
+
 /** UUIDv7 primary key, generated in the app for time ordering. */
 export const id = () =>
   uuid('id')

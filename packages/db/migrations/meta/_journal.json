@@ -841,6 +841,27 @@
       "when": 1795130186201,
       "tag": "0119_goal_claim_history",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1795473274670,
+      "tag": "0120_member_moves",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1795473276237,
+      "tag": "0121_member_moves_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1795473278117,
+      "tag": "0122_member_move_deferrable",
+      "breakpoints": true
     }
   ]
 }

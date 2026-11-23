@@ -55,6 +55,7 @@ import {
 } from './routes/settings.js';
 import { WelcomePage } from './routes/welcome.js';
 import { ConnectionsSettings } from './routes/connections-settings.js';
+import { MoveOutPage } from './routes/move-out.js';
 import { NotificationsSettingsPage } from './routes/notifications-settings.js';
 
 interface Context {
@@ -297,6 +298,7 @@ const settingsRoutes = [
   settingsSection('/shared-costs', SharedCostsSettings),
   settingsSection('/connections', ConnectionsSettings),
   settingsSection('/notifications', NotificationsSettingsPage),
+  settingsSection('/move-out', MoveOutPage),
 ];
 
 const routeTree = rootRoute.addChildren([

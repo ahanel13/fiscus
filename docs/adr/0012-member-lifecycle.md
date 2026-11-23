@@ -77,6 +77,17 @@ first, so the person leaving always consents personally.
 | Categories, category groups, tags, merchants | **Copied** (only those used by moved data), so the new household starts out matching |
 | Audit events | **Stay**. Each household keeps its own log, and both record the move |
 
+*As built (#253, first part; budgeting walkthrough D37, HH-20):* Household settings → Members →
+**Move out** shows the preview from one plan (`planMoveOut` in `@fiscus/domain`), which the move
+then follows, so #266's removal preview can reuse it. Starting asks for a recent sign-in, makes the
+new household with copies of this one's settings, and records the settle-up with each member. The
+worker then moves the data as `fiscus_maintenance` in five steps, each its own transaction (plan,
+copy categories and tags, move, joint accounts, leave), so a restart carries on after the last one
+done; row ids are kept, and notes, account notes and bank secrets are re-encrypted. Joint accounts
+stay, with the leaver's share passed on in proportion from today. Not built yet: transferring a
+joint account with the co-owners' agreement (a consent request), the read-only history snapshot
+(#257), and moving private AI conversations and plans, which don't exist yet.
+
 ### Joining: new members see the household from their join date
 A member who joins later (a new roommate, a new partner) sees **household-shared records only from
 their `joined_at` date onward**: shared budgets' history, "ours" purchases among others, settle-up

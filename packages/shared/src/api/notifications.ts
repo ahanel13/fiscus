@@ -203,10 +203,10 @@ export const settlesUp = (memberCount: number, financeStyle: string) =>
 
 /**
  * Notices that can't be turned off, so they aren't in Settings: someone claiming ownership of the
- * household (#267) must reach its owners. Each goes to In Fiscus, email (once the server can send
+ * household (#267), or moving out of it (#253), must reach its owners. Each goes to In Fiscus, email (once the server can send
  * it) and every push channel the member has set up, whatever their rules say.
  */
-export const NOTICE_KINDS = ['ownership_claim'] as const;
+export const NOTICE_KINDS = ['ownership_claim', 'member_moved_out'] as const;
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
 export const isNoticeKind = (kind: string): kind is NoticeKind =>
   (NOTICE_KINDS as readonly string[]).includes(kind);

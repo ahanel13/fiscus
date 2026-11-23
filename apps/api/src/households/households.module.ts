@@ -11,6 +11,8 @@ import { InviteTokensService } from './invite-tokens.service.js';
 import { InvitesController } from './invites.controller.js';
 import { InvitesService } from './invites.service.js';
 import { MembersService } from './members.service.js';
+import { MoveOutController } from './move-out.controller.js';
+import { MoveOutService } from './move-out.service.js';
 import { OwnershipClaimsController } from './ownership-claims.controller.js';
 import { OwnershipClaimsService } from './ownership-claims.service.js';
 
@@ -21,6 +23,7 @@ import { OwnershipClaimsService } from './ownership-claims.service.js';
     InvitesController,
     ActivityController,
     OwnershipClaimsController,
+    MoveOutController,
   ],
   providers: [
     HouseholdAccess,
@@ -30,6 +33,7 @@ import { OwnershipClaimsService } from './ownership-claims.service.js';
     InviteTokensService,
     InvitesService,
     MembersService,
+    MoveOutService,
     OwnershipClaimsService,
   ],
   exports: [HouseholdAccess, HouseholdGuard, HouseholdScope],

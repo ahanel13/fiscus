@@ -581,9 +581,10 @@ describe('system context belongs to the worker', () => {
                           'fiscus_clear_owner_reviewer', 'fiscus_clear_member_reviewer',
                           'fiscus_find_plaid_item', 'fiscus_plaid_webhook_key_set',
                           'fiscus_queue_plaid_webhook', 'fiscus_record_plaid_webhook',
-                          'fiscus_plaid_webhook_moves', 'fiscus_unrelax_connections')
+                          'fiscus_plaid_webhook_moves', 'fiscus_unrelax_connections',
+                          'fiscus_claim_member_moves')
       ORDER BY 1`);
-    expect(owners.map((o) => o.rolname)).toEqual(Array(21).fill('fiscus_steward'));
+    expect(owners.map((o) => o.rolname)).toEqual(Array(22).fill('fiscus_steward'));
     const { rows } = await owner.query(`
       SELECT t, p FROM unnest(ARRAY['households', 'household_members', 'invites', 'transactions',
                                     'categories', 'household_keys', 'audit_events', 'users',
@@ -643,6 +644,8 @@ describe('system context belongs to the worker', () => {
       'instance_settings.value',
       'invites.accepted_at',
       'invites.accepted_by_user_id',
+      // Claiming a move leases it (0121).
+      'member_moves.lease_until',
       // Claiming a delivery leases it (0079).
       'notification_deliveries.lease_until',
       'notification_deliveries.updated_at',

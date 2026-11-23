@@ -19,3 +19,4 @@ export * from './transfers.js';
 export * from './funding.js';
 export * from './income-split.js';
 export * from './shared-costs.js';
+export * from './move-out.js';

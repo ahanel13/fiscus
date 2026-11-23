@@ -63,9 +63,16 @@ export {
   type StoredMail,
   type StoredMailValue,
 } from './mail-settings.js';
-export { MAINTENANCE_JOBS, runMaintenanceJob, type MaintenanceJob } from './maintenance.js';
+export {
+  MAINTENANCE_JOBS,
+  runMaintenanceJob,
+  startMaintenance,
+  type MaintenanceJob,
+  type MaintenanceRun,
+  type MaintenanceSession,
+} from './maintenance.js';
 export { pingDatabase } from './health.js';
-export { bytea, householdId, id, money, timestamps, versioning } from './columns.js';
+export { bytea, householdId, id, money, newId, timestamps, versioning } from './columns.js';
 export {
   HouseholdKeyNotFoundError,
   HouseholdKeyStore,
@@ -77,3 +84,4 @@ export {
 export { MIGRATIONS_FOLDER, runMigrations, type MigrateOptions } from './migrate.js';
 export * as schema from './schema/index.js';
 export * from './schema/index.js';
+export { MEMBER_MOVE_ENCRYPTED, MEMBER_MOVE_TABLES, type MemberMoveRule } from './member-move.js';
