@@ -3,17 +3,25 @@
 // Splitting a shared expense between the people it's for (ADR 0006 §7, #109): which rule applies,
 // and each person's share of it. Settle-up (#111) builds on this.
 
-/** A split rule, as @fiscus/shared's `splitRuleSchema` gives it. */
-export type SplitRuleInput =
+/**
+ * A split rule, as @fiscus/shared's `splitRuleSchema` gives it. `prorate`: people who join or
+ * leave during a month pay for the days of it they were in the household (#261, D33).
+ */
+export type SplitRuleInput = (
   | { method: 'equal' }
   | { method: 'fixed_percent'; shares: readonly { memberId: string; shareBps: number }[] }
   | { method: 'fixed_amount'; amounts: readonly { memberId: string; amountMinor: number }[] }
-  | { method: 'income_proportional' };
+  | { method: 'income_proportional' }
+) & { prorate?: boolean };
 
 /** A rule as it applies to one expense: a split by income comes as the shares it makes that day. */
 export type AppliedRule =
   | Exclude<SplitRuleInput, { method: 'income_proportional' }>
-  | { method: 'income_proportional'; shares: readonly { memberId: string; shareBps: number }[] };
+  | {
+      method: 'income_proportional';
+      shares: readonly { memberId: string; shareBps: number }[];
+      prorate?: boolean;
+    };
 
 /**
  * The split by income on a day (F4, #110), between everyone who had agreed to it by then; null
@@ -80,6 +88,26 @@ export function splitRuleFor(
         date,
       )?.rule,
     ) ?? EQUAL
+  );
+}
+
+/**
+ * Whether expenses in `categoryId` on `date` are prorated for people who join or leave that month
+ * (#261, D33). The category's own rule decides, even while a split by income it names waits for
+ * agreement: rent covers the month whichever way it's split. A category without a rule of its own
+ * never prorates, since the household default also covers one-off expenses.
+ */
+export function prorates(
+  policies: readonly SplitPolicyRow[],
+  categoryId: string | null,
+  date: string,
+): boolean {
+  if (categoryId === null) return false;
+  return (
+    latest(
+      policies.filter((p) => p.categoryId === categoryId),
+      date,
+    )?.rule?.prorate === true
   );
 }
 

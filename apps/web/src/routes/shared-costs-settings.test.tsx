@@ -35,6 +35,12 @@ describe('describeRule', () => {
     expect(describeRule({ method: 'income_proportional' }, members, 'USD')).toBe('By income');
   });
 
+  it('says when a rule prorates for people who join or leave (#261)', () => {
+    expect(describeRule({ method: 'equal', prorate: true }, members, 'USD')).toBe(
+      'Equal · by days in the household',
+    );
+  });
+
   it('names someone who left without guessing', () => {
     expect(
       describeRule(

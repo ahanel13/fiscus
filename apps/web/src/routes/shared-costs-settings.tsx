@@ -24,6 +24,7 @@ import {
   AmountInput,
   Button,
   Card,
+  Checkbox,
   Dialog,
   DialogActions,
   LoadingRegion,
@@ -89,13 +90,21 @@ export function describeIncomeSplit(split: IncomeSplit, members: HouseholdMember
   return describeShares(split.shares, members);
 }
 
-/** "Equal", "Sam 70% · you 30%", "You $400.00 a month · the rest equally". */
+/**
+ * "Equal", "Sam 70% · you 30%", "You $400.00 a month · the rest equally", with "· by days in the
+ * household" when it prorates (#261, D33).
+ */
 export function describeRule(
   rule: SplitRule | null,
   members: HouseholdMember[],
   currency: string,
 ): string {
   if (!rule) return 'The household default';
+  const split = describeSplit(rule, members, currency);
+  return rule.prorate ? `${split} · by days in the household` : split;
+}
+
+function describeSplit(rule: SplitRule, members: HouseholdMember[], currency: string): string {
   const name = (id: string) => nameOf(members, id);
   if (rule.method === 'equal') return 'Equal';
   if (rule.method === 'income_proportional') return 'By income';
@@ -348,9 +357,14 @@ function RuleDialog({
     ),
   );
   const [from, setFrom] = useState(earliestMonth);
+  const [prorate, setProrate] = useState(initial?.prorate === true);
 
   const percentTotal = Object.values(percent).reduce((s, v) => s + (Number(v) || 0), 0);
   const rule = (): SplitRule | null => {
+    const r = split();
+    return r && forCategory && prorate ? { ...r, prorate } : r;
+  };
+  const split = (): SplitRule | null => {
     if (method === 'default') return null;
     if (method === 'equal' || method === 'income_proportional') return { method };
     if (method === 'fixed_percent') {
@@ -494,6 +508,18 @@ function RuleDialog({
               />
             ))}
             <p className="text-sm text-muted">Leave someone empty to share what’s left equally.</p>
+          </div>
+        ) : null}
+        {forCategory && method !== 'default' ? (
+          <div>
+            <Checkbox isSelected={prorate} onChange={setProrate}>
+              Prorate by days for someone who joins or leaves
+            </Checkbox>
+            <p className="pl-7 text-sm text-muted">
+              For costs that cover the month, like rent, utilities and subscriptions. Someone who
+              joins on the 16th of a 30-day month pays for 15 days of it, and the others cover the
+              rest.
+            </p>
           </div>
         ) : null}
         <RadioGroup label="Starting" value={from} onChange={setFrom}>

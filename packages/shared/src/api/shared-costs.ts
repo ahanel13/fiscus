@@ -26,10 +26,15 @@ const memberShares = z
  * - `income_proportional`: in proportion to their incomes (F4, #110). It counts for an expense
  *   only once everyone it's for has agreed (`IncomeSplit`); until then, the household default
  *   applies, or an equal split for the default itself.
+ *
+ * `prorate` (#261, ADR 0012 §Joining, walkthrough D33), for a category's rule: someone who joins
+ * or leaves the household during a month pays for the days of it they were in the household.
+ * For costs that cover the month, such as rent, utilities and subscriptions.
  */
+const prorate = { prorate: z.boolean().optional() };
 export const splitRuleSchema = z.discriminatedUnion('method', [
-  z.object({ method: z.literal('equal') }),
-  z.object({ method: z.literal('fixed_percent'), shares: memberShares }),
+  z.object({ method: z.literal('equal'), ...prorate }),
+  z.object({ method: z.literal('fixed_percent'), shares: memberShares, ...prorate }),
   z.object({
     method: z.literal('fixed_amount'),
     amounts: z
@@ -37,15 +42,22 @@ export const splitRuleSchema = z.discriminatedUnion('method', [
       .min(1)
       .max(19)
       .refine((s) => new Set(s.map((x) => x.memberId)).size === s.length, 'Each member once'),
+    ...prorate,
   }),
-  z.object({ method: z.literal('income_proportional') }),
+  z.object({ method: z.literal('income_proportional'), ...prorate }),
 ]);
 export type SplitRule = z.infer<typeof splitRuleSchema>;
 export type SplitMethod = SplitRule['method'];
 
-/** Sets the household's default from a month on. */
+/**
+ * Sets the household's default from a month on. The default covers one-off expenses too, so it
+ * never prorates: a dinner the week someone joined is theirs in full.
+ */
 export const setDefaultSplitSchema = z.object({
-  rule: splitRuleSchema,
+  rule: splitRuleSchema.refine((r) => r.prorate !== true, {
+    message: 'Only a category’s rule can prorate',
+    path: ['prorate'],
+  }),
   effectiveFrom: monthStartSchema,
 });
 
@@ -113,6 +125,11 @@ export interface SharedExpenseLine {
   forMembers: string[];
   /** Its effect from your side, per person: positive, they owe you; negative, you owe them. */
   effect: { memberId: string; amountMinor: number }[];
+  /**
+   * Its rule prorates (#261, D33), and someone it's for joined or left the household that month:
+   * the days of it each of them was in the household. Empty otherwise.
+   */
+  prorated: { memberId: string; days: number; ofDays: number }[];
 }
 
 /** Where you stand with each person you share costs with (#111, D17). */
