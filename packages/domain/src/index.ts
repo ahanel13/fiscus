@@ -152,3 +152,23 @@ export {
   transfersFor,
   type Debt,
 } from './simplify.js';
+export {
+  matchCategories,
+  moveRule,
+  planMoveOut,
+  redistributeShares,
+  type ExistingCategory,
+  type MoveOutAccount,
+  type MoveOutBlocker,
+  type MoveOutCategory,
+  type MoveOutConnection,
+  type MoveOutGoal,
+  type MoveOutInput,
+  type MoveOutMember,
+  type MoveOutOwner,
+  type MoveOutPlan,
+  type MoveOutRole,
+  type MoveOutRule,
+  type MoveOutTag,
+  type RuleIdMaps,
+} from './move-out.js';

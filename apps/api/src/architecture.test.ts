@@ -71,6 +71,19 @@ describe('architecture', () => {
     ).toEqual([]);
   });
 
+  // fiscus_maintenance bypasses row-level security; only the worker's login may become it, for
+  // moving out (migration 0122, #253). The api's login can't, and its code never tries.
+  it('never becomes fiscus_maintenance', () => {
+    const offenders = sources(SRC)
+      .map((path) => relative(SRC, path))
+      .filter((rel) =>
+        /\bstartMaintenance\b|\brunMaintenanceJob\b|fiscus_maintenance|SET\s+(LOCAL\s+)?ROLE/i.test(
+          readFileSync(join(SRC, rel), 'utf8'),
+        ),
+      );
+    expect(offenders.filter((rel) => rel !== 'architecture.test.ts')).toEqual([]);
+  });
+
   it('keeps the allow-list honest (no stale entries)', () => {
     const files = new Set(sources(SRC).map((path) => relative(SRC, path)));
     expect(Object.keys(DIRECT_DB_ALLOWED).filter((rel) => !files.has(rel))).toEqual([]);

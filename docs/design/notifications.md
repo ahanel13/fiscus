@@ -21,8 +21,8 @@ are in the [bills walkthrough](walkthroughs/bills.md) §7 (D15–D20). The table
   big transaction, low balance, a budget category nearly spent, transactions to review, and a bank
   connection that needs you; the weekly recap (#128, §4.3); settle-up reminders and the
   monthly shared costs summary (#116, §4.4); and consent requests (#265, §4.5).
-- **Notices** that can't be turned off (§4.6): someone claiming ownership of the household
-  (#267). They aren't in Settings → Notifications.
+- **Notices** that can't be turned off (§4.6, §4.7): someone claiming ownership of the household
+  (#267), or moving out of it (#253). They aren't in Settings → Notifications.
 
 ## 2. Channels
 
@@ -208,6 +208,15 @@ channel the member has set up, whatever their rules say, so a claim always reach
 Each link goes to Household settings → Members, where an owner rejects it in one click (a banner
 on every page says so too). Each notice sent is in the household's activity
 (`ownership_claim.notified`, with how many were told). At summary detail none names anyone.
+
+### 4.7 Moving out
+
+When someone moves out into a household of their own (#253, ADR 0012 step 3, budgeting
+walkthrough D37), the worker's move (`apps/worker/src/move-out/member-moves.ts`) tells every
+current owner of the household they left, once it's done, in the same transaction: kind
+`member_moved_out`, dedupe key `member_moved_out:<move>`, a notice like an ownership claim's.
+It says who moved out, that joint accounts stay with their share passed on, and that it's in the
+household's activity; never where they went. At summary detail it names nobody.
 
 ## 5. What a webhook receives
 

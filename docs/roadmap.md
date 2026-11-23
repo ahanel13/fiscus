@@ -146,6 +146,7 @@ belongs to, or to the backlog.
 - [P2] Settle-up reminders and monthly settlement summary notification
 - [P1] Attribution activity feed with "flag change", plus a disputed state in settle-up (F6, #60)
 - [P2] Consent requests with a 14-day expiry and an archive fallback (ADR 0012, #265). Departures as a whole: [ADR 0012](adr/0012-member-lifecycle.md). Requests and their expiry are built, for a split by income (D34); joint accounts' deletion and transfer, with the archive fallback, come with those actions (#253)
+- [P2] Moving out into a household of your own, with your history (ADR 0012 step 3, #253, D37). Built: the preview from one plan, the move as a resumable job under `fiscus_maintenance` (accounts owned alone with all their history, bank connections made with the server's keys, your own budget, goals and rules; categories and tags copied; joint accounts stay with shares passed on). Next: transferring a joint account with the co-owners' agreement, the read-only history snapshot (#257), and removing a member with the same plan (#266)
 
 ## M4 · Bills, recurring & notifications
 **Epic: Bill & recurring tracking** (`area:bills`)

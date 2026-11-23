@@ -57,11 +57,13 @@ export async function runMigrations(
     }
     await migrate(drizzle(client), { migrationsFolder });
     log('Migrations applied');
-    // The worker has the app's privileges through membership (migration 0028). A dump keeps grants
-    // but not memberships, so after a restore into a fresh server it would have none: re-assert it.
+    // The worker has the app's privileges through membership (migration 0028), and may become
+    // fiscus_maintenance for moving out (0122). A dump keeps grants but not memberships, so after a
+    // restore into a fresh server it would have neither: re-assert them.
     await client.query(`DO $$ BEGIN
       IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'fiscus_worker') THEN
         GRANT fiscus_app TO fiscus_worker;
+        GRANT fiscus_maintenance TO fiscus_worker WITH INHERIT FALSE, SET TRUE;
       END IF;
     END $$`);
 

@@ -14,6 +14,7 @@ import { HouseholdGeneral } from './household-general.js';
 import { InviteButton, InviteDialog, PendingInvites } from './invites.js';
 import { MakeJointOffer } from './make-joint.js';
 import { MemberHistory } from './member-history.js';
+import { MoveInCard, MoveOutCard } from './move-out.js';
 import { householdQuery, meQuery, membersQuery, sessionsQuery } from '../api/queries.js';
 import {
   Avatar,
@@ -293,6 +294,7 @@ export function MembersSettings() {
         </ul>
         {isOwner ? <PendingInvites household={household} /> : null}
       </Card>
+      <MoveInCard householdId={householdId} />
       <OwnershipClaimCard householdId={householdId} />
       {members.some((m) => m.isYou) ? (
         <YouInHousehold
@@ -301,6 +303,7 @@ export function MembersSettings() {
           members={members}
         />
       ) : null}
+      {members.length > 1 ? <MoveOutCard householdId={householdId} /> : null}
     </>
   );
 }

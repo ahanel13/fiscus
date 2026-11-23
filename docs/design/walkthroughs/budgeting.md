@@ -504,6 +504,38 @@ reached) shouldn't be stuck without anyone who can change its settings or invite
   open at a time. Each step, notices included, is in the household's activity, and the database
   checks who may take each one.
 
+**D37. Moving out takes what's yours, with its history, into a household of your own (#253).**
+Someone leaving on good terms (an adult child, a roommate, a partner after a breakup) shouldn't
+have to re-enter years of history (ADR 0012 step 3).
+- **Where:** Household settings → Members → **Move out**, for anyone with a login in a household
+  of two or more, whatever their role. Nobody can stop it.
+- **Preview first:** what **goes with you** (the accounts you own alone, with every transaction,
+  note, tag and balance; your bank connections made with the server's keys; your own budget,
+  goals and rules), what **stays** (joint accounts, with your share passed to the other owners in
+  proportion; purchases on other people's accounts that were for you; shared budgets and goals;
+  the activity), what's **copied** (the categories and tags your data uses), and your
+  **settle-up** with each member as it stands.
+- **You can't yet** if you're the only owner (make someone else an owner first), the only member,
+  or a dependent's profile without its own login (it's claimed first, #252, so the person leaving
+  always agrees themselves).
+- **Starting it** asks for your password, makes the new household with this one's settings, and
+  records the settle-up with the move. The worker moves your things within a minute or so; the
+  new household's Members page shows how far it's got, and the settle-up.
+- **Then** you've left. The owners are told, whatever their notification settings, and both
+  households' activity says so. Nothing in the household you left says where you went.
+- **Along the way:** a purchase on your accounts that was for someone else becomes yours there
+  (settle-up already counted it); their private notes on it go. A transfer between something that
+  moves and something that stays is one-sided on both sides. A settle-up paid with a transfer
+  that moves stays, as paid another way. A goal's claim between what moves and what stays ends,
+  as a claim does when its account closes. A bank connection made with the household's own Plaid
+  keys can't change keys (ADR 0008), so it ends here and you link the bank again there; your
+  accounts keep their history. A joint account whose bank login was yours loses it, and the other
+  owners link it with theirs.
+
+*As built (#253, first part):* transferring a joint account, which needs the other owners'
+agreement (a consent request, D34), and the read-only copy of shared history that goes with
+every departure (#257) come next; so does removing a member with the same plan (#266).
+
 ---
 
 ## 8. Shared costs: who owes whom

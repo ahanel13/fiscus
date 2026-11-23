@@ -95,6 +95,7 @@ caller can't see ("Transfer to Anthony").
 | HH-17 | Claim ownership when owners are unresponsive | ✅ (n/a) | ✅ | ❌ | Only once no owner has used Fiscus for 30 days, with a recent sign-in, one claim at a time. All owners are notified (in Fiscus and by email, whatever their settings) when it starts, a week before it ends and the day before. Any owner rejects it in one click, and any owner using Fiscus ends it, within 30 days; then the claimant becomes an additional owner, and nobody is demoted. The claimant can withdraw it. Everyone sees an open claim; each step is in the household's activity (ADR 0012, #267, D35) |
 | HH-18 | Change your own name and color in the household | own | own | own | Colors come from the member palette; two current members can't share one |
 | HH-19 | Check the activity history (verify, proof), and report a failed check | ✅ | ✅ | ✅ | A proof shows how many events there are, hidden ones included, never what they were (accounts-and-visibility §6). A report is a household-visible event, labelled as a device's claim; a few an hour per member (#264) |
+| HH-20 | Move out into a household of your own, with your history | ✅ | ✅ | ✅ | Needs no approval and a recent sign-in. Not the last owner (another owner first), not alone, not a dependent without a login (#252). Owners are told; both households' activity records it, and nothing in the old one says where they went (ADR 0012 step 3, #253, D37) |
 
 ### 4.2 Connections and accounts
 | ID | Action | OWN | MEM | VIEW | Notes |

@@ -12,6 +12,7 @@ export * from './identity.js';
 export * from './imports.js';
 export * from './instance-settings.js';
 export * from './ledger.js';
+export * from './member-moves.js';
 export * from './merchants.js';
 export * from './notifications.js';
 export * from './ownership-claims.js';
