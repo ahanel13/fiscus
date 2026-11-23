@@ -270,38 +270,45 @@ describe('goals (RLS)', () => {
           [goalId, account.alexs],
         ),
       );
+    // Rows come by day, then account id. The ids are random, so sort both sides the same way.
+    const byDayThenAccount = <T extends { day: string; account_id: string }>(rows: T[]) =>
+      [...rows].sort(
+        (x, y) => x.day.localeCompare(y.day) || x.account_id.localeCompare(y.account_id),
+      );
     try {
       // Alex has no window: September's $14,000, then October's half of $8,000, then of $9,400.
-      expect((await history('A', goal.ours)).rows).toEqual([
-        {
-          day: '2026-09-30',
-          account_id: account.joint,
-          amount: 1400000,
-          percent: null,
-          value: 1400000,
-        },
-        {
-          day: '2026-10-31',
-          account_id: account.alexs,
-          amount: null,
-          percent: 5000,
-          value: 400000,
-        },
-        {
-          day: '2026-10-31',
-          account_id: account.joint,
-          amount: 1400000,
-          percent: null,
-          value: 1400000,
-        },
-        {
-          day: new Date().toISOString().slice(0, 10),
-          account_id: account.alexs,
-          amount: null,
-          percent: 5000,
-          value: 470000,
-        },
-      ]);
+      expect(byDayThenAccount((await history('A', goal.ours)).rows)).toEqual(
+        byDayThenAccount([
+          {
+            day: '2026-09-30',
+            account_id: account.joint,
+            amount: 1400000,
+            percent: null,
+            value: 1400000,
+          },
+          {
+            day: '2026-10-31',
+            account_id: account.alexs,
+            amount: null,
+            percent: 5000,
+            value: 400000,
+          },
+          {
+            day: '2026-10-31',
+            account_id: account.joint,
+            amount: 1400000,
+            percent: null,
+            value: 1400000,
+          },
+          {
+            day: new Date().toISOString().slice(0, 10),
+            account_id: account.alexs,
+            amount: null,
+            percent: 5000,
+            value: 470000,
+          },
+        ]),
+      );
       // Bea joined today, so she sees today's, and never Alex's own goal.
       expect((await history('B', goal.ours)).rows.map((r) => r.day)).toEqual([
         new Date().toISOString().slice(0, 10),
