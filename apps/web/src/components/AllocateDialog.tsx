@@ -97,7 +97,14 @@ export function AllocateDialog({
           {rows.map((r, i) => {
             const g = data.goals.find((x) => x.id === r.goalId);
             const a = data.accounts.find((x) => x.accountId === r.accountId);
-            const left = (g?.targetMinor ?? 0) - (g?.progressMinor ?? 0);
+            // What the goal still needs after this step and the ones before it, as ticked.
+            const left =
+              (g?.targetMinor ?? 0) -
+              (g?.progressMinor ?? 0) -
+              rows
+                .slice(0, i + 1)
+                .filter((x) => x.goalId === r.goalId && x.on)
+                .reduce((sum, x) => sum + (x.amount ?? 0), 0);
             const set = (patch: Partial<(typeof rows)[number]>) =>
               setRows((all) => all.map((x, k) => (k === i ? { ...x, ...patch } : x)));
             return (
@@ -114,9 +121,7 @@ export function AllocateDialog({
                     <span className="block font-medium">{g?.name}</span>
                     <span className="block text-xs text-muted">
                       From {a?.name}, which has {money(a?.unclaimedMinor ?? 0)} unclaimed.{' '}
-                      {r.amountMinor >= left
-                        ? 'Reaches its target.'
-                        : `${money(left)} still to go.`}
+                      {left <= 0 ? 'Reaches its target.' : `${money(left)} still to go after this.`}
                     </span>
                   </span>
                 </Checkbox>
